@@ -2,8 +2,10 @@
 
 YouTube-feliratokból strukturált tudásjegyzeteket készít egy Obsidian vaultba.
 
-> **Állapot: tervezési fázis.** Implementáció még nincs — előbb az architektúra
-> készül el, és a döntések menet közben rögzülnek. Lásd: [`docs/`](<./docs/>).
+> **Állapot: a Fázis 0 kész.** A feliratfájlból deduplikált, olvasható átirat
+> készül a vaultba — nulla modellhívás, végig determinisztikusan és
+> unit-tesztelve. A modellréteg, a mérés és a többi fázis hátravan. Lásd:
+> [`docs/roadmap.md`](<./docs/roadmap.md>).
 
 ## A probléma
 
@@ -54,7 +56,20 @@ A terv nem feltevéseken áll, hanem egy valós, 153 videós korpusz végigmér�
 | Mivel mérünk? | [Evalite, saját rubrikákkal](<./docs/decisions/0006-eval-stack.md>) — egy idegen is le tudja futtatni |
 | Mi az első futtatható szelet? | [Normalizálás vault-írással](<./docs/decisions/0007-elso-szelet.md>), modellhívás nélkül |
 
+## Ami már fut
+
+A `scan` felderíti a letöltési mappa videóit, és hálózat nélkül kiírja
+mindegyikhez a csatornát, a címet, a nyers és normalizált szószámot és a
+felirat-minőséget. A `run` átiratot készít, és a vault meglévő
+jegyzet-elrendezésébe írja: nulla duplikált sor, érvényes frontmatter, nulla
+wikilink. Másodszor futtatva nem ír semmit. Sérült feliratfájl nem állítja meg
+a futást, a záró riport megnevezi a hibás elemet és az okát.
+
+Végig determinisztikus és modellhívás nélküli, 114 teszttel — köztük egy
+végponttól végpontig teszttel, ami a fázis mind az öt sikerkritériumát
+állításként tartalmazza.
+
 ## Még nincs megírva
 
-Telepítés, használat, a mérési harness és maga a kód. Ahogy elkészülnek, ide
-kerülnek.
+Telepítés és használat, a mérési harness, a receptmotor és a modellréteg.
+Ahogy elkészülnek, ide kerülnek.
