@@ -76,6 +76,7 @@ Minden feladat követelményei implicit módon tartalmazzák ezt a szakaszt.
 | `src/pipeline.ts` | a lépések összekötése egyetlen elemre |
 | `src/cli.ts` | `scan` és `run` parancsok |
 | `eslint.config.js` | ESLint flat config, típusellenőrzött szabálykészlettel |
+| `pnpm-workspace.yaml` | a pnpm 11 beállításai: az esbuild build-szkriptjének engedélyezése |
 | `bump.config.ts` | bumpp: magyar kiadási commit-üzenet és tag-formátum |
 | `tsconfig.build.json` | build-konfiguráció, ami kihagyja a teszteket |
 
@@ -101,7 +102,7 @@ A tesztek a forrás mellett élnek: `src/**/*.test.ts`.
 > kellene visszamenőleg igazítani hozzá. A bumpp ugyanígy: a `version` mező
 > gazdáját az elején kell kijelölni, különben menet közben kézzel írjuk át.
 
-- [ ] **1. lépés: Hozd létre a `package.json`-t**
+- [x] **1. lépés: Hozd létre a `package.json`-t**
 
 ```json
 {
@@ -136,7 +137,24 @@ A tesztek a forrás mellett élnek: `src/**/*.test.ts`.
 }
 ```
 
-- [ ] **2. lépés: Hozd létre a két TypeScript-konfigurációt**
+A `pnpm` mezőt **ne** tedd a `package.json`-ba: a pnpm 11 már nem olvassa
+(`[WARN] The "pnpm" field in package.json is no longer read by pnpm`). Az
+`esbuild` (a vitest tranzitív függősége) build-szkriptjét külön fájl
+engedélyezi — enélkül a `pnpm test` minden futásnál `ERR_PNPM_IGNORED_BUILDS`
+hibával áll le. A fájlt a pnpm maga írja ki:
+
+```bash
+mise exec -- pnpm approve-builds --all
+```
+
+Eredménye a `pnpm-workspace.yaml`:
+
+```yaml
+allowBuilds:
+  esbuild: true
+```
+
+- [x] **2. lépés: Hozd létre a két TypeScript-konfigurációt**
 
 Két fájl kell, mert az ESLint típusellenőrzött szabályaihoz a **teszteknek is**
 benne kell lenniük a projektben, a buildből viszont ki kell maradniuk.
@@ -171,7 +189,7 @@ benne kell lenniük a projektben, a buildből viszont ki kell maradniuk.
 }
 ```
 
-- [ ] **3. lépés: Hozd létre a `vitest.config.ts`-t**
+- [x] **3. lépés: Hozd létre a `vitest.config.ts`-t**
 
 ```ts
 import { defineConfig } from 'vitest/config'
@@ -184,7 +202,7 @@ export default defineConfig({
 })
 ```
 
-- [ ] **4. lépés: Hozd létre az `eslint.config.js`-t**
+- [x] **4. lépés: Hozd létre az `eslint.config.js`-t**
 
 Az ESLint 10 flat configot használ. A típusellenőrzött szabálykészlet kell,
 mert a hibák java része itt típusinformációból derül ki:
@@ -200,7 +218,15 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        // A gyökérszintű konfigfájlok (vitest, eslint, bumpp) szándékosan
+        // kimaradnak a `tsconfig.json`-ból — a `rootDir: "src"` miatt a build
+        // hasalna el tőlük. A típusellenőrzött szabályokhoz viszont projekt
+        // kell, ezt adja nekik az alapértelmezett projekt. `projectService:
+        // true` esetén mindhárom fájl `was not found by the project service`
+        // hibát adna.
+        projectService: {
+          allowDefaultProject: ['*.ts', '*.js'],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -218,7 +244,7 @@ export default tseslint.config(
 )
 ```
 
-- [ ] **5. lépés: Hozd létre a `bump.config.ts`-t**
+- [x] **5. lépés: Hozd létre a `bump.config.ts`-t**
 
 A bumpp alapból elvégzi a commitot, a tagelést és a pusht (ezek `--no-commit`,
 `--no-tag`, `--no-push` kapcsolókkal kikapcsolhatók). Csak a magyar
@@ -233,7 +259,7 @@ export default defineConfig({
 })
 ```
 
-- [ ] **6. lépés: Írd meg a bukó tesztet**
+- [x] **6. lépés: Írd meg a bukó tesztet**
 
 `src/types.test.ts`:
 
@@ -248,12 +274,12 @@ describe('types', () => {
 })
 ```
 
-- [ ] **7. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **7. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm install && mise exec -- pnpm test`
 Elvárt: FAIL — `Cannot find module './types.js'`
 
-- [ ] **8. lépés: Írd meg a minimális implementációt**
+- [x] **8. lépés: Írd meg a minimális implementációt**
 
 `src/types.ts`:
 
@@ -291,7 +317,7 @@ export interface NormalizedTranscript {
 }
 ```
 
-- [ ] **9. lépés: Futtasd mind a hármat, és győződj meg róla, hogy zöldek**
+- [x] **9. lépés: Futtasd mind a hármat, és győződj meg róla, hogy zöldek**
 
 Futtasd:
 `mise exec -- pnpm test && mise exec -- pnpm typecheck && mise exec -- pnpm lint`
@@ -301,7 +327,7 @@ Ha az ESLint a `projectService` miatt hibázik, ellenőrizd, hogy a
 `tsconfig.json` `include`-ja tényleg lefedi-e a `.test.ts` fájlokat is —
 a `tsconfig.build.json` az, aminek ki kell hagynia őket, nem a fő konfignak.
 
-- [ ] **10. lépés: Commitolj**
+- [x] **10. lépés: Commitolj**
 
 ```bash
 git add package.json pnpm-lock.yaml tsconfig.json tsconfig.build.json \
@@ -323,7 +349,7 @@ git commit -m "chore: TypeScript projektváz linterrel, verziózóval és alapt�
 - Előállít: `parseTimestamp(text: string): number`,
   `parseCueTiming(line: string): { start: number; end: number } | null`
 
-- [ ] **1. lépés: Írd meg a bukó tesztet**
+- [x] **1. lépés: Írd meg a bukó tesztet**
 
 `src/subtitle/timestamp.test.ts`:
 
@@ -365,12 +391,12 @@ describe('parseCueTiming', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/subtitle/timestamp.test.ts`
 Elvárt: FAIL — `Cannot find module './timestamp.js'`
 
-- [ ] **3. lépés: Írd meg a minimális implementációt**
+- [x] **3. lépés: Írd meg a minimális implementációt**
 
 `src/subtitle/timestamp.ts`:
 
@@ -387,7 +413,7 @@ export function parseTimestamp(text: string): number {
     Number(h) * 3600 +
     Number(min) * 60 +
     Number(s) +
-    Number(ms.padEnd(3, '0')) / 1000
+    Number(ms!.padEnd(3, '0')) / 1000
   )
 }
 
@@ -401,19 +427,19 @@ export function parseCueTiming(
   const m = CUE_TIMING.exec(line.trim())
   if (!m) return null
   try {
-    return { start: parseTimestamp(m[1]), end: parseTimestamp(m[2]) }
+    return { start: parseTimestamp(m[1]!), end: parseTimestamp(m[2]!) }
   } catch {
     return null
   }
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/subtitle/timestamp.test.ts`
 Elvárt: PASS, 6 teszt
 
-- [ ] **5. lépés: Commitolj**
+- [x] **5. lépés: Commitolj**
 
 ```bash
 git add src/subtitle/timestamp.ts src/subtitle/timestamp.test.ts
@@ -440,7 +466,7 @@ git commit -m "feat(subtitle): időbélyeg-értelmezés SRT és VTT alakban"
 > és a `parse.ts` értelmetlen a két értelmező nélkül. Egy bíráló nem tudná az
 > egyiket elfogadni a másik nélkül.
 
-- [ ] **1. lépés: Írd meg a bukó SRT tesztet**
+- [x] **1. lépés: Írd meg a bukó SRT tesztet**
 
 `src/subtitle/parse-srt.test.ts` — a minta valós, yt-dlp által előállított
 fájlból származik, ezért a cue-k időben **átfedik** egymást:
@@ -499,12 +525,12 @@ describe('parseSrt', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/subtitle/parse-srt.test.ts`
 Elvárt: FAIL — `Cannot find module './parse-srt.js'`
 
-- [ ] **3. lépés: Írd meg az SRT értelmezőt**
+- [x] **3. lépés: Írd meg az SRT értelmezőt**
 
 `src/subtitle/parse-srt.ts`:
 
@@ -541,12 +567,12 @@ export function parseSrt(input: string): Cue[] {
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/subtitle/parse-srt.test.ts`
 Elvárt: PASS, 6 teszt
 
-- [ ] **5. lépés: Írd meg a bukó VTT tesztet**
+- [x] **5. lépés: Írd meg a bukó VTT tesztet**
 
 `src/subtitle/parse-vtt.test.ts` — a minta valós, gördülő ablakos, inline
 időbélyeg-tagekkel:
@@ -605,12 +631,12 @@ describe('parseVtt', () => {
 })
 ```
 
-- [ ] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/subtitle/parse-vtt.test.ts`
 Elvárt: FAIL — `Cannot find module './parse-vtt.js'`
 
-- [ ] **7. lépés: Írd meg a VTT értelmezőt**
+- [x] **7. lépés: Írd meg a VTT értelmezőt**
 
 `src/subtitle/parse-vtt.ts`:
 
@@ -665,12 +691,12 @@ export function parseVtt(input: string): Cue[] {
 }
 ```
 
-- [ ] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/subtitle/parse-vtt.test.ts`
 Elvárt: PASS, 5 teszt
 
-- [ ] **9. lépés: Írd meg a választó bukó tesztjét**
+- [x] **9. lépés: Írd meg a választó bukó tesztjét**
 
 `src/subtitle/parse.test.ts`:
 
@@ -703,12 +729,12 @@ describe('parseSubtitle', () => {
 })
 ```
 
-- [ ] **10. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **10. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/subtitle/parse.test.ts`
 Elvárt: FAIL — `Cannot find module './parse.js'`
 
-- [ ] **11. lépés: Írd meg a választót**
+- [x] **11. lépés: Írd meg a választót**
 
 `src/subtitle/parse.ts`:
 
@@ -726,12 +752,12 @@ export function parseSubtitle(input: string, filename: string): Cue[] {
 }
 ```
 
-- [ ] **12. lépés: Futtasd az egész csomagot**
+- [x] **12. lépés: Futtasd az egész csomagot**
 
 Futtasd: `mise exec -- pnpm test`
-Elvárt: PASS, 20 teszt
+Elvárt: PASS, 21 teszt (1 típus + 6 időbélyeg + 6 SRT + 5 VTT + 3 választó)
 
-- [ ] **13. lépés: Commitolj**
+- [x] **13. lépés: Commitolj**
 
 ```bash
 git add src/subtitle/
@@ -755,7 +781,7 @@ git commit -m "feat(subtitle): SRT és VTT értelmezés inline tagek eltávolít
 > **Ez a fázis legnagyobb hozamú lépése**, és teljesen determinisztikus: valós
 > korpuszon 11 468 → 3 939 szó átlagosan, 66% csökkenés, nulla modellhívással.
 
-- [ ] **1. lépés: Írd meg a bukó tesztet**
+- [x] **1. lépés: Írd meg a bukó tesztet**
 
 `src/normalize/dedupe.test.ts`:
 
@@ -834,12 +860,12 @@ describe('toParagraphs', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/normalize/dedupe.test.ts`
 Elvárt: FAIL — `Cannot find module './dedupe.js'`
 
-- [ ] **3. lépés: Írd meg az implementációt**
+- [x] **3. lépés: Írd meg az implementációt**
 
 `src/normalize/dedupe.ts`:
 
@@ -881,12 +907,12 @@ export function toParagraphs(lines: string[], linesPerParagraph = 8): string {
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/normalize/dedupe.test.ts`
 Elvárt: PASS, 10 teszt
 
-- [ ] **5. lépés: Commitolj**
+- [x] **5. lépés: Commitolj**
 
 ```bash
 git add src/normalize/dedupe.ts src/normalize/dedupe.test.ts
@@ -912,7 +938,7 @@ git commit -m "feat(normalize): egymás utáni ismétlődések kiejtése és bek
 > A nagybetű-arány szándékosan **nem** része a kapunak — az újabb ASR
 > nagybetűsít, de nem tesz ki írásjelet, tehát használhatatlan diszkriminátor.
 
-- [ ] **1. lépés: Írd meg a bukó tesztet**
+- [x] **1. lépés: Írd meg a bukó tesztet**
 
 `src/normalize/classify.test.ts`:
 
@@ -964,12 +990,12 @@ describe('classifyCaptions', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/normalize/classify.test.ts`
 Elvárt: FAIL — `Cannot find module './classify.js'`
 
-- [ ] **3. lépés: Írd meg az implementációt**
+- [x] **3. lépés: Írd meg az implementációt**
 
 `src/normalize/classify.ts`:
 
@@ -1005,12 +1031,12 @@ export function classifyCaptions(
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/normalize/classify.test.ts`
 Elvárt: PASS, 7 teszt
 
-- [ ] **5. lépés: Commitolj**
+- [x] **5. lépés: Commitolj**
 
 ```bash
 git add src/normalize/classify.ts src/normalize/classify.test.ts
@@ -1038,7 +1064,7 @@ git commit -m "feat(normalize): felirat-minőségi kapu írásjel-sűrűség ala
 > meglévő mellé**, és a jegyzetek kettéválnak. A csatornaegyeztetés
 > kis-nagybetű-érzéketlen, különben ugyanannak a csatornának két mappája lesz.
 
-- [ ] **1. lépés: Írd meg a szanitizálás bukó tesztjét**
+- [x] **1. lépés: Írd meg a szanitizálás bukó tesztjét**
 
 `src/vault/sanitize.test.ts`:
 
@@ -1084,12 +1110,12 @@ describe('sanitizeSegment', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/sanitize.test.ts`
 Elvárt: FAIL — `Cannot find module './sanitize.js'`
 
-- [ ] **3. lépés: Írd meg a szanitizálást**
+- [x] **3. lépés: Írd meg a szanitizálást**
 
 `src/vault/sanitize.ts`:
 
@@ -1134,12 +1160,12 @@ export function sanitizeSegment(name: string): string {
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/sanitize.test.ts`
 Elvárt: PASS, 7 teszt
 
-- [ ] **5. lépés: Írd meg az útvonalszámítás bukó tesztjét**
+- [x] **5. lépés: Írd meg az útvonalszámítás bukó tesztjét**
 
 `src/vault/paths.test.ts`:
 
@@ -1197,12 +1223,12 @@ describe('videoDir és transcriptFile', () => {
 })
 ```
 
-- [ ] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/paths.test.ts`
 Elvárt: FAIL — `Cannot find module './paths.js'`
 
-- [ ] **7. lépés: Írd meg az útvonalszámítást**
+- [x] **7. lépés: Írd meg az útvonalszámítást**
 
 `src/vault/paths.ts`:
 
@@ -1250,12 +1276,12 @@ export function transcriptFile(videoDirPath: string, title: string): string {
 }
 ```
 
-- [ ] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/paths.test.ts`
 Elvárt: PASS, 7 teszt
 
-- [ ] **9. lépés: Commitolj**
+- [x] **9. lépés: Commitolj**
 
 ```bash
 git add src/vault/sanitize.ts src/vault/sanitize.test.ts src/vault/paths.ts src/vault/paths.test.ts
@@ -1279,7 +1305,7 @@ git commit -m "feat(vault): yt-dlp-kompatibilis útvonalszámítás csatornaegye
 > A linter nem kényelmi funkció: a vault linkelési szabálya invariáns, és ez
 > teszi teszteltté ahelyett, hogy remény maradna.
 
-- [ ] **1. lépés: Írd meg a linter bukó tesztjét**
+- [x] **1. lépés: Írd meg a linter bukó tesztjét**
 
 `src/vault/lint.test.ts`:
 
@@ -1318,12 +1344,12 @@ describe('lintVaultMarkdown', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/lint.test.ts`
 Elvárt: FAIL — `Cannot find module './lint.js'`
 
-- [ ] **3. lépés: Írd meg a lintert**
+- [x] **3. lépés: Írd meg a lintert**
 
 `src/vault/lint.ts`:
 
@@ -1353,12 +1379,12 @@ export function lintVaultMarkdown(md: string): string[] {
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/lint.test.ts`
 Elvárt: PASS, 6 teszt
 
-- [ ] **5. lépés: Írd meg a renderelés bukó tesztjét**
+- [x] **5. lépés: Írd meg a renderelés bukó tesztjét**
 
 `src/vault/render.test.ts`:
 
@@ -1430,12 +1456,12 @@ describe('renderTranscriptNote', () => {
 })
 ```
 
-- [ ] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/render.test.ts`
 Elvárt: FAIL — `Cannot find module './render.js'`
 
-- [ ] **7. lépés: Írd meg a renderelést**
+- [x] **7. lépés: Írd meg a renderelést**
 
 `src/vault/render.ts`:
 
@@ -1494,12 +1520,12 @@ export function renderTranscriptNote(
 }
 ```
 
-- [ ] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/render.test.ts`
 Elvárt: PASS, 7 teszt
 
-- [ ] **9. lépés: Commitolj**
+- [x] **9. lépés: Commitolj**
 
 ```bash
 git add src/vault/lint.ts src/vault/lint.test.ts src/vault/render.ts src/vault/render.test.ts
@@ -1530,7 +1556,7 @@ git commit -m "feat(vault): jegyzet-renderelés frontmatterrel és linkszabály-
 > fordítás. A folytathatóság ebből ingyen adódik: az újrafuttatás kihagyja a
 > késznek jelölt elemeket.
 
-- [ ] **1. lépés: Írd meg a bukó tesztet**
+- [x] **1. lépés: Írd meg a bukó tesztet**
 
 `src/state/db.test.ts`:
 
@@ -1615,12 +1641,12 @@ describe('StateStore', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/state/db.test.ts`
 Elvárt: FAIL — `Cannot find module './db.js'`
 
-- [ ] **3. lépés: Írd meg az állapottárat**
+- [x] **3. lépés: Írd meg az állapottárat**
 
 `src/state/db.ts`:
 
@@ -1702,6 +1728,12 @@ export function openState(path: string): StateStore {
 
   const now = () => new Date().toISOString()
 
+  // A `close()` idempotens: a hívónak nem feladata számon tartani, hogy a
+  // tár már zárva van-e. Kétszeri zárás enélkül „database is not open"-t dob
+  // — és a feladat saját tesztje (`újranyitás után is emlékszik`) pontosan
+  // ezt teszi, a takarító hookkal együtt.
+  let closed = false
+
   // Önálló függvény, nem objektum-metódus: a `listPending` így hivatkozhat rá
   // `this` nélkül, ami strict módban típushibát adna.
   const isDone = (videoId: string, kind: string): boolean =>
@@ -1782,18 +1814,20 @@ export function openState(path: string): StateStore {
     },
 
     close() {
+      if (closed) return
+      closed = true
       db.close()
     },
   }
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/state/db.test.ts`
 Elvárt: PASS, 7 teszt
 
-- [ ] **5. lépés: Commitolj**
+- [x] **5. lépés: Commitolj**
 
 ```bash
 git add src/state/db.ts src/state/db.test.ts
@@ -1819,7 +1853,7 @@ git commit -m "feat(state): SQLite állapottár folytatható futásokhoz"
 > tudnának rákapcsolódni. A konfiguráció validálása pedig azért indulási
 > feltétel, mert két gépen két útvonal van — beégetett útvonal egyiken sem jó.
 
-- [ ] **1. lépés: Írd meg az események bukó tesztjét**
+- [x] **1. lépés: Írd meg az események bukó tesztjét**
 
 `src/events.test.ts`:
 
@@ -1852,12 +1886,12 @@ describe('summarize', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/events.test.ts`
 Elvárt: FAIL — `Cannot find module './events.js'`
 
-- [ ] **3. lépés: Írd meg az eseményfolyamot**
+- [x] **3. lépés: Írd meg az eseményfolyamot**
 
 `src/events.ts`:
 
@@ -1912,12 +1946,12 @@ export function summarize(events: readonly RunEvent[]): RunSummary {
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/events.test.ts`
 Elvárt: PASS, 3 teszt
 
-- [ ] **5. lépés: Írd meg a konfiguráció bukó tesztjét**
+- [x] **5. lépés: Írd meg a konfiguráció bukó tesztjét**
 
 `src/config.test.ts`:
 
@@ -1997,12 +2031,12 @@ describe('validateConfig', () => {
 })
 ```
 
-- [ ] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/config.test.ts`
 Elvárt: FAIL — `Cannot find module './config.js'`
 
-- [ ] **7. lépés: Írd meg a konfigurációt**
+- [x] **7. lépés: Írd meg a konfigurációt**
 
 `src/config.ts`:
 
@@ -2082,12 +2116,12 @@ export async function validateConfig(cfg: Config): Promise<void> {
 }
 ```
 
-- [ ] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/config.test.ts`
 Elvárt: PASS, 8 teszt
 
-- [ ] **9. lépés: Commitolj**
+- [x] **9. lépés: Commitolj**
 
 ```bash
 git add src/config.ts src/config.test.ts src/events.ts src/events.test.ts
@@ -2111,7 +2145,7 @@ git commit -m "feat(core): konfiguráció-validálás és struktúrált esemény
 > csatornanév, a videóazonosító, az URL és a dátum mind a metaadatfájlban van.
 > A mappanév csak a fájlok megtalálására kell.
 
-- [ ] **1. lépés: Írd meg a bukó tesztet**
+- [x] **1. lépés: Írd meg a bukó tesztet**
 
 `src/source/folder.test.ts`:
 
@@ -2209,12 +2243,12 @@ describe('folderSource', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/source/folder.test.ts`
 Elvárt: FAIL — `Cannot find module './folder.js'`
 
-- [ ] **3. lépés: Írd meg a `Source` interfészt**
+- [x] **3. lépés: Írd meg a `Source` interfészt**
 
 `src/source/types.ts`:
 
@@ -2231,7 +2265,7 @@ export interface Source {
 }
 ```
 
-- [ ] **4. lépés: Írd meg a mappa-adaptert**
+- [x] **4. lépés: Írd meg a mappa-adaptert**
 
 `src/source/folder.ts`:
 
@@ -2345,12 +2379,12 @@ export function folderSource(root: string): Source {
 }
 ```
 
-- [ ] **5. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **5. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/source/folder.test.ts`
 Elvárt: PASS, 9 teszt
 
-- [ ] **6. lépés: Commitolj**
+- [x] **6. lépés: Commitolj**
 
 ```bash
 git add src/source/
@@ -2377,7 +2411,7 @@ git commit -m "feat(source): Pinchflat mappa-adapter az .info.json metaadataival
 > commitolni, mert enélkül a munkafa piszkos marad — és akkor a *következő*
 > futás előtti `git pull --ff-only` megbicsaklik.
 
-- [ ] **1. lépés: Írd meg a publisher bukó tesztjét**
+- [x] **1. lépés: Írd meg a publisher bukó tesztjét**
 
 `src/vault/publish.test.ts`:
 
@@ -2433,12 +2467,12 @@ describe('publishNote', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/publish.test.ts`
 Elvárt: FAIL — `Cannot find module './publish.js'`
 
-- [ ] **3. lépés: Írd meg a publishert**
+- [x] **3. lépés: Írd meg a publishert**
 
 `src/vault/publish.ts`:
 
@@ -2488,12 +2522,12 @@ export async function publishNote(
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/publish.test.ts`
 Elvárt: PASS, 5 teszt
 
-- [ ] **5. lépés: Írd meg a git bukó tesztjét**
+- [x] **5. lépés: Írd meg a git bukó tesztjét**
 
 `src/vault/git.test.ts`:
 
@@ -2560,12 +2594,12 @@ describe('isDirty', () => {
 })
 ```
 
-- [ ] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **6. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/git.test.ts`
 Elvárt: FAIL — `Cannot find module './git.js'`
 
-- [ ] **7. lépés: Írd meg a git-műveleteket**
+- [x] **7. lépés: Írd meg a git-műveleteket**
 
 `src/vault/git.ts`:
 
@@ -2627,12 +2661,12 @@ export async function gitPush(repo: string): Promise<PushResult> {
 }
 ```
 
-- [ ] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **8. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/vault/git.test.ts`
 Elvárt: PASS, 6 teszt
 
-- [ ] **9. lépés: Commitolj**
+- [x] **9. lépés: Commitolj**
 
 ```bash
 git add src/vault/publish.ts src/vault/publish.test.ts src/vault/git.ts src/vault/git.test.ts
@@ -2655,7 +2689,7 @@ git commit -m "feat(vault): write-once publisher és útvonalra szűkített git-
 > Ez a feladat köti össze a darabokat, és **itt igazolódik a roadmap mind az
 > öt sikerkritériuma.** A `src/e2e.test.ts` szó szerint ezeket állítja.
 
-- [ ] **1. lépés: Írd meg a csővezeték bukó tesztjét**
+- [x] **1. lépés: Írd meg a csővezeték bukó tesztjét**
 
 `src/pipeline.test.ts`:
 
@@ -2756,12 +2790,12 @@ describe('processItem', () => {
 })
 ```
 
-- [ ] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
+- [x] **2. lépés: Futtasd, és győződj meg róla, hogy bukik**
 
 Futtasd: `mise exec -- pnpm vitest run src/pipeline.test.ts`
 Elvárt: FAIL — `Cannot find module './pipeline.js'`
 
-- [ ] **3. lépés: Írd meg a csővezetéket**
+- [x] **3. lépés: Írd meg a csővezetéket**
 
 `src/pipeline.ts`:
 
@@ -2812,10 +2846,19 @@ export async function processItem(
     const raw = await readFile(item.subtitlePath, 'utf8')
     const cues = parseSubtitle(raw, item.subtitlePath)
     sink({ type: 'item:parsed', videoId: item.videoId, cues: cues.length })
+    if (cues.length === 0) {
+      throw new Error('a feliratfájl nem tartalmaz értelmezhető feliratblokkot')
+    }
 
     const rawText = cues.flatMap((c) => c.lines).join(' ')
     const lines = dedupeLines(cues)
     const normalizedText = lines.join(' ')
+    // Üres átirat nem kerülhet a vaultba: a jegyzet értéktelen, és a
+    // következő futás késznek hinné az elemet. A 4. sikerkritérium (sérült
+    // feliratfájl) enélkül publikált jegyzetet adna hiba helyett.
+    if (lines.length === 0) {
+      throw new Error('a feliratfájl nem tartalmaz szöveget')
+    }
 
     const transcript: NormalizedTranscript = {
       lines,
@@ -2869,12 +2912,12 @@ export async function processItem(
 }
 ```
 
-- [ ] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
+- [x] **4. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/pipeline.test.ts`
 Elvárt: PASS, 6 teszt
 
-- [ ] **5. lépés: Írd meg a CLI-t**
+- [x] **5. lépés: Írd meg a CLI-t**
 
 `src/cli.ts` — az argumentumértelmezés a beépített `node:util` `parseArgs`
 függvényével megy, tehát nincs hozzá külső függőség:
@@ -3065,7 +3108,7 @@ if (isEntrypoint) {
 }
 ```
 
-- [ ] **6. lépés: Írd meg a mag publikus API-ját**
+- [x] **6. lépés: Írd meg a mag publikus API-ját**
 
 `src/index.ts`:
 
@@ -3079,7 +3122,7 @@ export { openState, type StateStore } from './state/db.js'
 export type { CaptionSource, Cue, NormalizedTranscript, SourceItem } from './types.js'
 ```
 
-- [ ] **7. lépés: Írd meg a végponttól végpontig tesztet**
+- [x] **7. lépés: Írd meg a végponttól végpontig tesztet**
 
 `src/e2e.test.ts` — **ez a roadmap Fázis 0 mind az öt sikerkritériuma:**
 
@@ -3165,6 +3208,9 @@ beforeEach(async () => {
   await run('git', ['init', '-b', 'main'], { cwd: vault })
   await run('git', ['config', 'user.email', 'teszt@example.com'], { cwd: vault })
   await run('git', ['config', 'user.name', 'Teszt'], { cwd: vault })
+  // A git alapból escape-eli a nem-ASCII útvonalneveket a kimenetében;
+  // enélkül a lenti útvonal-ellenőrzés az ékezetes címeken elbukna.
+  await run('git', ['config', 'core.quotepath', 'false'], { cwd: vault })
   await writeFile(join(vault, '.gitkeep'), '', 'utf8')
   await run('git', ['add', '.'], { cwd: vault })
   await run('git', ['commit', '-m', 'alap'], { cwd: vault })
@@ -3225,12 +3271,12 @@ describe('Fázis 0 sikerkritériumai', () => {
 })
 ```
 
-- [ ] **8. lépés: Futtasd a teljes csomagot**
+- [x] **8. lépés: Futtasd a teljes csomagot**
 
 Futtasd: `mise exec -- pnpm test && mise exec -- pnpm typecheck && mise exec -- pnpm lint`
 Elvárt: minden teszt PASS, típushiba nincs, ESLint-hiba nincs
 
-- [ ] **9. lépés: Ellenőrizd valós adaton, dry-run módban**
+- [x] **9. lépés: Ellenőrizd valós adaton, dry-run módban**
 
 ```bash
 export VAULT_PATH=<a vault abszolút útvonala>
@@ -3243,7 +3289,7 @@ mise exec -- node dist/cli.js run --limit 1 --dry-run
 Elvárt: a `scan` kilistázza a valós videókat; a `run --dry-run` szószám-párokat
 ír ki, és **egyetlen fájlt sem hoz létre** a vaultban. Ellenőrizd `git status`-szal.
 
-- [ ] **10. lépés: Futtasd élesben egyetlen elemre**
+- [x] **10. lépés: Futtasd élesben egyetlen elemre**
 
 ```bash
 mise exec -- node dist/cli.js run --limit 1 --no-commit
@@ -3253,7 +3299,7 @@ Elvárt: pontosan egy `Youtube - <cím>_transcript.md` keletkezik a helyes
 csatorna- és videómappában. Nyisd meg Obsidianban, és nézd meg, hogy
 olvasható-e.
 
-- [ ] **11. lépés: Commitolj**
+- [x] **11. lépés: Commitolj**
 
 ```bash
 git add src/pipeline.ts src/pipeline.test.ts src/cli.ts src/index.ts src/e2e.test.ts
@@ -3271,3 +3317,28 @@ git commit -m "feat(cli): scan és run parancs a teljes fázis 0 csővezetékkel
 - **Ütemezett futtatást.** A `launchd` akkor kerül be, amikor van mit
   ütemezni.
 - **URL-alapú ingestet.** A második forrás-adapter a Fázis 4.
+
+---
+
+## Végrehajtás
+
+**2026-08-30**, a `feat/fazis-0-normalizalas` ágon, feladatonként egy commit.
+Záró állapot: **19 tesztfájl, 114 teszt zöld**, `typecheck`, `lint` és `build`
+tiszta. A lefordított CLI valós alakú fixture-ön ellenőrizve: a `--dry-run`
+egyetlen fájlt sem írt, az éles futás létrehozta a jegyzetet, a második futás
+kihagyta.
+
+Hat ponton tért el a végrehajtás a tervtől. Mindegyik **fentebb át van vezetve**,
+itt csak az okuk marad meg:
+
+| Hol | Miért kellett eltérni |
+|---|---|
+| Feladat 1, `package.json` | A pnpm 11 nem olvassa a `pnpm` mezőt; az esbuild build-szkriptje `pnpm-workspace.yaml`-ból engedélyezhető, enélkül a `pnpm test` el sem indul |
+| Feladat 1, `eslint.config.js` | `projectService: true` mellett a három gyökérszintű konfigfájl parse-hibát adott; a `tsconfig.json`-ba felvenni őket a `rootDir: "src"` miatt nem lehet |
+| Feladat 2, `timestamp.ts` | A `noUncheckedIndexedAccess` miatt a regex-csoportok `string \| undefined`-ok — a terv kódja `typecheck`-en bukott, a teszten nem |
+| Feladat 3, 12. lépés | Elszámolás: 21 teszt, nem 20 |
+| Feladat 8, `db.ts` | A feladat saját tesztje zár és újranyit, a takarító hook pedig újra zár — a `close()` idempotencia nélkül elhasalt |
+| Feladat 12, `pipeline.ts` és e2e | Üres feliratfájlból publikált jegyzet lett hiba helyett (4. sikerkritérium), és a git escape-elte az ékezetes útvonalat az ellenőrzésben |
+
+**Ami a fázisból hátravan:** a 9. és 10. lépés valós korpuszon. Ehhez a
+Pinchflat letöltési mappája kell, ami nem ezen a gépen van.
