@@ -1,0 +1,6 @@
+# A projekt eszközverzióit ez a fájl dönti el, nem a shell PATH.
+# Indítás automatizálásból (pl. launchd) mindig ezen keresztül:
+#   /opt/homebrew/bin/mise exec -- pnpm start
+[tools]
+node = "26.2.0"
+pnpm = "11.24.0"

@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.output/
+coverage/
+
+# Környezet és titkok
+.env
+.env.*
+!.env.example
+
+# Helyi állapot és feldolgozási melléktermékek
+.state/
+tmp/
+*.wav
+
+# whisper modellek (nagyok, letölthetők)
+models/
+
+.DS_Store
