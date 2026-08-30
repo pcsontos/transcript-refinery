@@ -10,6 +10,7 @@ együtt ez a dokumentáció a projekt egyik terméke, nem melléktermék.
 | [`evaluation.md`](<./evaluation.md>) | mit mérünk, mivel és min |
 | [`roadmap.md`](<./roadmap.md>) | fázisok, megfigyelhető sikerkritériumokkal |
 | [`decisions/`](<./decisions/>) | egy rekord minden érdemben vitatott döntésről |
+| [`plans/`](<./plans/>) | fázisonkénti implementációs tervek, feladatokra bontva |
 
 ## A döntések
 

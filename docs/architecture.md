@@ -113,7 +113,8 @@ felülbírálhatóan. Nem a vaultban — a vault tudást tárol, nem gépi álla
 checkout között szinkronizálva azonnal konfliktusforrás lenne.
 
 **Mivel:** SQLite, a Node beépített `node:sqlite` moduljával — nulla függőség,
-nincs natív fordítás.
+nincs natív fordítás. A pinnelt Node 26.2.0-n verifikálva: a `DatabaseSync`
+kísérleti figyelmeztetés nélkül működik.
 
 **Miért nem JSON:** egy több órás, több száz elemű futás alatt a teljes fájl
 elemenkénti újraírása korrupciós kockázat. Épp arra a kérdésre kell válaszolnia,
@@ -151,6 +152,23 @@ Két szabály, mindkettő tesztelhető:
   mappája keletkezik.
 - A fájlrendszerre veszélyes karakterek normalizálása **idempotens**: kétszer
   lefuttatva ugyanaz jön ki.
+
+### A meglévő elrendezés — verifikálva
+
+A vault jelenlegi állapota nem egységes, és ezt a publishernek tudnia kell:
+
+| | |
+|---|---|
+| fájlnév-konvenció | `Youtube - <cím>_<típus>.md`; a típus lehet üres, `_polished` vagy `_summary` |
+| `Youtube - <cím>.md` | **hub-jegyzet**, nem átirat: cím, forrás-URL, tagek, beágyazott lejátszó, kézzel bemásolt összefoglaló |
+| elrendezés | két alak él egymás mellett: beágyazott `<Csatorna>/<Videó cím>/<fájl>` (többség) és lapos `<Csatorna>/<fájl>` |
+| frontmatter | a meglévő jegyzetek gyakorlatilag nem tartalmaznak |
+| feliratformátum | `.srt` és `.vtt` egyaránt előfordul |
+
+**Két következmény.** Egy: **nyers vagy normalizált átirat ma nem létezik a
+vaultban** — a fázis 0 kimenete valódi rést tölt be, nem duplikál. Kettő: a
+publisher a **beágyazott** alakot írja, `Youtube - <cím>_transcript.md`
+névkonvencióval, hogy illeszkedjen a meglévő fájlokhoz.
 
 ### Ütközésvédelem
 
@@ -393,11 +411,6 @@ lefedettség dönt, egységnyi költségre vetítve.
 
 Őszintén, hogy ne tűnjenek eldöntöttnek:
 
-- **A meglévő vault-elrendezésben van egy jegyzetfájl, aminek a tartalmát még nem
-  ellenőriztük.** Ha az már a nyers átirat, akkor a normalizált átirat új fájlként
-  duplikáció lenne, és inkább azt kell felváltania. Ellenőrizni kell az első
-  implementációs lépés előtt.
-- **A `node:sqlite` stabilitási státusza** a pinnelt Node-verzióban — verifikálandó.
 - **Az Evalite aktuális API-ja** — verifikálandó a
   megvalósítás előtt.
 - **A havi költségkeret konkrét összege** nincs meghatározva.
