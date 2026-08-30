@@ -1,0 +1,48 @@
+import type { CaptionSource } from './types.js'
+
+/**
+ * A mag kimenete. A CLI ezt haladásjelzéssé rendereli, a naplózó JSON
+ * sorokká — a mag maga soha nem ír a konzolra.
+ */
+export type RunEvent =
+  | { type: 'scan:start'; source: string }
+  | { type: 'scan:found'; count: number }
+  | { type: 'item:start'; videoId: string; title: string }
+  | { type: 'item:parsed'; videoId: string; cues: number }
+  | {
+      type: 'item:normalized'
+      videoId: string
+      wordsRaw: number
+      wordsNormalized: number
+      captionSource: CaptionSource
+    }
+  | { type: 'item:published'; videoId: string; path: string }
+  | { type: 'item:skipped'; videoId: string; reason: string }
+  | { type: 'item:failed'; videoId: string; error: string }
+  | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
+
+export type EventSink = (event: RunEvent) => void
+
+export interface RunSummary {
+  succeeded: number
+  skipped: number
+  failed: number
+}
+
+/** Teszteléshez és a futás végi riporthoz: memóriában gyűjti az eseményeket. */
+export function collectEvents(): { sink: EventSink; events: RunEvent[] } {
+  const events: RunEvent[] = []
+  return { sink: (e) => void events.push(e), events }
+}
+
+export function summarize(events: readonly RunEvent[]): RunSummary {
+  let succeeded = 0
+  let skipped = 0
+  let failed = 0
+  for (const e of events) {
+    if (e.type === 'item:published') succeeded++
+    else if (e.type === 'item:skipped') skipped++
+    else if (e.type === 'item:failed') failed++
+  }
+  return { succeeded, skipped, failed }
+}
