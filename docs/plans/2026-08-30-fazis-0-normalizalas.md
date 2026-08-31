@@ -3340,5 +3340,29 @@ itt csak az okuk marad meg:
 | Feladat 8, `db.ts` | A feladat saját tesztje zár és újranyit, a takarító hook pedig újra zár — a `close()` idempotencia nélkül elhasalt |
 | Feladat 12, `pipeline.ts` és e2e | Üres feliratfájlból publikált jegyzet lett hiba helyett (4. sikerkritérium), és a git escape-elte az ékezetes útvonalat az ellenőrzésben |
 
-**Ami a fázisból hátravan:** a 9. és 10. lépés valós korpuszon. Ehhez a
-Pinchflat letöltési mappája kell, ami nem ezen a gépen van.
+### Ellenőrzés valós korpuszon (9. és 10. lépés)
+
+A korpusz metaadata és feliratai egy másik gépről érkeztek; médiafájl nem
+kellett hozzá, mert a csővezeték egyet sem olvas. **154 videó, 17 csatorna.**
+
+A `scan` hálózat nélkül végigfutott, **nulla olvashatatlan feliratfájllal**. Az
+összesített számok reprodukálják azt az elemzést, amire a terv épült:
+
+| Mérés | Mért érték | A terv alapjául szolgáló mérés |
+|---|---|---|
+| Szócsökkenés a deduplikációtól | 65,4% | 66% |
+| Automatikus feliratok aránya | 47% (72/154) | 47% |
+| Medián normalizált szószám | 3 017 | 3 041 |
+| Maximum | 22 477 | 22 477 |
+
+A `run --limit 1 --dry-run` után a vault munkafája **bit-azonos** maradt.
+
+Az éles futás egyetlen olyan videóra ment, amelynek **csatornamappája már
+létezett** a vaultban — ez a fázis legnagyobb kockázata, mert eltérő
+szanitizálás mellett a publisher új mappát hozott volna létre a meglévő mellé.
+Nem tette: a meglévőbe írt, és a vault státusza pontosan **egy** új bejegyzéssel
+bővült. A jegyzet 43 525 → 14 514 szó, érvényes frontmatterrel. A parancsot
+másodszor futtatva „már feldolgozva" státusz jött, és nem írt semmit.
+
+**Ezzel a fázis mind az öt sikerkritériuma teljesült**, a szintetikus
+fixture-ökön és valós adaton egyaránt.
