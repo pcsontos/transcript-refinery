@@ -17,6 +17,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "build": "tsc -p tsconfig.build.json",
+    "sample:fetch": "test -n \"$REFINERY_SAMPLE_SOURCE\" || { echo \"REFINERY_SAMPLE_SOURCE nincs beállítva (pl. user@gep:/utvonal/pinchflat/)\"; exit 1; }; rsync -av --prune-empty-dirs --include='*/' --include='*.info.json' --include='*.srt' --include='*.vtt' --exclude='*' \"$REFINERY_SAMPLE_SOURCE\" \"${REFINERY_SAMPLE_DEST:-./tmp/pinchflat-minta}\"",
     "release": "bumpp"
   },
   "devDependencies": {
