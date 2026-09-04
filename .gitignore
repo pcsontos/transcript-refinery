@@ -16,4 +16,7 @@ tmp/
 # whisper modellek (nagyok, letölthetők)
 models/
 
+# Subagent-driven development munkaterület (ledger, review-csomagok)
+.superpowers/
+
 .DS_Store
