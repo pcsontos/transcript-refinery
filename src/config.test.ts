@@ -104,3 +104,58 @@ describe('loadDotEnv', () => {
     expect(() => loadDotEnv(join(dir, 'nincs-ilyen'))).not.toThrow()
   })
 })
+
+import { loadModelConfig } from './config.js'
+
+const TELJES_MODELL_ENV = {
+  LITELLM_BASE_URL: 'http://localhost:4000/v1',
+  LITELLM_API_KEY: 'sk-proba',
+  REFINERY_MODEL_DRAFT: 'claude-sonnet-5',
+  REFINERY_MODEL_JUDGE: 'grok-4-fast-reasoning',
+  REFINERY_PRICE_DRAFT_IN: '3.00',
+  REFINERY_PRICE_DRAFT_OUT: '15.00',
+  REFINERY_PRICE_JUDGE_IN: '0.20',
+  REFINERY_PRICE_JUDGE_OUT: '0.50',
+  REFINERY_COST_LIMIT_USD: '5.00',
+}
+
+describe('loadModelConfig', () => {
+  it('szerepenként képezi le a modellt és az árat', () => {
+    const cfg = loadModelConfig(TELJES_MODELL_ENV)
+    expect(cfg.models.draft).toBe('claude-sonnet-5')
+    expect(cfg.models.judge).toBe('grok-4-fast-reasoning')
+    expect(cfg.pricing.draft).toEqual({ inputPerMillion: 3, outputPerMillion: 15 })
+    expect(cfg.pricing.judge).toEqual({ inputPerMillion: 0.2, outputPerMillion: 0.5 })
+    expect(cfg.costLimitUsd).toBe(5)
+  })
+
+  it('a plafon hiányában elutasít — köteg nem indul felső korlát nélkül', () => {
+    const { REFINERY_COST_LIMIT_USD: _elhagyva, ...env } = TELJES_MODELL_ENV
+    expect(() => loadModelConfig(env)).toThrow(/REFINERY_COST_LIMIT_USD/)
+  })
+
+  it('a nulla plafont is elutasítja', () => {
+    expect(() =>
+      loadModelConfig({ ...TELJES_MODELL_ENV, REFINERY_COST_LIMIT_USD: '0' }),
+    ).toThrow(/REFINERY_COST_LIMIT_USD/)
+  })
+
+  it('hiányzó kulcsra a változó nevét mondja meg', () => {
+    const { LITELLM_API_KEY: _elhagyva, ...env } = TELJES_MODELL_ENV
+    expect(() => loadModelConfig(env)).toThrow(/LITELLM_API_KEY/)
+  })
+
+  it('érvénytelen alap-URL-t elutasít', () => {
+    expect(() =>
+      loadModelConfig({ ...TELJES_MODELL_ENV, LITELLM_BASE_URL: 'nem-url' }),
+    ).toThrow(/LITELLM_BASE_URL/)
+  })
+
+  it('a Fázis 0 loadConfigja nem követeli meg a modell-változókat', () => {
+    const cfg = loadConfig({
+      VAULT_PATH: '/vault',
+      PINCHFLAT_DOWNLOADS: '/letoltesek',
+    })
+    expect(cfg.vaultPath).toBe('/vault')
+  })
+})
