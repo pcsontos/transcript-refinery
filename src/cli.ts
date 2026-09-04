@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { loadConfig, loadDotEnv, validateConfig, type Config } from './config.js'
+import { loadConfig, loadDotEnv, loadModelConfig, validateConfig, type Config } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
+import { createCostGuard, estimateRunUsd } from './model/budget.js'
+import { createModelClient } from './model/client.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
-import { processItem } from './pipeline.js'
+import { normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
+import { getRecipe } from './recipe/registry.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import { folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
@@ -23,6 +26,7 @@ Parancsok:
 Kapcsolók:
   --channel <név>   csak a megadott csatorna
   --limit <szám>    legfeljebb ennyi elem
+  --recipe <id>     receptet is futtat (pl. summary); enélkül csak átirat
   --dry-run         megmutatja, mi történne, de nem ír fájlt
   --force           létező fájlt is felülír
   --no-commit       nem commitol és nem pushol a vault repójába
@@ -53,6 +57,12 @@ function render(event: RunEvent): string | null {
       return `  – ${event.videoId}: ${event.reason}`
     case 'item:failed':
       return `  ✗ ${event.videoId}: ${event.error}`
+    case 'run:estimate':
+      return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(2)} $ (plafon: ${event.limitUsd.toFixed(2)} $)`
+    case 'run:aborted':
+      return `A futás megállt: ${event.reason} (${event.spentUsd.toFixed(2)} $ / ${event.limitUsd.toFixed(2)} $)`
+    case 'item:refined':
+      return `  ~ ${event.videoId}: ${event.recipe} pontszám ${event.score.toFixed(2)}, ${String(event.generations)} generálás, ${event.usd.toFixed(4)} $`
     default:
       return null
   }
@@ -83,11 +93,26 @@ async function commandRun(
   flags: {
     channel?: string
     limit?: number
+    recipe?: string
     dryRun: boolean
     force: boolean
     commit: boolean
   },
 ): Promise<number> {
+  let recipeDeps: RecipeDeps | undefined
+  let maxIterations = 0
+  if (flags.recipe) {
+    const recipe = getRecipe(flags.recipe)
+    const modelConfig = loadModelConfig(process.env)
+    recipeDeps = {
+      recipe,
+      client: createModelClient(modelConfig),
+      modelConfig,
+      guard: createCostGuard(modelConfig.costLimitUsd),
+    }
+    maxIterations = recipe.maxIterations
+  }
+
   if (flags.commit && !flags.dryRun) await gitPullFfOnly(cfg.vaultPath)
 
   const store = openState(cfg.statePath)
@@ -103,6 +128,37 @@ async function commandRun(
     const items = applyFilters(all, flags)
     printing({ type: 'scan:found', count: items.length })
 
+    if (recipeDeps) {
+      const wordCounts: number[] = []
+      for (const item of items) {
+        try {
+          wordCounts.push((await normalizeItem(item)).wordsNormalized)
+        } catch {
+          // Az olvashatatlan feliratot a feldolgozás jelenti majd; a
+          // becslésből egyszerűen kimarad.
+        }
+      }
+
+      const estimate = estimateRunUsd(wordCounts, maxIterations, recipeDeps.modelConfig)
+      printing({
+        type: 'run:estimate',
+        items: wordCounts.length,
+        tokens: estimate.tokens,
+        usd: estimate.usd,
+        limitUsd: recipeDeps.modelConfig.costLimitUsd,
+      })
+
+      if (estimate.usd > recipeDeps.modelConfig.costLimitUsd) {
+        printing({
+          type: 'run:aborted',
+          reason: 'a becsült költség meghaladja a plafont',
+          spentUsd: 0,
+          limitUsd: recipeDeps.modelConfig.costLimitUsd,
+        })
+        return 2
+      }
+    }
+
     const written: string[] = []
     for (const item of items) {
       const outcome = await processItem(item, {
@@ -111,8 +167,19 @@ async function commandRun(
         sink: printing,
         version: VERSION,
         options: { force: flags.force, dryRun: flags.dryRun },
+        recipeDeps,
       })
       if (outcome.status === 'published' && outcome.path) written.push(outcome.path)
+
+      if (recipeDeps?.guard.exceeded()) {
+        printing({
+          type: 'run:aborted',
+          reason: 'a tényleges költés meghaladta a plafont',
+          spentUsd: recipeDeps.guard.spentUsd(),
+          limitUsd: recipeDeps.modelConfig.costLimitUsd,
+        })
+        break
+      }
     }
 
     const summary = summarize(events)
@@ -147,6 +214,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     options: {
       channel: { type: 'string' },
       limit: { type: 'string' },
+      recipe: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
       'no-commit': { type: 'boolean', default: false },
@@ -162,6 +230,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     return commandRun(cfg, {
       channel: values.channel,
       limit: values.limit === undefined ? undefined : Number(values.limit),
+      recipe: values.recipe,
       dryRun: values['dry-run'],
       force: values.force,
       commit: !values['no-commit'],
