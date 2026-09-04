@@ -183,4 +183,25 @@ describe('refine', () => {
 
     expect(result.gaps).toEqual(['valami hiányzik'])
   })
+
+  it('a pontozás mindig az eredeti átiratot kapja, nem a korábbi kimenetet', async () => {
+    const { client, pontszamok } = scriptedClient([
+      { text: 'gyenge', score: 0.4 },
+      { text: 'jobb', score: 0.9 },
+    ])
+    const latottAtiratok: string[] = []
+    const criteria: Criterion[] = [
+      {
+        name: 'proba',
+        score: (ctx) => {
+          latottAtiratok.push(ctx.transcript)
+          return Promise.resolve({ value: pontszamok.get(ctx.output) ?? 0, gaps: [] })
+        },
+      },
+    ]
+
+    await refine(recept(criteria), INPUT, client)
+
+    expect(latottAtiratok).toEqual([INPUT.transcript, INPUT.transcript])
+  })
 })
