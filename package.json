@@ -30,6 +30,8 @@
     "vitest": "^3.2.0"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.43",
+    "ai": "^7.0.91",
     "zod": "^4.4.3"
   }
 }
