@@ -19,4 +19,8 @@ models/
 # Subagent-driven development munkaterület (ledger, review-csomagok)
 .superpowers/
 
+# A mérőhalmaz privát rétege: valós korpuszból válogatva, verziókövetésen
+# kívül. A publikus, szintetikus réteg viszont be van commitolva.
+evals/private/
+
 .DS_Store
