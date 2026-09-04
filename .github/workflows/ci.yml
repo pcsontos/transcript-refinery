@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  ellenorzes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Eszközök a .mise.toml-ból
+        uses: jdx/mise-action@v4
+
+      - name: Függőségek
+        run: pnpm install --frozen-lockfile
+
+      - name: Típusellenőrzés
+        run: pnpm typecheck
+
+      - name: Linter
+        run: pnpm lint
+
+      - name: Tesztek
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
