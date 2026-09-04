@@ -169,7 +169,10 @@ async function commandRun(
         options: { force: flags.force, dryRun: flags.dryRun },
         recipeDeps,
       })
-      if (outcome.status === 'published' && outcome.path) written.push(outcome.path)
+      if (outcome.status === 'published') {
+        if (outcome.path) written.push(outcome.path)
+        if (outcome.recipePath && outcome.recipePath !== outcome.path) written.push(outcome.recipePath)
+      }
 
       if (recipeDeps?.guard.exceeded()) {
         printing({

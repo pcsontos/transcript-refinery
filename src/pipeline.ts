@@ -127,12 +127,14 @@ async function runRecipe(
   // A `publishable: false` a publisher által kikényszerített invariáns, nem
   // konvenció: bizonyos típusok soha nem kerülhetnek publikálási útra.
   if (!recipe.publishable) {
-    deps.store.recordArtifact(item.videoId, recipe.id, 'done', null, null, {
-      iterations: result.generations,
-      score: result.score,
-      costUsd: usd,
-      model: modelConfig.models[recipe.role],
-    })
+    if (!deps.options.dryRun) {
+      deps.store.recordArtifact(item.videoId, recipe.id, 'done', null, null, {
+        iterations: result.generations,
+        score: result.score,
+        costUsd: usd,
+        model: modelConfig.models[recipe.role],
+      })
+    }
     return { status: 'skipped' }
   }
 
@@ -229,9 +231,17 @@ export async function processItem(
     }
 
     if (kellRecept && recipeDeps) {
-      const recipeOutcome = await runRecipe(item, transcript, dir, deps, recipeDeps)
-      if (recipeOutcome.status === 'published') {
-        outcome = { ...recipeOutcome, path: outcome.path ?? recipeOutcome.recipePath }
+      try {
+        const recipeOutcome = await runRecipe(item, transcript, dir, deps, recipeDeps)
+        if (recipeOutcome.status === 'published') {
+          outcome = { ...recipeOutcome, path: outcome.path ?? recipeOutcome.recipePath }
+        }
+      } catch (error) {
+        const message = (error as Error).message
+        store.recordArtifact(item.videoId, recipeDeps.recipe.id, 'failed', null, message)
+        sink({ type: 'item:failed', videoId: item.videoId, error: message })
+        // A recept hibája nem ronthatja el az átirat már sikeres állapotát —
+        // az `outcome` a már elért eredményt (vagy a kezdeti 'skipped'-et) tartja meg.
       }
     }
 

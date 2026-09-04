@@ -245,4 +245,41 @@ describe('processItem recepttel', () => {
 
     expect(outcome.recipePath).toBeUndefined()
   })
+
+  it('a recept hibája nem rontja el a már publikált átirat állapotát', async () => {
+    const deps = alapDeps()
+    const outcome = await processItem(item, {
+      ...deps,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: {
+          generate: () => Promise.reject(new Error('proba hiba')),
+          generateObject: () => Promise.reject(new Error('nem hívjuk')),
+        },
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(outcome.status).toBe('published')
+    expect(outcome.path).toContain('_transcript.md')
+    expect(deps.store.artifactOf(item.videoId, 'transcript')!.status).toBe('done')
+    expect(deps.store.artifactOf(item.videoId, ATMENO_RECEPT.id)!.status).toBe('failed')
+  })
+
+  it('dry-run mellett nem-publikálható recept sem marad tartósan késznek jelölve', async () => {
+    const deps = alapDeps()
+    await processItem(item, {
+      ...deps,
+      options: { dryRun: true },
+      recipeDeps: {
+        recipe: { ...ATMENO_RECEPT, id: 'nem-publikus-dry', publishable: false },
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(deps.store.artifactOf(item.videoId, 'nem-publikus-dry')).toBeNull()
+  })
 })
