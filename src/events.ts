@@ -20,6 +20,36 @@ export type RunEvent =
   | { type: 'item:skipped'; videoId: string; reason: string }
   | { type: 'item:failed'; videoId: string; error: string }
   | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
+  | {
+      type: 'run:estimate'
+      items: number
+      tokens: number
+      usd: number
+      limitUsd: number
+    }
+  | { type: 'run:aborted'; reason: string; spentUsd: number; limitUsd: number }
+  | {
+      type: 'item:generating'
+      videoId: string
+      recipe: string
+      /** Hányadik generálás; egytől számozva. */
+      generation: number
+    }
+  | {
+      type: 'item:scored'
+      videoId: string
+      recipe: string
+      score: number
+      gaps: number
+    }
+  | {
+      type: 'item:refined'
+      videoId: string
+      recipe: string
+      score: number
+      generations: number
+      usd: number
+    }
 
 export type EventSink = (event: RunEvent) => void
 

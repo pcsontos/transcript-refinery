@@ -35,7 +35,19 @@ export function videoDir(
   return join(root, channelDir, sanitizeSegment(title))
 }
 
-/** A vault konvenciója: `Youtube - <cím>_<típus>.md`. */
+/**
+ * A vault konvenciója: `Youtube - <cím>_<típus>.md`. A típus-utótagot a
+ * recept adja meg (`outputFile`), így a publisher recept-agnosztikus marad.
+ */
+export function recipeFile(
+  videoDirPath: string,
+  title: string,
+  outputFile: string,
+): string {
+  return join(videoDirPath, `Youtube - ${sanitizeSegment(title)}${outputFile}`)
+}
+
+/** A Fázis 0 átirata: a `recipeFile` speciális esete. */
 export function transcriptFile(videoDirPath: string, title: string): string {
-  return join(videoDirPath, `Youtube - ${sanitizeSegment(title)}_transcript.md`)
+  return recipeFile(videoDirPath, title, '_transcript.md')
 }

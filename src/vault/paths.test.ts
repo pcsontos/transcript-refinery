@@ -2,7 +2,7 @@ import { mkdir, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { resolveChannelDir, transcriptFile, videoDir } from './paths.js'
+import { recipeFile, resolveChannelDir, transcriptFile, videoDir } from './paths.js'
 
 let root: string
 
@@ -46,6 +46,24 @@ describe('videoDir és transcriptFile', () => {
   it('a fájlnévben is szanitizál', () => {
     expect(transcriptFile('/x/y', 'a/b')).toBe(
       '/x/y/Youtube - a⧸b_transcript.md',
+    )
+  })
+})
+
+describe('recipeFile', () => {
+  it('a vault névkonvenciója szerint nevez el', () => {
+    expect(recipeFile('/vault/Csatorna/Cim', 'Cim', '_summary.md')).toBe(
+      '/vault/Csatorna/Cim/Youtube - Cim_summary.md',
+    )
+  })
+
+  it('szanitizálja a címet a fájlnévben', () => {
+    expect(recipeFile('/vault/C/V', 'A/B: C?', '_summary.md')).not.toContain('/A/B')
+  })
+
+  it('a transcriptFile ugyanennek a speciális esete', () => {
+    expect(transcriptFile('/vault/C/V', 'Cim')).toBe(
+      recipeFile('/vault/C/V', 'Cim', '_transcript.md'),
     )
   })
 })
