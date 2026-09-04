@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { loadConfig, validateConfig } from './config.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { loadConfig, loadDotEnv, validateConfig } from './config.js'
 
 let dir: string
 
@@ -69,5 +69,38 @@ describe('validateConfig', () => {
       PINCHFLAT_DOWNLOADS: join(dir, 'downloads'),
     })
     await expect(validateConfig(cfg)).resolves.toBeUndefined()
+  })
+})
+
+describe('loadDotEnv', () => {
+  let dir: string
+  const savedKeys = new Set(Object.keys(process.env))
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'refinery-env-'))
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+    for (const key of Object.keys(process.env)) {
+      if (!savedKeys.has(key)) delete process.env[key]
+    }
+  })
+
+  it('betölti a fájlban lévő változót', async () => {
+    await writeFile(join(dir, '.env'), 'REFINERY_PROBA_A=fajlbol\n', 'utf8')
+    loadDotEnv(join(dir, '.env'))
+    expect(process.env.REFINERY_PROBA_A).toBe('fajlbol')
+  })
+
+  it('a már beállított környezeti változót nem írja felül', async () => {
+    process.env.REFINERY_PROBA_B = 'shellbol'
+    await writeFile(join(dir, '.env'), 'REFINERY_PROBA_B=fajlbol\n', 'utf8')
+    loadDotEnv(join(dir, '.env'))
+    expect(process.env.REFINERY_PROBA_B).toBe('shellbol')
+  })
+
+  it('hiányzó fájl esetén nem dob', () => {
+    expect(() => loadDotEnv(join(dir, 'nincs-ilyen'))).not.toThrow()
   })
 })

@@ -1,4 +1,4 @@
-export { loadConfig, validateConfig, type Config } from './config.js'
+export { loadConfig, loadDotEnv, validateConfig, type Config } from './config.js'
 export { collectEvents, summarize, type EventSink, type RunEvent } from './events.js'
 export { processItem, type ItemOutcome, type PipelineDeps } from './pipeline.js'
 export { folderSource } from './source/folder.js'

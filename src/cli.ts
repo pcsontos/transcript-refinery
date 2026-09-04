@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
 import { parseArgs } from 'node:util'
-import { loadConfig, validateConfig, type Config } from './config.js'
+import { loadConfig, loadDotEnv, validateConfig, type Config } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
@@ -174,6 +174,7 @@ export async function main(argv: readonly string[]): Promise<number> {
 
 const isEntrypoint = process.argv[1]?.endsWith('cli.js') ?? false
 if (isEntrypoint) {
+  loadDotEnv()
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((error: Error) => {

@@ -5,6 +5,25 @@ import { z } from 'zod'
 /** A vaulton belüli jegyzet-gyűjtemény, ahova a publisher ír. */
 const NOTES_SUBDIR = 'Resources/Videos/YouTube'
 
+/**
+ * Betölti az `.env`-et, ha létezik.
+ *
+ * A `process.loadEnvFile()` a **már beállított** környezeti változókat nem
+ * írja felül, tehát a shellben megadott érték erősebb a fájlénál — ez teszi
+ * biztonságossá az egyszeri `VAULT_PATH=… refinery run` alakot.
+ *
+ * A hiányzó fájl nem hiba: CI-ban és automatizált futtatáskor a környezet
+ * közvetlenül van beállítva. Minden más hiba (például szintaktikai) viszont
+ * felszínre jön, mert egy csendben elnyelt elgépelés órákat visz el.
+ */
+export function loadDotEnv(path = join(process.cwd(), '.env')): void {
+  try {
+    process.loadEnvFile(path)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+}
+
 const EnvSchema = z.object({
   VAULT_PATH: z
     .string()
