@@ -3427,6 +3427,18 @@ async function runRecipe(
 > költség sosem kisebb a valósnál. A szerepenkénti bontás akkor kerül be,
 > amikor a modell-bakeoff igényli.
 
+> **Verifikálva a Feladat 16-ban: a `--dry-run` valós modellhívást indít.** A
+> `deps.options.dryRun` fenti ellenőrzései kizárólag a `store.recordArtifact`
+> hívást és — a `publishNote`-on belül — a tényleges fájlírást kerülik el; a
+> `runRecipe` elején álló `refine()` hívás **feltétel nélküli.** A „száraz
+> futtatás" tehát a névből várható módon **nem** nulla költségű: a vázlatoló
+> és a bíráló modellt ugyanúgy meghívja, mint egy éles futás, csak a lemezre
+> írást és az állapotrögzítést spórolja meg. Mért példa: egy
+> `--recipe summary --limit 1 --dry-run` futás 0,97 pontszámú, 1 generálásos
+> kimenetet adott, **0,1192 $ valós LiteLLM-költséggel**, miközben a vault
+> munkafája bit-azonos maradt. Ha egy jövőbeli fázis valódi, nulla-költségű
+> előnézetet akarna adni, itt kell módosítani.
+
 - [ ] **6. lépés: Futtasd, és győződj meg róla, hogy zöld**
 
 Futtasd: `mise exec -- pnpm vitest run src/pipeline.test.ts`
@@ -4316,3 +4328,74 @@ A szállított alapértelmezés — `draft: claude-sonnet-5`,
 generátor és a bíró.** Az `architecture.md` §8 azért írja elő az eltérő
 bíró-modellt, mert az önpreferencia-torzítás rontja a mérést; a
 családszintű eltérés ezt erősebben zárja ki, mint egy verziószintű.
+
+---
+
+## Végrehajtás
+
+**2026-09-04**, a `feat/fazis-1-elso-recept` ágon, feladatonként egy commit.
+Záró állapot a 15. feladat után: **29 tesztfájl, 212 teszt zöld**,
+`typecheck`, `lint` és `build` tiszta. A 16. feladat mind a négy
+sikerkritériumot megfigyelhető viselkedésként ellenőrizte, valós LiteLLM
+gateway-en és valós vaulton.
+
+Egy ponton tért el a végrehajtás a tervtől. **Fentebb, a Feladat 13-nál át van
+vezetve**, itt csak az ok marad meg:
+
+| Hol | Miért kellett eltérni |
+|---|---|
+| Feladat 13, `runRecipe` | A „száraz futtatás" elnevezésből az következne, hogy nulla költséggel jár. A `deps.options.dryRun` ellenőrzés a kódban csak a `store.recordArtifact`-ot és — a `publishNote`-on belül — a tényleges fájlírást kerüli el; a `refine()` hívás feltétel nélküli. A 16. feladat 4. lépése ezt valós híváson igazolta: egy `--dry-run` futás 0,1192 $ tényleges LiteLLM-költséggel járt, a vault munkafájának érintetlensége mellett. |
+
+### Ellenőrzés valós korpuszon (16. feladat)
+
+**1. kritérium — friss klón, kulcs nélkül, offline.** Friss klónon,
+`LITELLM_API_KEY` és `LITELLM_BASE_URL` nélkül a `pnpm eval` lefutott,
+kilépési kód `0`, és kiírta a „A privát mérőréteg nincs jelen…" üzenetet — a
+mérés a publikus, szintetikus rétegen futott:
+
+| Generálás | Hiányok | Bemeneti token | Score |
+|---|---|---|---|
+| 1 | 0 | 3000 | 98% |
+| 2 | 1 | 2000 | 0% |
+| 2 | 0 | 6000 | 98% |
+
+Aggregált pontszám: **65%**.
+
+**2. kritérium — a kapu precisionje és recallja.**
+`pnpm vitest run src/normalize/gate.test.ts`: 4/4 teszt zöld, **precision
+1,000, recall 1,000** a hét elemű, kézzel címkézett halmazon. A `hatareset`
+határeset-fixture valóban a küszöb közelében mér (sűrűség 1,887 a 2,0-s
+küszöbhöz képest).
+
+**4. kritérium — a becslés és a plafon, mindkét kapu.** Szándékosan alacsony
+plafonnal (`REFINERY_COST_LIMIT_USD=0.001`, `--limit 5`): a becslés kiíródott
+(„Becslés: 5 elem, ~562 814 token, ~0.93 $ (plafon: 0.00 $)"), utána a futás
+megállt („A futás megállt: a becsült költség meghaladja a plafont (0.00 $ /
+0.00 $)"), kilépési kód `2`, a vault munkafája a futás előtt és után
+bit-azonos — nulla írás, nulla modellhívás. Plafon hiányában
+(`REFINERY_COST_LIMIT_USD` nincs beállítva): a hibaüzenet
+(„`REFINERY_COST_LIMIT_USD: Invalid input: expected number, received NaN`")
+megnevezi a változót, kilépési kód `1`, a futás el sem indult.
+
+**Száraz futtatás valós plafonnal.** `--dry-run` mellett a becslés a plafon
+alatt volt, a futás végigment, és a vault munkafája bit-azonos maradt — de,
+ahogy a Feladat 13 fenti megjegyzése rögzíti, **nem** modellhívás nélkül:
+pontszám 0,97, 1 generálás, 0,1192 $ tényleges LiteLLM-költség.
+
+**3. kritérium — éles futás egyetlen elemre.** `--recipe summary --limit 1`:
+elkészült a `Youtube - <cím>_transcript.md` **és** a
+`Youtube - <cím>_summary.md` ugyanabban a mappában. A summary-jegyzet
+frontmatterében: `model: claude-sonnet-5`, `iterations: 1`, `score: 0.97`,
+`cost_usd: 0.1192`. A konzol kiírta az elért pontszámot, a generálások számát
+és a költséget. A vault státusza pontosan egy új bejegyzéssel bővült
+(`Resources/Videos/YouTube/3Blue1Brown/`); a `--no-commit` kapcsoló miatt a
+vault-repóba nem került commit — ez szándékos, a döntést a felhasználóra
+hagyva.
+
+**Idempotencia.** Ugyanazt a parancsot másodszor futtatva: „wjZofJX0v4M: már
+feldolgozva", „Kész: 0 sikeres, 1 kihagyva, 0 hibás", kilépési kód `0`,
+**nulla új modellhívás** (nincs pontszám/generálás-sor a kimenetben), és a
+vault munkafája bit-azonos a második futás előtti állapottal.
+
+**Ezzel a fázis mind a négy sikerkritériuma teljesült**, a szintetikus
+fixture-ökön és valós adaton, valós LiteLLM gateway-en egyaránt.

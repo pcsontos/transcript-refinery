@@ -411,8 +411,22 @@ lefedettség dönt, egységnyi költségre vetítve.
 
 Őszintén, hogy ne tűnjenek eldöntöttnek:
 
-- **Az Evalite aktuális API-ja** — verifikálandó a
-  megvalósítás előtt.
 - **A havi költségkeret konkrét összege** nincs meghatározva.
 - **A lokális transzkripció sebességbecslése** (nagyjából három–nyolcszoros valós
   idő) átvett érték, nem saját mérés. Az első futás után pontosítandó.
+
+**Lezárva: az Evalite aktuális API-ja.** Verifikálva 2026-09-01-én, a
+[Fázis 1 terv](<./plans/2026-09-01-fazis-1-elso-recept.md>) „Amit a
+megvalósítás előtt verifikáltunk" szakaszában részletezve:
+
+- A stabil `evalite@0.19.0` van pinnelve. Az `1.0.0-beta.16` sor peer-je
+  `ai: ^6`, ami ütközik a projekt `ai@^7`-es függőségével — a beta emiatt
+  kiesett.
+- Az `evalite` tranzitív függősége, a `better-sqlite3`, `^11.6.0`-t deklarál,
+  de az nem fordul a pinnelt Node `26.2.0`-n — **valódi V8 API-eltávolítás,
+  nem hiányzó fordítói lánc.** Egy `pnpm-workspace.yaml` `overrides` bejegyzés
+  `^13.0.3`-ra emeli, ami natív fordítási szinten **és** JS/futásidejű
+  szinten is verifikáltan helyesen működik.
+- Az `evalite` saját `@vitest/runner@^4` függősége miatt a projekt Vitest
+  3-ról 4-re frissült — kipróbálva: nulla kódváltoztatással zöld maradt
+  minden korábbi teszt.
