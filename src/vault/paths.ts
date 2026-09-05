@@ -1,53 +1,35 @@
-import { readdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import type { SourceItem } from '../types.js'
 import { sanitizeSegment } from './sanitize.js'
 
 /**
- * Megkeresi a csatorna meglévő mappáját a vaultban, kis-nagybetű-érzéketlenül.
- * Ha nincs, a szanitizált nevet adja vissza — a mappát a publisher hozza létre.
+ * A jegyzet célútja: `<gyökér>/<forrás>/<a felirat relatív mappája>/<alapnév><utótag>`.
+ *
+ * Szándékosan **metaadat-független**: ugyanoda ír metaadatfájllal és nélküle
+ * is. Ha a célút a metaadatból jönne, ugyanaz a felirat két helyre kerülne
+ * aszerint, hogy a metaadat elérhető volt-e — és a write-once védelem nem
+ * venné észre a duplikátumot.
+ *
+ * A forrásmappa szerkezetének tükrözése azért jó csoportosítás, mert a
+ * letöltők eleve csatornánként rendezik a fájlokat; ehhez viszont nem kell
+ * tudnunk, hogy a mappa neve csatornát jelöl-e.
  */
-export async function resolveChannelDir(
-  root: string,
-  channel: string,
-): Promise<string> {
-  const wanted = sanitizeSegment(channel)
-  let entries: string[]
-  try {
-    const dirents = await readdir(root, { withFileTypes: true })
-    entries = dirents.filter((d) => d.isDirectory()).map((d) => d.name)
-  } catch {
-    return wanted
-  }
-
-  const exact = entries.find((e) => e === wanted)
-  if (exact) return exact
-
-  const lower = wanted.toLocaleLowerCase()
-  return entries.find((e) => e.toLocaleLowerCase() === lower) ?? wanted
-}
-
-/** A videó mappája: `<gyökér>/<Csatorna>/<Cím>` — a többségi, beágyazott alak. */
-export function videoDir(
-  root: string,
-  channelDir: string,
-  title: string,
-): string {
-  return join(root, channelDir, sanitizeSegment(title))
-}
-
-/**
- * A vault konvenciója: `Youtube - <cím>_<típus>.md`. A típus-utótagot a
- * recept adja meg (`outputFile`), így a publisher recept-agnosztikus marad.
- */
-export function recipeFile(
-  videoDirPath: string,
-  title: string,
+export function noteFile(
+  notesRoot: string,
+  item: SourceItem,
   outputFile: string,
 ): string {
-  return join(videoDirPath, `Youtube - ${sanitizeSegment(title)}${outputFile}`)
+  const relDir = dirname(item.sourceFile)
+  const segments = relDir === '.' ? [] : relDir.split('/').map(sanitizeSegment)
+  return join(
+    notesRoot,
+    sanitizeSegment(item.source),
+    ...segments,
+    `${sanitizeSegment(item.baseName)}${outputFile}`,
+  )
 }
 
-/** A Fázis 0 átirata: a `recipeFile` speciális esete. */
-export function transcriptFile(videoDirPath: string, title: string): string {
-  return recipeFile(videoDirPath, title, '_transcript.md')
+/** A Fázis 0 átirata: a `noteFile` speciális esete. */
+export function transcriptFile(notesRoot: string, item: SourceItem): string {
+  return noteFile(notesRoot, item, '_transcript.md')
 }
