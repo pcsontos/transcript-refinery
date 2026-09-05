@@ -4339,12 +4339,16 @@ Záró állapot a 15. feladat után: **29 tesztfájl, 212 teszt zöld**,
 sikerkritériumot megfigyelhető viselkedésként ellenőrizte, valós LiteLLM
 gateway-en és valós vaulton.
 
-Egy ponton tért el a végrehajtás a tervtől. **Fentebb, a Feladat 13-nál át van
-vezetve**, itt csak az ok marad meg:
+Két ponton tért el a végrehajtás a tervtől. Az első **fentebb, a Feladat
+13-nál át van vezetve**, itt csak az ok marad meg; a második (a
+`better-sqlite3` natív fordítási inkompatibilitása) csak itt szerepel, mert a
+Feladat 14 saját szakasza — szándékosan — a megvalósítás előtti,
+akkor még nem cáfolt feltételezést őrzi:
 
 | Hol | Miért kellett eltérni |
 |---|---|
 | Feladat 13, `runRecipe` | A „száraz futtatás" elnevezésből az következne, hogy nulla költséggel jár. A `deps.options.dryRun` ellenőrzés a kódban csak a `store.recordArtifact`-ot és — a `publishNote`-on belül — a tényleges fájlírást kerüli el; a `refine()` hívás feltétel nélküli. A 16. feladat 4. lépése ezt valós híváson igazolta: egy `--dry-run` futás 0,1192 $ tényleges LiteLLM-költséggel járt, a vault munkafájának érintetlensége mellett. |
+| Feladat 14, `evalite` tranzitív függősége | A fenti, „Amit a megvalósítás előtt verifikáltunk" táblázat még a natív fordítás sikerét rögzíti — a valóságban a `better-sqlite3@^11.6.0` **nem fordult** a pinnelt Node `26.2.0` V8-ján (valódi API-eltávolítások, pl. `v8::Object::GetPrototype`, `v8::Context::GetIsolate`, nem hiányzó fordítói lánc). A `pnpm-workspace.yaml` `overrides` bejegyzése `^13.0.3`-ra emeli a függőséget, ami natív fordítási **és** JS/futásidejű szinten is verifikáltan helyesen működik. |
 
 ### Ellenőrzés valós korpuszon (16. feladat)
 

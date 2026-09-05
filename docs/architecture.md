@@ -415,9 +415,12 @@ lefedettség dönt, egységnyi költségre vetítve.
 - **A lokális transzkripció sebességbecslése** (nagyjából három–nyolcszoros valós
   idő) átvett érték, nem saját mérés. Az első futás után pontosítandó.
 
-**Lezárva: az Evalite aktuális API-ja.** Verifikálva 2026-09-01-én, a
-[Fázis 1 terv](<./plans/2026-09-01-fazis-1-elso-recept.md>) „Amit a
-megvalósítás előtt verifikáltunk" szakaszában részletezve:
+**Lezárva: az Evalite aktuális API-ja.** A verzió- és API-döntéseket
+2026-09-01-én verifikáltuk, a [Fázis 1 terv](<./plans/2026-09-01-fazis-1-elso-recept.md>)
+„Amit a megvalósítás előtt verifikáltunk" szakaszában rögzítve. Az alábbi
+`better-sqlite3`-inkompatibilitás és az override viszont csak a 14. feladat
+végrehajtása közben derült ki — ezt a terv „Végrehajtás" szakasza
+dokumentálja:
 
 - A stabil `evalite@0.19.0` van pinnelve. Az `1.0.0-beta.16` sor peer-je
   `ai: ^6`, ami ütközik a projekt `ai@^7`-es függőségével — a beta emiatt
