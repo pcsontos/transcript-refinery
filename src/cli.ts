@@ -27,7 +27,8 @@ Kapcsolók:
   --channel <név>   csak a megadott csatorna
   --limit <szám>    legfeljebb ennyi elem
   --recipe <id>     receptet is futtat (pl. summary); enélkül csak átirat
-  --dry-run         megmutatja, mi történne, de nem ír fájlt
+  --dry-run         nem ír fájlt és nem rögzít állapotot; recepttel a
+                    modellhívások VALÓS költséggel megtörténnek
   --force           létező fájlt is felülír
   --no-commit       nem commitol és nem pushol a vault repójába
 `
@@ -88,7 +89,7 @@ async function commandScan(cfg: Config): Promise<number> {
   return 0
 }
 
-async function commandRun(
+export async function commandRun(
   cfg: Config,
   flags: {
     channel?: string
@@ -129,8 +130,9 @@ async function commandRun(
     printing({ type: 'scan:found', count: items.length })
 
     if (recipeDeps) {
+      const pending = flags.force ? items : store.listPending(items, recipeDeps.recipe.id)
       const wordCounts: number[] = []
-      for (const item of items) {
+      for (const item of pending) {
         try {
           wordCounts.push((await normalizeItem(item)).wordsNormalized)
         } catch {

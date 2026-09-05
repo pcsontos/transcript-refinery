@@ -4295,9 +4295,20 @@ git commit -m "docs: a Fázis 1 ellenőrzése valós korpuszon"
 - **A modell-bakeoffot.** A jelöltlista (lentebb) megvan, de a mért
   modellválasztás külön futás, saját kerettel.
 - **Szerepenkénti költségbontást a jegyzetben.** A `costOf` a draft
-  árazásával számol, ami felülről becsül. A bontás akkor kerül be, amikor a
-  bakeoff igényli.
+  árazásával számol. A szállított alapértelmezett párra (`draft:
+  claude-sonnet-5`, `judge: grok-4-fast-reasoning`) ez felülről becsül,
+  mert a draft ára a drágább — de ez a szállított párra igaz, NEM
+  általános tulajdonság: egy drágább `judge`-öt választó bakeoff-jelölt
+  (pl. `claude-opus-5`) esetén ez alulbecsülne, és a futásidejű
+  `CostGuard` is csendben alábecsülné a tényleges költést. A bontás
+  ezért a bakeoff ELSŐ lépése kell legyen, nem utólagos finomítás.
 - **URL-alapú ingestet** (Fázis 4) és **bármilyen felületet** (Fázis 5).
+- **A pontszám-küszöb alatti kimenet publikálásának tiltását.** A
+  `runRecipe` a formátum-lint átmenete esetén publikál, a
+  `passThreshold`-tól függetlenül — egy sosem átment, de lint-tiszta
+  kimenet is véglegesen bekerül a write-once vaultba. A küszöb alatti
+  kimenet elutasítása vagy külön jelölése (pl. `failed` állapot
+  rögzítése publikálás nélkül) a Fázis 2 döntése.
 
 ---
 
@@ -4339,7 +4350,7 @@ Záró állapot a 15. feladat után: **29 tesztfájl, 212 teszt zöld**,
 sikerkritériumot megfigyelhető viselkedésként ellenőrizte, valós LiteLLM
 gateway-en és valós vaulton.
 
-Két ponton tért el a végrehajtás a tervtől. Az első **fentebb, a Feladat
+Három ponton tért el a végrehajtás a tervtől. Az első **fentebb, a Feladat
 13-nál át van vezetve**, itt csak az ok marad meg; a második (a
 `better-sqlite3` natív fordítási inkompatibilitása) csak itt szerepel, mert a
 Feladat 14 saját szakasza — szándékosan — a megvalósítás előtti,
@@ -4349,6 +4360,7 @@ akkor még nem cáfolt feltételezést őrzi:
 |---|---|
 | Feladat 13, `runRecipe` | A „száraz futtatás" elnevezésből az következne, hogy nulla költséggel jár. A `deps.options.dryRun` ellenőrzés a kódban csak a `store.recordArtifact`-ot és — a `publishNote`-on belül — a tényleges fájlírást kerüli el; a `refine()` hívás feltétel nélküli. A 16. feladat 4. lépése ezt valós híváson igazolta: egy `--dry-run` futás 0,1192 $ tényleges LiteLLM-költséggel járt, a vault munkafájának érintetlensége mellett. |
 | Feladat 14, `evalite` tranzitív függősége | A fenti, „Amit a megvalósítás előtt verifikáltunk" táblázat még a natív fordítás sikerét rögzíti — a valóságban a `better-sqlite3@^11.6.0` **nem fordult** a pinnelt Node `26.2.0` V8-ján (valódi API-eltávolítások, pl. `v8::Object::GetPrototype`, `v8::Context::GetIsolate`, nem hiányzó fordítói lánc). A `pnpm-workspace.yaml` `overrides` bejegyzése `^13.0.3`-ra emeli a függőséget, ami natív fordítási **és** JS/futásidejű szinten is verifikáltan helyesen működik. |
+| Feladat 13, `processItem`/`recordArtifact` (a `0aadaca` fix-kör) | A fenti két sor mellett a Feladat 13 fix-köre két további, a terv saját kódblokkjaiban vissza nem vezetett javítást hozott: a recept-kivétel saját try/catch-be került (nem oszthatja meg az átirat állapotát), és a nem publikálható recept `recordArtifact`-hívása is `dryRun` mögé került (korábban feltétel nélkül lefutott volna). A ténylegesen leszállított kód a forrás, nem a terv Feladat 13 szakaszának eredeti kódblokkja. |
 
 ### Ellenőrzés valós korpuszon (16. feladat)
 

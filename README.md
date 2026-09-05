@@ -78,6 +78,8 @@ token-felhasználásból számolt költés állítja meg a köteget, ha túllép
 A két kaput mindkét irányból ellenőriztük: mesterségesen alacsony plafonnal a
 becslés a futás előtt megállítja a köteget, plafon hiányában pedig a
 konfiguráció el sem indul — egyik esetben sincs modellhívás.
+A `--dry-run` a fájlírást és az állapotrögzítést hagyja ki, a modellhívást
+nem: a generálás és a pontozás valós költséggel lezajlik.
 
 A mérési harness (`pnpm eval`) ugyanezt a loopot futtatja egy determinisztikus
 fixture-modellel: kulcs és hálózat nélkül, három szintetikus feliraton fut le,

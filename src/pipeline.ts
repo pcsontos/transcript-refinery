@@ -110,6 +110,8 @@ async function runRecipe(
   const { recipe, client, modelConfig, guard } = recipeDeps
   const text = transcript.lines.join(' ')
 
+  // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
+  // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
   const result = await refine(recipe, { item, transcript: text }, client)
 
   guard.add('draft', result.usage, modelConfig)
