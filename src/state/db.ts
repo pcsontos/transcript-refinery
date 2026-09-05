@@ -4,19 +4,23 @@ import { dirname } from 'node:path'
 import type { CaptionSource, SourceItem } from '../types.js'
 
 const SCHEMA = `
-CREATE TABLE IF NOT EXISTS videos (
-  video_id      TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS items (
+  item_id       TEXT PRIMARY KEY,
+  source        TEXT NOT NULL,
+  source_file   TEXT NOT NULL,
+  base_name     TEXT NOT NULL,
   title         TEXT NOT NULL,
-  channel       TEXT NOT NULL,
-  uploaded_at   TEXT NOT NULL,
-  url           TEXT NOT NULL,
+  language      TEXT,
+  video_id      TEXT,
+  channel       TEXT,
+  uploaded_at   TEXT,
+  url           TEXT,
   subtitle_path TEXT NOT NULL,
-  media_path    TEXT,
   discovered_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS transcripts (
-  video_id         TEXT PRIMARY KEY REFERENCES videos(video_id),
+  item_id          TEXT PRIMARY KEY REFERENCES items(item_id),
   source           TEXT NOT NULL,
   words_raw        INTEGER NOT NULL,
   words_normalized INTEGER NOT NULL,
@@ -24,7 +28,7 @@ CREATE TABLE IF NOT EXISTS transcripts (
 );
 
 CREATE TABLE IF NOT EXISTS artifacts (
-  video_id   TEXT NOT NULL REFERENCES videos(video_id),
+  item_id    TEXT NOT NULL REFERENCES items(item_id),
   kind       TEXT NOT NULL,
   status     TEXT NOT NULL,
   path       TEXT,
@@ -34,7 +38,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   cost_usd   REAL,
   model      TEXT,
   created_at TEXT NOT NULL,
-  PRIMARY KEY (video_id, kind)
+  PRIMARY KEY (item_id, kind)
 );
 `
 
@@ -64,53 +68,26 @@ export interface ArtifactRecord {
   model: string | null
 }
 
-/** A Fázis 0 után hozzáadott oszlopok, migrációs sorrendben. */
-const ARTIFACT_COLUMNS: { name: string; ddl: string }[] = [
-  { name: 'iterations', ddl: 'INTEGER' },
-  { name: 'score', ddl: 'REAL' },
-  { name: 'cost_usd', ddl: 'REAL' },
-  { name: 'model', ddl: 'TEXT' },
-]
-
-/**
- * Hozzáadja a hiányzó oszlopokat egy Fázis 0-ban létrehozott adatbázishoz.
- *
- * A `CREATE TABLE IF NOT EXISTS` meglévő táblán nem csinál semmit, tehát az
- * új oszlopok enélkül sosem jelennének meg egy már használt `.state`-ben —
- * és a hiba nem a teszten, hanem az első valós futáson jönne elő.
- */
-function migrateArtifacts(db: DatabaseSync): void {
-  const existing = new Set(
-    (db.prepare('PRAGMA table_info(artifacts)').all() as { name: string }[]).map(
-      (row) => row.name,
-    ),
-  )
-  for (const column of ARTIFACT_COLUMNS) {
-    if (existing.has(column.name)) continue
-    db.exec(`ALTER TABLE artifacts ADD COLUMN ${column.name} ${column.ddl}`)
-  }
-}
-
 export interface StateStore {
   readonly path: string
-  recordVideo(item: SourceItem): void
+  recordItem(item: SourceItem): void
   recordTranscript(
-    videoId: string,
+    itemId: string,
     source: CaptionSource,
     wordsRaw: number,
     wordsNormalized: number,
   ): void
   recordArtifact(
-    videoId: string,
+    itemId: string,
     kind: string,
     status: 'done' | 'failed',
     path: string | null,
     error: string | null,
     metrics?: ArtifactMetrics,
   ): void
-  artifactOf(videoId: string, kind: string): ArtifactRecord | null
-  transcriptOf(videoId: string): TranscriptRecord | null
-  isDone(videoId: string, kind: string): boolean
+  artifactOf(itemId: string, kind: string): ArtifactRecord | null
+  transcriptOf(itemId: string): TranscriptRecord | null
+  isDone(itemId: string, kind: string): boolean
   listPending(items: SourceItem[], kind: string): SourceItem[]
   close(): void
 }
@@ -125,7 +102,6 @@ export function openState(path: string): StateStore {
   db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(SCHEMA)
-  migrateArtifacts(db)
 
   const now = () => new Date().toISOString()
 
@@ -135,55 +111,67 @@ export function openState(path: string): StateStore {
 
   // Önálló függvény, nem objektum-metódus: a `listPending` így hivatkozhat rá
   // `this` nélkül, ami strict módban típushibát adna.
-  const isDone = (videoId: string, kind: string): boolean =>
+  const isDone = (itemId: string, kind: string): boolean =>
     db
       .prepare(
-        "SELECT 1 AS ok FROM artifacts WHERE video_id = ? AND kind = ? AND status = 'done'",
+        "SELECT 1 AS ok FROM artifacts WHERE item_id = ? AND kind = ? AND status = 'done'",
       )
-      .get(videoId, kind) !== undefined
+      .get(itemId, kind) !== undefined
 
   return {
     path,
 
-    recordVideo(item) {
+    recordItem(item) {
       db.prepare(
-        `INSERT INTO videos
-           (video_id, title, channel, uploaded_at, url, subtitle_path, media_path, discovered_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(video_id) DO UPDATE SET
+        `INSERT INTO items
+           (item_id, source, source_file, base_name, title, language,
+            video_id, channel, uploaded_at, url, subtitle_path, discovered_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(item_id) DO UPDATE SET
+           source = excluded.source,
+           source_file = excluded.source_file,
+           base_name = excluded.base_name,
            title = excluded.title,
-           subtitle_path = excluded.subtitle_path,
-           media_path = excluded.media_path`,
+           language = excluded.language,
+           video_id = excluded.video_id,
+           channel = excluded.channel,
+           uploaded_at = excluded.uploaded_at,
+           url = excluded.url,
+           subtitle_path = excluded.subtitle_path`,
       ).run(
-        item.videoId,
+        item.itemId,
+        item.source,
+        item.sourceFile,
+        item.baseName,
         item.title,
-        item.channel,
-        item.uploadedAt,
-        item.url,
+        item.language,
+        item.metadata.videoId ?? null,
+        item.metadata.channel ?? null,
+        item.metadata.uploadedAt ?? null,
+        item.metadata.url ?? null,
         item.subtitlePath,
-        item.mediaPath,
         now(),
       )
     },
 
-    recordTranscript(videoId, source, wordsRaw, wordsNormalized) {
+    recordTranscript(itemId, source, wordsRaw, wordsNormalized) {
       db.prepare(
         `INSERT INTO transcripts
-           (video_id, source, words_raw, words_normalized, created_at)
+           (item_id, source, words_raw, words_normalized, created_at)
          VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(video_id) DO UPDATE SET
+         ON CONFLICT(item_id) DO UPDATE SET
            source = excluded.source,
            words_raw = excluded.words_raw,
            words_normalized = excluded.words_normalized`,
-      ).run(videoId, source, wordsRaw, wordsNormalized, now())
+      ).run(itemId, source, wordsRaw, wordsNormalized, now())
     },
 
-    recordArtifact(videoId, kind, status, path, error, metrics) {
+    recordArtifact(itemId, kind, status, path, error, metrics) {
       db.prepare(
         `INSERT INTO artifacts
-           (video_id, kind, status, path, error, iterations, score, cost_usd, model, created_at)
+           (item_id, kind, status, path, error, iterations, score, cost_usd, model, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(video_id, kind) DO UPDATE SET
+         ON CONFLICT(item_id, kind) DO UPDATE SET
            status = excluded.status,
            path = excluded.path,
            error = excluded.error,
@@ -193,7 +181,7 @@ export function openState(path: string): StateStore {
            model = excluded.model,
            created_at = excluded.created_at`,
       ).run(
-        videoId,
+        itemId,
         kind,
         status,
         path,
@@ -206,13 +194,13 @@ export function openState(path: string): StateStore {
       )
     },
 
-    artifactOf(videoId, kind) {
+    artifactOf(itemId, kind) {
       const row = db
         .prepare(
           `SELECT status, path, error, iterations, score, cost_usd, model
-             FROM artifacts WHERE video_id = ? AND kind = ?`,
+             FROM artifacts WHERE item_id = ? AND kind = ?`,
         )
-        .get(videoId, kind) as
+        .get(itemId, kind) as
         | {
             status: string
             path: string | null
@@ -235,12 +223,12 @@ export function openState(path: string): StateStore {
       }
     },
 
-    transcriptOf(videoId) {
+    transcriptOf(itemId) {
       const row = db
         .prepare(
-          'SELECT source, words_raw, words_normalized FROM transcripts WHERE video_id = ?',
+          'SELECT source, words_raw, words_normalized FROM transcripts WHERE item_id = ?',
         )
-        .get(videoId) as
+        .get(itemId) as
         | { source: string; words_raw: number; words_normalized: number }
         | undefined
       if (!row) return null
@@ -254,7 +242,7 @@ export function openState(path: string): StateStore {
     isDone,
 
     listPending(items, kind) {
-      return items.filter((i) => !isDone(i.videoId, kind))
+      return items.filter((item) => !isDone(item.itemId, kind))
     },
 
     close() {
