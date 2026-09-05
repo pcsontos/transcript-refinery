@@ -97,6 +97,7 @@ describe('folderSource', () => {
     await write('Beszéd.fr.vtt')
     const first = await folderSource(source(), []).discover()
     const second = await folderSource(source(), []).discover()
+    expect(first[0]!.subtitlePath.endsWith('Beszéd.de.vtt')).toBe(true)
     expect(first[0]!.subtitlePath).toBe(second[0]!.subtitlePath)
   })
 

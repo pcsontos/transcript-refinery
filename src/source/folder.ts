@@ -69,11 +69,14 @@ interface Candidate {
 /**
  * Determinisztikus tartalék: `.srt` előbb, mint `.vtt`, azon belül
  * ábécésorrend. Enélkül a fájlrendszer felsorolási sorrendje döntene, és két
- * gépen két másik jegyzet készülne ugyanabból a mappából.
+ * gépen két másik jegyzet készülne ugyanabból a mappából. A rendezés
+ * kódpont szerinti, nem kollációs: a `localeCompare` az ICU aktuális
+ * locale-jától függ (`LANG`/`LC_ALL`), ami gépenként eltér — a
+ * gépfüggetlenséghez a puszta `<`/`>` összehasonlítás kell.
  */
 function byFallback(a: Candidate, b: Candidate): number {
   const rank = (c: Candidate) => (c.path.toLowerCase().endsWith('.srt') ? 0 : 1)
-  return rank(a) - rank(b) || a.path.localeCompare(b.path)
+  return rank(a) - rank(b) || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
 }
 
 function chooseSubtitle(
@@ -115,7 +118,7 @@ export function folderSource(source: SourceDir, languages: readonly string[]): S
       }
 
       const items: SourceItem[] = []
-      const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b))
+      const keys = [...groups.keys()].sort()
       for (const key of keys) {
         const chosen = chooseSubtitle(groups.get(key)!, languages)
         const sidecar = await readSidecar(`${key}.info.json`)
