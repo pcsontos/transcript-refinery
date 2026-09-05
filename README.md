@@ -2,9 +2,11 @@
 
 YouTube-feliratokból strukturált tudásjegyzeteket készít egy Obsidian vaultba.
 
-> **Állapot: a Fázis 0 kész.** A feliratfájlból deduplikált, olvasható átirat
-> készül a vaultba — nulla modellhívás, végig determinisztikusan és
-> unit-tesztelve. A modellréteg, a mérés és a többi fázis hátravan. Lásd:
+> **Állapot: a Fázis 1 kész.** A normalizált átiratból modellel készül
+> összefoglaló jegyzet a vaultba, korlátos evaluator–optimizer loopban, a
+> futás előtt kikényszerített költségplafon alatt. A modellréteg, a
+> receptmotor és a mérési harness megvan; a további receptek, a
+> Whisper-újratranszkribálás és a felület hátravannak. Lásd:
 > [`docs/roadmap.md`](<./docs/roadmap.md>).
 
 ## A probléma
@@ -63,13 +65,42 @@ mindegyikhez a csatornát, a címet, a nyers és normalizált szószámot és a
 felirat-minőséget. A `run` átiratot készít, és a vault meglévő
 jegyzet-elrendezésébe írja: nulla duplikált sor, érvényes frontmatter, nulla
 wikilink. Másodszor futtatva nem ír semmit. Sérült feliratfájl nem állítja meg
-a futást, a záró riport megnevezi a hibás elemet és az okát.
+a futást, a záró riport megnevezi a hibás elemet és az okát. Recept nélkül ez
+bit-azonos a Fázis 0 kimenetével — a Fázis 1 ezt nem törte el.
 
-Végig determinisztikus és modellhívás nélküli, 114 teszttel — köztük egy
-végponttól végpontig teszttel, ami a fázis mind az öt sikerkritériumát
-állításként tartalmazza.
+A `run --recipe summary` a normalizált átiratból összefoglaló jegyzetet
+készít, korlátos evaluator–optimizer loopban: a modell generál, egy rubrika
+pontoz **és konkrét hiányokat nevez meg**, a modell eddig javít, amíg átmegy
+vagy elfogy az iterációkeret. A modellek egy LiteLLM gateway mögül jönnek,
+szerepet kérve (`draft`, `judge`), nem modellnévvel. A futás előtt kiírt
+becslés a megadott plafon felett el sem indul; futás közben a tényleges
+token-felhasználásból számolt költés állítja meg a köteget, ha túllépné.
+A két kaput mindkét irányból ellenőriztük: mesterségesen alacsony plafonnal a
+becslés a futás előtt megállítja a köteget, plafon hiányában pedig a
+konfiguráció el sem indul — egyik esetben sincs modellhívás.
+A `--dry-run` a fájlírást és az állapotrögzítést hagyja ki, a modellhívást
+nem: a generálás és a pontozás valós költséggel lezajlik.
+
+A mérési harness (`pnpm eval`) ugyanezt a loopot futtatja egy determinisztikus
+fixture-modellel: kulcs és hálózat nélkül, három szintetikus feliraton fut le,
+és mindegyikre valódi pontszámot ír ki. A minőségi kapu precisionje és
+recallja is szám formájában mért: mindkettő **1,000** a hét elemű, kézzel
+címkézett halmazon, a határeset benne van.
+
+Egy valós vaultban, valós LiteLLM-hívással is ellenőrizve: egyetlen elemre
+futtatva elkészül az átirat **és** az összefoglaló jegyzet is ugyanabban a
+mappában, a jegyzet frontmatterében a modellel, az iterációszámmal és a
+pontszámmal; a futás kiírja az elért pontszámot és a költséget; másodszor
+futtatva a recept is „már feldolgozva" státuszt kap, nulla új modellhívással.
+
+Az `evalite` natív függősége (`better-sqlite3`) miatt a telepítéshez C++
+fordítói lánc kell: macOS-en az Xcode parancssori eszközei
+(`xcode-select --install`), Debian/Ubuntu-n a `build-essential` és a `python3`
+csomag. Maga a mérés (`pnpm eval`) ezután API-kulcs és hálózat nélkül fut.
+
+212 teszttel, 29 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
+végpontig teszttel, és a fenti, valós adaton mért eredményekkel a Fázis 1-re.
 
 ## Még nincs megírva
 
-Telepítés és használat, a mérési harness, a receptmotor és a modellréteg.
-Ahogy elkészülnek, ide kerülnek.
+Telepítés és használat. Ahogy elkészül, ide kerül.

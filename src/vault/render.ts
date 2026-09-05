@@ -50,3 +50,55 @@ export function renderTranscriptNote(
 
   return frontmatter + body
 }
+
+/** Egy recept futásának eredménye, ahogy a frontmatterbe kerül. */
+export interface RecipeNoteMeta {
+  recipe: string
+  /** A ténylegesen futott generáló modell neve. */
+  model: string
+  /** Hány generálás történt. */
+  iterations: number
+  score: number
+  costUsd: number
+}
+
+/**
+ * Recept kimenete → vault-jegyzet.
+ *
+ * A frontmatter az átirat származását **és** a generálás körülményeit is
+ * rögzíti. Enélkül a későbbi mérés nem tudná, mit mér: melyik modell, hány
+ * körben és mennyiért állította elő a jegyzetet.
+ */
+export function renderRecipeNote(
+  item: SourceItem,
+  transcript: NormalizedTranscript,
+  body: string,
+  meta: RecipeNoteMeta,
+  generatorVersion: string,
+): string {
+  const source =
+    transcript.captionSource === 'creator' ? 'creator_captions' : 'auto_captions'
+
+  const frontmatter = [
+    '---',
+    `video_id: ${yamlScalar(item.videoId)}`,
+    `title: ${yamlScalar(item.title)}`,
+    `channel: ${yamlScalar(item.channel)}`,
+    `uploaded: ${yamlScalar(item.uploadedAt)}`,
+    `url: ${yamlScalar(item.url)}`,
+    `transcript_source: ${source}`,
+    'transcript_model: null',
+    `words_raw: ${String(transcript.wordsRaw)}`,
+    `words_normalized: ${String(transcript.wordsNormalized)}`,
+    `recipe: ${yamlScalar(meta.recipe)}`,
+    `model: ${yamlScalar(meta.model)}`,
+    `iterations: ${String(meta.iterations)}`,
+    `score: ${meta.score.toFixed(2)}`,
+    `cost_usd: ${meta.costUsd.toFixed(4)}`,
+    `generated_at: ${new Date().toISOString()}`,
+    `generator: transcript-refinery@${generatorVersion}`,
+    '---',
+  ].join('\n')
+
+  return [frontmatter, '', `# ${item.title}`, '', `🌐 <${item.url}>`, '', '---', '', body.trim(), ''].join('\n')
+}

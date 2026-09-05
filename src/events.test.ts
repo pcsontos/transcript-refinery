@@ -23,4 +23,15 @@ describe('summarize', () => {
   it('üres folyamra nullákat ad', () => {
     expect(summarize([])).toEqual({ succeeded: 0, skipped: 0, failed: 0 })
   })
+
+  it('az új események nem torzítják az összegzést', () => {
+    const summary = summarize([
+      { type: 'run:estimate', items: 3, tokens: 1000, usd: 0.2, limitUsd: 5 },
+      { type: 'item:generating', videoId: 'a', recipe: 'summary', generation: 1 },
+      { type: 'item:scored', videoId: 'a', recipe: 'summary', score: 0.9, gaps: 0 },
+      { type: 'item:refined', videoId: 'a', recipe: 'summary', score: 0.9, generations: 1, usd: 0.08 },
+      { type: 'item:published', videoId: 'a', path: '/vault/a.md' },
+    ])
+    expect(summary).toEqual({ succeeded: 1, skipped: 0, failed: 0 })
+  })
 })

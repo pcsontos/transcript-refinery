@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS artifacts (
   status     TEXT NOT NULL,
   path       TEXT,
   error      TEXT,
+  iterations INTEGER,
+  score      REAL,
+  cost_usd   REAL,
+  model      TEXT,
   created_at TEXT NOT NULL,
   PRIMARY KEY (video_id, kind)
 );
@@ -38,6 +42,53 @@ export interface TranscriptRecord {
   source: CaptionSource
   wordsRaw: number
   wordsNormalized: number
+}
+
+/** Egy recept futásának mérőszámai. A Fázis 0 átirata ezeket nem tölti ki. */
+export interface ArtifactMetrics {
+  /** Hány generálás történt. */
+  iterations: number
+  score: number
+  costUsd: number
+  /** A ténylegesen futott generáló modell neve. */
+  model: string
+}
+
+export interface ArtifactRecord {
+  status: string
+  path: string | null
+  error: string | null
+  iterations: number | null
+  score: number | null
+  costUsd: number | null
+  model: string | null
+}
+
+/** A Fázis 0 után hozzáadott oszlopok, migrációs sorrendben. */
+const ARTIFACT_COLUMNS: { name: string; ddl: string }[] = [
+  { name: 'iterations', ddl: 'INTEGER' },
+  { name: 'score', ddl: 'REAL' },
+  { name: 'cost_usd', ddl: 'REAL' },
+  { name: 'model', ddl: 'TEXT' },
+]
+
+/**
+ * Hozzáadja a hiányzó oszlopokat egy Fázis 0-ban létrehozott adatbázishoz.
+ *
+ * A `CREATE TABLE IF NOT EXISTS` meglévő táblán nem csinál semmit, tehát az
+ * új oszlopok enélkül sosem jelennének meg egy már használt `.state`-ben —
+ * és a hiba nem a teszten, hanem az első valós futáson jönne elő.
+ */
+function migrateArtifacts(db: DatabaseSync): void {
+  const existing = new Set(
+    (db.prepare('PRAGMA table_info(artifacts)').all() as { name: string }[]).map(
+      (row) => row.name,
+    ),
+  )
+  for (const column of ARTIFACT_COLUMNS) {
+    if (existing.has(column.name)) continue
+    db.exec(`ALTER TABLE artifacts ADD COLUMN ${column.name} ${column.ddl}`)
+  }
 }
 
 export interface StateStore {
@@ -55,7 +106,9 @@ export interface StateStore {
     status: 'done' | 'failed',
     path: string | null,
     error: string | null,
+    metrics?: ArtifactMetrics,
   ): void
+  artifactOf(videoId: string, kind: string): ArtifactRecord | null
   transcriptOf(videoId: string): TranscriptRecord | null
   isDone(videoId: string, kind: string): boolean
   listPending(items: SourceItem[], kind: string): SourceItem[]
@@ -72,6 +125,7 @@ export function openState(path: string): StateStore {
   db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(SCHEMA)
+  migrateArtifacts(db)
 
   const now = () => new Date().toISOString()
 
@@ -124,16 +178,61 @@ export function openState(path: string): StateStore {
       ).run(videoId, source, wordsRaw, wordsNormalized, now())
     },
 
-    recordArtifact(videoId, kind, status, path, error) {
+    recordArtifact(videoId, kind, status, path, error, metrics) {
       db.prepare(
-        `INSERT INTO artifacts (video_id, kind, status, path, error, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO artifacts
+           (video_id, kind, status, path, error, iterations, score, cost_usd, model, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(video_id, kind) DO UPDATE SET
            status = excluded.status,
            path = excluded.path,
            error = excluded.error,
+           iterations = excluded.iterations,
+           score = excluded.score,
+           cost_usd = excluded.cost_usd,
+           model = excluded.model,
            created_at = excluded.created_at`,
-      ).run(videoId, kind, status, path, error, now())
+      ).run(
+        videoId,
+        kind,
+        status,
+        path,
+        error,
+        metrics?.iterations ?? null,
+        metrics?.score ?? null,
+        metrics?.costUsd ?? null,
+        metrics?.model ?? null,
+        now(),
+      )
+    },
+
+    artifactOf(videoId, kind) {
+      const row = db
+        .prepare(
+          `SELECT status, path, error, iterations, score, cost_usd, model
+             FROM artifacts WHERE video_id = ? AND kind = ?`,
+        )
+        .get(videoId, kind) as
+        | {
+            status: string
+            path: string | null
+            error: string | null
+            iterations: number | null
+            score: number | null
+            cost_usd: number | null
+            model: string | null
+          }
+        | undefined
+      if (!row) return null
+      return {
+        status: row.status,
+        path: row.path,
+        error: row.error,
+        iterations: row.iterations,
+        score: row.score,
+        costUsd: row.cost_usd,
+        model: row.model,
+      }
     },
 
     transcriptOf(videoId) {

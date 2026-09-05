@@ -1,6 +1,14 @@
 export const CAPTION_SOURCES = ['creator', 'auto'] as const
 export type CaptionSource = (typeof CAPTION_SOURCES)[number]
 
+/**
+ * Modellszerep. A receptek szerepet kérnek, nem modellnevet — a konkrét
+ * modell a konfigurációé, mert a választás mérési eredmény, nem vélemény
+ * (`decisions/0004`).
+ */
+export const MODEL_ROLES = ['draft', 'judge'] as const
+export type ModelRole = (typeof MODEL_ROLES)[number]
+
 /** Egy feliratblokk: időtartomány és a hozzá tartozó szövegsorok. */
 export interface Cue {
   /** kezdet másodpercben */

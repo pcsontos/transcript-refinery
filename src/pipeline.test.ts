@@ -1,9 +1,13 @@
-import { mkdtemp, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { MockLanguageModelV4 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { collectEvents } from './events.js'
-import { processItem } from './pipeline.js'
+import { createCostGuard } from './model/budget.js'
+import { modelClientFrom } from './model/client.js'
+import { processItem, type PipelineDeps } from './pipeline.js'
+import type { Recipe } from './recipe/types.js'
 import { openState, type StateStore } from './state/db.js'
 import type { SourceItem } from './types.js'
 
@@ -90,5 +94,192 @@ describe('processItem', () => {
     await processItem(item, { notesRoot: vault, store, sink, version: '0.1.0', options: {} })
     expect(events.map((e) => e.type)).toContain('item:normalized')
     expect(events.map((e) => e.type)).toContain('item:published')
+  })
+})
+
+function alapDeps(): PipelineDeps {
+  return { notesRoot: vault, store, sink: collectEvents().sink, version: '0.1.0', options: {} }
+}
+
+/** Fixture-modell: rögzített szöveget ad vissza, rögzített használattal. */
+function fixModell(text: string, inputTokens = 100, outputTokens = 20) {
+  return new MockLanguageModelV4({
+    // A `doGenerate` a `LanguageModelV4` interfészhez igazodva Promise-t vár
+    // vissza; itt nincs mire várni, de az `async` a szerződés, nem hiba.
+    // eslint-disable-next-line @typescript-eslint/require-await
+    doGenerate: async () => ({
+      content: [{ type: 'text' as const, text }],
+      finishReason: { unified: 'stop' as const, raw: undefined },
+      usage: {
+        inputTokens: {
+          total: inputTokens,
+          noCache: inputTokens,
+          cacheRead: undefined,
+          cacheWrite: undefined,
+        },
+        outputTokens: { total: outputTokens, text: outputTokens, reasoning: undefined },
+      },
+      warnings: [],
+    }),
+  })
+}
+
+const MODELL_CFG = {
+  baseUrl: 'http://localhost:4000/v1',
+  apiKey: 'sk-proba',
+  models: { draft: 'draft-modell', judge: 'judge-modell' },
+  pricing: {
+    draft: { inputPerMillion: 3, outputPerMillion: 15 },
+    judge: { inputPerMillion: 0.2, outputPerMillion: 0.5 },
+  },
+  costLimitUsd: 5,
+}
+
+/** Recept, ami mindig átmegy, és nem hív bírót. */
+const ATMENO_RECEPT: Recipe = {
+  id: 'proba',
+  outputFile: '_proba.md',
+  publishable: true,
+  role: 'draft',
+  maxIterations: 0,
+  prompt: () => 'generálj',
+  repairPrompt: () => 'javíts',
+  rubric: {
+    criteria: [{ name: 'mindig-jo', score: () => Promise.resolve({ value: 1, gaps: [] }) }],
+    passThreshold: 0.8,
+  },
+}
+
+function probaKliens(text: string) {
+  return modelClientFrom({
+    draft: fixModell(text),
+    judge: fixModell('nem hívjuk'),
+  })
+}
+
+describe('processItem recepttel', () => {
+  it('recept nélkül a Fázis 0 útján marad, és nem néz modell-konfigurációt', async () => {
+    // Ez a teszt akkor is fut, ha egyetlen LiteLLM-változó sincs beállítva.
+    const outcome = await processItem(item, alapDeps())
+    expect(outcome.status).toBe('published')
+    expect(outcome.path).toContain('_transcript.md')
+  })
+
+  it('recepttel a jegyzetet is kiírja, a recept fájlnevével', async () => {
+    const outcome = await processItem(item, {
+      ...alapDeps(),
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: probaKliens('## Generált jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(outcome.status).toBe('published')
+    const irt = await readFile(outcome.recipePath!, 'utf8')
+    expect(irt).toContain('## Generált jegyzet')
+    expect(irt).toContain('recipe: proba')
+    expect(irt).toContain('model: draft-modell')
+  })
+
+  it('a metrikákat az állapottárba írja', async () => {
+    const deps = alapDeps()
+    await processItem(item, {
+      ...deps,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    const record = deps.store.artifactOf(item.videoId, 'proba')
+    expect(record!.status).toBe('done')
+    expect(record!.iterations).toBe(1)
+    expect(record!.score).toBe(1)
+    expect(record!.model).toBe('draft-modell')
+    expect(record!.costUsd).toBeGreaterThan(0)
+  })
+
+  it('a költségőr összegzi a loop tényleges használatát', async () => {
+    const guard = createCostGuard(5)
+    await processItem(item, {
+      ...alapDeps(),
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard,
+      },
+    })
+    expect(guard.spentUsd()).toBeGreaterThan(0)
+  })
+
+  it('a már kész receptet másodszorra kihagyja', async () => {
+    const deps = alapDeps()
+    const recipeDeps = {
+      recipe: ATMENO_RECEPT,
+      client: probaKliens('## Jegyzet\n'),
+      modelConfig: MODELL_CFG,
+      guard: createCostGuard(5),
+    }
+
+    await processItem(item, { ...deps, recipeDeps })
+    const masodik = await processItem(item, { ...deps, recipeDeps })
+
+    expect(masodik.status).toBe('skipped')
+  })
+
+  it('publishable: false receptet nem ír ki', async () => {
+    const outcome = await processItem(item, {
+      ...alapDeps(),
+      recipeDeps: {
+        recipe: { ...ATMENO_RECEPT, id: 'nem-publikus', publishable: false },
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(outcome.recipePath).toBeUndefined()
+  })
+
+  it('a recept hibája nem rontja el a már publikált átirat állapotát', async () => {
+    const deps = alapDeps()
+    const outcome = await processItem(item, {
+      ...deps,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: {
+          generate: () => Promise.reject(new Error('proba hiba')),
+          generateObject: () => Promise.reject(new Error('nem hívjuk')),
+        },
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(outcome.status).toBe('published')
+    expect(outcome.path).toContain('_transcript.md')
+    expect(deps.store.artifactOf(item.videoId, 'transcript')!.status).toBe('done')
+    expect(deps.store.artifactOf(item.videoId, ATMENO_RECEPT.id)!.status).toBe('failed')
+  })
+
+  it('dry-run mellett nem-publikálható recept sem marad tartósan késznek jelölve', async () => {
+    const deps = alapDeps()
+    await processItem(item, {
+      ...deps,
+      options: { dryRun: true },
+      recipeDeps: {
+        recipe: { ...ATMENO_RECEPT, id: 'nem-publikus-dry', publishable: false },
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(deps.store.artifactOf(item.videoId, 'nem-publikus-dry')).toBeNull()
   })
 })
