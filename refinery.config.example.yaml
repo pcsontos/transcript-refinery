@@ -1,0 +1,49 @@
+# A Transcript Refinery konfigurációja. Másold `refinery.config.yaml` néven a
+# projekt gyökerébe, vagy add meg a helyét a `--config` kapcsolóval.
+#
+# Egyetlen érték nem innen jön: a LITELLM_API_KEY. Az titok, ezért a `.env`-ből
+# (vagy a környezetből) érkezik. Minden más beállítást kizárólag ez a fájl dönt
+# el — környezeti változó nem írja felül.
+
+vault:
+  # Az Obsidian vault abszolút útvonala. Gépenként eltér, ezért nincs
+  # alapértelmezése; relatív útvonal nem működhet.
+  path: /Users/valaki/vault
+  # A jegyzetek gyökere a vaulton belül. Elhagyható; ez az alapértelmezés.
+  notes_dir: Inbox/transcript-refinery
+
+# Feliratmappák. Az app rekurzívan minden .srt és .vtt fájlt felszed alattuk,
+# és nem érdekli, mi állította elő őket. A mappa **neve** (az útvonal utolsó
+# szegmense) lesz a vault-beli almappa neve, tehát beszédes nevet adj neki.
+sources:
+  - /Users/valaki/feliratok/youtube
+  - /Users/valaki/feliratok/meetings
+
+# Nyelvi preferencia-sorrend. Ha egy alapnévhez több felirat tartozik
+# (pl. `.hu.vtt` és `.en.srt`), az itteni sorrend dönt. Üresen hagyva a
+# tartalék szabály választ: .srt előbb, mint .vtt, azon belül ábécésorrend.
+languages: [hu, en]
+
+state:
+  # A feldolgozottság nyilvántartása. Relatív útvonal a projekt gyökeréhez
+  # képest értendő. Eldobható: újrafuttatáskor felépül.
+  path: .state/refinery.db
+
+# Szerep → modell. A receptek szerepet kérnek, nem modellnevet; a konkrét
+# választás mérési eredmény lesz, nem vélemény (decisions/0004).
+model:
+  base_url: http://localhost:4000/v1
+  draft: claude-sonnet-5
+  judge: grok-4-fast-reasoning
+
+# USD egymillió tokenre, szerepenként be- és kimenetre. Azért konfigurációból
+# és nem beégetett ártáblázatból, mert az avul.
+pricing:
+  draft: { input_per_million: 3.00, output_per_million: 15.00 }
+  judge: { input_per_million: 0.20, output_per_million: 0.50 }
+
+# Futásonkénti költségplafon dollárban. Kötelező: köteg nem indul felső korlát
+# nélkül. A korpusz mért mediánjából egy elem nagyjából 8 cent, tehát az
+# 5,00-s alapértelmezés megállít egy teljes korpuszfutást, és kikényszeríti a
+# szándékos felülbírálást.
+cost_limit_usd: 5.00

@@ -1,161 +1,143 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { loadConfig, loadDotEnv, validateConfig } from './config.js'
+import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  DEFAULT_NOTES_DIR,
+  loadConfig,
+  loadModelConfig,
+  readConfigFile,
+  validateConfig,
+} from './config.js'
 
 let dir: string
+
+const MIN = { vault: { path: '/v' }, sources: ['/s/youtube'] }
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'refinery-config-'))
 })
 
 describe('loadConfig', () => {
-  it('a vault jegyzet-gyökerét a VAULT_PATH alá számolja', () => {
-    const cfg = loadConfig({
-      VAULT_PATH: '/v',
-      PINCHFLAT_DOWNLOADS: '/d',
-    })
-    expect(cfg.vaultPath).toBe('/v')
-    expect(cfg.notesRoot).toBe('/v/Resources/Videos/YouTube')
+  it('notes_dir nélkül az Inbox/transcript-refinery alá tesz', () => {
+    const cfg = loadConfig(MIN, '/p/refinery.config.yaml')
+    expect(cfg.notesRoot).toBe(`/v/${DEFAULT_NOTES_DIR}`)
+  })
+
+  it('a megadott notes_dir felülírja az alapértelmezést', () => {
+    const cfg = loadConfig(
+      { ...MIN, vault: { path: '/v', notes_dir: 'Inbox/masik' } },
+      '/p/refinery.config.yaml',
+    )
+    expect(cfg.notesRoot).toBe('/v/Inbox/masik')
+  })
+
+  it('a forrás nevét az útvonal utolsó szegmenséből veszi', () => {
+    const cfg = loadConfig(
+      { ...MIN, sources: ['/s/youtube', '/s/whisper-out'] },
+      '/p/refinery.config.yaml',
+    )
+    expect(cfg.sources).toEqual([
+      { name: 'youtube', path: '/s/youtube' },
+      { name: 'whisper-out', path: '/s/whisper-out' },
+    ])
+  })
+
+  it('üres sources esetén beszédes hibát dob', () => {
+    expect(() => loadConfig({ ...MIN, sources: [] }, '/p/c.yaml')).toThrow(
+      /forrásmappa/,
+    )
+  })
+
+  it('a hibaüzenet megnevezi a mezőt és a konfigurációs fájlt', () => {
+    expect(() => loadConfig({ sources: ['/s'] }, '/p/c.yaml')).toThrow(
+      /vault.*\/p\/c\.yaml/s,
+    )
+  })
+
+  it('a relatív forrásútvonalat elutasítja', () => {
+    expect(() => loadConfig({ ...MIN, sources: ['./s'] }, '/p/c.yaml')).toThrow(
+      /abszolút/,
+    )
   })
 
   it('az állapottárat alapból a repóba teszi, nem a vaultba', () => {
-    const cfg = loadConfig({ VAULT_PATH: '/v', PINCHFLAT_DOWNLOADS: '/d' })
+    const cfg = loadConfig(MIN, '/p/refinery.config.yaml')
     expect(cfg.statePath).toContain('.state')
     expect(cfg.statePath.startsWith('/v')).toBe(false)
   })
 
-  it('hiányzó VAULT_PATH esetén beszédes hibát dob', () => {
-    expect(() => loadConfig({ PINCHFLAT_DOWNLOADS: '/d' })).toThrow(/VAULT_PATH/)
+  it('a languages alapból üres, és nem hiányzó mezőként hibázik', () => {
+    expect(loadConfig(MIN, '/p/c.yaml').languages).toEqual([])
+  })
+})
+
+describe('readConfigFile', () => {
+  it('hiányzó fájlnál megnevezi az útvonalat és a --config kapcsolót', async () => {
+    await expect(readConfigFile(join(dir, 'nincs.yaml'))).rejects.toThrow(
+      /nincs\.yaml[\s\S]*--config/,
+    )
   })
 
-  it('hiányzó PINCHFLAT_DOWNLOADS esetén beszédes hibát dob', () => {
-    expect(() => loadConfig({ VAULT_PATH: '/v' })).toThrow(/PINCHFLAT_DOWNLOADS/)
+  it('értelmezhetetlen YAML-nál megnevezi a fájlt', async () => {
+    const path = join(dir, 'rossz.yaml')
+    await writeFile(path, 'vault: [\n  path: /v\n', 'utf8')
+    await expect(readConfigFile(path)).rejects.toThrow(/rossz\.yaml/)
   })
 
-  it('a relatív útvonalat elutasítja, mert két gépen két útvonal van', () => {
+  it('a YAML-t sima objektummá alakítja', async () => {
+    const path = join(dir, 'jo.yaml')
+    await writeFile(path, 'vault:\n  path: /v\nsources:\n  - /s/youtube\n', 'utf8')
+    expect(await readConfigFile(path)).toEqual(MIN)
+  })
+})
+
+describe('loadModelConfig', () => {
+  const RAW = {
+    ...MIN,
+    model: { base_url: 'http://localhost:4000/v1', draft: 'd', judge: 'j' },
+    pricing: {
+      draft: { input_per_million: 3, output_per_million: 15 },
+      judge: { input_per_million: 0.2, output_per_million: 0.5 },
+    },
+    cost_limit_usd: 5,
+  }
+
+  it('a kulcsot a környezetből veszi, nem a YAML-ból', () => {
+    const cfg = loadModelConfig(RAW, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')
+    expect(cfg.apiKey).toBe('sk-1')
+    expect(cfg.models.draft).toBe('d')
+    expect(cfg.costLimitUsd).toBe(5)
+  })
+
+  it('hiányzó kulcsnál megmondja, hogy a .env-ből jön', () => {
+    expect(() => loadModelConfig(RAW, {}, '/p/c.yaml')).toThrow(/LITELLM_API_KEY/)
+  })
+
+  it('nulla költségplafont nem fogad el', () => {
     expect(() =>
-      loadConfig({ VAULT_PATH: './vault', PINCHFLAT_DOWNLOADS: '/d' }),
-    ).toThrow(/abszolút/)
+      loadModelConfig({ ...RAW, cost_limit_usd: 0 }, { LITELLM_API_KEY: 'k' }, '/p/c.yaml'),
+    ).toThrow(/plafon|pozitív/)
   })
 })
 
 describe('validateConfig', () => {
   it('hibát dob, ha a vault nem git-repó', async () => {
     await mkdir(join(dir, 'vault'), { recursive: true })
-    await mkdir(join(dir, 'downloads'), { recursive: true })
-    const cfg = loadConfig({
-      VAULT_PATH: join(dir, 'vault'),
-      PINCHFLAT_DOWNLOADS: join(dir, 'downloads'),
-    })
-    await expect(validateConfig(cfg)).rejects.toThrow(/git/)
+    await mkdir(join(dir, 'subs'), { recursive: true })
+    const cfg = loadConfig(
+      { vault: { path: join(dir, 'vault') }, sources: [join(dir, 'subs')] },
+      '/p/c.yaml',
+    )
+    await expect(validateConfig(cfg)).rejects.toThrow(/git-repó/)
   })
 
-  it('hibát dob, ha a letöltési mappa nem létezik', async () => {
+  it('hibát dob, ha egy forrásmappa nem létezik', async () => {
     await mkdir(join(dir, 'vault', '.git'), { recursive: true })
-    const cfg = loadConfig({
-      VAULT_PATH: join(dir, 'vault'),
-      PINCHFLAT_DOWNLOADS: join(dir, 'nincs'),
-    })
-    await expect(validateConfig(cfg)).rejects.toThrow(/PINCHFLAT_DOWNLOADS/)
-  })
-
-  it('átmegy, ha minden a helyén van', async () => {
-    await mkdir(join(dir, 'vault', '.git'), { recursive: true })
-    await mkdir(join(dir, 'downloads'), { recursive: true })
-    const cfg = loadConfig({
-      VAULT_PATH: join(dir, 'vault'),
-      PINCHFLAT_DOWNLOADS: join(dir, 'downloads'),
-    })
-    await expect(validateConfig(cfg)).resolves.toBeUndefined()
-  })
-})
-
-describe('loadDotEnv', () => {
-  let dir: string
-  const savedKeys = new Set(Object.keys(process.env))
-
-  beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), 'refinery-env-'))
-  })
-
-  afterEach(async () => {
-    await rm(dir, { recursive: true, force: true })
-    for (const key of Object.keys(process.env)) {
-      if (!savedKeys.has(key)) delete process.env[key]
-    }
-  })
-
-  it('betölti a fájlban lévő változót', async () => {
-    await writeFile(join(dir, '.env'), 'REFINERY_PROBA_A=fajlbol\n', 'utf8')
-    loadDotEnv(join(dir, '.env'))
-    expect(process.env.REFINERY_PROBA_A).toBe('fajlbol')
-  })
-
-  it('a már beállított környezeti változót nem írja felül', async () => {
-    process.env.REFINERY_PROBA_B = 'shellbol'
-    await writeFile(join(dir, '.env'), 'REFINERY_PROBA_B=fajlbol\n', 'utf8')
-    loadDotEnv(join(dir, '.env'))
-    expect(process.env.REFINERY_PROBA_B).toBe('shellbol')
-  })
-
-  it('hiányzó fájl esetén nem dob', () => {
-    expect(() => loadDotEnv(join(dir, 'nincs-ilyen'))).not.toThrow()
-  })
-})
-
-import { loadModelConfig } from './config.js'
-
-const TELJES_MODELL_ENV = {
-  LITELLM_BASE_URL: 'http://localhost:4000/v1',
-  LITELLM_API_KEY: 'sk-proba',
-  REFINERY_MODEL_DRAFT: 'claude-sonnet-5',
-  REFINERY_MODEL_JUDGE: 'grok-4-fast-reasoning',
-  REFINERY_PRICE_DRAFT_IN: '3.00',
-  REFINERY_PRICE_DRAFT_OUT: '15.00',
-  REFINERY_PRICE_JUDGE_IN: '0.20',
-  REFINERY_PRICE_JUDGE_OUT: '0.50',
-  REFINERY_COST_LIMIT_USD: '5.00',
-}
-
-describe('loadModelConfig', () => {
-  it('szerepenként képezi le a modellt és az árat', () => {
-    const cfg = loadModelConfig(TELJES_MODELL_ENV)
-    expect(cfg.models.draft).toBe('claude-sonnet-5')
-    expect(cfg.models.judge).toBe('grok-4-fast-reasoning')
-    expect(cfg.pricing.draft).toEqual({ inputPerMillion: 3, outputPerMillion: 15 })
-    expect(cfg.pricing.judge).toEqual({ inputPerMillion: 0.2, outputPerMillion: 0.5 })
-    expect(cfg.costLimitUsd).toBe(5)
-  })
-
-  it('a plafon hiányában elutasít — köteg nem indul felső korlát nélkül', () => {
-    const { REFINERY_COST_LIMIT_USD: _elhagyva, ...env } = TELJES_MODELL_ENV
-    expect(() => loadModelConfig(env)).toThrow(/REFINERY_COST_LIMIT_USD/)
-  })
-
-  it('a nulla plafont is elutasítja', () => {
-    expect(() =>
-      loadModelConfig({ ...TELJES_MODELL_ENV, REFINERY_COST_LIMIT_USD: '0' }),
-    ).toThrow(/REFINERY_COST_LIMIT_USD/)
-  })
-
-  it('hiányzó kulcsra a változó nevét mondja meg', () => {
-    const { LITELLM_API_KEY: _elhagyva, ...env } = TELJES_MODELL_ENV
-    expect(() => loadModelConfig(env)).toThrow(/LITELLM_API_KEY/)
-  })
-
-  it('érvénytelen alap-URL-t elutasít', () => {
-    expect(() =>
-      loadModelConfig({ ...TELJES_MODELL_ENV, LITELLM_BASE_URL: 'nem-url' }),
-    ).toThrow(/LITELLM_BASE_URL/)
-  })
-
-  it('a Fázis 0 loadConfigja nem követeli meg a modell-változókat', () => {
-    const cfg = loadConfig({
-      VAULT_PATH: '/vault',
-      PINCHFLAT_DOWNLOADS: '/letoltesek',
-    })
-    expect(cfg.vaultPath).toBe('/vault')
+    const cfg = loadConfig(
+      { vault: { path: join(dir, 'vault') }, sources: [join(dir, 'nincs')] },
+      '/p/c.yaml',
+    )
+    await expect(validateConfig(cfg)).rejects.toThrow(/nincs/)
   })
 })

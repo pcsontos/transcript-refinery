@@ -17,7 +17,6 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "build": "tsc -p tsconfig.build.json",
-    "sample:fetch": "set -a; if [ -f .env ]; then . ./.env || { echo \"Az .env nem tölthető be: szintaktikai hiba (pl. páratlan idézőjel). Javítsd, vagy add meg a változót közvetlenül a parancs előtt.\"; exit 1; }; fi; set +a; test -n \"$REFINERY_SAMPLE_SOURCE\" || { echo \"REFINERY_SAMPLE_SOURCE nincs beállítva (pl. user@gep:/utvonal/pinchflat/)\"; exit 1; }; rsync -av --prune-empty-dirs --include='*/' --include='*.info.json' --include='*.srt' --include='*.vtt' --exclude='*' \"$REFINERY_SAMPLE_SOURCE\" \"${REFINERY_SAMPLE_DEST:-./tmp/pinchflat-minta}\"",
     "eval": "evalite run",
     "eval:watch": "evalite watch",
     "release": "bumpp"
@@ -35,6 +34,7 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.43",
     "ai": "^7.0.91",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   }
 }
