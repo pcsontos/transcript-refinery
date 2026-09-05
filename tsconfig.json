@@ -9,6 +9,7 @@
     "noUncheckedIndexedAccess": true,
     "outDir": "dist",
     "declaration": true,
+    "sourceMap": true,
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "evals/**/*.ts"]
