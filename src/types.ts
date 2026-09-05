@@ -9,6 +9,22 @@ export type CaptionSource = (typeof CAPTION_SOURCES)[number]
 export const MODEL_ROLES = ['draft', 'judge'] as const
 export type ModelRole = (typeof MODEL_ROLES)[number]
 
+/**
+ * A feliratfájl melletti metaadatfájlból kiolvasott mezők. Mind opcionális:
+ * metaadat nélkül is teljes értékű elem születik, csak kevesebbet tudunk róla.
+ */
+export interface ItemMetadata {
+  videoId?: string
+  channel?: string
+  /** ISO-alakú dátum (`2026-07-14`). */
+  uploadedAt?: string
+  url?: string
+  /** Hossz másodpercben. */
+  duration?: number
+  tags?: string[]
+  description?: string
+}
+
 /** Egy feliratblokk: időtartomány és a hozzá tartozó szövegsorok. */
 export interface Cue {
   /** kezdet másodpercben */
