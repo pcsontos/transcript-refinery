@@ -55,7 +55,7 @@ promptot, sem csővezeték-logikát nem tartalmaznak.
 
 ## 4. A csővezeték
 
-Kilenc lépés, mindegyik önállóan tesztelhető:
+Nyolc lépés, mindegyik önállóan tesztelhető:
 
 | # | Lépés | Mit csinál |
 |---|---|---|
@@ -63,14 +63,14 @@ Kilenc lépés, mindegyik önállóan tesztelhető:
 | 2 | **Extract** | feliratfájl (SRT, VTT) → időbélyeges egységek |
 | 3 | **Normalize** | egymás utáni ismétlődések kiejtése |
 | 4 | **Classify** | felirat eredetének megállapítása írásjel-sűrűségből |
-| 5 | **Transcribe** | ha automatikus feliratról van szó: újratranszkribálás |
-| 6 | **Refine** | receptenként: generálás → értékelés → javítás, korlátosan |
-| 7 | **Render** | artefaktum → Markdown frontmatterrel |
-| 8 | **Publish** | vault-írás ütközésvédelemmel |
-| 9 | **Record** | állapottár frissítése |
+| 5 | **Refine** | receptenként: generálás → értékelés → javítás, korlátosan |
+| 6 | **Render** | artefaktum → Markdown frontmatterrel |
+| 7 | **Publish** | vault-írás ütközésvédelemmel |
+| 8 | **Record** | állapottár frissítése |
 
-Az 1–4. és a 7–9. lépés determinisztikus és offline. Modell csak az 5. és a 6.
-lépésben van — és az 5. is lokálisan fut.
+Az 1–4. és a 6–8. lépés determinisztikus és offline. Modell csak az 5.
+lépésben van — az újratranszkribálás nem lépése a csővezetéknek, lásd a
+9. fejezetet.
 
 ### A normalizálás hozama
 
@@ -91,14 +91,14 @@ Ennek van egy fontos architekturális következménye: **normalizálás után mi
 feltételezett, teljes egészében kimarad — legfeljebb egy védőkorlát marad a
 kiugró esetekre.
 
-## 5. A négy absztrakció
+## 5. A három absztrakció
 
-Négy interfész, és több nem:
+Három interfész, és több nem — a feliratot előállító lépés (letöltés,
+transzkribálás) az appon kívül van
+([`decisions/0008`](<./decisions/0008-forras-fuggetlen-bemenet.md>)):
 
-- **`Source`** — honnan jönnek az elemek. A v1-ben a Pinchflat letöltési mappája;
-  később egy `yt-dlp`-re épülő URL-adapter, ugyanerre a magra.
-- **`Transcriber`** — mi állít elő szöveget hangból. Egy implementáció:
-  `whisper.cpp`.
+- **`Source`** — honnan jönnek az elemek. Tetszőleges feliratmappa: a
+  felderítés a feliratfájlokon iterál, a metaadat opcionális kiegészítő.
 - **`Recipe`** — mi lesz egy elemből. Lásd a 8. fejezetet.
 - **`Publisher`** — hova kerül a kimenet. Egy implementáció: a vault.
 
@@ -108,8 +108,8 @@ elemnél a dinamikus betöltés csak a fordítási idejű típusbiztonságot ven
 
 ## 6. Állapottár
 
-**Hol:** a repó munkakönyvtárában, verziókövetésből kizárva, környezeti változóval
-felülbírálhatóan. Nem a vaultban — a vault tudást tárol, nem gépi állapotot, és két
+**Hol:** a repó munkakönyvtárában, verziókövetésből kizárva, a
+`refinery.config.yaml` `state.path` mezőjével felülbírálhatóan. Nem a vaultban — a vault tudást tárol, nem gépi állapotot, és két
 checkout között szinkronizálva azonnal konfliktusforrás lenne.
 
 **Mivel:** SQLite, a Node beépített `node:sqlite` moduljával — nulla függőség,
@@ -140,35 +140,20 @@ parancs maga a resume.**
 
 ### Hely
 
-A kimenet a vault meglévő, bejáratott jegyzet-elrendezésébe kerül
-(`<gyűjtemény>/<Csatorna>/<Cím>/`), nem egy külön beérkező mappába. A triage nem
-hely kérdése, hanem lekérdezésé: az állapottár tudja, mi új.
+A kimenet a `vault.notes_dir` alatt, forrásonkénti almappában landol
+(alapértelmezés: `Inbox/transcript-refinery/<forrás>/...`) — **nem** a vault
+meglévő, kézzel gondozott jegyzet-elrendezésébe
+([`decisions/0008`](<./decisions/0008-forras-fuggetlen-bemenet.md>)). A triage
+nem hely kérdése, hanem lekérdezésé: az állapottár tudja, mi új.
 
 Két szabály, mindkettő tesztelhető:
 
-- **A mappanév a videó metaadatfájljából jövő kanonikus csatornanévből származik**,
-  nem a Pinchflat által használt mappanévből. A meglévő vault-mappákat
-  kis-nagybetű-érzéketlenül kell egyeztetni, különben ugyanannak a csatornának két
-  mappája keletkezik.
+- **A célút nem függ metaadattól**: `<notes_dir>/<forrásnév>/<a felirat
+  forráson belüli relatív mappája>/<alapnév><recept-utótag>`. Ugyanaz a
+  felirat metaadatfájllal és nélküle is ugyanoda kerül — a write-once védelem
+  így mindkét esetben ugyanazt a duplikátumot ismeri fel.
 - A fájlrendszerre veszélyes karakterek normalizálása **idempotens**: kétszer
   lefuttatva ugyanaz jön ki.
-
-### A meglévő elrendezés — verifikálva
-
-A vault jelenlegi állapota nem egységes, és ezt a publishernek tudnia kell:
-
-| | |
-|---|---|
-| fájlnév-konvenció | `Youtube - <cím>_<típus>.md`; a típus lehet üres, `_polished` vagy `_summary` |
-| `Youtube - <cím>.md` | **hub-jegyzet**, nem átirat: cím, forrás-URL, tagek, beágyazott lejátszó, kézzel bemásolt összefoglaló |
-| elrendezés | két alak él egymás mellett: beágyazott `<Csatorna>/<Videó cím>/<fájl>` (többség) és lapos `<Csatorna>/<fájl>` |
-| frontmatter | a meglévő jegyzetek gyakorlatilag nem tartalmaznak |
-| feliratformátum | `.srt` és `.vtt` egyaránt előfordul |
-
-**Két következmény.** Egy: **nyers vagy normalizált átirat ma nem létezik a
-vaultban** — a fázis 0 kimenete valódi rést tölt be, nem duplikál. Kettő: a
-publisher a **beágyazott** alakot írja, `Youtube - <cím>_transcript.md`
-névkonvencióval, hogy illeszkedjen a meglévő fájlokhoz.
 
 ### Ütközésvédelem
 
@@ -202,21 +187,32 @@ A 3. pont nem opcionális kényelem. Automata commit nélkül a munkafa piszkos 
 
 ### Frontmatter
 
-Minden jegyzet rögzíti a származását. Enélkül a mérés nem tudja, mit mér:
+Minden jegyzet rögzíti a származását — **metaadatfájl nélkül is**
+([`decisions/0008`](<./decisions/0008-forras-fuggetlen-bemenet.md>)): az első
+mezőcsoport mindig kitöltődik, a metaadatból jövő mezők (`video_id`,
+`channel`, `uploaded`, `url`, `duration`, `tags`, `description`) hiány esetén
+egyszerűen kimaradnak a frontmatterből — nem üresen szerepelnek:
 
 ```yaml
-video_id: <azonosító>
-channel: <csatorna>
-uploaded: 2026-07-14
-transcript_source: creator_captions   # | whisper_local
-transcript_model: null                # whisper esetén a modellnév
+item_id: youtube-a1b2c3d4            # metaadat videóazonosítója, vagy forrás+alapnév hash-e
+title: Egy előadás címe
+source: youtube                       # a forrásmappa neve
+source_file: Csatorna/Egy előadás címe.hu.srt
+language: hu
+video_id: dQw4w9WgXcQ                 # csak metaadattal
+channel: Csatorna neve                # csak metaadattal
+uploaded: 2026-07-14                  # csak metaadattal
+transcript_source: creator_captions   # | auto_captions
 words_raw: 11468
 words_normalized: 3939
-recipe: summary
-iterations: 1
-score: 0.91
+punctuation_density: 4.12
 generated_at: 2026-08-30T09:14:22Z
 generator: transcript-refinery@0.1.0
+recipe: summary                       # csak recepttel futtatott jegyzeten
+model: claude-sonnet-5
+iterations: 1
+score: 0.91
+cost_usd: 0.0421
 ```
 
 ### Formátum-linter
@@ -286,14 +282,25 @@ egyáltalán a második iteráció, és mennyiért?**
 
 A válasz lehet nemleges. Akkor az kerül a dokumentációba.
 
-## 9. Transzkripció
+## 9. Transzkripció — kívül esik a hatókörön
+
+Az automatikus feliratok újratranszkribálása nem az app rétege
+([`decisions/0008`](<./decisions/0008-forras-fuggetlen-bemenet.md>)): ha egy
+külső eszköz (pl. lokálisan futó `whisper.cpp`) újratranszkribál egy videót, a
+kimenete egyszerűen egy újabb `sources`-bejegyzés — kódmódosítás nélkül megy
+át a magon.
+
+Az elemzés, hogy melyik transzkribálási út érné meg, ha ez az eszköz
+megépülne, érvényes marad, csak nem ennek az appnak a része:
+[`decisions/0005-transzkribalasi-ut.md`](<./decisions/0005-transzkribalasi-ut.md>).
 
 ### A minőségi kapu
 
-Egyetlen küszöb, modellhívás nélkül: **írásjel / 100 szó < 2,0 → automatikus
-felirat.** A küszöb nem hangolt paraméter, hanem egy mért szakadék közepe: a
-153 fájlos korpuszon az 1,0 és 4,0 közötti teljes sávban egyetlen fájl van. A kapu
-így megbízhatóan oszt — 47% automatikus, 53% szerzői felirat.
+Ami az appban marad: egyetlen küszöb, modellhívás nélkül, ami a feliratot
+szerzőire vagy automatikusra osztályozza — **írásjel / 100 szó < 2,0 →
+automatikus felirat.** A küszöb nem hangolt paraméter, hanem egy mért szakadék
+közepe: a 153 fájlos korpuszon az 1,0 és 4,0 közötti teljes sávban egyetlen
+fájl van. A kapu így megbízhatóan oszt — 47% automatikus, 53% szerzői felirat.
 
 A határeset kézzel felcímkézve bekerül a mérési halmazba, mert pont az mutatja meg,
 ha a kapu később elcsúszik.
@@ -302,18 +309,6 @@ ha a kapu később elcsúszik.
 > önkényesen átsorolt. Az újabb ASR nagybetűsít, de nem tesz ki írásjelet — a
 > nagybetű-arány itt használhatatlan diszkriminátor. Az írásjel-sűrűség egyedül a
 > helyes kapu.
-
-### Egyetlen transzkribálási út
-
-Az automatikus feliratú videók lokálisan futó `whisper.cpp`-vel transzkribálódnak
-újra, `medium.en` modellel. A videófájlok helyben vannak, tehát nincs
-újraletöltés — csak hangkivonat, majd whisper. Az `ffmpeg` emiatt kötelező
-függőség.
-
-A Groq Whisper API-t szándékosan nem használjuk. Az indoklás a
-[`decisions/0005-transzkribalasi-ut.md`](<./decisions/0005-transzkribalasi-ut.md>)-ben
-van; a lényeg, hogy egy fájlméret-limit miatti darabolás–átfedés–visszafűzés
-alrendszert takarítunk meg, és hogy egységes bemeneti minőségen mérünk.
 
 **A rendszer így az LLM-hívásokon kívül teljesen offline.**
 
@@ -337,15 +332,13 @@ letöltési mappából.
   felülbírálás (CSV, YAML) szándékosan kimarad: a receptválasztás futás-szintű, és
   a per-videó igény spekulatív. Cserébe a fájl kézzel is kellemesen bemásolható
   marad — ami a lényege, hiszen ez lesz az Obsidian queue-jegyzet is.
-- **Playlist- és csatorna-URL:** előbb feloldás, majd a darabszám kiírása és
-  megerősítés kérése egy küszöb felett. Az „egy sor = kétszáz videó" csapdát nem
-  tiltással, hanem láthatóvá tétellel kezeljük.
 
 ### Felderítés: nem figyelő, hanem szkennelés
 
-Filesystem watcher nincs. Nemcsak megbízhatatlansága miatt: a Pinchflat fokozatosan
-írja a fájlokat, tehát a watcher félkész feliratra és még hiányzó metaadatra
-tüzelne. Ezt debounce-szal és stabilitás-ellenőrzéssel lehetne kezelni — valódi
+Filesystem watcher nincs. Nemcsak megbízhatatlansága miatt: egy feliratot
+előállító eszköz (letöltő, transzkribáló) fokozatosan írja a fájlokat, tehát a
+watcher félkész feliratra és még hiányzó metaadatra tüzelne. Ezt
+debounce-szal és stabilitás-ellenőrzéssel lehetne kezelni — valódi
 bonyolultság nulla haszonért.
 
 A v1 explicit szkennelő parancsot ad. Mivel a művelet idempotens, az ismételt
@@ -370,7 +363,8 @@ A modellek kiszolgálása egy meglévő **LiteLLM** gateway-en át történik. A
 egyetlen `@ai-sdk/openai-compatible` providerrel csatlakozik a base URL-jére,
 virtuális kulccsal. A LiteLLM telepítése és üzemeltetése **nem része ennek a
 projektnek**: a rendszer adottnak veszi, hogy elérhető, és csak fogyasztja —
-alap-URL és kulcs környezetből, induláskor validálva.
+a base URL a `refinery.config.yaml`-ból, a kulcs kizárólag a környezetből
+(`LITELLM_API_KEY`), induláskor validálva.
 
 A receptek nem modellnevet kérnek, hanem **szerepet** (`draft`, `judge`), amit a
 konfiguráció képez le konkrét modellre. A tényleges modellválasztás mérési
@@ -378,6 +372,21 @@ eredmény, nem vélemény: a mérőhalmazon több jelölt fut le, és a mért h�
 lefedettség dönt, egységnyi költségre vetítve.
 
 ## 12. Üzemeltetés
+
+### Konfiguráció
+
+Minden beállítás a `refinery.config.yaml`-ból jön: a vault útvonala és
+jegyzet-gyökere, a feliratforrások listája, a nyelvi preferencia, az
+állapottár helye, a modell- és árbeállítás, a költségplafon. A fájl helyét a
+`--config` kapcsoló írja felül; alapértelmezés a projekt gyökerében keresett
+`refinery.config.yaml`.
+
+Egyetlen érték nem innen jön: a `LITELLM_API_KEY`. Az titok, ezért kizárólag
+a környezetből (`.env` vagy a tényleges környezet) érkezik — a YAML-ban nincs
+helye. A `scan` és a receptet nem futtató `run` enélkül is elindul; a kulcs
+csak akkor kötelező, ha `--recipe` fut.
+
+### Futtatás
 
 - **Ütemezett futtatás csak akkor, amikor van mit ütemezni.** A korai fázisok kézi
   parancsok. A szolgáltatásként futtatás akkor kerül be, amikor az ütemezett

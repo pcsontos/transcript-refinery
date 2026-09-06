@@ -14,10 +14,13 @@ A teljes függőleges út a modell kivételével. Indoklás:
 
 **Kész, ha:**
 
-- A szkennelő parancs hálózat nélkül kilistázza a korpusz összes elemét
-  csatornával, címmel, nyers és normalizált szószámmal, felirat-minőséggel.
-- Egyetlen elemre futtatva létrejön a normalizált átirat a helyes vault-mappában:
-  **nulla duplikált sor, érvényes frontmatter, nulla wikilink.**
+- A szkennelő parancs hálózat nélkül kilistázza az összes forrásmappa minden
+  feliratfájlját — forrásnévvel, címmel, nyers és normalizált szószámmal,
+  felirat-minőséggel —, **metaadatfájl nélküli feliratokat is beleértve.**
+- Egyetlen elemre futtatva létrejön a normalizált átirat a
+  `Inbox/transcript-refinery/<forrás>/` fa alatt, a forrásmappa szerkezetét
+  tükrözve: **nulla duplikált sor, érvényes frontmatter metaadat nélkül is,
+  nulla wikilink.**
 - Ugyanaz a parancs másodszor futtatva **semmit nem ír**, és „már feldolgozva"
   státuszt jelent.
 - Tíz elemből egy sérült feliratfájllal: kilenc sikerül, a futás végigmegy, és a
@@ -38,16 +41,22 @@ A teljes függőleges út a modell kivételével. Indoklás:
 - Az előzetes becslés a futás **előtt** kiírja a becsült tokent és költséget, és a
   megadott plafon alatt **el sem indul.**
 
-## Fázis 2 — Újratranszkribálás és a backfill
+## Fázis 2 — Felirat-minőség és köteges feldolgozás
+
+Az újratranszkribálás kikerült az appból ([`decisions/0008`](<./decisions/0008-forras-fuggetlen-bemenet.md>)):
+a whisper-futtatás külön eszköz, aminek a kimenete egy újabb forrásmappa. Ami
+itt marad, az a köteg és a jelentés.
 
 **Kész, ha:**
 
-- Egy automatikus feliratúnak minősített videó újratranszkribálódik, és a
-  frontmatter a lokális whispert és a modellnevet jelöli forrásként.
-- A 72 videós backfill **felügyelet nélkül, egy éjszaka alatt** lefut; reggel
+- A futás záró riportja **számszerűen** megnevezi, hány elem készült
+  automatikus és hány kreátori feliratból, és felsorolja az automatikusakat.
+- A teljes korpusz **felügyelet nélkül, egy éjszaka alatt** lefut; reggel
   riport áll rendelkezésre arról, mennyi sikerült, mennyi nem, és miért.
-- A gép újraindítása a köteg közepén **nem veszít munkát**: az újrafuttatás a kész
-  elemeket kihagyja.
+- A gép újraindítása a köteg közepén **nem veszít munkát**: az újrafuttatás a
+  kész elemeket kihagyja.
+- Egy külső eszközzel újratranszkribált felirat új forrásmappaként betéve
+  ugyanazon a magon megy át, kódmódosítás nélkül.
 
 ## Fázis 3 — Több recept és az iteráció megmérése
 
@@ -60,14 +69,12 @@ A teljes függőleges út a modell kivételével. Indoklás:
 - **Publikált mérés arról, javít-e a második iteráció, mennyivel, és mennyiért.**
   A nemleges válasz is eredmény: akkor a loop alapból egy körre áll.
 
-## Fázis 4 — URL-adapter
+## Fázis 4 — törölve
 
-**Kész, ha:**
-
-- Az URL-út **ugyanazt a kimenetet** adja ugyanarra a videóra, mint a mappa-alapú
-  út. Ez bizonyítja, hogy a mag forrásfüggetlen.
-- Egy playlist-URL kiírja a feloldott darabszámot, és egy küszöb felett
-  megerősítést kér, mielőtt bármit letöltene.
+Az URL-adapter a letöltéssel együtt kikerült ([`decisions/0008`](<./decisions/0008-forras-fuggetlen-bemenet.md>)):
+az app URL-ből nem dolgozik, a letöltés más program dolga. Az „absztrakció két
+implementációval igazolva" szerepet a `Source` két különböző eredetű
+forrásmappával tölti be.
 
 ## Fázis 5 — Felületek
 
@@ -88,6 +95,9 @@ Nem befolyásolja a v1 architektúráját:
 
 - **Kereszthivatkozás a vault meglévő jegyzeteire** vektoros kereséssel — ez a
   legágensibb bővítés, és külön pgvector-alapú tárat igényel.
+- **Külön transzkribáló eszköz** (`whisper.cpp`, `medium.en`), aminek a
+  kimenete forrásmappaként érkezik vissza. A `0005` elemzése érvényes marad,
+  csak nem ennek az appnak a része.
 - **Groq Whisper API**, ha valaha szükség lesz rá.
 - **A vízvezeték-réteg újraépítése n8n-ben**, tanulási célból és
   őszinte technológiai összehasonlításként: *megépítettem kétszer, itt van, melyik
