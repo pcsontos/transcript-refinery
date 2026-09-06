@@ -82,7 +82,7 @@ async function publishRendered(
 ): Promise<ItemOutcome> {
   const lintErrors = lintVaultMarkdown(markdown)
   if (lintErrors.length > 0) {
-    throw new Error(`a jegyzet megsérti a vault linkszabályát: ${lintErrors.join('; ')}`)
+    throw new Error(`a jegyzet megsérti a vault írási szabályait: ${lintErrors.join('; ')}`)
   }
 
   const result = await publishNote(target, markdown, deps.options)
@@ -149,7 +149,7 @@ async function runRecipe(
 
   const lintErrors = lintVaultMarkdown(markdown)
   if (lintErrors.length > 0) {
-    throw new Error(`a jegyzet megsérti a vault linkszabályát: ${lintErrors.join('; ')}`)
+    throw new Error(`a jegyzet megsérti a vault írási szabályait: ${lintErrors.join('; ')}`)
   }
 
   const target = noteFile(deps.notesRoot, item, recipe.outputFile)

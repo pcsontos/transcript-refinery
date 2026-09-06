@@ -16,7 +16,16 @@ const SUBTITLE_EXTENSIONS = ['.srt', '.vtt'] as const
  * régiókód (kötőjel utáni szakasz) case-insensitive marad, mert a
  * yt-dlp/whisper `en-US` alakja is nagybetűs régiót ad. A megszorítás a
  * `Rész.II.srt` / `Rész.III.srt` osztályt üti ki: a római szám nagybetűs,
- * tehát idézőjel — értsd: nyelvkód — nélkül marad az alapnév része.
+ * tehát levágás nélkül marad az alapnév része.
+ *
+ * Két ismert korlát, mindkettő tudatosan vállalt:
+ * 1. A kézzel írt NAGYBETŰS nyelvkód (`Talk.EN.srt`) nem ismerődik fel — a
+ *    yt-dlp és a whisper is kisbetűset ad, a megkülönböztetés a római
+ *    számoktól viszont enélkül nem megoldható.
+ * 2. A címvégi kisbetűs kétbetűs szótag (`Bevezetés a Node.js.srt`) alakilag
+ *    azonos egy valódi nyelvkóddal, ezért levágódik: az alapnév csonka lesz
+ *    és a `language` hamis. A metaadat viszont NEM vész el — a
+ *    sidecar-keresés a levágás nélküli nevet is próbálja.
  */
 const LANGUAGE_TAG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
 

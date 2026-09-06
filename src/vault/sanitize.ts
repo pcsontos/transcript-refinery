@@ -1,7 +1,7 @@
 /**
- * yt-dlp-kompatibilis karaktercsere: fájlrendszer-biztos szegmensnevek
- * (csatornanév, videócím) a tiltott karakterek fullwidth megfelelőire
- * cserélve, hogy a mappa- és fájlnév minden platformon érvényes maradjon.
+ * yt-dlp-kompatibilis karaktercsere: fájlrendszer-biztos szegmensnevek — a
+ * tiltott karakterek a fullwidth megfelelőikre cserélve, hogy a mappa- és
+ * fájlnév minden platformon érvényes maradjon.
  */
 const REPLACEMENTS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\//g, '⧸'], // BIG SOLIDUS
@@ -23,8 +23,10 @@ const REPLACEMENTS: ReadonlyArray<readonly [RegExp, string]> = [
 const CONTROL_CHARS = /\p{Cc}/gu
 
 /**
- * Egyetlen útvonalszegmens (csatornanév vagy videócím) biztonságossá tétele.
- * Idempotens: a helyettesítő karakterek maguk már nem tiltottak.
+ * Egyetlen útvonalszegmens biztonságossá tétele. A hívók a forrás nevét, a
+ * tükrözött relatív mappaszegmenseket és az alapnevet adják át — metaadat
+ * sosem kerül útvonalba. Idempotens: a helyettesítő karakterek maguk már nem
+ * tiltottak.
  */
 export function sanitizeSegment(name: string): string {
   let out = name
