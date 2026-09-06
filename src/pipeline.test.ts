@@ -66,15 +66,18 @@ describe('processItem', () => {
     expect(md).toContain('Ez egy másik sor.')
   })
 
-  it('a fájlt a forrás mappaszerkezete és az alapnév szerint nevezi el', async () => {
+  it('a célutat a forrásmappa adja, a metaadat nem írja felül', async () => {
     const { sink } = collectEvents()
-    const outcome = await processItem(item(), {
-      notesRoot,
-      store,
-      sink,
-      version: '0.1.0',
-      options: {},
-    })
+    const outcome = await processItem(
+      item({
+        metadata: {
+          videoId: 'dQw4w9WgXcQ',
+          channel: 'Egészen Más Csatorna',
+          uploadedAt: '2026-07-14',
+        },
+      }),
+      { notesRoot, store, sink, version: '0.1.0', options: {} },
+    )
     expect(outcome.path).toBe(join(notesRoot, 'youtube', 'csatorna', 'Beszéd_transcript.md'))
   })
 
