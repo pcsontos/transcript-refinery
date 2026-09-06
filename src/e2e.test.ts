@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_NOTES_DIR, loadConfig } from './config.js'
-import { collectEvents, summarize } from './events.js'
+import { collectEvents, summarize, type RunEvent } from './events.js'
 import { processItem } from './pipeline.js'
 import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
@@ -47,6 +47,10 @@ beforeEach(async () => {
   await run('git', ['config', 'user.name', 'Teszt'], { cwd: vault })
 })
 
+afterEach(async () => {
+  await rm(work, { recursive: true, force: true })
+})
+
 function config(sources: string[], notesDir?: string) {
   return loadConfig(
     {
@@ -75,7 +79,7 @@ async function processAll(sources: string[], notesDir?: string) {
     if (outcome.path && outcome.status === 'published') written.push(outcome.path)
   }
   store.close()
-  return { written, summary: summarize(events), notesRoot: cfg.notesRoot }
+  return { written, summary: summarize(events), notesRoot: cfg.notesRoot, events, items }
 }
 
 describe('végponttól végpontig', () => {
@@ -159,10 +163,21 @@ describe('végponttól végpontig', () => {
     await write(join(subsA, 'Jó.en.srt'), SRT)
     await write(join(subsA, 'Rossz.en.srt'), '')
 
-    const { written, summary } = await processAll([subsA])
+    const { written, summary, events, items } = await processAll([subsA])
 
     expect(written).toHaveLength(1)
     expect(summary.failed).toBe(1)
+
+    // Nem elég a hibák száma: a riportnak a VALÓBAN hibás elemet kell
+    // megneveznie. Metaadat híján az azonosító útvonal-hash, ezért a
+    // felderített elemből vesszük.
+    const rossz = items.find((i) => i.baseName === 'Rossz')
+    expect(rossz).toBeDefined()
+    const failed = events.filter(
+      (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
+    )
+    expect(failed).toHaveLength(1)
+    expect(failed[0]!.itemId).toBe(rossz!.itemId)
   })
 
   it('a futás után a vault munkafája tiszta, egyetlen új committal', async () => {
