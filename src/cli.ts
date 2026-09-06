@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { loadConfig, loadDotEnv, loadModelConfig, validateConfig, type Config } from './config.js'
+import {
+  CONFIG_FILENAME,
+  loadConfig,
+  loadDotEnv,
+  loadModelConfig,
+  readConfigFile,
+  validateConfig,
+  type Config,
+} from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateRunUsd } from './model/budget.js'
 import { createModelClient } from './model/client.js'
@@ -10,7 +19,7 @@ import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
 import { parseSubtitle } from './subtitle/parse.js'
-import { folderSource } from './source/folder.js'
+import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
 import type { SourceItem } from './types.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
@@ -24,7 +33,9 @@ Parancsok:
   run     Átiratot készít és a vaultba írja.
 
 Kapcsolók:
-  --channel <név>   csak a megadott csatorna
+  --config <út>     konfigurációs fájl (alapértelmezés: refinery.config.yaml)
+  --source <név>    csak a megadott forrásmappából
+  --channel <név>   csak a megadott csatorna (metaadat nélküli elemre nem illik)
   --limit <szám>    legfeljebb ennyi elem
   --recipe <id>     receptet is futtat (pl. summary); enélkül csak átirat
   --dry-run         nem ír fájlt és nem rögzít állapotot; recepttel a
@@ -35,12 +46,17 @@ Kapcsolók:
 
 function applyFilters(
   items: SourceItem[],
-  filters: { channel?: string; limit?: number },
+  filters: { source?: string; channel?: string; limit?: number },
 ): SourceItem[] {
   let out = items
+  if (filters.source) {
+    const wanted = filters.source.toLocaleLowerCase()
+    out = out.filter((i) => i.source.toLocaleLowerCase() === wanted)
+  }
   if (filters.channel) {
+    // Metaadat nélküli elemnek nincs csatornája: a szűrő ilyenkor kizárja.
     const wanted = filters.channel.toLocaleLowerCase()
-    out = out.filter((i) => i.channel.toLocaleLowerCase() === wanted)
+    out = out.filter((i) => i.metadata.channel?.toLocaleLowerCase() === wanted)
   }
   if (filters.limit !== undefined) out = out.slice(0, filters.limit)
   return out
@@ -51,27 +67,27 @@ function render(event: RunEvent): string | null {
     case 'scan:found':
       return `${event.count} feldolgozható videó`
     case 'item:normalized':
-      return `  ${event.videoId}: ${event.wordsRaw} → ${event.wordsNormalized} szó (${event.captionSource})`
+      return `  ${event.itemId}: ${event.wordsRaw} → ${event.wordsNormalized} szó (${event.captionSource})`
     case 'item:published':
       return `  ✓ ${event.path}`
     case 'item:skipped':
-      return `  – ${event.videoId}: ${event.reason}`
+      return `  – ${event.itemId}: ${event.reason}`
     case 'item:failed':
-      return `  ✗ ${event.videoId}: ${event.error}`
+      return `  ✗ ${event.itemId}: ${event.error}`
     case 'run:estimate':
       return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(2)} $ (plafon: ${event.limitUsd.toFixed(2)} $)`
     case 'run:aborted':
       return `A futás megállt: ${event.reason} (${event.spentUsd.toFixed(2)} $ / ${event.limitUsd.toFixed(2)} $)`
     case 'item:refined':
-      return `  ~ ${event.videoId}: ${event.recipe} pontszám ${event.score.toFixed(2)}, ${String(event.generations)} generálás, ${event.usd.toFixed(4)} $`
+      return `  ~ ${event.itemId}: ${event.recipe} pontszám ${event.score.toFixed(2)}, ${String(event.generations)} generálás, ${event.usd.toFixed(4)} $`
     default:
       return null
   }
 }
 
 async function commandScan(cfg: Config): Promise<number> {
-  const items = await folderSource(cfg.pinchflatDownloads).discover()
-  console.log(`${items.length} feldolgozható videó\n`)
+  const items = await discoverAll(cfg.sources, cfg.languages)
+  console.log(`${items.length} feldolgozható felirat\n`)
   for (const item of items) {
     let detail: string
     try {
@@ -83,7 +99,8 @@ async function commandScan(cfg: Config): Promise<number> {
     } catch (error) {
       detail = `olvashatatlan felirat: ${(error as Error).message}`
     }
-    console.log(`  ${item.videoId}  ${item.channel}  ${item.title}`)
+    console.log(`  ${item.source}  ${item.itemId}  ${item.title}`)
+    console.log(`      ${item.sourceFile}`)
     console.log(`      ${detail}`)
   }
   return 0
@@ -91,7 +108,9 @@ async function commandScan(cfg: Config): Promise<number> {
 
 export async function commandRun(
   cfg: Config,
+  raw: unknown,
   flags: {
+    source?: string
     channel?: string
     limit?: number
     recipe?: string
@@ -104,7 +123,7 @@ export async function commandRun(
   let maxIterations = 0
   if (flags.recipe) {
     const recipe = getRecipe(flags.recipe)
-    const modelConfig = loadModelConfig(process.env)
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
     recipeDeps = {
       recipe,
       client: createModelClient(modelConfig),
@@ -125,7 +144,7 @@ export async function commandRun(
   }
 
   try {
-    const all = await folderSource(cfg.pinchflatDownloads).discover()
+    const all = await discoverAll(cfg.sources, cfg.languages)
     const items = applyFilters(all, flags)
     printing({ type: 'scan:found', count: items.length })
 
@@ -217,6 +236,8 @@ export async function main(argv: readonly string[]): Promise<number> {
   const { values } = parseArgs({
     args: [...argv.slice(1)],
     options: {
+      config: { type: 'string' },
+      source: { type: 'string' },
       channel: { type: 'string' },
       limit: { type: 'string' },
       recipe: { type: 'string' },
@@ -227,12 +248,15 @@ export async function main(argv: readonly string[]): Promise<number> {
     allowPositionals: false,
   })
 
-  const cfg = loadConfig(process.env)
+  const configPath = resolve(process.cwd(), values.config ?? CONFIG_FILENAME)
+  const raw = await readConfigFile(configPath)
+  const cfg = loadConfig(raw, configPath)
   await validateConfig(cfg)
 
   if (command === 'scan') return commandScan(cfg)
   if (command === 'run') {
-    return commandRun(cfg, {
+    return commandRun(cfg, raw, {
+      source: values.source,
       channel: values.channel,
       limit: values.limit === undefined ? undefined : Number(values.limit),
       recipe: values.recipe,

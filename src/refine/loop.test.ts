@@ -6,13 +6,18 @@ import type { SourceItem } from '../types.js'
 import { refine } from './loop.js'
 
 const ITEM: SourceItem = {
-  videoId: 'abc123',
-  title: 'Cím',
-  channel: 'Csatorna',
-  uploadedAt: '2026-07-14',
-  url: 'https://example.com',
+  itemId: 'abc123',
+  source: 'proba',
+  sourceFile: 'Cím.en.srt',
   subtitlePath: '/nem/szamit.srt',
-  mediaPath: null,
+  baseName: 'Cím',
+  title: 'Cím',
+  language: 'en',
+  metadata: {
+    channel: 'Csatorna',
+    uploadedAt: '2026-07-14',
+    url: 'https://example.com',
+  },
 }
 
 const INPUT = { item: ITEM, transcript: 'az átirat' }
