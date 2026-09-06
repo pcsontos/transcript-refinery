@@ -12,7 +12,7 @@ import { parseSubtitle } from './subtitle/parse.js'
 import type { StateStore } from './state/db.js'
 import type { NormalizedTranscript, SourceItem } from './types.js'
 import { lintVaultMarkdown } from './vault/lint.js'
-import { recipeFile, resolveChannelDir, videoDir } from './vault/paths.js'
+import { noteFile } from './vault/paths.js'
 import { publishNote, type PublishOptions } from './vault/publish.js'
 import { renderRecipeNote, renderTranscriptNote } from './vault/render.js'
 
@@ -87,15 +87,15 @@ async function publishRendered(
 
   const result = await publishNote(target, markdown, deps.options)
   if (result.status === 'skipped') {
-    deps.store.recordArtifact(item.videoId, kind, 'done', result.path, null)
-    deps.sink({ type: 'item:skipped', videoId: item.videoId, reason: 'a fájl már létezik' })
+    deps.store.recordArtifact(item.itemId, kind, 'done', result.path, null)
+    deps.sink({ type: 'item:skipped', itemId: item.itemId, reason: 'a fájl már létezik' })
     return { status: 'skipped', path: result.path }
   }
 
   if (!deps.options.dryRun) {
-    deps.store.recordArtifact(item.videoId, kind, 'done', result.path, null)
+    deps.store.recordArtifact(item.itemId, kind, 'done', result.path, null)
   }
-  deps.sink({ type: 'item:published', videoId: item.videoId, path: result.path })
+  deps.sink({ type: 'item:published', itemId: item.itemId, path: result.path })
   return { status: 'published', path: result.path }
 }
 
@@ -103,7 +103,6 @@ async function publishRendered(
 async function runRecipe(
   item: SourceItem,
   transcript: NormalizedTranscript,
-  dir: string,
   deps: PipelineDeps,
   recipeDeps: RecipeDeps,
 ): Promise<ItemOutcome> {
@@ -119,7 +118,7 @@ async function runRecipe(
 
   deps.sink({
     type: 'item:refined',
-    videoId: item.videoId,
+    itemId: item.itemId,
     recipe: recipe.id,
     score: result.score,
     generations: result.generations,
@@ -130,7 +129,7 @@ async function runRecipe(
   // konvenció: bizonyos típusok soha nem kerülhetnek publikálási útra.
   if (!recipe.publishable) {
     if (!deps.options.dryRun) {
-      deps.store.recordArtifact(item.videoId, recipe.id, 'done', null, null, {
+      deps.store.recordArtifact(item.itemId, recipe.id, 'done', null, null, {
         iterations: result.generations,
         score: result.score,
         costUsd: usd,
@@ -153,12 +152,12 @@ async function runRecipe(
     throw new Error(`a jegyzet megsérti a vault linkszabályát: ${lintErrors.join('; ')}`)
   }
 
-  const target = recipeFile(dir, item.title, recipe.outputFile)
+  const target = noteFile(deps.notesRoot, item, recipe.outputFile)
   const published = await publishNote(target, markdown, deps.options)
 
   if (!deps.options.dryRun) {
     deps.store.recordArtifact(
-      item.videoId,
+      item.itemId,
       recipe.id,
       'done',
       published.path,
@@ -173,11 +172,11 @@ async function runRecipe(
   }
 
   if (published.status === 'skipped') {
-    deps.sink({ type: 'item:skipped', videoId: item.videoId, reason: 'a fájl már létezik' })
+    deps.sink({ type: 'item:skipped', itemId: item.itemId, reason: 'a fájl már létezik' })
     return { status: 'skipped', recipePath: published.path }
   }
 
-  deps.sink({ type: 'item:published', videoId: item.videoId, path: published.path })
+  deps.sink({ type: 'item:published', itemId: item.itemId, path: published.path })
   return { status: 'published', recipePath: published.path }
 }
 
@@ -186,45 +185,42 @@ export async function processItem(
   item: SourceItem,
   deps: PipelineDeps,
 ): Promise<ItemOutcome> {
-  const { notesRoot, store, sink, version, options, recipeDeps } = deps
-  sink({ type: 'item:start', videoId: item.videoId, title: item.title })
-  store.recordVideo(item)
+  const { store, sink, version, options, recipeDeps } = deps
+  sink({ type: 'item:start', itemId: item.itemId, title: item.title })
+  store.recordItem(item)
 
-  const kellAtirat = options.force || !store.isDone(item.videoId, ARTIFACT_KIND)
+  const kellAtirat = options.force || !store.isDone(item.itemId, ARTIFACT_KIND)
   const kellRecept =
     recipeDeps !== undefined &&
-    (options.force || !store.isDone(item.videoId, recipeDeps.recipe.id))
+    (options.force || !store.isDone(item.itemId, recipeDeps.recipe.id))
 
   if (!kellAtirat && !kellRecept) {
-    sink({ type: 'item:skipped', videoId: item.videoId, reason: 'már feldolgozva' })
+    sink({ type: 'item:skipped', itemId: item.itemId, reason: 'már feldolgozva' })
     return { status: 'skipped' }
   }
 
   try {
     const transcript = await normalizeItem(item)
-    sink({ type: 'item:parsed', videoId: item.videoId, cues: transcript.lines.length })
+    sink({ type: 'item:parsed', itemId: item.itemId, cues: transcript.lines.length })
     sink({
       type: 'item:normalized',
-      videoId: item.videoId,
+      itemId: item.itemId,
       wordsRaw: transcript.wordsRaw,
       wordsNormalized: transcript.wordsNormalized,
       captionSource: transcript.captionSource,
     })
     store.recordTranscript(
-      item.videoId,
+      item.itemId,
       transcript.captionSource,
       transcript.wordsRaw,
       transcript.wordsNormalized,
     )
 
-    const channelDir = await resolveChannelDir(notesRoot, item.channel)
-    const dir = videoDir(notesRoot, channelDir, item.title)
-
     let outcome: ItemOutcome = { status: 'skipped' }
 
     if (kellAtirat) {
       outcome = await publishRendered(
-        recipeFile(dir, item.title, '_transcript.md'),
+        noteFile(deps.notesRoot, item, '_transcript.md'),
         renderTranscriptNote(item, transcript, version),
         item,
         ARTIFACT_KIND,
@@ -234,14 +230,14 @@ export async function processItem(
 
     if (kellRecept && recipeDeps) {
       try {
-        const recipeOutcome = await runRecipe(item, transcript, dir, deps, recipeDeps)
+        const recipeOutcome = await runRecipe(item, transcript, deps, recipeDeps)
         if (recipeOutcome.status === 'published') {
           outcome = { ...recipeOutcome, path: outcome.path ?? recipeOutcome.recipePath }
         }
       } catch (error) {
         const message = (error as Error).message
-        store.recordArtifact(item.videoId, recipeDeps.recipe.id, 'failed', null, message)
-        sink({ type: 'item:failed', videoId: item.videoId, error: message })
+        store.recordArtifact(item.itemId, recipeDeps.recipe.id, 'failed', null, message)
+        sink({ type: 'item:failed', itemId: item.itemId, error: message })
         // A recept hibája nem ronthatja el az átirat már sikeres állapotát —
         // az `outcome` a már elért eredményt (vagy a kezdeti 'skipped'-et) tartja meg.
       }
@@ -250,8 +246,8 @@ export async function processItem(
     return outcome
   } catch (error) {
     const message = (error as Error).message
-    store.recordArtifact(item.videoId, ARTIFACT_KIND, 'failed', null, message)
-    sink({ type: 'item:failed', videoId: item.videoId, error: message })
+    store.recordArtifact(item.itemId, ARTIFACT_KIND, 'failed', null, message)
+    sink({ type: 'item:failed', itemId: item.itemId, error: message })
     return { status: 'failed', error: message }
   }
 }

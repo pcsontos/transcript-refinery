@@ -24,81 +24,119 @@ Ez egy sor.
 Ez egy másik sor.
 `
 
-let vault: string
-let work: string
+let dir: string
+let notesRoot: string
 let store: StateStore
-let item: SourceItem
 
 beforeEach(async () => {
-  work = await mkdtemp(join(tmpdir(), 'refinery-pipe-'))
-  vault = join(work, 'vault')
-  await mkdir(vault, { recursive: true })
-  const srtPath = join(work, 'video.en.srt')
-  await writeFile(srtPath, SRT, 'utf8')
-  store = openState(join(work, 'state.db'))
-  item = {
-    videoId: 'abc123',
-    title: 'A cím',
-    channel: 'A csatorna',
-    uploadedAt: '2026-07-14',
-    url: 'https://www.youtube.com/watch?v=abc123',
-    subtitlePath: srtPath,
-    mediaPath: null,
-  }
+  dir = await mkdtemp(join(tmpdir(), 'refinery-pipe-'))
+  notesRoot = join(dir, 'vault')
+  await mkdir(notesRoot, { recursive: true })
+  await writeFile(join(dir, 'Beszéd.en.srt'), SRT, 'utf8')
+  store = openState(join(dir, 'state.db'))
 })
 
 afterEach(() => store.close())
 
+const item = (overrides: Partial<SourceItem> = {}): SourceItem => ({
+  itemId: 'a1b2c3',
+  source: 'youtube',
+  sourceFile: 'csatorna/Beszéd.en.srt',
+  subtitlePath: join(dir, 'Beszéd.en.srt'),
+  baseName: 'Beszéd',
+  title: 'Beszéd',
+  language: 'en',
+  metadata: {},
+  ...overrides,
+})
+
 describe('processItem', () => {
   it('jegyzetet ír, és a tartalomban nincs duplikált sor', async () => {
     const { sink } = collectEvents()
-    const outcome = await processItem(item, { notesRoot: vault, store, sink, version: '0.1.0', options: {} })
+    const outcome = await processItem(item(), {
+      notesRoot,
+      store,
+      sink,
+      version: '0.1.0',
+      options: {},
+    })
     expect(outcome.status).toBe('published')
-    const { readFile } = await import('node:fs/promises')
     const md = await readFile(outcome.path!, 'utf8')
     expect(md.match(/Ez egy sor\./g)).toHaveLength(1)
     expect(md).toContain('Ez egy másik sor.')
   })
 
-  it('a fájlt a vault konvenciója szerint nevezi el', async () => {
+  it('a fájlt a forrás mappaszerkezete és az alapnév szerint nevezi el', async () => {
     const { sink } = collectEvents()
-    const outcome = await processItem(item, { notesRoot: vault, store, sink, version: '0.1.0', options: {} })
-    expect(outcome.path).toContain(join('A csatorna', 'A cím', 'Youtube - A cím_transcript.md'))
+    const outcome = await processItem(item(), {
+      notesRoot,
+      store,
+      sink,
+      version: '0.1.0',
+      options: {},
+    })
+    expect(outcome.path).toBe(join(notesRoot, 'youtube', 'csatorna', 'Beszéd_transcript.md'))
   })
 
   it('másodszor futtatva kihagy, és nem ír semmit', async () => {
     const { sink } = collectEvents()
-    await processItem(item, { notesRoot: vault, store, sink, version: '0.1.0', options: {} })
-    const second = await processItem(item, { notesRoot: vault, store, sink, version: '0.1.0', options: {} })
+    await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {} })
+    const second = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {} })
     expect(second.status).toBe('skipped')
   })
 
   it('sérült feliratnál hibát ad, de nem dob kivételt', async () => {
-    const broken = { ...item, subtitlePath: join(work, 'nincs.en.srt') }
+    const broken = item({ subtitlePath: join(dir, 'nincs.en.srt') })
     const { sink } = collectEvents()
-    const outcome = await processItem(broken, { notesRoot: vault, store, sink, version: '0.1.0', options: {} })
+    const outcome = await processItem(broken, { notesRoot, store, sink, version: '0.1.0', options: {} })
     expect(outcome.status).toBe('failed')
     expect(outcome.error).toBeTruthy()
   })
 
   it('a kiírt jegyzet átmegy a vault linterén', async () => {
     const { sink } = collectEvents()
-    const outcome = await processItem(item, { notesRoot: vault, store, sink, version: '0.1.0', options: {} })
-    const { readFile } = await import('node:fs/promises')
+    const outcome = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {} })
     const { lintVaultMarkdown } = await import('./vault/lint.js')
     expect(lintVaultMarkdown(await readFile(outcome.path!, 'utf8'))).toEqual([])
   })
 
   it('eseményeket bocsát ki, nem ír a konzolra', async () => {
     const { sink, events } = collectEvents()
-    await processItem(item, { notesRoot: vault, store, sink, version: '0.1.0', options: {} })
+    await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {} })
     expect(events.map((e) => e.type)).toContain('item:normalized')
     expect(events.map((e) => e.type)).toContain('item:published')
+  })
+
+  it('metaadat nélküli elemet is végigvisz, és a forrás fája alá ír', async () => {
+    const { sink, events } = collectEvents()
+    const outcome = await processItem(item(), {
+      notesRoot,
+      store,
+      sink,
+      version: '0.1.0',
+      options: { force: false, dryRun: false },
+    })
+    expect(outcome.status).toBe('published')
+    expect(outcome.path).toBe(join(notesRoot, 'youtube', 'csatorna', 'Beszéd_transcript.md'))
+    expect(events.some((e) => e.type === 'item:published')).toBe(true)
+  })
+
+  it('a második futás ugyanarra az elemre nem ír újra', async () => {
+    const deps = {
+      notesRoot,
+      store,
+      sink: collectEvents().sink,
+      version: '0.1.0',
+      options: { force: false, dryRun: false },
+    }
+    await processItem(item(), deps)
+    const second = await processItem(item(), deps)
+    expect(second.status).toBe('skipped')
   })
 })
 
 function alapDeps(): PipelineDeps {
-  return { notesRoot: vault, store, sink: collectEvents().sink, version: '0.1.0', options: {} }
+  return { notesRoot, store, sink: collectEvents().sink, version: '0.1.0', options: {} }
 }
 
 /** Fixture-modell: rögzített szöveget ad vissza, rögzített használattal. */
@@ -160,13 +198,13 @@ function probaKliens(text: string) {
 describe('processItem recepttel', () => {
   it('recept nélkül a Fázis 0 útján marad, és nem néz modell-konfigurációt', async () => {
     // Ez a teszt akkor is fut, ha egyetlen LiteLLM-változó sincs beállítva.
-    const outcome = await processItem(item, alapDeps())
+    const outcome = await processItem(item(), alapDeps())
     expect(outcome.status).toBe('published')
     expect(outcome.path).toContain('_transcript.md')
   })
 
   it('recepttel a jegyzetet is kiírja, a recept fájlnevével', async () => {
-    const outcome = await processItem(item, {
+    const outcome = await processItem(item(), {
       ...alapDeps(),
       recipeDeps: {
         recipe: ATMENO_RECEPT,
@@ -185,7 +223,8 @@ describe('processItem recepttel', () => {
 
   it('a metrikákat az állapottárba írja', async () => {
     const deps = alapDeps()
-    await processItem(item, {
+    const current = item()
+    await processItem(current, {
       ...deps,
       recipeDeps: {
         recipe: ATMENO_RECEPT,
@@ -195,7 +234,7 @@ describe('processItem recepttel', () => {
       },
     })
 
-    const record = deps.store.artifactOf(item.videoId, 'proba')
+    const record = deps.store.artifactOf(current.itemId, 'proba')
     expect(record!.status).toBe('done')
     expect(record!.iterations).toBe(1)
     expect(record!.score).toBe(1)
@@ -205,7 +244,7 @@ describe('processItem recepttel', () => {
 
   it('a költségőr összegzi a loop tényleges használatát', async () => {
     const guard = createCostGuard(5)
-    await processItem(item, {
+    await processItem(item(), {
       ...alapDeps(),
       recipeDeps: {
         recipe: ATMENO_RECEPT,
@@ -225,15 +264,16 @@ describe('processItem recepttel', () => {
       modelConfig: MODELL_CFG,
       guard: createCostGuard(5),
     }
+    const current = item()
 
-    await processItem(item, { ...deps, recipeDeps })
-    const masodik = await processItem(item, { ...deps, recipeDeps })
+    await processItem(current, { ...deps, recipeDeps })
+    const masodik = await processItem(current, { ...deps, recipeDeps })
 
     expect(masodik.status).toBe('skipped')
   })
 
   it('publishable: false receptet nem ír ki', async () => {
-    const outcome = await processItem(item, {
+    const outcome = await processItem(item(), {
       ...alapDeps(),
       recipeDeps: {
         recipe: { ...ATMENO_RECEPT, id: 'nem-publikus', publishable: false },
@@ -248,7 +288,8 @@ describe('processItem recepttel', () => {
 
   it('a recept hibája nem rontja el a már publikált átirat állapotát', async () => {
     const deps = alapDeps()
-    const outcome = await processItem(item, {
+    const current = item()
+    const outcome = await processItem(current, {
       ...deps,
       recipeDeps: {
         recipe: ATMENO_RECEPT,
@@ -263,13 +304,14 @@ describe('processItem recepttel', () => {
 
     expect(outcome.status).toBe('published')
     expect(outcome.path).toContain('_transcript.md')
-    expect(deps.store.artifactOf(item.videoId, 'transcript')!.status).toBe('done')
-    expect(deps.store.artifactOf(item.videoId, ATMENO_RECEPT.id)!.status).toBe('failed')
+    expect(deps.store.artifactOf(current.itemId, 'transcript')!.status).toBe('done')
+    expect(deps.store.artifactOf(current.itemId, ATMENO_RECEPT.id)!.status).toBe('failed')
   })
 
   it('dry-run mellett nem-publikálható recept sem marad tartósan késznek jelölve', async () => {
     const deps = alapDeps()
-    await processItem(item, {
+    const current = item()
+    await processItem(current, {
       ...deps,
       options: { dryRun: true },
       recipeDeps: {
@@ -280,6 +322,6 @@ describe('processItem recepttel', () => {
       },
     })
 
-    expect(deps.store.artifactOf(item.videoId, 'nem-publikus-dry')).toBeNull()
+    expect(deps.store.artifactOf(current.itemId, 'nem-publikus-dry')).toBeNull()
   })
 })

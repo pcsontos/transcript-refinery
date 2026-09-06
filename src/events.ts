@@ -7,18 +7,18 @@ import type { CaptionSource } from './types.js'
 export type RunEvent =
   | { type: 'scan:start'; source: string }
   | { type: 'scan:found'; count: number }
-  | { type: 'item:start'; videoId: string; title: string }
-  | { type: 'item:parsed'; videoId: string; cues: number }
+  | { type: 'item:start'; itemId: string; title: string }
+  | { type: 'item:parsed'; itemId: string; cues: number }
   | {
       type: 'item:normalized'
-      videoId: string
+      itemId: string
       wordsRaw: number
       wordsNormalized: number
       captionSource: CaptionSource
     }
-  | { type: 'item:published'; videoId: string; path: string }
-  | { type: 'item:skipped'; videoId: string; reason: string }
-  | { type: 'item:failed'; videoId: string; error: string }
+  | { type: 'item:published'; itemId: string; path: string }
+  | { type: 'item:skipped'; itemId: string; reason: string }
+  | { type: 'item:failed'; itemId: string; error: string }
   | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
   | {
       type: 'run:estimate'
@@ -30,21 +30,21 @@ export type RunEvent =
   | { type: 'run:aborted'; reason: string; spentUsd: number; limitUsd: number }
   | {
       type: 'item:generating'
-      videoId: string
+      itemId: string
       recipe: string
       /** Hányadik generálás; egytől számozva. */
       generation: number
     }
   | {
       type: 'item:scored'
-      videoId: string
+      itemId: string
       recipe: string
       score: number
       gaps: number
     }
   | {
       type: 'item:refined'
-      videoId: string
+      itemId: string
       recipe: string
       score: number
       generations: number
