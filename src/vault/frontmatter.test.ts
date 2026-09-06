@@ -3,12 +3,12 @@ import { renderFrontmatter } from './frontmatter.js'
 
 describe('renderFrontmatter', () => {
   it('a mezőket a megadott sorrendben írja ki', () => {
-    expect(renderFrontmatter([['a', '1'], ['b', '2']])).toBe('---\na: 1\nb: 2\n---')
+    expect(renderFrontmatter([['a', 'x'], ['b', 'y']])).toBe('---\na: x\nb: y\n---')
   })
 
   it('a hiányzó mezőt kihagyja, nem null-ozza', () => {
-    expect(renderFrontmatter([['a', '1'], ['b', undefined], ['c', '3']])).toBe(
-      '---\na: 1\nc: 3\n---',
+    expect(renderFrontmatter([['a', 'x'], ['b', undefined], ['c', 'z']])).toBe(
+      '---\na: x\nc: z\n---',
     )
   })
 
@@ -44,5 +44,36 @@ describe('renderFrontmatter', () => {
 
   it('üres mezőlistából is érvényes határolókat ad', () => {
     expect(renderFrontmatter([])).toBe('---\n---')
+  })
+
+  it('a YAML-indikátorral kezdődő értéket idézőjelezi (- és @)', () => {
+    expect(renderFrontmatter([['a', '- dashed item']])).toBe(
+      '---\na: "- dashed item"\n---',
+    )
+    expect(renderFrontmatter([['a', '-']])).toBe('---\na: "-"\n---')
+    expect(renderFrontmatter([['a', '@handle']])).toBe('---\na: "@handle"\n---')
+  })
+
+  it('az egész számot és a YAML logikai/null szót idézőjelezi, hogy szöveg maradjon', () => {
+    expect(renderFrontmatter([['a', '12345']])).toBe('---\na: "12345"\n---')
+    expect(renderFrontmatter([['a', 'true']])).toBe('---\na: "true"\n---')
+    expect(renderFrontmatter([['a', 'null']])).toBe('---\na: "null"\n---')
+    expect(renderFrontmatter([['a', 'yes']])).toBe('---\na: "yes"\n---')
+  })
+
+  it('a vezető és záró szóközt idézőjelezi, a szóközöket megőrzi', () => {
+    expect(renderFrontmatter([['a', ' szóköz ']])).toBe('---\na: " szóköz "\n---')
+  })
+
+  it('a dátum alakú értéket nem idézőjelezi, hogy az Obsidian dátumként olvassa', () => {
+    expect(renderFrontmatter([['uploaded', '2026-07-14']])).toBe(
+      '---\nuploaded: 2026-07-14\n---',
+    )
+  })
+
+  it('a lista elemeit is a fenti szabályok szerint idézi', () => {
+    expect(renderFrontmatter([['tags', ['- x', '12']]])).toBe(
+      '---\ntags: ["- x", "12"]\n---',
+    )
   })
 })

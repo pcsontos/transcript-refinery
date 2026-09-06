@@ -15,9 +15,40 @@ export type FrontmatterField = readonly [name: string, value: FrontmatterValue |
  */
 const PLAIN = /^[\p{L}\p{N}_ ./@-]+$/u
 
+/**
+ * Kizáró feltételek, amik a `PLAIN` teszttől függetlenül idézőjelet
+ * kényszerítenek — a `PLAIN` karakterhalmaza önmagában nem zárja ki ezeket,
+ * pedig idézés nélkül vagy törik a YAML-t, vagy csendben más típust adnak.
+ */
+
+/**
+ * Egész szám alakú érték. Idézés nélkül a beolvasáskor számmá válna, holott
+ * a mező (pl. `channel`, `tags` eleme) szövegként értendő. Szándékosan csak
+ * egész szám: a `score`/`cost_usd`/`punctuation_density` mezők tizedesponttal
+ * formázott, valódi számot hordozó szövegek — ezeknél a számmá válás a helyes
+ * viselkedés, nem hibás típusváltás.
+ */
+const INTEGER = /^[+-]?\d+$/
+
+/**
+ * YAML-ban logikai vagy null értékként olvasható szó, kis-nagybetűtől
+ * függetlenül. A `true`/`false`/`null`/`~` YAML 1.2-ben is így viselkedik; a
+ * `yes`/`no`/`on`/`off` YAML 1.1-es alak, amit egyes elemzők (pl. az
+ * Obsidianban futó) még értelmeznek.
+ */
+const RESERVED_WORD = /^(?:true|false|null|yes|no|on|off|~)$/i
+
+function needsQuoting(value: string): boolean {
+  if (value !== value.trim()) return true
+  if (/^[-@]/.test(value)) return true
+  if (INTEGER.test(value)) return true
+  if (RESERVED_WORD.test(value)) return true
+  return false
+}
+
 function scalar(value: string): string {
   if (value === '') return '""'
-  if (PLAIN.test(value)) return value
+  if (PLAIN.test(value) && !needsQuoting(value)) return value
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
