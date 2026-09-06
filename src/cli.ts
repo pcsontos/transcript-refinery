@@ -207,7 +207,12 @@ export async function commandRun(
     }
 
     const summary = summarize(events)
-    printing({ type: 'run:done', ...summary })
+    printing({
+      type: 'run:done',
+      succeeded: summary.succeeded,
+      skipped: summary.skipped,
+      failed: summary.failed,
+    })
     console.log(
       `\nKész: ${summary.succeeded} sikeres, ${summary.skipped} kihagyva, ${summary.failed} hibás.`,
     )

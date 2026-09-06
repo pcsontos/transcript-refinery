@@ -50,13 +50,40 @@ export type RunEvent =
       generations: number
       usd: number
     }
+  | {
+      type: 'run:sliced'
+      /** Ennyi elem indul ebben a futásban. */
+      planned: number
+      /** Ennyi maradt a következő futásra, mert nem fért a plafon alá. */
+      deferred: number
+      usd: number
+      limitUsd: number
+    }
+  | {
+      type: 'item:retry'
+      itemId: string
+      /** Hányadik kísérlet bukott el; egytől számozva. */
+      attempt: number
+      delayMs: number
+      reason: string
+    }
 
 export type EventSink = (event: RunEvent) => void
+
+export interface RunFailure {
+  itemId: string
+  error: string
+}
 
 export interface RunSummary {
   succeeded: number
   skipped: number
   failed: number
+  /** A sikeres elemek felirat-forrás szerinti bontása. */
+  byCaptionSource: Record<CaptionSource, number>
+  /** Az automatikus feliratból készült sikeres elemek azonosítói, rendezve. */
+  autoItems: string[]
+  failures: RunFailure[]
 }
 
 /** Teszteléshez és a futás végi riporthoz: memóriában gyűjti az eseményeket. */
@@ -65,14 +92,59 @@ export function collectEvents(): { sink: EventSink; events: RunEvent[] } {
   return { sink: (e) => void events.push(e), events }
 }
 
+/**
+ * Az összegzés **elemet** számol, nem eseményt: egy elem két jegyzetet is
+ * publikálhat (átirat és recept), és az ugyanaz az egy siker. A hiba erősebb
+ * a publikálásnál — ha a recept elbukott, az elem hibás, akkor is, ha az
+ * átirata már kiment.
+ */
 export function summarize(events: readonly RunEvent[]): RunSummary {
-  let succeeded = 0
-  let skipped = 0
-  let failed = 0
+  const captionOf = new Map<string, CaptionSource>()
+  const published = new Set<string>()
+  const skipped = new Set<string>()
+  const failed = new Map<string, string>()
+
   for (const e of events) {
-    if (e.type === 'item:published') succeeded++
-    else if (e.type === 'item:skipped') skipped++
-    else if (e.type === 'item:failed') failed++
+    switch (e.type) {
+      case 'item:normalized':
+        captionOf.set(e.itemId, e.captionSource)
+        break
+      case 'item:published':
+        published.add(e.itemId)
+        break
+      case 'item:skipped':
+        skipped.add(e.itemId)
+        break
+      case 'item:failed':
+        failed.set(e.itemId, e.error)
+        break
+      default:
+        break
+    }
   }
-  return { succeeded, skipped, failed }
+
+  for (const itemId of failed.keys()) {
+    published.delete(itemId)
+    skipped.delete(itemId)
+  }
+  for (const itemId of published) skipped.delete(itemId)
+
+  const byCaptionSource: Record<CaptionSource, number> = { creator: 0, auto: 0 }
+  const autoItems: string[] = []
+  for (const itemId of published) {
+    const caption = captionOf.get(itemId)
+    if (caption === undefined) continue
+    byCaptionSource[caption]++
+    if (caption === 'auto') autoItems.push(itemId)
+  }
+  autoItems.sort()
+
+  return {
+    succeeded: published.size,
+    skipped: skipped.size,
+    failed: failed.size,
+    byCaptionSource,
+    autoItems,
+    failures: [...failed].map(([itemId, error]) => ({ itemId, error })),
+  }
 }
