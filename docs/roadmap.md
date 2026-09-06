@@ -81,7 +81,8 @@ forrásmappával tölti be.
 Ebben a sorrendben:
 
 1. **Obsidian queue-jegyzet** — fájlolvasás és visszaírás, olcsó. A jegyzetbe
-   bemásolt URL-eket feldolgozza, és az állapotot visszaírja ugyanoda.
+   bemásolt, már meglévő feliratforrás-elemeket (forrás + alapnév) sorolja
+   feldolgozásra, és az állapotot visszaírja ugyanoda.
 2. **Nuxt-felület** — áttekintő és átnéző réteg, élő haladásjelzéssel a mag
    eseményfolyamából.
 

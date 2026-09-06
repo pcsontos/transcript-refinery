@@ -7,8 +7,9 @@ melyik darab miért ott van, ahol. A vitatott döntések külön indoklást kapn
 
 ## 1. Mit csinál
 
-YouTube-feliratokból strukturált tudásjegyzeteket állít elő egy privát Obsidian
-vaultba. A feliratfájl rossz olvasmány: a YouTube gördülő ablakos formátumban
+Kész `.vtt`/`.srt` feliratfájlokból strukturált tudásjegyzeteket állít elő egy
+privát Obsidian vaultba — mindegy, mi állította elő őket. A feliratfájl rossz
+olvasmány: a YouTube gördülő ablakos formátumban
 szolgálja ki, ahol minden sor háromszor szerepel, az automatikus feliratozás
 írásjelek nélkül érkezik, és egy negyvenperces előadásból tizenegyezer szónyi
 átirat lesz, amit senki nem olvas újra.
@@ -314,24 +315,25 @@ ha a kapu később elcsúszik.
 
 ## 10. Munkasor
 
-A kötegelt viselkedés nem az URL-út tulajdonsága, hanem a munkasoré — forrástól
-függetlenül. Már a v1 első futása is köteg: több mint másfélszáz elem a
-letöltési mappából.
+A kötegelt viselkedés a munkasor tulajdonsága, nem egy konkrét forrásé. Már a
+v1 első futása is köteg: több mint másfélszáz elem a konfigurált
+feliratforrásokból.
 
 - **Konkurencia:** konfigurálható, alapértelmezés 2. Az LLM-lépés dominál, és a
   LiteLLM sebességkorlátja a valódi határ.
 - **Részleges hiba: a futás mindig megy tovább.** Az elem hibája elemenként
   rögzül, a futás végén riport készül. Egy harmincelemű köteg nem veszíthet el
   tizenhat elemnyi munkát a tizenhetedik miatt.
-- **Hibaosztályozás:** *átmeneti* (hálózat, sebességkorlát) → korlátos
-  újrapróbálkozás exponenciális várakozással; *végleges* (nincs felirat, privát
-  videó, értelmezési hiba) → rögzít és lép tovább.
+- **Hibaosztályozás:** *átmeneti* (hálózat, sebességkorlát a modellhíváskor) →
+  korlátos újrapróbálkozás exponenciális várakozással; *végleges* (olvashatatlan
+  feliratfájl, értelmezési hiba) → rögzít és lép tovább.
 - **Szűrők:** csatorna, darabszám, dátum — és elsődlegesen az állapottár, ami a
   már feldolgozott elemeket kihagyja.
-- **A lista formátuma sima szöveg**: soronként egy URL, `#`-kommenttel. A per-sor
-  felülbírálás (CSV, YAML) szándékosan kimarad: a receptválasztás futás-szintű, és
-  a per-videó igény spekulatív. Cserébe a fájl kézzel is kellemesen bemásolható
-  marad — ami a lényege, hiszen ez lesz az Obsidian queue-jegyzet is.
+- **A lista formátuma sima szöveg**: soronként egy feliratforrás-elem (forrás +
+  alapnév), `#`-kommenttel. A per-sor felülbírálás (CSV, YAML) szándékosan
+  kimarad: a receptválasztás futás-szintű, és a per-elem igény spekulatív.
+  Cserébe a fájl kézzel is kellemesen bemásolható marad — ami a lényege,
+  hiszen ez lesz az Obsidian queue-jegyzet is.
 
 ### Felderítés: nem figyelő, hanem szkennelés
 
@@ -421,8 +423,6 @@ csak akkor kötelező, ha `--recipe` fut.
 Őszintén, hogy ne tűnjenek eldöntöttnek:
 
 - **A havi költségkeret konkrét összege** nincs meghatározva.
-- **A lokális transzkripció sebességbecslése** (nagyjából három–nyolcszoros valós
-  idő) átvett érték, nem saját mérés. Az első futás után pontosítandó.
 
 **Lezárva: az Evalite aktuális API-ja.** A verzió- és API-döntéseket
 2026-09-01-én verifikáltuk, a [Fázis 1 terv](<./plans/2026-09-01-fazis-1-elso-recept.md>)

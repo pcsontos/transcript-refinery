@@ -1,6 +1,7 @@
 # Transcript Refinery
 
-YouTube-feliratokból strukturált tudásjegyzeteket készít egy Obsidian vaultba.
+Kész `.vtt`/`.srt` feliratfájlokból strukturált tudásjegyzeteket készít egy
+Obsidian vaultba — mindegy, mi állította elő őket.
 
 > **Állapot: a Fázis 1 kész.** A normalizált átiratból modellel készül
 > összefoglaló jegyzet a vaultba, korlátos evaluator–optimizer loopban, a
@@ -56,7 +57,7 @@ A terv nem feltevéseken áll, hanem egy valós, 153 videós korpusz végigmér�
 | Hogyan bővül új dokumentumtípussal? | [Egy kódmodul](<./docs/decisions/0002-dokumentumtipus-egyseg.md>) típusonként; prózatípusnál kb. tíz sor |
 | Mi a bemenet? | [A kész feliratfájl](<./docs/decisions/0008-forras-fuggetlen-bemenet.md>) — az előállítója érdektelen |
 | Ki tartatja be a költségkeretet? | [Két réteg](<./docs/decisions/0004-koltsegplafon.md>): a LiteLLM keményen, az alkalmazás előzetes becsléssel |
-| Groq vagy lokális transzkripció? | [Csak lokális `whisper.cpp`](<./docs/decisions/0005-transzkribalasi-ut.md>) — egy alrendszert takarít meg, és egységes minőségen mér |
+| Groq vagy lokális transzkripció? | [Egyik sem](<./docs/decisions/0008-forras-fuggetlen-bemenet.md>): a transzkribálás kívül esik a hatókörön — a lokális `whisper.cpp` melletti [korábbi döntés](<./docs/decisions/0005-transzkribalasi-ut.md>) történeti, ha az eszköz mégis megépül |
 | Mivel mérünk? | [Evalite, saját rubrikákkal](<./docs/decisions/0006-eval-stack.md>) — egy idegen is le tudja futtatni |
 | Mi az első futtatható szelet? | [Normalizálás vault-írással](<./docs/decisions/0007-elso-szelet.md>), modellhívás nélkül |
 
@@ -101,7 +102,7 @@ fordítói lánc kell: macOS-en az Xcode parancssori eszközei
 (`xcode-select --install`), Debian/Ubuntu-n a `build-essential` és a `python3`
 csomag. Maga a mérés (`pnpm eval`) ezután API-kulcs és hálózat nélkül fut.
 
-212 teszttel, 29 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
+247 teszttel, 33 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
 végpontig teszttel, és a fenti, valós adaton mért eredményekkel a Fázis 1-re.
 
 ## Beállítás
