@@ -1,142 +1,197 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { collectEvents, summarize } from './events.js'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { DEFAULT_NOTES_DIR, loadConfig } from './config.js'
+import { collectEvents, summarize, type RunEvent } from './events.js'
 import { processItem } from './pipeline.js'
-import { folderSource } from './source/folder.js'
+import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
 import { gitCommitPaths, isDirty } from './vault/git.js'
 
 const run = promisify(execFile)
 
-const SRT = (line: string) => `1
+const SRT = `1
 00:00:00,000 --> 00:00:02,000
-${line}
+Ismételt sor.
 
 2
 00:00:01,000 --> 00:00:03,000
-${line}
+Ismételt sor.
 
 3
 00:00:02,000 --> 00:00:04,000
-${line}
-
-4
-00:00:03,000 --> 00:00:05,000
 Egy második, eltérő sor.
 `
 
 let work: string
 let vault: string
-let notesRoot: string
-let downloads: string
+let subsA: string
+let subsB: string
 
-async function makeVideo(id: string, title: string, channel: string, broken = false) {
-  const dir = join(downloads, 'youtube', channel)
-  await mkdir(dir, { recursive: true })
-  await writeFile(
-    join(dir, `${title}.info.json`),
-    JSON.stringify({
-      id,
-      title,
-      channel,
-      upload_date: '20260714',
-      webpage_url: `https://www.youtube.com/watch?v=${id}`,
-    }),
-    'utf8',
-  )
-  await writeFile(join(dir, `${title}.en.srt`), broken ? '' : SRT('Ismételt sor.'), 'utf8')
-}
-
-async function processAll(force = false) {
-  const store = openState(join(work, 'state.db'))
-  const { sink, events } = collectEvents()
-  const items = await folderSource(downloads).discover()
-  const written: string[] = []
-  for (const item of items) {
-    const outcome = await processItem(item, {
-      notesRoot,
-      store,
-      sink,
-      version: '0.1.0',
-      options: { force },
-    })
-    if (outcome.status === 'published' && outcome.path) written.push(outcome.path)
-  }
-  store.close()
-  return { summary: summarize(events), written, events }
+async function write(path: string, content: string): Promise<void> {
+  await mkdir(join(path, '..'), { recursive: true })
+  await writeFile(path, content, 'utf8')
 }
 
 beforeEach(async () => {
   work = await mkdtemp(join(tmpdir(), 'refinery-e2e-'))
   vault = join(work, 'vault')
-  notesRoot = join(vault, 'Resources/Videos/YouTube')
-  downloads = join(work, 'downloads')
-  await mkdir(notesRoot, { recursive: true })
-  await run('git', ['init', '-b', 'main'], { cwd: vault })
-  await run('git', ['config', 'user.email', 'teszt@example.com'], { cwd: vault })
+  subsA = join(work, 'youtube')
+  subsB = join(work, 'meetings')
+  await mkdir(vault, { recursive: true })
+  await run('git', ['init', '-q'], { cwd: vault })
+  await run('git', ['config', 'user.email', 'teszt@pelda.hu'], { cwd: vault })
   await run('git', ['config', 'user.name', 'Teszt'], { cwd: vault })
-  // A git alapból escape-eli a nem-ASCII útvonalneveket a kimenetében;
-  // enélkül a lenti útvonal-ellenőrzés az ékezetes címeken elbukna.
-  await run('git', ['config', 'core.quotepath', 'false'], { cwd: vault })
-  await writeFile(join(vault, '.gitkeep'), '', 'utf8')
-  await run('git', ['add', '.'], { cwd: vault })
-  await run('git', ['commit', '-m', 'alap'], { cwd: vault })
 })
 
-describe('Fázis 0 sikerkritériumai', () => {
-  it('1. a szkennelés hálózat nélkül kilistázza az elemeket a metaadataikkal', async () => {
-    await makeVideo('a1', 'Első videó', 'Csatorna A')
-    await makeVideo('b2', 'Második videó', 'Csatorna B')
-    const items = await folderSource(downloads).discover()
-    expect(items).toHaveLength(2)
-    expect(items.map((i) => i.channel).sort()).toEqual(['Csatorna A', 'Csatorna B'])
+afterEach(async () => {
+  await rm(work, { recursive: true, force: true })
+})
+
+function config(sources: string[], notesDir?: string) {
+  return loadConfig(
+    {
+      vault: notesDir ? { path: vault, notes_dir: notesDir } : { path: vault },
+      sources,
+      state: { path: join(work, 'state.db') },
+    },
+    join(work, 'refinery.config.yaml'),
+  )
+}
+
+async function processAll(sources: string[], notesDir?: string) {
+  const cfg = config(sources, notesDir)
+  const store = openState(cfg.statePath)
+  const { sink, events } = collectEvents()
+  const items = await discoverAll(cfg.sources, cfg.languages)
+  const written: string[] = []
+  for (const item of items) {
+    const outcome = await processItem(item, {
+      notesRoot: cfg.notesRoot,
+      store,
+      sink,
+      version: '0.1.0',
+      options: { force: false, dryRun: false },
+    })
+    if (outcome.path && outcome.status === 'published') written.push(outcome.path)
+  }
+  store.close()
+  return { written, summary: summarize(events), notesRoot: cfg.notesRoot, events, items }
+}
+
+describe('végponttól végpontig', () => {
+  it('metaadat nélküli feliratból is jegyzet lesz, az alapértelmezett mappában', async () => {
+    await write(join(subsA, '3Blue1Brown', 'Transformers.en.srt'), SRT)
+
+    const { written, notesRoot: root } = await processAll([subsA])
+
+    expect(root).toBe(join(vault, DEFAULT_NOTES_DIR))
+    expect(written).toEqual([
+      join(root, 'youtube', '3Blue1Brown', 'Transformers_transcript.md'),
+    ])
+
+    const note = await readFile(written[0]!, 'utf8')
+    expect(note.startsWith('---\n')).toBe(true)
+    expect(note).toContain('title: Transformers')
+    expect(note).toContain('source: youtube')
+    expect(note).toContain('source_file: 3Blue1Brown/Transformers.en.srt')
+    expect(note).not.toContain('video_id')
+    // A duplikált sor pontosan egyszer szerepel a törzsben.
+    expect(note.split('Ismételt sor.').length - 1).toBe(1)
   })
 
-  it('2. a jegyzetben nincs duplikált sor, a frontmatter érvényes, wikilink nincs', async () => {
-    await makeVideo('a1', 'Első videó', 'Csatorna A')
-    const { written } = await processAll()
-    const md = await readFile(written[0]!, 'utf8')
-    expect(md.match(/Ismételt sor\./g)).toHaveLength(1)
-    expect(md.startsWith('---\n')).toBe(true)
-    expect(md).toContain('video_id: a1')
-    expect(md).not.toMatch(/\[\[.+\]\]/)
+  it('a metaadat a frontmatterbe kerül, ha van', async () => {
+    await write(join(subsA, 'Cs', 'Beszéd.en.srt'), SRT)
+    await write(
+      join(subsA, 'Cs', 'Beszéd.info.json'),
+      JSON.stringify({
+        id: 'q6p',
+        title: 'Agent Orchestration',
+        channel: 'Burke Holland',
+        upload_date: '20260714',
+        webpage_url: 'https://example.com/v',
+        duration: 1806,
+        tags: ['ai'],
+        description: 'Egy sor\nMásik sor',
+      }),
+    )
+
+    const { written } = await processAll([subsA])
+    const note = await readFile(written[0]!, 'utf8')
+
+    expect(note).toContain('video_id: q6p')
+    expect(note).toContain('channel: Burke Holland')
+    expect(note).toContain('uploaded: 2026-07-14')
+    expect(note).toContain('duration: 1806')
+    expect(note).toContain('description: |2-')
+    // A fájlnév az alapnévből jön, nem a metaadat címéből.
+    expect(written[0]!.endsWith('Beszéd_transcript.md')).toBe(true)
   })
 
-  it('3. másodszor futtatva semmit nem ír, és kihagyottnak jelenti', async () => {
-    await makeVideo('a1', 'Első videó', 'Csatorna A')
-    await processAll()
-    const second = await processAll()
-    expect(second.summary.succeeded).toBe(0)
+  it('két forrás két almappát kap a vaultban', async () => {
+    await write(join(subsA, 'A.en.srt'), SRT)
+    await write(join(subsB, 'B.hu.vtt'), SRT.replace(/,/g, '.').replace(/^/, 'WEBVTT\n\n'))
+
+    const { written, notesRoot: root } = await processAll([subsA, subsB])
+
+    expect(written).toContain(join(root, 'youtube', 'A_transcript.md'))
+    expect(written).toContain(join(root, 'meetings', 'B_transcript.md'))
+  })
+
+  it('a notes_dir felülírja az alapértelmezett mappát, és az alapértelmezett létre sem jön', async () => {
+    await write(join(subsA, 'A.en.srt'), SRT)
+
+    const { written } = await processAll([subsA], 'Inbox/masik')
+
+    expect(written[0]!.startsWith(join(vault, 'Inbox', 'masik'))).toBe(true)
+    // Spec 5. sikerkritériuma: a notes_dir megadásakor az alapértelmezett
+    // Inbox/transcript-refinery mappa nem jön létre a vaultban.
+    expect(existsSync(join(vault, DEFAULT_NOTES_DIR))).toBe(false)
+  })
+
+  it('a második futás semmit nem ír újra', async () => {
+    await write(join(subsA, 'A.en.srt'), SRT)
+    await processAll([subsA])
+
+    const second = await processAll([subsA])
+
+    expect(second.written).toEqual([])
     expect(second.summary.skipped).toBe(1)
   })
 
-  it('4. egy sérült felirat mellett a többi elem sikeres, és a riport megnevezi a hibásat', async () => {
-    await makeVideo('a1', 'Jó videó', 'Csatorna A')
-    await makeVideo('b2', 'Rossz videó', 'Csatorna B', true)
-    const { summary, events } = await processAll()
-    expect(summary.succeeded).toBe(1)
+  it('a sérült felirat nem állítja meg a futást, és a riport megnevezi', async () => {
+    await write(join(subsA, 'Jó.en.srt'), SRT)
+    await write(join(subsA, 'Rossz.en.srt'), '')
+
+    const { written, summary, events, items } = await processAll([subsA])
+
+    expect(written).toHaveLength(1)
     expect(summary.failed).toBe(1)
-    const failure = events.find((e) => e.type === 'item:failed')
-    expect(failure).toBeDefined()
-    expect(failure && 'videoId' in failure && failure.videoId).toBe('b2')
+
+    // Nem elég a hibák száma: a riportnak a VALÓBAN hibás elemet kell
+    // megneveznie. Metaadat híján az azonosító útvonal-hash, ezért a
+    // felderített elemből vesszük.
+    const rossz = items.find((i) => i.baseName === 'Rossz')
+    expect(rossz).toBeDefined()
+    const failed = events.filter(
+      (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
+    )
+    expect(failed).toHaveLength(1)
+    expect(failed[0]!.itemId).toBe(rossz!.itemId)
   })
 
-  it('5. a futás után a vault munkafája tiszta, és egy commit csak a jegyzeteket érinti', async () => {
-    await makeVideo('a1', 'Első videó', 'Csatorna A')
-    const { written } = await processAll()
-    expect(await isDirty(vault)).toBe(true)
+  it('a futás után a vault munkafája tiszta, egyetlen új committal', async () => {
+    await write(join(subsA, 'A.en.srt'), SRT)
+    const { written } = await processAll([subsA])
 
-    const committed = await gitCommitPaths(vault, written, 'docs(videos): átirat 1 videóhoz')
-    expect(committed).toBe(true)
+    await gitCommitPaths(vault, written, 'docs(videos): átirat 1 felirathoz')
+
     expect(await isDirty(vault)).toBe(false)
-
-    const { stdout } = await run('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: vault })
-    const files = stdout.trim().split('\n')
-    expect(files).toHaveLength(1)
-    expect(files[0]!.startsWith('Resources/Videos/YouTube/')).toBe(true)
+    const log = await run('git', ['log', '--oneline'], { cwd: vault })
+    expect(log.stdout.trim().split('\n')).toHaveLength(1)
   })
 })

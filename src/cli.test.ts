@@ -3,31 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { commandRun } from './cli.js'
-import { loadModelConfig, type Config } from './config.js'
+import { loadConfig, loadModelConfig } from './config.js'
 import { estimateItemUsd } from './model/budget.js'
 import { normalizeItem } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
 import { folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
-
-/**
- * A `loadModelConfig`-hoz szükséges változók. Az értékek szintaktikailag
- * érvényesek, de nem valódiak — a becslési szakasz sosem hív ki hálózatot,
- * és a lenti fixture-elemek mindig `done`-ként előre megjelöltek, mielőtt a
- * `commandRun` a saját feldolgozó ciklusához érne, tehát a tényleges
- * modellkliens sosem kap hívást.
- */
-const MODEL_ENV_KEYS = [
-  'LITELLM_BASE_URL',
-  'LITELLM_API_KEY',
-  'REFINERY_MODEL_DRAFT',
-  'REFINERY_MODEL_JUDGE',
-  'REFINERY_PRICE_DRAFT_IN',
-  'REFINERY_PRICE_DRAFT_OUT',
-  'REFINERY_PRICE_JUDGE_IN',
-  'REFINERY_PRICE_JUDGE_OUT',
-  'REFINERY_COST_LIMIT_USD',
-] as const
 
 const SRT = `1
 00:00:00,000 --> 00:00:02,000
@@ -59,36 +40,34 @@ async function makeVideo(downloads: string, id: string, title: string, channel: 
   await writeFile(join(dir, `${title}.en.srt`), SRT, 'utf8')
 }
 
-function makeConfig(downloads: string, statePath: string): Config {
-  return {
-    // A vaultPath/notesRoot sosem kerül ténylegesen megnyitásra ezekben a
-    // tesztekben: `commit: false`-szal hívunk, és a 2. teszt fixture-eleme
-    // előre `done`-ként van jelölve, tehát a feldolgozó ciklus a git- és
-    // vault-műveleteket, illetve a fájlírást sosem éri el.
-    vaultPath: '/nemletezo/vault',
-    notesRoot: '/nemletezo/vault/Resources/Videos/YouTube',
-    pinchflatDownloads: downloads,
-    statePath,
-  }
-}
+/**
+ * A modellréteg konfigurációja a YAML-ból jön; egyedül a kulcs a környezetből.
+ * Az értékek szintaktikailag érvényesek, de nem valódiak — a becslési szakasz
+ * sosem hív ki hálózatot.
+ */
+const rawConfig = (costLimitUsd: number) => ({
+  vault: { path: '/nemletezo/vault' },
+  sources: [downloads],
+  state: { path: join(work, 'state.db') },
+  model: {
+    base_url: 'http://localhost:4000/v1',
+    draft: 'proba-draft',
+    judge: 'proba-judge',
+  },
+  pricing: {
+    draft: { input_per_million: 3, output_per_million: 15 },
+    judge: { input_per_million: 0.2, output_per_million: 0.5 },
+  },
+  cost_limit_usd: costLimitUsd,
+})
 
-let savedEnv: Record<string, string | undefined>
+let savedApiKey: string | undefined
 let work: string
 let downloads: string
 
 beforeEach(async () => {
-  savedEnv = Object.fromEntries(MODEL_ENV_KEYS.map((key) => [key, process.env[key]]))
-  process.env.LITELLM_BASE_URL = 'http://localhost:4000/v1'
+  savedApiKey = process.env.LITELLM_API_KEY
   process.env.LITELLM_API_KEY = 'sk-proba'
-  process.env.REFINERY_MODEL_DRAFT = 'proba-draft'
-  process.env.REFINERY_MODEL_JUDGE = 'proba-judge'
-  process.env.REFINERY_PRICE_DRAFT_IN = '3.00'
-  process.env.REFINERY_PRICE_DRAFT_OUT = '15.00'
-  process.env.REFINERY_PRICE_JUDGE_IN = '0.20'
-  process.env.REFINERY_PRICE_JUDGE_OUT = '0.50'
-  // A tesztesetek felülírják a saját plafonjukra; ez csak egy biztonságos
-  // alapérték, hogy a `loadModelConfig` sose bukjon hiányzó változón.
-  process.env.REFINERY_COST_LIMIT_USD = '5.00'
 
   work = await mkdtemp(join(tmpdir(), 'refinery-cli-'))
   downloads = join(work, 'downloads')
@@ -96,29 +75,27 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-  for (const key of MODEL_ENV_KEYS) {
-    if (savedEnv[key] === undefined) delete process.env[key]
-    else process.env[key] = savedEnv[key]
-  }
+  if (savedApiKey === undefined) delete process.env.LITELLM_API_KEY
+  else process.env.LITELLM_API_KEY = savedApiKey
 })
 
 describe('commandRun — a recept-becslés költségkapui', () => {
   it('a plafon fölötti becslés nulla modellhívással megállítja a köteget', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
-    const cfg = makeConfig(downloads, join(work, 'state.db'))
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
-    const [item] = await folderSource(downloads).discover()
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
     const recipe = getRecipe('summary')
-    const modelConfig = loadModelConfig(process.env)
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
     const words = (await normalizeItem(item!)).wordsNormalized
     const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
     expect(cost).toBeGreaterThan(0)
 
     // A plafon szándékosan a becsült költség fele — a becslésnek meg kell
     // állítania a köteget, mielőtt bármi lefutna.
-    process.env.REFINERY_COST_LIMIT_USD = String(cost / 2)
-
-    const code = await commandRun(cfg, {
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
       recipe: 'summary',
       dryRun: false,
       force: false,
@@ -128,17 +105,18 @@ describe('commandRun — a recept-becslés költségkapui', () => {
     expect(code).toBe(2)
 
     const store = openState(cfg.statePath)
-    expect(store.artifactOf('a1', 'summary')).toBeNull()
+    expect(store.artifactOf(item!.itemId, 'summary')).toBeNull()
     store.close()
   })
 
   it('a már kész elem kimarad a becslésből, ezért a köteg nem torpan meg a plafonnál', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
-    const cfg = makeConfig(downloads, join(work, 'state.db'))
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
-    const [item] = await folderSource(downloads).discover()
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
     const recipe = getRecipe('summary')
-    const modelConfig = loadModelConfig(process.env)
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
     const words = (await normalizeItem(item!)).wordsNormalized
     const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
     expect(cost).toBeGreaterThan(0)
@@ -148,9 +126,9 @@ describe('commandRun — a recept-becslés költségkapui', () => {
     // szimulálja a hibajelentésben leírt helyzetet: egy köteg, ami egyszer
     // már sikeresen lefutott.
     const pre = openState(cfg.statePath)
-    pre.recordVideo(item!)
-    pre.recordArtifact(item!.videoId, 'transcript', 'done', '/valahol/_transcript.md', null)
-    pre.recordArtifact(item!.videoId, recipe.id, 'done', null, null, {
+    pre.recordItem(item!)
+    pre.recordArtifact(item!.itemId, 'transcript', 'done', '/valahol/_transcript.md', null)
+    pre.recordArtifact(item!.itemId, recipe.id, 'done', null, null, {
       iterations: 1,
       score: 1,
       costUsd: cost,
@@ -162,9 +140,8 @@ describe('commandRun — a recept-becslés költségkapui', () => {
     // (javítatlan) kód ezt az elemet is beleszámolná a becslésbe, és emiatt
     // a plafon fölé esne — a helyes viselkedés a kész elemet kihagyja, tehát
     // a becslés (üres pending-lista) mindig a plafon alatt marad.
-    process.env.REFINERY_COST_LIMIT_USD = String(cost / 2)
-
-    const code = await commandRun(cfg, {
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
       recipe: 'summary',
       dryRun: false,
       force: false,
@@ -176,6 +153,61 @@ describe('commandRun — a recept-becslés költségkapui', () => {
     expect(code).not.toBe(2)
     // Az elem mindkét szempontból kész, tehát a feldolgozó ciklus is csak
     // kihagyja — nulla új modellhívással, nulla hibával.
+    expect(code).toBe(0)
+  })
+})
+
+describe('commandRun — a szűrők', () => {
+  it('ismeretlen --source névre egyetlen elem sem marad', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const recipe = getRecipe('summary')
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
+
+    // A plafon a becsült költség fele: szűrés nélkül a köteg 2-vel megállna.
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
+      recipe: 'summary',
+      source: 'nincs-ilyen-forras',
+      dryRun: true,
+      force: false,
+      commit: false,
+    })
+
+    expect(code).toBe(0)
+  })
+
+  it('metaadat nélküli elemre a --channel szűrő nem illik', async () => {
+    // Felirat info.json NÉLKÜL: az elemnek nincs csatornája.
+    const dir = join(downloads, 'youtube', 'Csatorna A')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'Metaadat nélküli.en.srt'), SRT, 'utf8')
+
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    expect(item!.metadata.channel).toBeUndefined()
+
+    const recipe = getRecipe('summary')
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
+
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
+      recipe: 'summary',
+      channel: 'Csatorna A',
+      dryRun: true,
+      force: false,
+      commit: false,
+    })
+
     expect(code).toBe(0)
   })
 })

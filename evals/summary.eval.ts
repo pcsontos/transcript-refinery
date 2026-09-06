@@ -11,13 +11,19 @@ import { loadPrivateFixtures } from './private-layer.js'
 
 function itemOf(fixture: Fixture): SourceItem {
   return {
-    videoId: fixture.id,
-    title: fixture.title,
-    channel: fixture.channel,
-    uploadedAt: '2026-01-01',
-    url: `https://example.com/${fixture.id}`,
+    itemId: fixture.id,
+    source: 'fixtures',
+    sourceFile: `${fixture.id}.srt`,
     subtitlePath: `${fixture.id}.srt`,
-    mediaPath: null,
+    baseName: fixture.id,
+    title: fixture.title,
+    language: 'en',
+    metadata: {
+      videoId: fixture.id,
+      channel: fixture.channel,
+      uploadedAt: '2026-01-01',
+      url: `https://example.com/${fixture.id}`,
+    },
   }
 }
 

@@ -3,13 +3,14 @@ import type { SourceItem } from '../types.js'
 import { summaryRecipe } from './summary.js'
 
 const ITEM: SourceItem = {
-  videoId: 'abc123',
-  title: 'Agent orchestration explained',
-  channel: 'Some Channel',
-  uploadedAt: '2026-07-14',
-  url: 'https://www.youtube.com/watch?v=abc123',
+  itemId: 'abc123',
+  source: 'youtube',
+  sourceFile: 'Some Channel/Agent orchestration explained.en.srt',
   subtitlePath: '/nem/szamit.srt',
-  mediaPath: null,
+  baseName: 'Agent orchestration explained',
+  title: 'Agent orchestration explained',
+  language: 'en',
+  metadata: { videoId: 'abc123', channel: 'Some Channel' },
 }
 
 const INPUT = { item: ITEM, transcript: 'The speaker explains A, then B.' }
@@ -71,5 +72,12 @@ describe('summaryRecipe', () => {
       gaps: ['y'],
     })
     expect(prompt).toMatch(/do not rewrite/i)
+  })
+
+  it('metaadat nélkül nem ír kitalált csatornát a promptba', () => {
+    const item: SourceItem = { ...ITEM, metadata: {} }
+    const prompt = summaryRecipe.prompt({ item, transcript: 'A, majd B.' })
+    expect(prompt).toContain('Title: Agent orchestration explained')
+    expect(prompt).not.toContain('Channel:')
   })
 })

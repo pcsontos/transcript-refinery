@@ -1,8 +1,8 @@
 import type { SourceItem } from '../types.js'
 
 /**
- * Egy ingest-forrás. A v1-ben egy implementáció van (letöltési mappa); a
- * második, URL-alapú implementáció igazolja majd visszamenőleg ezt a vágást.
+ * Egy feliratforrás. Az `id` a forrás neve, ahogy a konfigurációban szerepel;
+ * a jelentésekben ez azonosítja, melyik mappából jött az elem.
  */
 export interface Source {
   readonly id: string

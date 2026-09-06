@@ -1,21 +1,26 @@
-import { stat } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { basename, isAbsolute, join, resolve } from 'node:path'
+import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 import type { ModelRole } from './types.js'
 
-/** A vaulton belüli jegyzet-gyűjtemény, ahova a publisher ír. */
-const NOTES_SUBDIR = 'Resources/Videos/YouTube'
+/** A konfigurációs fájl alapértelmezett neve a projekt gyökerében. */
+export const CONFIG_FILENAME = 'refinery.config.yaml'
 
 /**
- * Betölti az `.env`-et, ha létezik.
+ * A vaulton belüli jegyzet-gyűjtemény, ha a YAML nem mond mást. Egyetlen
+ * helyen él: az alapértelmezés szétszórása azt jelentené, hogy két helyen
+ * kellene átírni, és az egyik előbb-utóbb kimaradna.
+ */
+export const DEFAULT_NOTES_DIR = 'Inbox/transcript-refinery'
+
+/**
+ * Betölti az `.env`-et, ha létezik. **Egyetlen** értéket hoz: a
+ * `LITELLM_API_KEY`-t — minden más beállítás a YAML-ból jön.
  *
- * A `process.loadEnvFile()` a **már beállított** környezeti változókat nem
- * írja felül, tehát a shellben megadott érték erősebb a fájlénál — ez teszi
- * biztonságossá az egyszeri `VAULT_PATH=… refinery run` alakot.
- *
- * A hiányzó fájl nem hiba: CI-ban és automatizált futtatáskor a környezet
- * közvetlenül van beállítva. Minden más hiba (például szintaktikai) viszont
- * felszínre jön, mert egy csendben elnyelt elgépelés órákat visz el.
+ * A hiányzó fájl nem hiba: CI-ban a környezet közvetlenül van beállítva.
+ * Minden más hiba (például szintaktikai) viszont felszínre jön, mert egy
+ * csendben elnyelt elgépelés órákat visz el.
  */
 export function loadDotEnv(path = join(process.cwd(), '.env')): void {
   try {
@@ -25,43 +30,92 @@ export function loadDotEnv(path = join(process.cwd(), '.env')): void {
   }
 }
 
-const EnvSchema = z.object({
-  VAULT_PATH: z
+const absolutePath = (label: string) =>
+  z
     .string()
-    .min(1, 'A VAULT_PATH kötelező.')
-    .refine(isAbsolute, 'A VAULT_PATH abszolút útvonal kell legyen.'),
-  PINCHFLAT_DOWNLOADS: z
-    .string()
-    .min(1, 'A PINCHFLAT_DOWNLOADS kötelező.')
-    .refine(isAbsolute, 'A PINCHFLAT_DOWNLOADS abszolút útvonal kell legyen.'),
-  REFINERY_STATE_PATH: z.string().optional(),
+    .min(1, `A ${label} kötelező.`)
+    .refine(isAbsolute, `A ${label} abszolút útvonal kell legyen.`)
+
+const CoreSchema = z.object({
+  vault: z.object({
+    path: absolutePath('vault.path'),
+    notes_dir: z.string().min(1).default(DEFAULT_NOTES_DIR),
+  }),
+  sources: z
+    .array(absolutePath('sources eleme'))
+    .min(1, 'Legalább egy forrásmappa kell.'),
+  languages: z.array(z.string().min(1)).default([]),
+  state: z
+    .object({ path: z.string().min(1) })
+    .default({ path: join('.state', 'refinery.db') }),
 })
 
+/** Egy feliratforrás: a YAML-beli útvonal és a belőle képzett név. */
+export interface SourceDir {
+  /** Az útvonal utolsó szegmense; ez lesz a vault-beli almappa neve. */
+  name: string
+  path: string
+}
+
 export interface Config {
+  /** A betöltött konfigurációs fájl útvonala — a hibaüzenetek ezt nevezik meg. */
+  configPath: string
   vaultPath: string
   notesRoot: string
-  pinchflatDownloads: string
+  sources: SourceDir[]
+  /** Nyelvi preferencia-sorrend; üres lista esetén a determinisztikus tartalék dönt. */
+  languages: string[]
   statePath: string
 }
 
+/** A zod hibáját a mező útjával és a konfigurációs fájllal együtt dobja tovább. */
+function fail(error: z.ZodError, configPath: string): never {
+  const first = error.issues[0]!
+  const path = first.path.join('.') || 'konfiguráció'
+  throw new Error(`${path}: ${first.message} (${configPath})`)
+}
+
 /**
- * Környezeti változók → konfiguráció. Tisztán szinkron és fájlrendszertől
- * független, hogy tesztelhető legyen; a létezés-ellenőrzés a
- * `validateConfig` dolga.
+ * Beolvassa és YAML-ként értelmezi a konfigurációs fájlt. Szándékosan nem
+ * validál: a séma-ellenőrzés a `loadConfig` és a `loadModelConfig` dolga,
+ * hogy a modellréteg hiánya ne akadályozza a `scan`-t.
  */
-export function loadConfig(env: Record<string, string | undefined>): Config {
-  const parsed = EnvSchema.safeParse(env)
-  if (!parsed.success) {
-    const first = parsed.error.issues[0]!
-    const name = first.path[0] ?? 'konfiguráció'
-    throw new Error(`${String(name)}: ${first.message}`)
+export async function readConfigFile(path: string): Promise<unknown> {
+  let text: string
+  try {
+    text = await readFile(path, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(
+        `Nincs konfigurációs fájl: ${path}\n` +
+          `Másold le a refinery.config.example.yaml-t, vagy add meg a --config kapcsolóval.`,
+        { cause: error },
+      )
+    }
+    throw error
   }
-  const e = parsed.data
+  try {
+    return parseYaml(text) as unknown
+  } catch (error) {
+    throw new Error(
+      `A konfigurációs fájl nem értelmezhető YAML: ${path} — ${(error as Error).message}`,
+      { cause: error },
+    )
+  }
+}
+
+/** YAML → konfiguráció. Fájlrendszertől független, hogy tesztelhető legyen. */
+export function loadConfig(raw: unknown, configPath: string): Config {
+  const parsed = CoreSchema.safeParse(raw)
+  if (!parsed.success) fail(parsed.error, configPath)
+  const c = parsed.data
   return {
-    vaultPath: e.VAULT_PATH,
-    notesRoot: join(e.VAULT_PATH, NOTES_SUBDIR),
-    pinchflatDownloads: e.PINCHFLAT_DOWNLOADS,
-    statePath: e.REFINERY_STATE_PATH ?? join(process.cwd(), '.state', 'refinery.db'),
+    configPath,
+    vaultPath: c.vault.path,
+    notesRoot: join(c.vault.path, c.vault.notes_dir),
+    sources: c.sources.map((p) => ({ name: basename(p), path: p })),
+    languages: c.languages,
+    statePath: resolve(process.cwd(), c.state.path),
   }
 }
 
@@ -76,32 +130,54 @@ async function isDirectory(path: string): Promise<boolean> {
 /**
  * Indulási feltételek ellenőrzése. A program nem indul el, ha a vault nem
  * elérhető vagy nem git-repó — a publisher git-műveletei enélkül elhasalnának
- * a futás közepén.
+ * a futás közepén —, és akkor sem, ha egy megadott forrásmappa nem létezik:
+ * az elgépelt útvonal némán nulla elemet adna.
  */
 export async function validateConfig(cfg: Config): Promise<void> {
   if (!(await isDirectory(cfg.vaultPath))) {
-    throw new Error(`VAULT_PATH: nem létező mappa: ${cfg.vaultPath}`)
+    throw new Error(`vault.path: nem létező mappa: ${cfg.vaultPath} (${cfg.configPath})`)
   }
   if (!(await isDirectory(join(cfg.vaultPath, '.git')))) {
-    throw new Error(`VAULT_PATH: nem git-repó: ${cfg.vaultPath}`)
+    throw new Error(`vault.path: nem git-repó: ${cfg.vaultPath} (${cfg.configPath})`)
   }
-  if (!(await isDirectory(cfg.pinchflatDownloads))) {
-    throw new Error(
-      `PINCHFLAT_DOWNLOADS: nem létező mappa: ${cfg.pinchflatDownloads}`,
-    )
+
+  // A forrás neve (az útvonal utolsó szegmense) lesz a vault-beli almappa
+  // neve, és az itemId hashje is ebből a névből, nem a teljes útvonalból
+  // képződik. Két azonos nevű forrás esetén az azonos relatív nevű elemek
+  // azonos itemId-t kapnának: a discoverAll deduplikációja némán kiejtené a
+  // másodikat, esemény nélkül.
+  const byName = new Map<string, string>()
+  for (const source of cfg.sources) {
+    const clash = byName.get(source.name)
+    if (clash !== undefined) {
+      throw new Error(
+        `sources: két forrásmappa azonos névre (${source.name}) végződik: ` +
+          `${clash} és ${source.path} — nevezd át az egyiket (${cfg.configPath})`,
+      )
+    }
+    byName.set(source.name, source.path)
+  }
+
+  for (const source of cfg.sources) {
+    if (!(await isDirectory(source.path))) {
+      throw new Error(`sources: nem létező mappa: ${source.path} (${cfg.configPath})`)
+    }
   }
 }
 
-const ModelEnvSchema = z.object({
-  LITELLM_BASE_URL: z.url('A LITELLM_BASE_URL érvényes URL kell legyen.'),
-  LITELLM_API_KEY: z.string().min(1, 'A LITELLM_API_KEY kötelező.'),
-  REFINERY_MODEL_DRAFT: z.string().min(1, 'A REFINERY_MODEL_DRAFT kötelező.'),
-  REFINERY_MODEL_JUDGE: z.string().min(1, 'A REFINERY_MODEL_JUDGE kötelező.'),
-  REFINERY_PRICE_DRAFT_IN: z.coerce.number().nonnegative(),
-  REFINERY_PRICE_DRAFT_OUT: z.coerce.number().nonnegative(),
-  REFINERY_PRICE_JUDGE_IN: z.coerce.number().nonnegative(),
-  REFINERY_PRICE_JUDGE_OUT: z.coerce.number().nonnegative(),
-  REFINERY_COST_LIMIT_USD: z.coerce
+const PriceSchema = z.object({
+  input_per_million: z.coerce.number().nonnegative(),
+  output_per_million: z.coerce.number().nonnegative(),
+})
+
+const ModelSchema = z.object({
+  model: z.object({
+    base_url: z.url('A model.base_url érvényes URL kell legyen.'),
+    draft: z.string().min(1, 'A model.draft kötelező.'),
+    judge: z.string().min(1, 'A model.judge kötelező.'),
+  }),
+  pricing: z.object({ draft: PriceSchema, judge: PriceSchema }),
+  cost_limit_usd: z.coerce
     .number()
     .positive('Kötelező és pozitív: köteg nem indul felső korlát nélkül.'),
 })
@@ -125,37 +201,40 @@ export interface ModelConfig {
  * A modellréteg konfigurációja — **szándékosan külön** a `loadConfig`-tól.
  *
  * Ha ezek a `loadConfig` sémájában lennének, a modellhívás nélküli `scan` és
- * `run` is megkövetelné a LiteLLM-kulcsot. Így viszont a Fázis 0 útja egyetlen
- * új környezeti változó nélkül fut tovább, és a modell-konfigurációt csak az
- * fizeti meg, aki receptet futtat.
+ * `run` is megkövetelné a modell-blokkot és a LiteLLM-kulcsot. Így viszont a
+ * modell-konfigurációt csak az fizeti meg, aki receptet futtat.
+ *
+ * A kulcs az egyetlen érték, ami **nem** a YAML-ból jön: titok, aminek nincs
+ * helye egy verziókövetett konfigurációs fájlban.
  */
 export function loadModelConfig(
+  raw: unknown,
   env: Record<string, string | undefined>,
+  configPath: string,
 ): ModelConfig {
-  const parsed = ModelEnvSchema.safeParse(env)
-  if (!parsed.success) {
-    const first = parsed.error.issues[0]!
-    const name = first.path[0] ?? 'konfiguráció'
-    throw new Error(`${String(name)}: ${first.message}`)
+  const parsed = ModelSchema.safeParse(raw)
+  if (!parsed.success) fail(parsed.error, configPath)
+  const apiKey = env.LITELLM_API_KEY
+  if (!apiKey) {
+    throw new Error(
+      'A LITELLM_API_KEY kötelező, és kizárólag környezetből (.env) jön — a YAML nem tartalmazhatja.',
+    )
   }
-  const e = parsed.data
+  const c = parsed.data
   return {
-    baseUrl: e.LITELLM_BASE_URL,
-    apiKey: e.LITELLM_API_KEY,
-    models: {
-      draft: e.REFINERY_MODEL_DRAFT,
-      judge: e.REFINERY_MODEL_JUDGE,
-    },
+    baseUrl: c.model.base_url,
+    apiKey,
+    models: { draft: c.model.draft, judge: c.model.judge },
     pricing: {
       draft: {
-        inputPerMillion: e.REFINERY_PRICE_DRAFT_IN,
-        outputPerMillion: e.REFINERY_PRICE_DRAFT_OUT,
+        inputPerMillion: c.pricing.draft.input_per_million,
+        outputPerMillion: c.pricing.draft.output_per_million,
       },
       judge: {
-        inputPerMillion: e.REFINERY_PRICE_JUDGE_IN,
-        outputPerMillion: e.REFINERY_PRICE_JUDGE_OUT,
+        inputPerMillion: c.pricing.judge.input_per_million,
+        outputPerMillion: c.pricing.judge.output_per_million,
       },
     },
-    costLimitUsd: e.REFINERY_COST_LIMIT_USD,
+    costLimitUsd: c.cost_limit_usd,
   }
 }

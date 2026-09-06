@@ -7,14 +7,13 @@ coverage/
 .env
 .env.*
 !.env.example
+refinery.config.yaml
+refinery.config.*.yaml
+!refinery.config.example.yaml
 
 # Helyi állapot és feldolgozási melléktermékek
 .state/
 tmp/
-*.wav
-
-# whisper modellek (nagyok, letölthetők)
-models/
 
 # Subagent-driven development munkaterület (ledger, review-csomagok)
 .superpowers/
