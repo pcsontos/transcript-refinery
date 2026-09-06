@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -126,7 +127,7 @@ describe('végponttól végpontig', () => {
     expect(note).toContain('channel: Burke Holland')
     expect(note).toContain('uploaded: 2026-07-14')
     expect(note).toContain('duration: 1806')
-    expect(note).toContain('description: |-')
+    expect(note).toContain('description: |2-')
     // A fájlnév az alapnévből jön, nem a metaadat címéből.
     expect(written[0]!.endsWith('Beszéd_transcript.md')).toBe(true)
   })
@@ -141,12 +142,15 @@ describe('végponttól végpontig', () => {
     expect(written).toContain(join(root, 'meetings', 'B_transcript.md'))
   })
 
-  it('a notes_dir felülírja az alapértelmezett mappát', async () => {
+  it('a notes_dir felülírja az alapértelmezett mappát, és az alapértelmezett létre sem jön', async () => {
     await write(join(subsA, 'A.en.srt'), SRT)
 
     const { written } = await processAll([subsA], 'Inbox/masik')
 
     expect(written[0]!.startsWith(join(vault, 'Inbox', 'masik'))).toBe(true)
+    // Spec 5. sikerkritériuma: a notes_dir megadásakor az alapértelmezett
+    // Inbox/transcript-refinery mappa nem jön létre a vaultban.
+    expect(existsSync(join(vault, DEFAULT_NOTES_DIR))).toBe(false)
   })
 
   it('a második futás semmit nem ír újra', async () => {

@@ -62,7 +62,7 @@ describe('renderTranscriptNote', () => {
     expect(note).toContain('uploaded: 2026-07-14')
     expect(note).toContain('duration: 1806')
     expect(note).toContain('tags: [ai]')
-    expect(note).toContain('description: |-\n  Első\n  Második')
+    expect(note).toContain('description: |2-\n  Első\n  Második')
   })
 
   it('a felirat eredetét rögzíti', () => {

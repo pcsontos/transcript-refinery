@@ -34,9 +34,9 @@ function header(item: SourceItem): string[] {
 /**
  * Az első recept: strukturált tanulójegyzet a normalizált átiratból.
  *
- * A `_summary.md` utótag a vault bejáratott névkonvenciója
- * (`Youtube - <cím>_<típus>.md`), tehát a kimenet a meglévő fájlok mellé
- * illeszkedik, nem egy külön beérkező mappába.
+ * A `_summary.md` utótag az elem alapnevéhez (`<alapnév>_summary.md`)
+ * illeszkedik, a forrásmappát tükröző vault-almappában — lásd
+ * `docs/decisions/0008`.
  */
 export const summaryRecipe: Recipe = {
   id: 'summary',

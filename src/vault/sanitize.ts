@@ -1,7 +1,7 @@
 /**
- * yt-dlp-kompatibilis karaktercsere. A vault meglévő mappanevei pontosan
- * ezeket a helyettesítéseket használják — az eltérés duplikált mappát
- * eredményezne a már meglévő mellett.
+ * yt-dlp-kompatibilis karaktercsere: fájlrendszer-biztos szegmensnevek
+ * (csatornanév, videócím) a tiltott karakterek fullwidth megfelelőire
+ * cserélve, hogy a mappa- és fájlnév minden platformon érvényes maradjon.
  */
 const REPLACEMENTS: ReadonlyArray<readonly [RegExp, string]> = [
   [/\//g, '⧸'], // BIG SOLIDUS

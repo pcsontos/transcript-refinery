@@ -55,10 +55,17 @@ function scalar(value: string): string {
 /**
  * Blokk-skalár a többsoros értékekhez. A `|-` a záró sortörést levágja, így a
  * mező értéke pontosan az, ami a forrásban volt.
+ *
+ * A behúzásjelző EXPLICIT (`|2-`), nem hallgatólagos: YAML-ban a blokk
+ * behúzását — jelző híján — az első nem üres sor adja meg. Ha az érték maga
+ * is behúzottan kezdődik (pl. egy videó-leírás `"   Támogasd a csatornát!"`
+ * sorral indul), a kevésbé behúzott következő sor a `|-` alakkal érvénytelen
+ * YAML-t eredményezne — a `2` explicit jelzővel az érték saját behúzása nem
+ * keveredik a blokk behúzásával.
  */
 function block(name: string, value: string): string {
   const lines = value.split('\n').map((line) => (line === '' ? '' : `  ${line}`))
-  return [`${name}: |-`, ...lines].join('\n')
+  return [`${name}: |2-`, ...lines].join('\n')
 }
 
 /**

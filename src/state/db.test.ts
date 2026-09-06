@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -81,5 +82,35 @@ describe('StateStore', () => {
   it('a kétszeri zárás nem dob', () => {
     store.close()
     expect(() => store.close()).not.toThrow()
+  })
+
+  it('az isDone típus-specifikus: az egyik recept kész státusza nem érinti a másikat', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/a.md', null)
+    expect(store.isDone('a1b2c3', 'transcript')).toBe(true)
+    expect(store.isDone('a1b2c3', 'summary')).toBe(false)
+  })
+
+  it('a fájlba írt állapot újranyitás után is megmarad', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'refinery-state-reopen-'))
+    const path = join(dir, 'state.db')
+    const first = openState(path)
+    first.recordItem(item())
+    first.recordArtifact('a1b2c3', 'transcript', 'done', '/v/a.md', null)
+    first.close()
+
+    const reopened = openState(path)
+    expect(reopened.isDone('a1b2c3', 'transcript')).toBe(true)
+    reopened.close()
+  })
+
+  it('a régi, videó-alapú sémájú állapotfájlt beszédes hibával utasítja el', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'refinery-state-legacy-'))
+    const path = join(dir, 'state.db')
+    const legacy = new DatabaseSync(path)
+    legacy.exec('CREATE TABLE artifacts (video_id TEXT, kind TEXT)')
+    legacy.close()
+
+    expect(() => openState(path)).toThrow(/régi/)
   })
 })

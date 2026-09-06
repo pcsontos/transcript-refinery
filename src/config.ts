@@ -140,6 +140,24 @@ export async function validateConfig(cfg: Config): Promise<void> {
   if (!(await isDirectory(join(cfg.vaultPath, '.git')))) {
     throw new Error(`vault.path: nem git-repó: ${cfg.vaultPath} (${cfg.configPath})`)
   }
+
+  // A forrás neve (az útvonal utolsó szegmense) lesz a vault-beli almappa
+  // neve, és az itemId hashje is ebből a névből, nem a teljes útvonalból
+  // képződik. Két azonos nevű forrás esetén az azonos relatív nevű elemek
+  // azonos itemId-t kapnának: a discoverAll deduplikációja némán kiejtené a
+  // másodikat, esemény nélkül.
+  const byName = new Map<string, string>()
+  for (const source of cfg.sources) {
+    const clash = byName.get(source.name)
+    if (clash !== undefined) {
+      throw new Error(
+        `sources: két forrásmappa azonos névre (${source.name}) végződik: ` +
+          `${clash} és ${source.path} — nevezd át az egyiket (${cfg.configPath})`,
+      )
+    }
+    byName.set(source.name, source.path)
+  }
+
   for (const source of cfg.sources) {
     if (!(await isDirectory(source.path))) {
       throw new Error(`sources: nem létező mappa: ${source.path} (${cfg.configPath})`)

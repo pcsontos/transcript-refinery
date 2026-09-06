@@ -35,6 +35,11 @@ describe('splitSubtitleName', () => {
     expect(splitSubtitleName('Some.Talk.srt')).toEqual({ base: 'Some.Talk', language: null })
   })
 
+  it('a nagybetűs (pl. római szám) utótagot nem tekinti nyelvkódnak', () => {
+    expect(splitSubtitleName('Rész.II.srt')).toEqual({ base: 'Rész.II', language: null })
+    expect(splitSubtitleName('Rész.III.srt')).toEqual({ base: 'Rész.III', language: null })
+  })
+
   it('a korpuszban előforduló dupla pontot is helyesen kezeli', () => {
     expect(splitSubtitleName('A_jovo_fai..en.srt')).toEqual({
       base: 'A_jovo_fai.',
@@ -125,6 +130,23 @@ describe('folderSource', () => {
   it('nem létező forrásmappára üres listát ad', async () => {
     const items = await folderSource({ name: 'nincs', path: join(root, 'nincs') }, []).discover()
     expect(items).toEqual([])
+  })
+
+  it('a nagybetűs utótagú két rész két külön elem marad', async () => {
+    await write('Rész.II.srt')
+    await write('Rész.III.srt')
+    const items = await folderSource(source(), []).discover()
+    expect(items.map((i) => i.baseName).sort()).toEqual(['Rész.II', 'Rész.III'])
+  })
+
+  it('a levágott nyelv-utótaggal ellátott metaadatfájlt is megtalálja, ha a levágás nélküli nem létezik', async () => {
+    // A "Videó.js" alapnév utolsó szakasza ("js") kisbetűs, két karakteres,
+    // tehát a minta nyelvkódnak nézi, és az alapnevet "Videó"-ra vágja — a
+    // metaadatfájl viszont a levágás nélküli névvel fekszik a felirat mellett.
+    await write('Videó.js.srt')
+    await write('Videó.js.info.json', JSON.stringify({ id: 'v-node' }))
+    const [item] = await folderSource(source(), []).discover()
+    expect(item!.metadata.videoId).toBe('v-node')
   })
 
   it('rögzített sorrendben adja vissza az elemeket', async () => {

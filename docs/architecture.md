@@ -195,7 +195,8 @@ mezőcsoport mindig kitöltődik, a metaadatból jövő mezők (`video_id`,
 egyszerűen kimaradnak a frontmatterből — nem üresen szerepelnek:
 
 ```yaml
-item_id: youtube-a1b2c3d4            # metaadat videóazonosítója, vagy forrás+alapnév hash-e
+item_id: dQw4w9WgXcQ                 # metaadat videóazonosítója, vagy (metaadat híján) prefix
+                                      # nélküli 16 hexes hash, pl. 3f9a2b8c1d4e5f60
 title: Egy előadás címe
 source: youtube                       # a forrásmappa neve
 source_file: Csatorna/Egy előadás címe.hu.srt

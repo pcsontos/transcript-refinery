@@ -26,7 +26,10 @@ languages: [hu, en]
 
 state:
   # A feldolgozottság nyilvántartása. Relatív útvonal a projekt gyökeréhez
-  # képest értendő. Eldobható: újrafuttatáskor felépül.
+  # képest értendő. Eldobható: újrafuttatáskor felépül. FIGYELEM: egy korábbi
+  # (Fázis 1-es, videó-alapú sémájú) verzióból maradt állapotfájlt viszont
+  # TÖRÖLNI kell — az app felismeri és beszédes hibával megáll, de nem
+  # migrálja automatikusan.
   path: .state/refinery.db
 
 # Szerep → modell. A receptek szerepet kérnek, nem modellnevet; a konkrét

@@ -54,6 +54,10 @@ nélkül.
 - Az állapottár kulcsa `item_id`. **Ha egy elem mellé utólag kerül metaadat,
   az azonosítója megváltozik, és az elem újra feldolgozódik** — tudatos csere a
   beszédes azonosítóért.
+- A séma nem migrálódik: egy korábbi (videó-alapú) verzióból maradt
+  állapotfájlt törölni kell, a vaultban lévő jegyzetek viszont érintetlenek
+  maradnak, mert az állapottár csak a feldolgozottságot tartja nyilván, nem a
+  jegyzetek tartalmát.
 - A frontmatter mindig elkészül; a metaadat hiánya mezőket vesz el, a
   frontmattert magát nem.
 - A `0005` „egyetlen transzkribálási út" döntése **nem hibás, csak nem ide

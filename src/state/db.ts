@@ -103,6 +103,24 @@ export function openState(path: string): StateStore {
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(SCHEMA)
 
+  // A `CREATE TABLE IF NOT EXISTS` szándékosan nem migrál: egy Fázis 1-ből
+  // maradt állapotfájlon a régi, `video_id`-alapú `artifacts` tábla
+  // érintetlen marad. Enélkül az ellenőrzés nélkül az `isDone` egy
+  // beazonosíthatatlan `no such column: item_id` hibával állítaná meg a
+  // TELJES köteget (a `pipeline.ts` try-ágán kívül), ahelyett hogy megnevezné
+  // a valódi okot.
+  const cols = db.prepare("SELECT name FROM pragma_table_info('artifacts')").all() as {
+    name: string
+  }[]
+  if (!cols.some((c) => c.name === 'item_id')) {
+    db.close()
+    throw new Error(
+      `A(z) ${path} állapotfájl a régi, videó-alapú sémát használja. ` +
+        `Töröld — a vaultban lévő jegyzeteid érintetlenek maradnak, ` +
+        `az állapot az első futáskor újraépül.`,
+    )
+  }
+
   const now = () => new Date().toISOString()
 
   // A `close()` idempotens: a hívónak nem feladata számon tartani, hogy a

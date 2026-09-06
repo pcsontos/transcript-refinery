@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { parse as parseYaml } from 'yaml'
 import { renderFrontmatter } from './frontmatter.js'
 
 describe('renderFrontmatter', () => {
@@ -26,14 +27,26 @@ describe('renderFrontmatter', () => {
 
   it('a többsoros szöveget blokk-skalárként írja', () => {
     expect(renderFrontmatter([['description', 'Első\nMásodik']])).toBe(
-      '---\ndescription: |-\n  Első\n  Második\n---',
+      '---\ndescription: |2-\n  Első\n  Második\n---',
     )
   })
 
   it('a CRLF-et normalizálja, és a záró üres sorokat levágja', () => {
     expect(renderFrontmatter([['description', 'Első\r\nMásodik\n\n']])).toBe(
-      '---\ndescription: |-\n  Első\n  Második\n---',
+      '---\ndescription: |2-\n  Első\n  Második\n---',
     )
+  })
+
+  it('a behúzással kezdődő többsoros érték is érvényes YAML marad', () => {
+    const md = renderFrontmatter([
+      ['title', 'X'],
+      ['description', '   Támogasd a csatornát!\nA linkek a leírásban.'],
+      ['source', 'youtube'],
+    ])
+    const body = md.replace(/^---\n/, '').replace(/---$/, '')
+    const parsed = parseYaml(body) as Record<string, unknown>
+    expect(parsed.description).toBe('   Támogasd a csatornát!\nA linkek a leírásban.')
+    expect(parsed.source).toBe('youtube')
   })
 
   it('a listát folyó alakban írja, elemenként idézve', () => {

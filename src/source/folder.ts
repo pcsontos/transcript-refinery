@@ -11,8 +11,14 @@ const SUBTITLE_EXTENSIONS = ['.srt', '.vtt'] as const
 /**
  * Nyelvkódnak látszó utótag: `en`, `hu`, `en-US`. A szűkítés szándékos — a
  * `Some.Talk.srt` alapneve `Some.Talk` marad, nem `Some`.
+ *
+ * A nyelvrész (kötőjel előtti szakasz) KIZÁRÓLAG kisbetűs lehet — a
+ * régiókód (kötőjel utáni szakasz) case-insensitive marad, mert a
+ * yt-dlp/whisper `en-US` alakja is nagybetűs régiót ad. A megszorítás a
+ * `Rész.II.srt` / `Rész.III.srt` osztályt üti ki: a római szám nagybetűs,
+ * tehát idézőjel — értsd: nyelvkód — nélkül marad az alapnév része.
  */
-const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z]{2,4})?$/
+const LANGUAGE_TAG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
 
 /** Az útvonal `/` elválasztóval, hogy a frontmatter platformfüggetlen legyen. */
 function toPosix(path: string): string {
@@ -121,7 +127,13 @@ export function folderSource(source: SourceDir, languages: readonly string[]): S
       const keys = [...groups.keys()].sort()
       for (const key of keys) {
         const chosen = chooseSubtitle(groups.get(key)!, languages)
-        const sidecar = await readSidecar(`${key}.info.json`)
+        // A metaadatfájl elsőként a levágott alapnév mellett várt, de ha a
+        // nyelvkódnak látszó utótag valójában a cím része (pl. `Node.js`),
+        // az info.json a LEVÁGÁS NÉLKÜLI névvel fekszik ott — ezt a tartalék
+        // keresés találja meg, ahelyett hogy az elem metaadat nélkül maradna.
+        const sidecar =
+          (await readSidecar(`${key}.info.json`)) ??
+          (chosen.language ? await readSidecar(`${key}.${chosen.language}.info.json`) : null)
         const baseName = basename(key)
         const relBase = toPosix(relative(source.path, key))
 

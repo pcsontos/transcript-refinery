@@ -29,4 +29,23 @@ describe('lintVaultMarkdown', () => {
   it('a nyers URL-t nem tekinti Markdown-linknek', () => {
     expect(lintVaultMarkdown('🌐 <https://example.com>')).toEqual([])
   })
+
+  it('elutasítja az értelmezhetetlen frontmattert', () => {
+    // Az 1. tétel hibájának pontos alakja: behúzásjelző nélküli blokk-skalár,
+    // aminek első sora maga is behúzott — a YAML ezen eltörik.
+    const md =
+      '---\ndescription: |-\n   Támogasd a csatornát!\nA linkek a leírásban.\n---\n\nTörzs.'
+    const errors = lintVaultMarkdown(md)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatch(/frontmatter.*YAML/)
+  })
+
+  it('elfogadja az érvényes frontmattert', () => {
+    const md = '---\ntitle: X\nsource: youtube\n---\n\nTörzs.'
+    expect(lintVaultMarkdown(md)).toEqual([])
+  })
+
+  it('frontmatter nélküli markdownon nem változik a viselkedés', () => {
+    expect(lintVaultMarkdown('Csak törzs, frontmatter nélkül.')).toEqual([])
+  })
 })

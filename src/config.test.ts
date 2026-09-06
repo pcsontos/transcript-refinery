@@ -140,4 +140,25 @@ describe('validateConfig', () => {
     )
     await expect(validateConfig(cfg)).rejects.toThrow(/nincs/)
   })
+
+  it('hibát dob, ha két forrásmappa alapneve ütközik, és mindkét útvonalat megnevezi', async () => {
+    await mkdir(join(dir, 'vault', '.git'), { recursive: true })
+    const path1 = join(dir, 'vol1', 'feliratok')
+    const path2 = join(dir, 'vol2', 'feliratok')
+    await mkdir(path1, { recursive: true })
+    await mkdir(path2, { recursive: true })
+    const cfg = loadConfig(
+      { vault: { path: join(dir, 'vault') }, sources: [path1, path2] },
+      '/p/c.yaml',
+    )
+    await expect(validateConfig(cfg)).rejects.toThrow(/feliratok/)
+    let message = ''
+    try {
+      await validateConfig(cfg)
+    } catch (error) {
+      message = (error as Error).message
+    }
+    expect(message).toContain(path1)
+    expect(message).toContain(path2)
+  })
 })
