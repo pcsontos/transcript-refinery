@@ -156,3 +156,58 @@ describe('commandRun — a recept-becslés költségkapui', () => {
     expect(code).toBe(0)
   })
 })
+
+describe('commandRun — a szűrők', () => {
+  it('ismeretlen --source névre egyetlen elem sem marad', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const recipe = getRecipe('summary')
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
+
+    // A plafon a becsült költség fele: szűrés nélkül a köteg 2-vel megállna.
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
+      recipe: 'summary',
+      source: 'nincs-ilyen-forras',
+      dryRun: true,
+      force: false,
+      commit: false,
+    })
+
+    expect(code).toBe(0)
+  })
+
+  it('metaadat nélküli elemre a --channel szűrő nem illik', async () => {
+    // Felirat info.json NÉLKÜL: az elemnek nincs csatornája.
+    const dir = join(downloads, 'youtube', 'Csatorna A')
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'Metaadat nélküli.en.srt'), SRT, 'utf8')
+
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    expect(item!.metadata.channel).toBeUndefined()
+
+    const recipe = getRecipe('summary')
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
+
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
+      recipe: 'summary',
+      channel: 'Csatorna A',
+      dryRun: true,
+      force: false,
+      commit: false,
+    })
+
+    expect(code).toBe(0)
+  })
+})

@@ -89,6 +89,7 @@ export async function readConfigFile(path: string): Promise<unknown> {
       throw new Error(
         `Nincs konfigurációs fájl: ${path}\n` +
           `Másold le a refinery.config.example.yaml-t, vagy add meg a --config kapcsolóval.`,
+        { cause: error },
       )
     }
     throw error
@@ -98,6 +99,7 @@ export async function readConfigFile(path: string): Promise<unknown> {
   } catch (error) {
     throw new Error(
       `A konfigurációs fájl nem értelmezhető YAML: ${path} — ${(error as Error).message}`,
+      { cause: error },
     )
   }
 }
