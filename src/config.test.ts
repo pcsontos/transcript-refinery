@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_NOTES_DIR,
@@ -69,6 +69,22 @@ describe('loadConfig', () => {
 
   it('a languages alapból üres, és nem hiányzó mezőként hibázik', () => {
     expect(loadConfig(MIN, '/p/c.yaml').languages).toEqual([])
+  })
+
+  it('a logs.dir alapértelmezése a logs mappa, és a projekt gyökeréhez képest oldódik fel', () => {
+    const cfg = loadConfig(
+      { vault: { path: '/v' }, sources: ['/s'] },
+      '/p/refinery.config.yaml',
+    )
+    expect(cfg.logsDir).toBe(resolve(process.cwd(), 'logs'))
+  })
+
+  it('a logs.dir megadható a YAML-ban', () => {
+    const cfg = loadConfig(
+      { vault: { path: '/v' }, sources: ['/s'], logs: { dir: 'naplok' } },
+      '/p/refinery.config.yaml',
+    )
+    expect(cfg.logsDir).toBe(resolve(process.cwd(), 'naplok'))
   })
 })
 

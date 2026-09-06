@@ -48,6 +48,7 @@ const CoreSchema = z.object({
   state: z
     .object({ path: z.string().min(1) })
     .default({ path: join('.state', 'refinery.db') }),
+  logs: z.object({ dir: z.string().min(1) }).default({ dir: 'logs' }),
 })
 
 /** Egy feliratforrás: a YAML-beli útvonal és a belőle képzett név. */
@@ -66,6 +67,8 @@ export interface Config {
   /** Nyelvi preferencia-sorrend; üres lista esetén a determinisztikus tartalék dönt. */
   languages: string[]
   statePath: string
+  /** A futásnaplók és riportok mappája, abszolút útvonalként. */
+  logsDir: string
 }
 
 /** A zod hibáját a mező útjával és a konfigurációs fájllal együtt dobja tovább. */
@@ -116,6 +119,7 @@ export function loadConfig(raw: unknown, configPath: string): Config {
     sources: c.sources.map((p) => ({ name: basename(p), path: p })),
     languages: c.languages,
     statePath: resolve(process.cwd(), c.state.path),
+    logsDir: resolve(process.cwd(), c.logs.dir),
   }
 }
 

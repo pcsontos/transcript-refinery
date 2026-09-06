@@ -13,6 +13,7 @@ refinery.config.*.yaml
 
 # Helyi állapot és feldolgozási melléktermékek
 .state/
+logs/
 tmp/
 
 # Subagent-driven development munkaterület (ledger, review-csomagok)
