@@ -46,6 +46,21 @@ describe('isTransient', () => {
     ).toBe(true)
   })
 
+  it('az üres vagy csak szóközből álló string státuszkód sem olvasandó nullás státuszként', () => {
+    expect(
+      isTransient(Object.assign(new Error('proba'), { statusCode: '', code: 'ECONNRESET' })),
+    ).toBe(true)
+    expect(
+      isTransient(Object.assign(new Error('proba'), { statusCode: '  ', code: 'ECONNRESET' })),
+    ).toBe(true)
+  })
+
+  it('a tudományos jelölésű string (pl. "4e2") nem olvasandó státuszként', () => {
+    expect(
+      isTransient(Object.assign(new Error('proba'), { statusCode: '4e2', code: 'ECONNRESET' })),
+    ).toBe(true)
+  })
+
   it('a közvetlen státuszkód szándékosan nyer a burkolt átmeneti ok felett', () => {
     // A közvetlen hiba státusza a specifikusabb jel: egy 400-as hiba akkor
     // is végleges marad, ha az oka egy burkolt 503-as.

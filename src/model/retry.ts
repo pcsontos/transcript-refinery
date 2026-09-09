@@ -16,18 +16,23 @@ const TRANSIENT_CODES = new Set([
 
 const TRANSIENT_NAMES = new Set(['AbortError', 'TimeoutError'])
 
+/** Csak tiszta számjegysorozat — se üres, se előjeles/tizedes, se tudományos alak. */
+const NUMERIC_STATUS = /^\d+$/
+
 /**
- * Számmá alakítja a státuszkódot, ha az szám vagy szám alakú string —
- * néhány SDK és proxy stringként küldi (`statusCode: '429'`). Minden más
- * esetben `undefined`-ot ad, hogy a hívó a maradék jeleket (kód, név, ok)
- * is megvizsgálhassa, ahelyett hogy egy nem-státusz stringet félreértelmezve
- * véglegesnek minősítené a hibát.
+ * Számmá alakítja a státuszkódot, ha az szám vagy szigorúan számjegyekből
+ * álló string — néhány SDK és proxy stringként küldi (`statusCode: '429'`).
+ * Az üres/csak szóközből álló string, a tudományos jelölés (`'4e2'`) és
+ * minden más nem-számjegy string `undefined`-ot ad, hogy a hívó a maradék
+ * jeleket (kód, név, ok) is megvizsgálhassa, ahelyett hogy egy nem-státusz
+ * stringet félreértelmezve véglegesnek (vagy — az üres stringnél — tévesen
+ * 0-s, tehát szintén véglegesnek) minősítené a hibát.
  */
 function toStatus(value: unknown): number | undefined {
   if (typeof value === 'number') return value
   if (typeof value === 'string') {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : undefined
+    const trimmed = value.trim()
+    return NUMERIC_STATUS.test(trimmed) ? Number(trimmed) : undefined
   }
   return undefined
 }
