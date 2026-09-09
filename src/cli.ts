@@ -17,7 +17,7 @@ import { createCostGuard, estimateItemUsd, sliceToBudget, type BudgetEntry } fro
 import { createModelClient, type ModelClient } from './model/client.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
-import { normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
+import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { runId } from './run/id.js'
@@ -160,6 +160,10 @@ export async function commandRun(
     maxIterations = recipe.maxIterations
   }
 
+  // A futás műtermék-típusa: recepttel a recept azonosítója, enélkül az
+  // átirat. Egyszer számoljuk ki — a riport és a hibás-szűrő ugyanazt kérdezi.
+  const artifactKind = recipeDeps?.recipe.id ?? ARTIFACT_KIND
+
   if (flags.commit && !flags.dryRun) await gitPullFfOnly(cfg.vaultPath)
 
   const store = openState(cfg.statePath)
@@ -196,8 +200,7 @@ export async function commandRun(
     finished = true
 
     const summary = summarize(events)
-    const kind = recipeDeps?.recipe.id ?? 'transcript'
-    const corpus = store.corpusStatus(discovered, kind)
+    const corpus = store.corpusStatus(discovered, artifactKind)
     const markdown = renderReport({
       runId: id,
       startedAt,
@@ -239,10 +242,7 @@ export async function commandRun(
     // különben pl. `--retry-failed --limit 1` a felfedezés szerint elöl
     // álló (esetleg kész) elemet nézné meg, nem a hibásak közül az elsőt.
     let items = applyFilters(discovered, flags)
-    if (flags.retryFailed) {
-      const kind = recipeDeps?.recipe.id ?? 'transcript'
-      items = store.listFailed(items, kind)
-    }
+    if (flags.retryFailed) items = store.listFailed(items, artifactKind)
     if (flags.limit !== undefined) items = items.slice(0, flags.limit)
     printing({ type: 'scan:found', count: items.length })
 
@@ -254,8 +254,11 @@ export async function commandRun(
         try {
           entries.push({ value: item, words: (await normalizeItem(item)).wordsNormalized })
         } catch {
-          // Az olvashatatlan feliratot a feldolgozás jelenti majd; a
-          // becslésből egyszerűen kimarad.
+          // Az elem, aminek a normalizálása dob (olvashatatlan fájl, üres
+          // felirat), csak a BECSLÉSBŐL marad ki — szószám híján nincs mit
+          // becsülni rá. A feldolgozás sorra veszi: a `planned` a szűrt
+          // `items`-ből épül, tehát a hibája `item:failed`-ként megjelenik a
+          // naplóban, a riportban és a kilépőkódban is.
         }
       }
 
@@ -297,7 +300,14 @@ export async function commandRun(
         })
       }
 
-      planned = slice.planned
+      // A `planned` a SZŰRT lista, csökkentve a plafon miatt elhalasztott
+      // elemekkel. Így a már kész elem a kihagyás ágára jut, a hibás elem a
+      // feldolgozás hibaágára — modellhívás egyikkel sem jár, tehát a plafon
+      // szemantikája sértetlen. A `slice` számai a becslésről szólnak, azaz a
+      // ténylegesen modellhívást igénylő elemekről; a feldolgozandó lista
+      // ennél tágabb.
+      const deferredIds = new Set(slice.deferred.map((i) => i.itemId))
+      planned = items.filter((i) => !deferredIds.has(i.itemId))
     }
 
     const written: string[] = []

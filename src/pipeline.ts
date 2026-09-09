@@ -44,7 +44,8 @@ export interface ItemOutcome {
   error?: string
 }
 
-const ARTIFACT_KIND = 'transcript'
+/** Az átirat műtermék-típusa. A CLI is ezt használja — egyetlen forrásból. */
+export const ARTIFACT_KIND = 'transcript'
 
 /**
  * Feliratfájl → normalizált átirat. A `scan`, a költségbecslés és a

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { commandRun } from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
+import type { RunEvent } from './events.js'
 import { estimateItemUsd } from './model/budget.js'
 import type { ModelClient } from './model/client.js'
 import { normalizeItem } from './pipeline.js'
@@ -52,6 +53,27 @@ async function makeVideo(downloads: string, id: string, title: string, channel: 
     'utf8',
   )
   await writeFile(join(dir, `${title}.en.srt`), SRT, 'utf8')
+}
+
+/**
+ * Feliratfájl egyetlen értelmezhető feliratblokk nélkül: a `normalizeItem`
+ * dob rá, tehát az elem a feldolgozás hibaágára kerül.
+ */
+async function makeBrokenVideo(downloads: string, id: string, title: string, channel: string) {
+  const dir = join(downloads, 'youtube', channel)
+  await mkdir(dir, { recursive: true })
+  await writeFile(
+    join(dir, `${title}.info.json`),
+    JSON.stringify({
+      id,
+      title,
+      channel,
+      upload_date: '20260714',
+      webpage_url: `https://www.youtube.com/watch?v=${id}`,
+    }),
+    'utf8',
+  )
+  await writeFile(join(dir, `${title}.en.srt`), '', 'utf8')
 }
 
 /**
@@ -619,5 +641,76 @@ describe('commandRun — a megszakadt köteg folytatása', () => {
     )
 
     expect(hivasok.generate).toBe(elsoUtan * 2)
+  })
+})
+
+describe('commandRun — a hibás elem a naplóban és a riportban', () => {
+  it('a normalizáláson elbukó elem hibaként jelenik meg, és a kilépőkód 1', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeBrokenVideo(downloads, 'a2', 'Sérült videó', 'Csatorna A')
+
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const hivasok = { generate: 0 }
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+
+    // A sérült elem nem eshet ki némán: hibás elem van, tehát a kilépőkód 1.
+    expect(code).toBe(1)
+
+    const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
+    const events = (await readFile(join(cfg.logsDir, jsonl), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as RunEvent)
+    const failed = events.filter((e) => e.type === 'item:failed')
+    expect(failed).toHaveLength(1)
+    expect(failed[0]).toMatchObject({ itemId: 'a2' })
+
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+    expect(report).toContain('## Hibák')
+    expect(report).toContain('`a2`')
+  })
+
+  it('a már feldolgozott korpuszon a második futás kihagyottnak jelenti az elemeket', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+    await makeVideo(downloads, 'a3', 'Harmadik videó', 'Csatorna A')
+
+    const raw = rawWithVault(5)
+    const hivasok = { generate: 0 }
+    await commandRun(
+      loadConfig(raw, '/p/refinery.config.yaml'),
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+    const elsoUtan = hivasok.generate
+    expect(elsoUtan).toBeGreaterThan(0)
+
+    // A második futás saját naplómappát kap, hogy a riportja egyértelműen
+    // beazonosítható legyen; az állapottár és a vault közös.
+    const masodikRaw = { ...raw, logs: { dir: join(work, 'logs-masodik') } }
+    const masodikCfg = loadConfig(masodikRaw, '/p/refinery.config.yaml')
+    const code = await commandRun(
+      masodikCfg,
+      masodikRaw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    // Nulla új modellhívás: a kész elemek a kihagyás ágára mennek.
+    expect(hivasok.generate).toBe(elsoUtan)
+
+    const md = (await readdir(masodikCfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(masodikCfg.logsDir, md), 'utf8')
+    expect(report).toContain('| kihagyva | 3 |')
   })
 })
