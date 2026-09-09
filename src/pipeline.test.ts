@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { collectEvents } from './events.js'
 import { createCostGuard } from './model/budget.js'
 import { modelClientFrom, type ModelClient } from './model/client.js'
-import { processItem, type PipelineDeps } from './pipeline.js'
+import { ARTIFACT_KIND, processItem, type PipelineDeps } from './pipeline.js'
 import type { Recipe } from './recipe/types.js'
 import { openState, type StateStore } from './state/db.js'
 import type { SourceItem } from './types.js'
@@ -395,5 +395,29 @@ describe('processItem recepttel', () => {
     expect(hivasok).toBe(1)
     expect(events.filter((e) => e.type === 'item:retry')).toHaveLength(0)
     expect(events.filter((e) => e.type === 'item:failed')).toHaveLength(1)
+  })
+
+  it('sérült feliratnál recept-futásban MINDKÉT érintett típus alatt hibát rögzít', async () => {
+    // Az 1. kör javítása óta a `planned` recept-futásnál is tartalmazza a
+    // normalizáláson elbukó elemet (korábban a becslési ciklus kiszűrte,
+    // mielőtt a `processItem` ezt a `catch`-ágat elérte volna). A hiba tehát
+    // most már mindkét típusra (`transcript` ÉS a recept azonosítója) alatt
+    // kell landoljon, különben a `corpusStatus`/`listFailed` a recept
+    // kind-je alatt sosem találja meg — örökre „hátra" marad.
+    const broken = item({ subtitlePath: join(dir, 'nincs.en.srt') })
+    const deps = alapDeps()
+    const recipeDeps = {
+      recipe: ATMENO_RECEPT,
+      client: probaKliens('## Jegyzet\n'),
+      modelConfig: MODELL_CFG,
+      guard: createCostGuard(5),
+    }
+
+    const outcome = await processItem(broken, { ...deps, recipeDeps })
+
+    expect(outcome.status).toBe('failed')
+    expect(deps.store.artifactOf(broken.itemId, ARTIFACT_KIND)?.status).toBe('failed')
+    expect(deps.store.artifactOf(broken.itemId, recipeDeps.recipe.id)?.status).toBe('failed')
+    expect(deps.store.corpusStatus([broken], recipeDeps.recipe.id).failed).toBe(1)
   })
 })

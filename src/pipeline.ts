@@ -258,7 +258,14 @@ export async function processItem(
     return outcome
   } catch (error) {
     const message = (error as Error).message
-    store.recordArtifact(item.itemId, ARTIFACT_KIND, 'failed', null, message)
+    // MINDKÉT érintett típusra rögzítünk: ha ez a hívás recept-futás volt,
+    // a `store.corpusStatus`/`store.listFailed` a recept azonosítója alatt
+    // keres (lásd `cli.ts` `artifactKind`), nem `ARTIFACT_KIND` alatt —
+    // enélkül az elem örökre „hátra" (pending) maradna a korpuszriportban.
+    if (kellAtirat) store.recordArtifact(item.itemId, ARTIFACT_KIND, 'failed', null, message)
+    if (kellRecept && recipeDeps) {
+      store.recordArtifact(item.itemId, recipeDeps.recipe.id, 'failed', null, message)
+    }
     sink({ type: 'item:failed', itemId: item.itemId, source: item.source, error: message })
     return { status: 'failed', error: message }
   }
