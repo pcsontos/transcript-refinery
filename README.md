@@ -6,7 +6,8 @@ Obsidian vaultba — mindegy, mi állította elő őket.
 > **Állapot: a Fázis 2 kész.** A teljes korpusz felügyelet nélkül végigfut: a
 > futás JSONL naplót és Markdown riportot hagy maga után, a költségplafon a
 > tiltás helyett szeletel, az átmeneti modellhibát korlátos újrapróbálkozás
-> nyeli el. A további receptek és a felület hátravannak. Lásd:
+> nyeli el. Három recept van: összefoglaló, tanulókártya és kérdés-felelet.
+> Az iteráció megmérése és a felület hátravan. Lásd:
 > [`docs/roadmap.md`](<./docs/roadmap.md>).
 
 ## A probléma
@@ -83,6 +84,14 @@ becslés a futás előtt megállítja a köteget, plafon hiányában pedig a
 konfiguráció el sem indul — egyik esetben sincs modellhívás.
 A `--dry-run` a fájlírást és az állapotrögzítést hagyja ki, a modellhívást
 nem: a generálás és a pontozás valós költséggel lezajlik.
+
+A `--recipe flashcards` és a `--recipe qa` ugyanezen a motoron fut — a
+felvételük egyetlen sort sem változtatott rajta. A kártyarecept nem
+sorformátumot kér a modelltől, hanem sémás objektumot, és a vault alakját
+(`## kérdés` + bekezdés, az Obsidian Decks plugin szerint) egy renderer
+állítja elő: a formátum így nem a modell figyelmén múlik. Egy nulla tokenes
+kapu előbb fut, mint a bírók — ismétlődő kérdésnél vagy válasz nélküli
+fejlécnél a drága pontozás el sem indul.
 
 A mérési harness (`pnpm eval`) ugyanezt a loopot futtatja egy determinisztikus
 fixture-modellel: kulcs és hálózat nélkül, három szintetikus feliraton fut le,

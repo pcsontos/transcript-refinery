@@ -5,6 +5,11 @@ import type { StructuredOutput } from './types.js'
  * Az AI SDK séma-eredetű hibáinak nevei. **Csak ezeket** csomagoljuk be: egy
  * hálózati hibát „séma-hibaként" jelenteni félrevezetné a riportot, és a
  * hibakeresést rossz irányba küldené.
+ *
+ * A `generateObject` útján (`model/client.ts`, `Output.object`) a gyakorlatban
+ * mindig az `AI_NoObjectGeneratedError` érkezik, a JSON- vagy séma-részlettel a
+ * `cause`-ban. A másik kettő azért marad a halmazban, mert az SDK máshol
+ * önállóan is dobja őket.
  */
 const SCHEMA_ERRORS = new Set([
   'AI_TypeValidationError',
@@ -31,9 +36,13 @@ export function structuredOutput<T>(
         const { value, usage } = await client.generateObject(role, prompt, schema)
         return { value: render(value), usage }
       } catch (error) {
-        const { name, message } = error as Error
+        const { name, message, cause } = error as Error
         if (!SCHEMA_ERRORS.has(name)) throw error
-        throw new Error(`a modell nem a sémának megfelelő kimenetet adott: ${message}`, {
+        // Az SDK felső szintű üzenete általános („response did not match
+        // schema"); a használható részlet — melyik mező hibás — a `cause`-ban
+        // van. A riport a felső szintű üzenetet kapja, ezért ide fűzzük.
+        const detail = cause instanceof Error ? `${message} ${cause.message}` : message
+        throw new Error(`a modell nem a sémának megfelelő kimenetet adott: ${detail}`, {
           cause: error,
         })
       }

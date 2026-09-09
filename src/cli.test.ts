@@ -13,6 +13,7 @@ import { runId } from './run/id.js'
 import { folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
 import type { ModelRole } from './types.js'
+import { lintVaultMarkdown } from './vault/lint.js'
 
 // A git-integrációt a `vault/git.test.ts` fedi. Itt csak arra kell, hogy a
 // `commandRun` törzse egy valódi (nem szimulált) hibát kapjon: a
@@ -1000,9 +1001,17 @@ describe('commandRun — a kártyarecept a vaultban', () => {
     const raw = rawWithVault(5)
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
-    const semaHiba = Object.assign(new Error('cards: array must contain at least 3 element(s)'), {
-      name: 'AI_TypeValidationError',
-    })
+    // Az SDK ezen az úton mindig `AI_NoObjectGeneratedError`-t dob: a felső
+    // szintű üzenet általános, a használható részlet a `cause`-ban van. Hogy
+    // ez tényleg az SDK viselkedése, a `recipe/structured.test.ts` rögzíti az
+    // SDK saját hibaosztályával; itt a névre és az okra van szükség.
+    const semaHiba = Object.assign(
+      new Error('No object generated: response did not match schema.'),
+      {
+        name: 'AI_NoObjectGeneratedError',
+        cause: new Error('cards: array must contain at least 3 element(s)'),
+      },
+    )
 
     const code = await commandRun(
       cfg,
@@ -1021,5 +1030,53 @@ describe('commandRun — a kártyarecept a vaultban', () => {
     const report = await readFile(join(cfg.logsDir, md), 'utf8')
     expect(report).toContain('## Hibák')
     expect(report).toMatch(/nem a sémának megfelelő/i)
+    // A riport a felső szintű üzenetet kapja; ha a `cause` részlete nem
+    // kerülne bele, a hibasor nem mondaná meg, mi volt a baj a kimenettel.
+    expect(report).toContain('array must contain at least 3 element(s)')
+  })
+})
+
+/** A Q&A jegyzet útvonala a vaultban, a `makeVideo` mappaszerkezetéhez. */
+const qaJegyzet = (notesRoot: string) =>
+  join(notesRoot, 'downloads', 'youtube', 'Csatorna A', 'Első videó_qa.md')
+
+const QA_KIMENET = '**Mit magyaráz a beszélő?**\n\nAz A fogalmat, majd a B-t.\n'
+
+describe('commandRun — a Q&A recept a vaultban', () => {
+  it('a jegyzet átmegy a vault linterén, és a frontmatter mind az öt recept-mezőt viszi', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { dryRun: false, force: false, commit: false, recipe: 'qa' },
+      {
+        createClient: () => ({
+          // eslint-disable-next-line @typescript-eslint/require-await
+          async generate() {
+            return { value: QA_KIMENET, usage: { inputTokens: 10, outputTokens: 5 } }
+          },
+          // eslint-disable-next-line @typescript-eslint/require-await
+          async generateObject<T>() {
+            return {
+              value: { score: 1, gaps: [] } as T,
+              usage: { inputTokens: 5, outputTokens: 2 },
+            }
+          },
+        }),
+      },
+    )
+
+    expect(code).toBe(0)
+    const note = await readFile(qaJegyzet(cfg.notesRoot), 'utf8')
+    expect(note).toContain('**Mit magyaráz a beszélő?**')
+    expect(lintVaultMarkdown(note)).toEqual([])
+    expect(note).toContain('recipe: qa')
+    expect(note).toMatch(/^model: .+$/m)
+    expect(note).toMatch(/^iterations: \d+$/m)
+    expect(note).toMatch(/^score: \d\.\d\d$/m)
+    expect(note).toMatch(/^cost_usd: \d\.\d{4}$/m)
   })
 })

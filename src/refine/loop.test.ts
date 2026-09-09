@@ -273,4 +273,44 @@ describe('refine — strukturált recept', () => {
     expect(result.output).toBe('- jobb')
     expect(result.generations).toBe(2)
   })
+
+  it('a javító prompt a RENDERELT Markdownt kapja előzményként, nem az objektumot', async () => {
+    const elozmenyek: string[] = []
+    const pontszamok = new Map([
+      ['- gyenge', 0.4],
+      ['- jobb', 0.95],
+    ])
+    const recipe: Recipe = {
+      ...recept(tablazatosRubrika(pontszamok)),
+      structured: kartyakRenderelese,
+      repairPrompt: ({ previous }) => {
+        elozmenyek.push(previous)
+        return 'JAVÍTÓ PROMPT'
+      },
+    }
+
+    await refine(recipe, INPUT, strukturaltKliens([{ cards: ['gyenge'] }, { cards: ['jobb'] }]))
+
+    expect(elozmenyek).toEqual(['- gyenge'])
+  })
+
+  it('a sémás hívások használatát is összegzi', async () => {
+    const pontszamok = new Map([
+      ['- gyenge', 0.4],
+      ['- jobb', 0.95],
+    ])
+    const recipe: Recipe = {
+      ...recept(tablazatosRubrika(pontszamok)),
+      structured: kartyakRenderelese,
+    }
+
+    const result = await refine(
+      recipe,
+      INPUT,
+      strukturaltKliens([{ cards: ['gyenge'] }, { cards: ['jobb'] }]),
+    )
+
+    // Két sémás generálás × {100, 10}; a rubrika itt determinisztikus, nem költ.
+    expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 20 })
+  })
 })

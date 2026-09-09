@@ -27,31 +27,67 @@ export const FlashcardsSchema = z.object({
 export type Flashcards = z.infer<typeof FlashcardsSchema>
 
 /**
+ * Fejléc-alakú sorok a válaszban. A Markdown **három szóköz behúzásig** még
+ * fejlécnek olvassa az ATX sort, a `---`/`===` aláhúzás pedig az előtte álló
+ * szövegsorból csinál fejlécet (setext) — mindkettő ugyanúgy fantomkártyát
+ * eredményez, mint egy behúzatlan `##`.
+ */
+const ATX = /^( {0,3})(#+)/
+const SETEXT = /^( {0,3})(-+|=+)[ \t]*$/
+
+/**
+ * A válasz fejléc-alakú sorainak elfedése. A `\` escape a sort bekezdéssé
+ * teszi, a behúzást viszont meghagyja.
+ *
+ * A kódblokkok belsejét **nem** kímélve escape-elünk: egy lezáratlan
+ * kerítéssel a modell különben kikapcsolhatná a védelmet a válasz hátralévő
+ * részére. A rosszabbik eset így egy látható `\` egy ritka kódrészletben, nem
+ * pedig egy szétesett pakli.
+ */
+function escapeHeadings(answer: string): string {
+  const lines = answer.split('\n')
+  return lines
+    .map((line, i) => {
+      const atx = ATX.exec(line)
+      if (atx) return `${atx[1]!}\\${line.slice(atx[1]!.length)}`
+      // A setext aláhúzás csak akkor fejléc, ha szövegsor áll fölötte.
+      const setext = SETEXT.exec(line)
+      if (setext && i > 0 && lines[i - 1]!.trim() !== '') {
+        return `${setext[1]!}\\${line.slice(setext[1]!.length)}`
+      }
+      return line
+    })
+    .join('\n')
+}
+
+/**
  * Kártyakészlet → az Obsidian Decks plugin fejléc-bekezdés alakja: minden
  * `##` fejléc egy kártya eleje, az alatta lévő bekezdés a hátulja.
  *
  * A renderer **normalizál, nem hibázik**. A kérdésbe került sortörés egyetlen
- * sorrá olvad, a válasz `#`-kezdetű sorai escape-et kapnak. Mindkettőt itt
+ * sorrá olvad, a válasz fejléc-alakú sorai escape-et kapnak. Mindkettőt itt
  * kell megoldani, mert a kész szövegben már nem lennének megkülönböztethetők
  * a szabályos kártyahatároktól: a sortörés utáni rész pont úgy néz ki, mint a
- * válasz első sora, a válaszbeli `##` pedig pont úgy, mint egy új kártya.
+ * válasz első sora, a válaszbeli fejléc pedig pont úgy, mint egy új kártya.
  * Ugyanaz a megfontolás, mint a futásriport tábláinak cella-escape-elésénél.
  */
 export function renderCards({ cards }: Flashcards): string {
   return cards
     .map((card) => {
       const question = card.question.replace(/\s*\n\s*/g, ' ').trim()
-      const answer = card.answer.replace(/^(#+)/gm, '\\$1')
-      return `## ${question}\n\n${answer}`
+      return `## ${question}\n\n${escapeHeadings(card.answer)}`
     })
     .join('\n\n')
 }
 
-/** Egy kártya a renderelt szövegből visszaolvasva. */
+/**
+ * Egy kártya a renderelt szövegből visszaolvasva. A behúzott `##`-t is
+ * kártyakezdetnek veszi, mert Obsidian is annak veszi.
+ */
 function parseCards(output: string): { question: string; body: string }[] {
   const cards: { question: string; body: string[] }[] = []
   for (const line of output.split('\n')) {
-    const heading = /^## (.*)$/.exec(line)
+    const heading = /^ {0,3}## (.*)$/.exec(line)
     if (heading) {
       cards.push({ question: heading[1]!.trim(), body: [] })
     } else if (cards.length > 0) {
@@ -86,15 +122,15 @@ export function checkFlashcards(output: string): Score {
     gaps.push(`The card "${card.question}" is a heading without an answer below it.`)
   }
 
-  const latott = new Map<string, string>()
+  const seen = new Map<string, string>()
   for (const card of cards) {
-    const kulcs = card.question.toLocaleLowerCase()
-    const elso = latott.get(kulcs)
-    if (elso === undefined) {
-      latott.set(kulcs, card.question)
+    const key = card.question.toLocaleLowerCase()
+    const first = seen.get(key)
+    if (first === undefined) {
+      seen.set(key, card.question)
     } else {
       gaps.push(
-        `Two cards ask the same question: "${elso}". Ask about a different point instead.`,
+        `Two cards ask the same question: "${first}". Ask about a different point instead.`,
       )
     }
   }

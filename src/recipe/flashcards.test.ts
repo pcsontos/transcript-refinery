@@ -69,6 +69,38 @@ describe('renderCards', () => {
     expect(rendered).toContain('\\## Nem fejléc')
     expect(rendered.match(/^## /gm)).toHaveLength(3)
   })
+
+  // A Markdown három szóköz behúzásig fejlécnek olvassa az ATX sort, a
+  // `---` aláhúzás pedig a fölötte álló sorból csinál H2-t. Escape nélkül
+  // mindkettő fantomkártya a Decksben, miközben a séma három kártyát adott.
+  it('a behúzott `##` sort is elfedi', () => {
+    const rendered = renderCards({
+      cards: [
+        { question: 'Mi az A?', answer: 'Bevezető.\n\n  ## Fantom\n\n  Törzs.' },
+        ...HAROM.cards.slice(1),
+      ],
+    })
+    expect(rendered).toContain('  \\## Fantom')
+    expect(rendered.match(/^ {0,3}## /gm)).toHaveLength(3)
+  })
+
+  it('a setext aláhúzást elfedi, a listaelemet viszont békén hagyja', () => {
+    const rendered = renderCards({
+      cards: [
+        { question: 'Mi az A?', answer: 'Fantom cím\n---\nszöveg\n\n- listaelem\n- másik' },
+        ...HAROM.cards.slice(1),
+      ],
+    })
+    expect(rendered).toContain('Fantom cím\n\\---\nszöveg')
+    expect(rendered).toContain('- listaelem\n- másik')
+  })
+
+  it('a szövegsor nélkül álló `---`-t nem escape-eli: az nem fejléc', () => {
+    const rendered = renderCards({
+      cards: [{ question: 'Mi az A?', answer: 'Első.\n\n---\n\nMásodik.' }, ...HAROM.cards.slice(1)],
+    })
+    expect(rendered).toContain('Első.\n\n---\n\nMásodik.')
+  })
 })
 
 describe('checkFlashcards', () => {
@@ -95,6 +127,12 @@ describe('checkFlashcards', () => {
     const score = checkFlashcards('## A?\n\n## B?\n\nVálasz B.\n\n## C?\n\nVálasz C.')
     expect(score.value).toBe(0)
     expect(score.gaps.join(' ')).toMatch(/without an answer/i)
+  })
+
+  it('a behúzott `##` fejlécet is kártyakezdetnek veszi, ahogy Obsidian', () => {
+    // Ha nem venné annak, egy kártyát látna, és „has 1 card"-ot írna.
+    const score = checkFlashcards('  ## A?\n\nVálasz A.\n\n## B?\n\nVálasz B.')
+    expect(score.gaps.join(' ')).toMatch(/has 2 card/i)
   })
 
   it('a gap-üzenetek angolul szólnak, mert visszamennek a modellnek', () => {
