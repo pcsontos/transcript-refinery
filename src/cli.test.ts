@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -49,6 +49,7 @@ const rawConfig = (costLimitUsd: number) => ({
   vault: { path: '/nemletezo/vault' },
   sources: [downloads],
   state: { path: join(work, 'state.db') },
+  logs: { dir: join(work, 'logs') },
   model: {
     base_url: 'http://localhost:4000/v1',
     draft: 'proba-draft',
@@ -61,9 +62,16 @@ const rawConfig = (costLimitUsd: number) => ({
   cost_limit_usd: costLimitUsd,
 })
 
+/** Konfiguráció valódi, ideiglenes vaulttal: a publikálás így tényleg lefut. */
+const rawWithVault = (costLimitUsd: number) => ({
+  ...rawConfig(costLimitUsd),
+  vault: { path: vault },
+})
+
 let savedApiKey: string | undefined
 let work: string
 let downloads: string
+let vault: string
 
 beforeEach(async () => {
   savedApiKey = process.env.LITELLM_API_KEY
@@ -72,6 +80,8 @@ beforeEach(async () => {
   work = await mkdtemp(join(tmpdir(), 'refinery-cli-'))
   downloads = join(work, 'downloads')
   await mkdir(downloads, { recursive: true })
+  vault = join(work, 'vault')
+  await mkdir(vault, { recursive: true })
 })
 
 afterEach(() => {
@@ -209,5 +219,79 @@ describe('commandRun — a szűrők', () => {
     })
 
     expect(code).toBe(0)
+  })
+})
+
+describe('commandRun — napló és riport', () => {
+  it('a futás után napló és riport is van a naplómappában', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const code = await commandRun(cfg, raw, { dryRun: false, force: false, commit: false })
+
+    expect(code).toBe(0)
+    const files = await readdir(cfg.logsDir)
+    expect(files.filter((f) => f.endsWith('.jsonl'))).toHaveLength(1)
+    expect(files.filter((f) => f.endsWith('.md'))).toHaveLength(1)
+  })
+
+  it('a napló minden sora önállóan értelmezhető JSON', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    await commandRun(cfg, raw, { dryRun: false, force: false, commit: false })
+
+    const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
+    const lines = (await readFile(join(cfg.logsDir, jsonl), 'utf8')).trim().split('\n')
+
+    expect(lines.length).toBeGreaterThan(0)
+    for (const line of lines) expect(() => JSON.parse(line) as unknown).not.toThrow()
+  })
+
+  it('a riport megnevezi a felirat-forrás szerinti bontást', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    await commandRun(cfg, raw, { dryRun: false, force: false, commit: false })
+
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+
+    expect(report).toMatch(/kreátori \d+ \/ automatikus \d+/)
+    expect(report).toContain('## A korpusz állapota')
+  })
+
+  it('a megszakítás riportot hagy maga után, és 130-cal lép ki', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    let exitCode: number | undefined
+    let megszakadt: () => void
+    const kilepett = new Promise<void>((resolve) => (megszakadt = resolve))
+
+    await commandRun(
+      cfg,
+      raw,
+      { dryRun: false, force: false, commit: false },
+      {
+        // A megszakítás közvetlenül a kezelő beszerelése után érkezik.
+        signals: {
+          on(_event: string, listener: () => void) {
+            setTimeout(listener, 0)
+            return this
+          },
+        },
+        exit: (code: number) => {
+          exitCode = code
+          megszakadt()
+        },
+      },
+    )
+    await kilepett
+
+    expect(exitCode).toBe(130)
+    expect((await readdir(cfg.logsDir)).some((f) => f.endsWith('.md'))).toBe(true)
   })
 })

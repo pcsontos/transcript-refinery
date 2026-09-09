@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   CONFIG_FILENAME,
@@ -10,17 +10,22 @@ import {
   readConfigFile,
   validateConfig,
   type Config,
+  type ModelConfig,
 } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateRunUsd } from './model/budget.js'
-import { createModelClient } from './model/client.js'
+import { createModelClient, type ModelClient } from './model/client.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
-import { parseSubtitle } from './subtitle/parse.js'
+import { countRunLogs, installSigint, writeReport } from './run/finish.js'
+import { runId } from './run/id.js'
+import { openRunLog } from './run/log.js'
+import { renderReport } from './run/report.js'
 import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
+import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 
@@ -42,6 +47,8 @@ Kapcsolók:
                     modellhívások VALÓS költséggel megtörténnek
   --force           létező fájlt is felülír
   --no-commit       nem commitol és nem pushol a vault repójába
+
+  A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
 
 function applyFilters(
@@ -106,6 +113,15 @@ async function commandScan(cfg: Config): Promise<number> {
   return 0
 }
 
+export interface RunRuntime {
+  /** A SIGINT forrása. A tesztek saját kibocsátót adnak. */
+  signals?: { on(event: string, listener: () => void): unknown }
+  /** Kilépés megszakításkor. */
+  exit?: (code: number) => void
+  /** A modellkliens gyártása; alapértelmezésben a valódi LiteLLM-kliens. */
+  createClient?: (cfg: ModelConfig) => ModelClient
+}
+
 export async function commandRun(
   cfg: Config,
   raw: unknown,
@@ -117,8 +133,13 @@ export async function commandRun(
     dryRun: boolean
     force: boolean
     commit: boolean
+    /** A riport fejlécében megjelenő parancssor; hiányában „run”. */
+    command?: string
   },
+  runtime: RunRuntime = {},
 ): Promise<number> {
+  const commandLine = flags.command ?? 'run'
+
   let recipeDeps: RecipeDeps | undefined
   let maxIterations = 0
   if (flags.recipe) {
@@ -126,7 +147,7 @@ export async function commandRun(
     const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
     recipeDeps = {
       recipe,
-      client: createModelClient(modelConfig),
+      client: (runtime.createClient ?? createModelClient)(modelConfig),
       modelConfig,
       guard: createCostGuard(modelConfig.costLimitUsd),
     }
@@ -136,16 +157,65 @@ export async function commandRun(
   if (flags.commit && !flags.dryRun) await gitPullFfOnly(cfg.vaultPath)
 
   const store = openState(cfg.statePath)
+
+  const startedAt = new Date()
+  const id = runId(startedAt)
+  const logPath = join(cfg.logsDir, `${id}.jsonl`)
+  const reportPath = join(cfg.logsDir, `${id}.md`)
+  const log = openRunLog(logPath)
+
   const { sink, events } = collectEvents()
   const printing = (e: RunEvent) => {
     sink(e)
+    log.sink(e)
     const line = render(e)
     if (line !== null) console.log(line)
   }
 
+  // A discoverAll teljes, szűretlen eredménye — a korpusz állapota a teljes
+  // korpuszról szól, nem a szűrt szeletről. Korán inicializálva, hogy egy
+  // korai SIGINT is riportot írjon (üres korpusszal), ne undefined-ra
+  // hivatkozzon.
+  let discovered: SourceItem[] = []
+
+  const finish = async (interrupted: boolean): Promise<void> => {
+    const summary = summarize(events)
+    const kind = recipeDeps?.recipe.id ?? 'transcript'
+    const corpus = store.corpusStatus(discovered, kind)
+    const markdown = renderReport({
+      runId: id,
+      startedAt,
+      finishedAt: new Date(),
+      command: commandLine,
+      summary,
+      corpus,
+      runs: countRunLogs(cfg.logsDir),
+      logPath,
+      cost: recipeDeps
+        ? {
+            spentUsd: recipeDeps.guard.spentUsd(),
+            limitUsd: recipeDeps.modelConfig.costLimitUsd,
+            capped: recipeDeps.guard.exceeded(),
+          }
+        : undefined,
+      nextCommand: corpus.pending > 0 ? commandLine : undefined,
+    })
+    await writeReport(reportPath, markdown)
+    log.close()
+    console.log(`${interrupted ? '\nMegszakítva. ' : ''}Riport: ${reportPath}`)
+  }
+
+  // A kezelő nem zárja az állapottárat. Egy valódi Ctrl+C-nél a
+  // process.exit úgyis véget vet a folyamatnak, és az állapottár minden
+  // írása már commitolva van; a tesztben pedig a hamis exit után a futás
+  // zavartalanul befejeződik, ami egy lezárt adatbázison hibát dobna.
+  installSigint(() => {
+    void finish(true).then(() => (runtime.exit ?? process.exit)(130))
+  }, runtime.signals)
+
   try {
-    const all = await discoverAll(cfg.sources, cfg.languages)
-    const items = applyFilters(all, flags)
+    discovered = await discoverAll(cfg.sources, cfg.languages)
+    const items = applyFilters(discovered, flags)
     printing({ type: 'scan:found', count: items.length })
 
     if (recipeDeps) {
@@ -214,7 +284,9 @@ export async function commandRun(
       failed: summary.failed,
     })
     console.log(
-      `\nKész: ${summary.succeeded} sikeres, ${summary.skipped} kihagyva, ${summary.failed} hibás.`,
+      `\nKész: ${summary.succeeded} sikeres ` +
+        `(kreátori ${summary.byCaptionSource.creator} / automatikus ${summary.byCaptionSource.auto}), ` +
+        `${summary.skipped} kihagyva, ${summary.failed} hibás.`,
     )
 
     if (flags.commit && !flags.dryRun && written.length > 0) {
@@ -225,6 +297,7 @@ export async function commandRun(
       }
     }
 
+    await finish(false)
     return summary.failed > 0 ? 1 : 0
   } finally {
     store.close()
@@ -268,6 +341,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       dryRun: values['dry-run'],
       force: values.force,
       commit: !values['no-commit'],
+      command: argv.join(' '),
     })
   }
 
