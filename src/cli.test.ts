@@ -1,7 +1,7 @@
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { commandRun } from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
 import { estimateItemUsd } from './model/budget.js'
@@ -9,6 +9,19 @@ import { normalizeItem } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
 import { folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
+
+// A git-integrációt a `vault/git.test.ts` fedi. Itt csak arra kell, hogy a
+// `commandRun` törzse egy valódi (nem szimulált) hibát kapjon: a
+// `gitCommitPaths` eldobása igazolja, hogy egy a törzsben dobott kivétel
+// esetén is teljes marad a JSONL napló (lásd a „napló és riport" leírót).
+vi.mock('./vault/git.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./vault/git.js')>()
+  return {
+    ...actual,
+    gitPullFfOnly: vi.fn(() => Promise.resolve(undefined)),
+    gitCommitPaths: vi.fn(() => Promise.reject(new Error('szimulált git hiba a teszthez'))),
+  }
+})
 
 const SRT = `1
 00:00:00,000 --> 00:00:02,000
@@ -84,9 +97,10 @@ beforeEach(async () => {
   await mkdir(vault, { recursive: true })
 })
 
-afterEach(() => {
+afterEach(async () => {
   if (savedApiKey === undefined) delete process.env.LITELLM_API_KEY
   else process.env.LITELLM_API_KEY = savedApiKey
+  await rm(work, { recursive: true, force: true })
 })
 
 describe('commandRun — a recept-becslés költségkapui', () => {
@@ -268,8 +282,8 @@ describe('commandRun — napló és riport', () => {
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
     let exitCode: number | undefined
-    let megszakadt: () => void
-    const kilepett = new Promise<void>((resolve) => (megszakadt = resolve))
+    let interrupted: () => void
+    const exited = new Promise<void>((resolve) => (interrupted = resolve))
 
     await commandRun(
       cfg,
@@ -285,11 +299,11 @@ describe('commandRun — napló és riport', () => {
         },
         exit: (code: number) => {
           exitCode = code
-          megszakadt()
+          interrupted()
         },
       },
     )
-    await kilepett
+    await exited
 
     expect(exitCode).toBe(130)
     expect((await readdir(cfg.logsDir)).some((f) => f.endsWith('.md'))).toBe(true)
@@ -337,5 +351,62 @@ describe('commandRun — napló és riport', () => {
     const report = await readFile(join(cfg.logsDir, md), 'utf8')
 
     expect(report).toContain('Parancs: `run --source downloads`')
+  })
+
+  it('a törzsben dobott hiba után is teljes marad a napló', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    // A `gitCommitPaths` a fájl tetején mockolva dob — ez egy a `try`
+    // törzsében, a napló megnyitása UTÁN dobott, valódi kivétel, nem
+    // szimulált seam. A `finally`-nek enélkül is le kell zárnia a naplót.
+    await expect(
+      commandRun(cfg, raw, { dryRun: false, force: false, commit: true }),
+    ).rejects.toThrow('szimulált git hiba')
+
+    const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
+    const lines = (await readFile(join(cfg.logsDir, jsonl), 'utf8')).trim().split('\n')
+
+    expect(lines.length).toBeGreaterThan(0)
+    for (const line of lines) expect(() => JSON.parse(line) as unknown).not.toThrow()
+  })
+
+  it('a megszakítás után a normál befejezés nem ír riportot kétszer', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    let interrupted: () => void
+    const exited = new Promise<void>((resolve) => (interrupted = resolve))
+
+    await commandRun(
+      cfg,
+      raw,
+      { dryRun: false, force: false, commit: false },
+      {
+        // A megszakítás közvetlenül a kezelő beszerelése után érkezik, a
+        // normál befejezéssel versenyezve.
+        signals: {
+          on(_event: string, listener: () => void) {
+            setTimeout(listener, 0)
+            return this
+          },
+        },
+        exit: () => interrupted(),
+      },
+    )
+    // Az `exit` csak a megszakítás-ág `finish(true)`-ja UTÁN fut le — ha ez
+    // megtörtént, a versengő ág biztosan lezárult, akármelyik nyerte az őrt.
+    await exited
+
+    const riportLines = logSpy.mock.calls.filter(
+      ([line]) => typeof line === 'string' && line.includes('Riport:'),
+    )
+    logSpy.mockRestore()
+
+    expect(riportLines).toHaveLength(1)
   })
 })

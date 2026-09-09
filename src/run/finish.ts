@@ -24,15 +24,23 @@ export function countRunLogs(dir: string): number {
 /**
  * A Ctrl+C is riportot hagy maga után. Egyszeri lefutás: a második SIGINT ne
  * írjon félbehagyott riportot az elsőre.
+ *
+ * A visszaadott függvény leiratkozik: hívás után a `commandRun` visszatérte
+ * után egy késői jel ne fusson neki egy már lezárt állapottárnak.
  */
 export function installSigint(
   handler: () => void,
-  target: { on(event: string, listener: () => void): unknown } = process,
-): void {
+  target: {
+    on(event: string, listener: () => void): unknown
+    off?(event: string, listener: () => void): unknown
+  } = process,
+): () => void {
   let fired = false
-  target.on('SIGINT', () => {
+  const listener = () => {
     if (fired) return
     fired = true
     handler()
-  })
+  }
+  target.on('SIGINT', listener)
+  return () => target.off?.('SIGINT', listener)
 }

@@ -178,7 +178,17 @@ export async function commandRun(
   // hivatkozzon.
   let discovered: SourceItem[] = []
 
+  // Egyszeri lefutás: a megszakítás és a normál befejezés is meghívja a
+  // `finish`-t, és versenyben lehetnek egymással (a `process.exit` a SIGINT
+  // ágon csak a riport kiírása UTÁN fut le, addig a fő ág is tovább
+  // haladhat). Az őr szinkron, még az első `await` előtt fut le, tehát
+  // bármelyik hívás érkezzen is előbb, a másik nem írja felül a riportot.
+  let finished = false
+
   const finish = async (interrupted: boolean): Promise<void> => {
+    if (finished) return
+    finished = true
+
     const summary = summarize(events)
     const kind = recipeDeps?.recipe.id ?? 'transcript'
     const corpus = store.corpusStatus(discovered, kind)
@@ -201,7 +211,10 @@ export async function commandRun(
       nextCommand: corpus.pending > 0 ? commandLine : undefined,
     })
     await writeReport(reportPath, markdown)
-    log.close()
+    // A naplót SZÁNDÉKOSAN nem itt zárjuk: a `finish(true)` (megszakítás) és
+    // a fő ág versenyezhet, és egy itt lezárt napló a fő ág további
+    // eseményeit némán elnyelné. A napló lezárása a `finally` dolga —
+    // egyszer fut le, akkor, amikor a `commandRun` valóban véget ér.
     console.log(`${interrupted ? '\nMegszakítva. ' : ''}Riport: ${reportPath}`)
   }
 
@@ -209,7 +222,7 @@ export async function commandRun(
   // process.exit úgyis véget vet a folyamatnak, és az állapottár minden
   // írása már commitolva van; a tesztben pedig a hamis exit után a futás
   // zavartalanul befejeződik, ami egy lezárt adatbázison hibát dobna.
-  installSigint(() => {
+  const uninstallSigint = installSigint(() => {
     void finish(true).then(() => (runtime.exit ?? process.exit)(130))
   }, runtime.signals)
 
@@ -303,6 +316,10 @@ export async function commandRun(
     await finish(false)
     return summary.failed > 0 ? 1 : 0
   } finally {
+    // A leiratkozás azért kerül ide, hogy a `commandRun` visszatérte után
+    // egy késői jel ne fusson neki egy lent már lezárt állapottárnak.
+    uninstallSigint()
+    log.close()
     store.close()
   }
 }

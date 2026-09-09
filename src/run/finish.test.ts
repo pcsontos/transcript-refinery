@@ -46,4 +46,15 @@ describe('installSigint', () => {
     target.emit('SIGINT')
     expect(calls).toBe(1)
   })
+
+  it('a visszaadott leiratkozás eltávolítja a kezelőt', () => {
+    const target = new EventEmitter()
+    let calls = 0
+    const uninstall = installSigint(() => void calls++, target)
+
+    uninstall()
+    target.emit('SIGINT')
+
+    expect(calls).toBe(0)
+  })
 })
