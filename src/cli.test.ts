@@ -486,7 +486,12 @@ describe('commandRun — --retry-failed', () => {
     )
   })
 
-  it('a --retry-failed a --limit szűrővel együtt is működik', async () => {
+  it('a --retry-failed a --limit szűrővel együtt is a hibás elemet választja, nem az elöl álló készet', async () => {
+    // a1 KÉSZ, a2 HIBÁS — a felfedezési sorrend a1, a2. Egy hibás sorrendű
+    // szűrés (limit előbb, mint a hibás-szűrő) az elöl álló a1-et választaná
+    // ki és azt dobná el (mert nem hibás), így nulla elemmel futna le. A
+    // helyes sorrend a hibásokra szűkít, ÉS UTÁNA vág a limitre — tehát a2-t
+    // kell választania.
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
 
@@ -497,7 +502,7 @@ describe('commandRun — --retry-failed', () => {
     for (const i of await folderSource({ name: 'downloads', path: downloads }, []).discover()) {
       pre.recordItem(i)
     }
-    pre.recordArtifact('a1', 'transcript', 'failed', null, 'hiba')
+    pre.recordArtifact('a1', 'transcript', 'done', '/v/a1.md', null)
     pre.recordArtifact('a2', 'transcript', 'failed', null, 'hiba')
     pre.close()
 
@@ -512,7 +517,28 @@ describe('commandRun — --retry-failed', () => {
     expect(code).toBe(0)
     const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
     const log = await readFile(join(cfg.logsDir, jsonl), 'utf8')
-    expect(log).toContain('"type":"scan:found","count":1')
+    expect(log).toContain('"itemId":"a2"')
+    expect(log).not.toContain('"itemId":"a1"')
+  })
+
+  it('--recipe mellett, ha a receptre nincs egyetlen rekord sem, nulla elemmel fut le', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const code = await commandRun(cfg, raw, {
+      recipe: 'summary',
+      dryRun: false,
+      force: false,
+      commit: false,
+      retryFailed: true,
+    })
+
+    expect(code).toBe(0)
+    const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
+    expect(await readFile(join(cfg.logsDir, jsonl), 'utf8')).toContain(
+      '"type":"scan:found","count":0',
+    )
   })
 })
 

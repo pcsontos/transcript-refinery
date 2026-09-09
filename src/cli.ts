@@ -54,7 +54,7 @@ Kapcsolók:
 
 function applyFilters(
   items: SourceItem[],
-  filters: { source?: string; channel?: string; limit?: number },
+  filters: { source?: string; channel?: string },
 ): SourceItem[] {
   let out = items
   if (filters.source) {
@@ -66,7 +66,6 @@ function applyFilters(
     const wanted = filters.channel.toLocaleLowerCase()
     out = out.filter((i) => i.metadata.channel?.toLocaleLowerCase() === wanted)
   }
-  if (filters.limit !== undefined) out = out.slice(0, filters.limit)
   return out
 }
 
@@ -235,11 +234,16 @@ export async function commandRun(
 
   try {
     discovered = await discoverAll(cfg.sources, cfg.languages)
+    // A limitnek a JELÖLTEKET kell határolnia, nem a teljes korpuszt: a
+    // forrás/csatorna szűrés (`applyFilters`) és a hibás-szűrő UTÁN vágunk,
+    // különben pl. `--retry-failed --limit 1` a felfedezés szerint elöl
+    // álló (esetleg kész) elemet nézné meg, nem a hibásak közül az elsőt.
     let items = applyFilters(discovered, flags)
     if (flags.retryFailed) {
       const kind = recipeDeps?.recipe.id ?? 'transcript'
       items = store.listFailed(items, kind)
     }
+    if (flags.limit !== undefined) items = items.slice(0, flags.limit)
     printing({ type: 'scan:found', count: items.length })
 
     let planned = items
