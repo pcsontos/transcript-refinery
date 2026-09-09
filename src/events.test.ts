@@ -32,28 +32,70 @@ describe('summarize — elemszintű összegzés', () => {
 
   it('felirat-forrás szerint bontja a sikeres elemeket, és felsorolja az automatikusakat', () => {
     const summary = summarize([
+      { type: 'item:start', itemId: 'a', title: 'Alfa' },
       { type: 'item:normalized', itemId: 'a', wordsRaw: 100, wordsNormalized: 40, captionSource: 'creator' },
       { type: 'item:published', itemId: 'a', path: '/v/a.md' },
+      { type: 'item:start', itemId: 'b', title: 'Béta' },
       { type: 'item:normalized', itemId: 'b', wordsRaw: 200, wordsNormalized: 90, captionSource: 'auto' },
       { type: 'item:published', itemId: 'b', path: '/v/b.md' },
+      { type: 'item:start', itemId: 'c', title: 'Céda' },
       { type: 'item:normalized', itemId: 'c', wordsRaw: 300, wordsNormalized: 120, captionSource: 'auto' },
       { type: 'item:published', itemId: 'c', path: '/v/c.md' },
     ])
     expect(summary.succeeded).toBe(3)
     expect(summary.byCaptionSource).toEqual({ creator: 1, auto: 2 })
-    expect(summary.autoItems).toEqual(['b', 'c'])
+    // A felsorolás a NEVET viszi, nem csak az azonosítót: a következő lépés
+    // („ezeket újratranszkribálom") enélkül keresési feladat.
+    expect(summary.autoItems).toEqual([
+      { itemId: 'b', title: 'Béta' },
+      { itemId: 'c', title: 'Céda' },
+    ])
+  })
+
+  it('az automatikus elemeket cím szerint, egyenlőségnél azonosító szerint rendezi', () => {
+    const summary = summarize([
+      { type: 'item:start', itemId: 'z1', title: 'Zebra' },
+      { type: 'item:normalized', itemId: 'z1', wordsRaw: 10, wordsNormalized: 10, captionSource: 'auto' },
+      { type: 'item:published', itemId: 'z1', path: '/v/z1.md' },
+      { type: 'item:start', itemId: 'a2', title: 'Azonos cím' },
+      { type: 'item:normalized', itemId: 'a2', wordsRaw: 10, wordsNormalized: 10, captionSource: 'auto' },
+      { type: 'item:published', itemId: 'a2', path: '/v/a2.md' },
+      { type: 'item:start', itemId: 'a1', title: 'Azonos cím' },
+      { type: 'item:normalized', itemId: 'a1', wordsRaw: 10, wordsNormalized: 10, captionSource: 'auto' },
+      { type: 'item:published', itemId: 'a1', path: '/v/a1.md' },
+    ])
+    expect(summary.autoItems).toEqual([
+      { itemId: 'a1', title: 'Azonos cím' },
+      { itemId: 'a2', title: 'Azonos cím' },
+      { itemId: 'z1', title: 'Zebra' },
+    ])
+  })
+
+  it('cím híján az azonosító a tartalék', () => {
+    const summary = summarize([
+      { type: 'item:start', itemId: 'ures', title: '   ' },
+      { type: 'item:normalized', itemId: 'ures', wordsRaw: 10, wordsNormalized: 10, captionSource: 'auto' },
+      { type: 'item:published', itemId: 'ures', path: '/v/ures.md' },
+      // Ennek az elemnek nincs `item:start` eseménye egyáltalán.
+      { type: 'item:normalized', itemId: 'nincs', wordsRaw: 10, wordsNormalized: 10, captionSource: 'auto' },
+      { type: 'item:published', itemId: 'nincs', path: '/v/nincs.md' },
+    ])
+    expect(summary.autoItems).toEqual([
+      { itemId: 'nincs', title: 'nincs' },
+      { itemId: 'ures', title: 'ures' },
+    ])
   })
 
   it('a hiba erősebb a publikálásnál: a részben elkészült elem hibás', () => {
     const summary = summarize([
       { type: 'item:normalized', itemId: 'a', wordsRaw: 100, wordsNormalized: 40, captionSource: 'auto' },
       { type: 'item:published', itemId: 'a', path: '/v/a_transcript.md' },
-      { type: 'item:failed', itemId: 'a', error: 'a bíró nem válaszolt' },
+      { type: 'item:failed', itemId: 'a', source: 'youtube', error: 'a bíró nem válaszolt' },
     ])
     expect(summary).toEqual({
       ...EMPTY_SUMMARY,
       failed: 1,
-      failures: [{ itemId: 'a', error: 'a bíró nem válaszolt' }],
+      failures: [{ itemId: 'a', source: 'youtube', error: 'a bíró nem válaszolt' }],
     })
   })
 
@@ -80,12 +122,12 @@ describe('summarize — elemszintű összegzés', () => {
 
   it('metaadat nélküli, normalizálás előtt elbukott elem nem kerül a bontásba', () => {
     const summary = summarize([
-      { type: 'item:failed', itemId: 'x', error: 'olvashatatlan felirat' },
+      { type: 'item:failed', itemId: 'x', source: 'meetings', error: 'olvashatatlan felirat' },
     ])
     expect(summary).toEqual({
       ...EMPTY_SUMMARY,
       failed: 1,
-      failures: [{ itemId: 'x', error: 'olvashatatlan felirat' }],
+      failures: [{ itemId: 'x', source: 'meetings', error: 'olvashatatlan felirat' }],
     })
   })
 
@@ -95,7 +137,7 @@ describe('summarize — elemszintű összegzés', () => {
       { type: 'item:published', itemId: 'a', path: '/x/a.md' },
       { type: 'item:normalized', itemId: 'b', wordsRaw: 100, wordsNormalized: 40, captionSource: 'auto' },
       { type: 'item:skipped', itemId: 'b', reason: 'már feldolgozva' },
-      { type: 'item:failed', itemId: 'c', error: 'nincs felirat' },
+      { type: 'item:failed', itemId: 'c', source: 'youtube', error: 'nincs felirat' },
       { type: 'item:normalized', itemId: 'd', wordsRaw: 100, wordsNormalized: 40, captionSource: 'creator' },
       { type: 'item:published', itemId: 'd', path: '/x/d.md' },
     ])
@@ -105,8 +147,17 @@ describe('summarize — elemszintű összegzés', () => {
       skipped: 1,
       failed: 1,
       byCaptionSource: { creator: 2, auto: 0 },
-      failures: [{ itemId: 'c', error: 'nincs felirat' }],
+      failures: [{ itemId: 'c', source: 'youtube', error: 'nincs felirat' }],
     })
+  })
+
+  it('a hiba a forrásmappát is megőrzi', () => {
+    const summary = summarize([
+      { type: 'item:failed', itemId: 'x', source: 'eloadasok', error: 'olvashatatlan felirat' },
+    ])
+    expect(summary.failures).toEqual([
+      { itemId: 'x', source: 'eloadasok', error: 'olvashatatlan felirat' },
+    ])
   })
 
   it('üres folyamra nullákat ad', () => {

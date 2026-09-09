@@ -252,6 +252,12 @@ describe('végponttól végpontig', () => {
   it('a riport a felirat-forrás szerint bont, és megnevezi az automatikus elemet', async () => {
     await write(join(subsA, 'Cs', 'Kreatori.en.srt'), SRT)
     await write(join(subsB, 'Cs', 'Automatikus.en.srt'), AUTO_SRT)
+    // A metaadat szándékosan más címet ad, mint a fájlnév, és az azonosító
+    // sem a címből jön: így a riport állítása tényleg a NÉVRŐL szól.
+    await write(
+      join(subsB, 'Cs', 'Automatikus.info.json'),
+      JSON.stringify({ id: 'auto-1', title: 'Gépi felirattal készült előadás' }),
+    )
 
     const { summary, items } = await processAll([subsA, subsB])
     expect(summary.byCaptionSource).toEqual({ creator: 1, auto: 1 })
@@ -273,8 +279,12 @@ describe('végponttól végpontig', () => {
       logPath: join(cfg.logsDir, '2026-09-07T02-14-03.jsonl'),
     })
 
+    const auto = summary.autoItems[0]!
+    expect(auto).toEqual({ itemId: 'auto-1', title: 'Gépi felirattal készült előadás' })
+
     expect(markdown).toContain('kreátori 1 / automatikus 1')
-    expect(markdown).toContain(summary.autoItems[0]!)
+    // A felsorolás a nevet viszi, az azonosító csak mellette áll.
+    expect(markdown).toContain(`- ${auto.title} (\`${auto.itemId}\`)`)
     expect(markdown).toContain('| youtube |')
     expect(markdown).toContain('| meetings |')
   })

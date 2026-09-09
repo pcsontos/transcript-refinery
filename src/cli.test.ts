@@ -670,12 +670,15 @@ describe('commandRun — a hibás elem a naplóban és a riportban', () => {
       .map((line) => JSON.parse(line) as RunEvent)
     const failed = events.filter((e) => e.type === 'item:failed')
     expect(failed).toHaveLength(1)
-    expect(failed[0]).toMatchObject({ itemId: 'a2' })
+    // A JSONL sor is megnevezi a forrásmappát — ugyanaz a bizonyítékigény
+    // egy szinttel a riport alatt.
+    expect(failed[0]).toMatchObject({ itemId: 'a2', source: 'downloads' })
 
     const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
     const report = await readFile(join(cfg.logsDir, md), 'utf8')
     expect(report).toContain('## Hibák')
-    expect(report).toContain('`a2`')
+    // A spec §2.2: elemenként az azonosító, a FORRÁSMAPPA NEVE és az ok.
+    expect(report).toMatch(/\| `a2` \| downloads \| .+ \|/)
   })
 
   it('a már feldolgozott korpuszon a második futás kihagyottnak jelenti az elemeket', async () => {

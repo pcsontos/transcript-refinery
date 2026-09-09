@@ -18,7 +18,13 @@ export type RunEvent =
     }
   | { type: 'item:published'; itemId: string; path: string }
   | { type: 'item:skipped'; itemId: string; reason: string }
-  | { type: 'item:failed'; itemId: string; error: string }
+  | {
+      type: 'item:failed'
+      itemId: string
+      /** A forrásmappa neve — a riport „Hibák" táblája ezt is kiírja. */
+      source: string
+      error: string
+    }
   | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
   | {
       type: 'run:estimate'
@@ -72,7 +78,16 @@ export type EventSink = (event: RunEvent) => void
 
 export interface RunFailure {
   itemId: string
+  /** A forrásmappa neve: a hiba önmagában, keresés nélkül is elhelyezhető. */
+  source: string
   error: string
+}
+
+/** Egy automatikus feliratból készült sikeres elem a riport felsorolásához. */
+export interface AutoItem {
+  itemId: string
+  /** Az elem címe; hiányzó vagy üres cím esetén az azonosító. */
+  title: string
 }
 
 export interface RunSummary {
@@ -81,8 +96,12 @@ export interface RunSummary {
   failed: number
   /** A sikeres elemek felirat-forrás szerinti bontása. */
   byCaptionSource: Record<CaptionSource, number>
-  /** Az automatikus feliratból készült sikeres elemek azonosítói, rendezve. */
-  autoItems: string[]
+  /**
+   * Az automatikus feliratból készült sikeres elemek, cím szerint (azonos
+   * címnél azonosító szerint) rendezve. A felhasználó következő lépése ezekkel
+   * az újratranszkribálás, ezért a NÉV kell, nem csak az azonosító.
+   */
+  autoItems: AutoItem[]
   failures: RunFailure[]
 }
 
@@ -100,12 +119,16 @@ export function collectEvents(): { sink: EventSink; events: RunEvent[] } {
  */
 export function summarize(events: readonly RunEvent[]): RunSummary {
   const captionOf = new Map<string, CaptionSource>()
+  const titleOf = new Map<string, string>()
   const published = new Set<string>()
   const skipped = new Set<string>()
-  const failed = new Map<string, string>()
+  const failed = new Map<string, { source: string; error: string }>()
 
   for (const e of events) {
     switch (e.type) {
+      case 'item:start':
+        titleOf.set(e.itemId, e.title)
+        break
       case 'item:normalized':
         captionOf.set(e.itemId, e.captionSource)
         break
@@ -116,7 +139,7 @@ export function summarize(events: readonly RunEvent[]): RunSummary {
         skipped.add(e.itemId)
         break
       case 'item:failed':
-        failed.set(e.itemId, e.error)
+        failed.set(e.itemId, { source: e.source, error: e.error })
         break
       default:
         break
@@ -130,14 +153,23 @@ export function summarize(events: readonly RunEvent[]): RunSummary {
   for (const itemId of published) skipped.delete(itemId)
 
   const byCaptionSource: Record<CaptionSource, number> = { creator: 0, auto: 0 }
-  const autoItems: string[] = []
+  const autoItems: AutoItem[] = []
   for (const itemId of published) {
     const caption = captionOf.get(itemId)
     if (caption === undefined) continue
     byCaptionSource[caption]++
-    if (caption === 'auto') autoItems.push(itemId)
+    // Cím nélküli elem (hiányzó `item:start`, üres vagy csupa szóköz cím)
+    // az azonosítójával szerepel: a felsorolás sosem marad névtelen.
+    if (caption === 'auto') {
+      autoItems.push({ itemId, title: titleOf.get(itemId)?.trim() || itemId })
+    }
   }
-  autoItems.sort()
+  // Kódpont szerinti összehasonlítás, nem területi beállítás szerinti: a
+  // riport sorrendje így minden gépen ugyanaz.
+  const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+  autoItems.sort((a, b) =>
+    a.title === b.title ? compare(a.itemId, b.itemId) : compare(a.title, b.title),
+  )
 
   return {
     succeeded: published.size,
@@ -145,6 +177,6 @@ export function summarize(events: readonly RunEvent[]): RunSummary {
     failed: failed.size,
     byCaptionSource,
     autoItems,
-    failures: [...failed].map(([itemId, error]) => ({ itemId, error })),
+    failures: [...failed].map(([itemId, { source, error }]) => ({ itemId, source, error })),
   }
 }

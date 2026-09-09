@@ -249,7 +249,7 @@ export async function processItem(
       } catch (error) {
         const message = (error as Error).message
         store.recordArtifact(item.itemId, recipeDeps.recipe.id, 'failed', null, message)
-        sink({ type: 'item:failed', itemId: item.itemId, error: message })
+        sink({ type: 'item:failed', itemId: item.itemId, source: item.source, error: message })
         // A recept hibája nem ronthatja el az átirat már sikeres állapotát —
         // az `outcome` a már elért eredményt (vagy a kezdeti 'skipped'-et) tartja meg.
       }
@@ -259,7 +259,7 @@ export async function processItem(
   } catch (error) {
     const message = (error as Error).message
     store.recordArtifact(item.itemId, ARTIFACT_KIND, 'failed', null, message)
-    sink({ type: 'item:failed', itemId: item.itemId, error: message })
+    sink({ type: 'item:failed', itemId: item.itemId, source: item.source, error: message })
     return { status: 'failed', error: message }
   }
 }

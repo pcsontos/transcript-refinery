@@ -12,8 +12,10 @@ function input(overrides: Partial<ReportInput> = {}): ReportInput {
       skipped: 1,
       failed: 1,
       byCaptionSource: { creator: 1, auto: 1 },
-      autoItems: ['eloadas-02'],
-      failures: [{ itemId: 'mit-6-042-l14', error: 'olvashatatlan felirat' }],
+      autoItems: [{ itemId: 'eloadas-02', title: 'Második előadás' }],
+      failures: [
+        { itemId: 'mit-6-042-l14', source: 'youtube', error: 'olvashatatlan felirat' },
+      ],
     },
     corpus: {
       bySource: [
@@ -44,15 +46,29 @@ describe('renderReport', () => {
     expect(md).toContain('Futásazonosító: `2026-09-07T02-14-03`')
   })
 
-  it('felsorolja az automatikus feliratból készült elemeket', () => {
+  it('az automatikus elemeket névvel és azonosítóval sorolja fel', () => {
     const md = renderReport(input())
-    expect(md).toContain('eloadas-02')
+    // A 2. sikerkritérium a NEVET kéri; az azonosító mellette marad, hogy a
+    // naplóval és az állapottárral is összeköthető legyen.
+    expect(md).toContain('- Második előadás (`eloadas-02`)')
   })
 
-  it('a hibát az elemmel és az okkal együtt nevezi meg', () => {
+  it('a több soros címet egy sorba fésüli a felsorolásban', () => {
+    const md = renderReport(
+      input({
+        summary: {
+          ...input().summary,
+          autoItems: [{ itemId: 'x', title: 'Első sor\nMásodik sor' }],
+        },
+      }),
+    )
+    expect(md).toContain('- Első sor Második sor (`x`)')
+  })
+
+  it('a hibát az elemmel, a forrásmappával és az okkal együtt nevezi meg', () => {
     const md = renderReport(input())
-    expect(md).toContain('mit-6-042-l14')
-    expect(md).toContain('olvashatatlan felirat')
+    expect(md).toContain('| elem | forrás | ok |')
+    expect(md).toContain('| `mit-6-042-l14` | youtube | olvashatatlan felirat |')
   })
 
   it('forrásonként kiírja a korpusz állapotát', () => {
@@ -124,17 +140,20 @@ describe('renderReport', () => {
           failures: [
             {
               itemId: 'test-item',
+              source: 'furcsa | forrás',
               error: 'YAML parse error at line 5\nexpected "key" | got "|"',
             },
           ],
         },
       }),
     )
-    // A hiba kijelenik, de az újsorok szóközök lesznek
+    // A hiba megjelenik, de az újsorok helyén szóköz áll.
     expect(md).toContain('YAML parse error at line 5 expected "key"')
-    // Az escape pipe megjelenik (escaped as \|) — mind az eredeti szöveg közepéről, mind a végéről
+    // A pipe escapelve kerül a cellába, így nem tör el a táblázat.
     expect(md).toContain('\\|')
-    // A táblázat sor a helyes táblázat formátumban jelenik meg, mind az eredeti | escapeolva van
-    expect(md).toContain('| `test-item` | YAML parse error at line 5 expected "key" \\| got "\\|" |')
+    // A teljes sor: a forrás és az ok oszlopa is átment az escapelésen.
+    expect(md).toContain(
+      '| `test-item` | furcsa \\| forrás | YAML parse error at line 5 expected "key" \\| got "\\|" |',
+    )
   })
 })

@@ -29,11 +29,14 @@ function stamp(date: Date): string {
   return date.toISOString().slice(0, 16).replace('T', ' ')
 }
 
+/** Egy sorba fésült szöveg: az újsorok és a kocsivissza helyén szóköz áll. */
+function oneLine(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ')
+}
+
 /** Markdown táblázatcella-értékek biztonságossá tétele: újsorok → szóköz, | → \| */
 function escapeTableCell(value: string): string {
-  return value
-    .replace(/[\r\n]+/g, ' ') // Újsorok és kocsivissza → szóköz
-    .replace(/\|/g, '\\|') // Pipe → escaped pipe
+  return oneLine(value).replace(/\|/g, '\\|') // Pipe → escaped pipe
 }
 
 /**
@@ -70,20 +73,26 @@ export function renderReport(input: ReportInput): string {
   lines.push('')
 
   if (summary.autoItems.length > 0) {
-    lines.push(
-      `Automatikus feliratból készült (${String(summary.autoItems.length)}): ` +
-        summary.autoItems.map((id) => `\`${id}\``).join(', '),
-    )
+    // Felsorolás, nem vessző-lista: a név a lényeg, az azonosító csak azért
+    // marad mellette, hogy a naplóval és az állapottárral összeköthető legyen.
+    lines.push(`Automatikus feliratból készült (${String(summary.autoItems.length)}):`)
+    lines.push('')
+    for (const item of summary.autoItems) {
+      lines.push(`- ${oneLine(item.title)} (\`${item.itemId}\`)`)
+    }
     lines.push('')
   }
 
   if (summary.failures.length > 0) {
     lines.push('## Hibák')
     lines.push('')
-    lines.push('| elem | ok |')
-    lines.push('|---|---|')
+    lines.push('| elem | forrás | ok |')
+    lines.push('|---|---|---|')
     for (const failure of summary.failures) {
-      lines.push(`| \`${failure.itemId}\` | ${escapeTableCell(failure.error)} |`)
+      lines.push(
+        `| \`${failure.itemId}\` | ${escapeTableCell(failure.source)} | ` +
+          `${escapeTableCell(failure.error)} |`,
+      )
     }
     lines.push('')
   }
