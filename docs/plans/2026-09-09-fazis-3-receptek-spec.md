@@ -127,21 +127,33 @@ alatt élnek.
 
 ### Kártya-specifikus formátum-kapu
 
-Determinisztikus, nulla tokenes kritérium a receptfájlban, a rubrika **kapu**
-fokozatán (tehát bukása esetén bíró-hívás nem indul). A kártyarecept rubrikája
-így négy kritériumból áll — `[formatCriterion, flashcardFormatCriterion,
-faithfulnessCriterion, coverageCriterion]` —, ahol az első kettő **blokkoló**:
-az általános vault-szabályokat a meglévő kapu őrzi, a kártya-alakot az új. Amit
-a séma átenged, de a renderelés elrontana:
+A kártyarecept rubrikája négy kritériumból áll — `[formatCriterion,
+flashcardFormatCriterion, faithfulnessCriterion, coverageCriterion]` —, ahol az
+első kettő **blokkoló**: az általános vault-szabályokat a meglévő kapu őrzi, a
+kártya-alakot az új.
+
+A védelem viszont **két rétegű**, mert nem minden hiba látszik ugyanott:
+
+**A renderer normalizál** azoknál az eseteknél, amiket a kész szövegből már nem
+lehetne kimutatni. Ha a kérdésbe sortörés kerül, a renderelt szövegben a
+sortörés utáni rész megkülönböztethetetlen a válasz első sorától; ha a válasz
+`##`-cal kezdődő sort tartalmaz, az megkülönböztethetetlen egy új kártya
+fejlécétől. Kapu tehát nem is tudná elkapni őket. A renderer ezért a kérdés
+sortöréseit szóközzé olvasztja, a válasz `#`-kezdetű sorait pedig escape-eli —
+ugyanaz a megoldás, amit a Fázis 2 riportja használ a táblacellák `|` jelére.
+Így ezek az esetek nem hibává, hanem helyes kimenetté válnak.
+
+**A kapu azt fogja meg, ami a renderelt szövegből tényleg látszik:**
 
 | eset | miért baj |
 |---|---|
-| sortörés a kérdésben | szétesik a `##` sor, a maradék szöveg a válaszba csúszik |
-| csupa szóköz kérdés vagy válasz | a `.min(1)` átengedi, a kártya mégis üres |
-| `##`-cal kezdődő sor a válaszban | fantomkártyát csinál a Decksben |
-| ismétlődő kérdés | két kártya azonos előlappal |
+| ismétlődő kérdés | két kártya azonos előlappal — a séma ezt nem nézi |
+| válasz nélküli fejléc | üres kártya a paklikban |
+| háromnál kevesebb kártya | védelmi ellenőrzés a renderer hibája ellen |
 
-Minden eset **angol nyelvű gap-üzenetet** ad, mert az visszamegy a javító
+A csupa szóköz oldalt nem a kapu, hanem a **séma** szűri (`z.string().trim().min(1)`).
+
+Minden kapu-eset **angol nyelvű gap-üzenetet** ad, mert az visszamegy a javító
 promptba.
 
 ### Séma-hiba
@@ -189,8 +201,10 @@ Megfigyelhető viselkedés, nem fájltartalom:
 3. `run --recipe flashcards` egyetlen elemre olyan jegyzetet ír, amiben **minden
    kártya** `##` fejléc plusz nem üres bekezdés, és a kártyák száma legalább
    három.
-4. Ha a modell sortörést tesz egy kérdésbe, a futás **nulla bíró-hívással**
-   megáll a kapun, és a gap-üzenet megnevezi a sortörést.
+4. Ha a modell sortörést tesz egy kérdésbe, a jegyzetben **attól még nem esik
+   szét kártya**: a kérdés egyetlen `##` sorban áll, és a kártyák száma
+   változatlan. Ha két kártya ugyanazt kérdezi, a futás **nulla bíró-hívással**
+   megáll a kapun, és a gap-üzenet megnevezi az ismételt kérdést.
 5. Ha a modell séma-sértő kimenetet ad, az elem `item:failed` lesz, a riport
    „Hibák" szakasza megnevezi az elemet és az okot, a köteg pedig végigmegy.
 6. A `refine` loop strukturált recepttel is végigviszi a javító kört: a második
