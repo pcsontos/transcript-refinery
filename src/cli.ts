@@ -47,6 +47,7 @@ Kapcsolók:
                     modellhívások VALÓS költséggel megtörténnek
   --force           létező fájlt is felülír
   --no-commit       nem commitol és nem pushol a vault repójába
+  --retry-failed    csak a korábban hibára futott elemek
 
   A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
@@ -137,6 +138,8 @@ export async function commandRun(
     dryRun: boolean
     force: boolean
     commit: boolean
+    /** Csak a korábban `failed` állapotú elemeket futtatja újra. */
+    retryFailed?: boolean
     /** A riport fejlécében megjelenő parancssor; hiányában „run”. */
     command?: string
   },
@@ -232,7 +235,11 @@ export async function commandRun(
 
   try {
     discovered = await discoverAll(cfg.sources, cfg.languages)
-    const items = applyFilters(discovered, flags)
+    let items = applyFilters(discovered, flags)
+    if (flags.retryFailed) {
+      const kind = recipeDeps?.recipe.id ?? 'transcript'
+      items = store.listFailed(items, kind)
+    }
     printing({ type: 'scan:found', count: items.length })
 
     let planned = items
@@ -365,6 +372,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       'dry-run': { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
       'no-commit': { type: 'boolean', default: false },
+      'retry-failed': { type: 'boolean', default: false },
     },
     allowPositionals: false,
   })
@@ -384,6 +392,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       dryRun: values['dry-run'],
       force: values.force,
       commit: !values['no-commit'],
+      retryFailed: values['retry-failed'],
       command: argv.join(' '),
     })
   }

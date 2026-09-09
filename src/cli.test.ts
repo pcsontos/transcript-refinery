@@ -437,6 +437,85 @@ describe('commandRun — napló és riport', () => {
   })
 })
 
+describe('commandRun — --retry-failed', () => {
+  it('csak a korábban elbukott elemeket futtatja', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const pre = openState(cfg.statePath)
+    for (const i of await folderSource({ name: 'downloads', path: downloads }, []).discover()) {
+      pre.recordItem(i)
+    }
+    pre.recordArtifact('a1', 'transcript', 'done', '/v/a1.md', null)
+    pre.recordArtifact('a2', 'transcript', 'failed', null, 'olvashatatlan felirat')
+    pre.close()
+
+    const code = await commandRun(cfg, raw, {
+      dryRun: false,
+      force: false,
+      commit: false,
+      retryFailed: true,
+    })
+
+    expect(code).toBe(0)
+    const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
+    const log = await readFile(join(cfg.logsDir, jsonl), 'utf8')
+    expect(log).toContain('"itemId":"a2"')
+    expect(log).not.toContain('"itemId":"a1"')
+  })
+
+  it('hibás elem nélkül nulla elemmel fut le', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const code = await commandRun(cfg, raw, {
+      dryRun: false,
+      force: false,
+      commit: false,
+      retryFailed: true,
+    })
+
+    expect(code).toBe(0)
+    const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
+    expect(await readFile(join(cfg.logsDir, jsonl), 'utf8')).toContain(
+      '"type":"scan:found","count":0',
+    )
+  })
+
+  it('a --retry-failed a --limit szűrővel együtt is működik', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const pre = openState(cfg.statePath)
+    for (const i of await folderSource({ name: 'downloads', path: downloads }, []).discover()) {
+      pre.recordItem(i)
+    }
+    pre.recordArtifact('a1', 'transcript', 'failed', null, 'hiba')
+    pre.recordArtifact('a2', 'transcript', 'failed', null, 'hiba')
+    pre.close()
+
+    const code = await commandRun(cfg, raw, {
+      limit: 1,
+      dryRun: false,
+      force: false,
+      commit: false,
+      retryFailed: true,
+    })
+
+    expect(code).toBe(0)
+    const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
+    const log = await readFile(join(cfg.logsDir, jsonl), 'utf8')
+    expect(log).toContain('"type":"scan:found","count":1')
+  })
+})
+
 describe('commandRun — a plafon szeletel', () => {
   it('a plafon alá férő elemeket futtatja, a többit a következő futásra hagyja', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
