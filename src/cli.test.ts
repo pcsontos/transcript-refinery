@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { commandRun } from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
 import { estimateItemUsd } from './model/budget.js'
+import type { ModelClient } from './model/client.js'
 import { normalizeItem } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
 import { folderSource } from './source/folder.js'
@@ -51,6 +52,31 @@ async function makeVideo(downloads: string, id: string, title: string, channel: 
     'utf8',
   )
   await writeFile(join(dir, `${title}.en.srt`), SRT, 'utf8')
+}
+
+/**
+ * Hamis modellkliens: a generálás fix szöveget ad, a bíró mindig egyest.
+ * A `hivasok` a tényleges generálások számát számolja — ezen múlik, hogy a
+ * szeletelés tényleg csak a tervezett elemeket futtatta-e.
+ */
+function hamisKliens(hivasok: { generate: number }): ModelClient {
+  return {
+    // A `ModelClient` interfész Promise-t vár vissza; itt nincs mire várni,
+    // de az `async` a szerződés, nem hiba.
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async generate() {
+      hivasok.generate++
+      return {
+        value: '## Összefoglaló\n\nEgy mondat a jegyzetből.\n',
+        usage: { inputTokens: 10, outputTokens: 5 },
+      }
+    },
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async generateObject<T>() {
+      // A bíró ítéletének alakja: pontszám és hiánylista (rubric/judge.ts).
+      return { value: { score: 1, gaps: [] } as T, usage: { inputTokens: 5, outputTokens: 2 } }
+    },
+  }
 }
 
 /**
@@ -408,5 +434,53 @@ describe('commandRun — napló és riport', () => {
     logSpy.mockRestore()
 
     expect(riportLines).toHaveLength(1)
+  })
+})
+
+describe('commandRun — a plafon szeletel', () => {
+  it('a plafon alá férő elemeket futtatja, a többit a következő futásra hagyja', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+    await makeVideo(downloads, 'a3', 'Harmadik videó', 'Csatorna A')
+
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const recipe = getRecipe('summary')
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const egy = estimateItemUsd(words, recipe.maxIterations, modelConfig)
+
+    // A plafon két elemre elég, háromra nem: a harmadik marad.
+    const limited = { ...rawWithVault(egy * 2.5) }
+    const hivasok = { generate: 0 }
+    const code = await commandRun(
+      loadConfig(limited, '/p/refinery.config.yaml'),
+      limited,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    expect(hivasok.generate).toBe(2)
+
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    expect(await readFile(join(cfg.logsDir, md), 'utf8')).toContain('1 elem hátravan')
+  })
+
+  it('ha egy elem sem fér a plafon alá, el sem indul', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+
+    const limited = rawWithVault(0.000001)
+    const hivasok = { generate: 0 }
+    const code = await commandRun(
+      loadConfig(limited, '/p/refinery.config.yaml'),
+      limited,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+
+    expect(code).toBe(2)
+    expect(hivasok.generate).toBe(0)
   })
 })

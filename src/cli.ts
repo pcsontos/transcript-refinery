@@ -13,7 +13,7 @@ import {
   type ModelConfig,
 } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
-import { createCostGuard, estimateRunUsd } from './model/budget.js'
+import { createCostGuard, estimateItemUsd, sliceToBudget, type BudgetEntry } from './model/budget.js'
 import { createModelClient, type ModelClient } from './model/client.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
@@ -85,6 +85,8 @@ function render(event: RunEvent): string | null {
       return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(2)} $ (plafon: ${event.limitUsd.toFixed(2)} $)`
     case 'run:aborted':
       return `A futás megállt: ${event.reason} (${event.spentUsd.toFixed(2)} $ / ${event.limitUsd.toFixed(2)} $)`
+    case 'run:sliced':
+      return `  A plafon alá ${String(event.planned)} elem fér; ${String(event.deferred)} a következő futásra marad.`
     case 'item:refined':
       return `  ~ ${event.itemId}: ${event.recipe} pontszám ${event.score.toFixed(2)}, ${String(event.generations)} generálás, ${event.usd.toFixed(4)} $`
     default:
@@ -231,43 +233,62 @@ export async function commandRun(
     const items = applyFilters(discovered, flags)
     printing({ type: 'scan:found', count: items.length })
 
+    let planned = items
     if (recipeDeps) {
       const pending = flags.force ? items : store.listPending(items, recipeDeps.recipe.id)
-      const wordCounts: number[] = []
+      const entries: BudgetEntry<SourceItem>[] = []
       for (const item of pending) {
         try {
-          wordCounts.push((await normalizeItem(item)).wordsNormalized)
+          entries.push({ value: item, words: (await normalizeItem(item)).wordsNormalized })
         } catch {
           // Az olvashatatlan feliratot a feldolgozás jelenti majd; a
           // becslésből egyszerűen kimarad.
         }
       }
 
-      const estimate = estimateRunUsd(wordCounts, maxIterations, recipeDeps.modelConfig)
+      const slice = sliceToBudget(entries, maxIterations, recipeDeps.modelConfig)
+      const limitUsd = recipeDeps.modelConfig.costLimitUsd
+
       printing({
         type: 'run:estimate',
-        items: wordCounts.length,
-        tokens: estimate.tokens,
-        usd: estimate.usd,
-        limitUsd: recipeDeps.modelConfig.costLimitUsd,
+        items: slice.planned.length,
+        tokens: slice.tokens,
+        usd: slice.usd,
+        limitUsd,
       })
 
-      if (estimate.usd > recipeDeps.modelConfig.costLimitUsd) {
+      // Az üres `entries` (nincs feldolgozandó elem — a szűrők vagy a már
+      // kész elemek miatt) nem plafon-túllépés: a köteg simán, nulla elemmel
+      // fut le. A 2-es kilépőkód KIZÁRÓLAG akkor jár, ha VAN jelölt, de az
+      // első sem fér a plafon alá.
+      const first = entries[0]
+      if (first !== undefined && slice.planned.length === 0) {
+        const firstUsd = estimateItemUsd(first.words, maxIterations, recipeDeps.modelConfig)
         printing({
           type: 'run:aborted',
-          reason: 'a becsült költség meghaladja a plafont',
+          reason: `már az első elem becsült költsége (${firstUsd.toFixed(2)} $) meghaladja a plafont`,
           spentUsd: 0,
-          limitUsd: recipeDeps.modelConfig.costLimitUsd,
+          limitUsd,
         })
-        // A plafon-túllépés miatti megállás is futás: a felhasználó enélkül
-        // egy tiszta hibaüzenetnél többet nem kap a kézhez.
         await finish(false)
         return 2
       }
+
+      if (slice.deferred.length > 0) {
+        printing({
+          type: 'run:sliced',
+          planned: slice.planned.length,
+          deferred: slice.deferred.length,
+          usd: slice.usd,
+          limitUsd,
+        })
+      }
+
+      planned = slice.planned
     }
 
     const written: string[] = []
-    for (const item of items) {
+    for (const item of planned) {
       const outcome = await processItem(item, {
         notesRoot: cfg.notesRoot,
         store,

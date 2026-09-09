@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelConfig } from '../config.js'
-import { createCostGuard, estimateItemUsd, estimateRunUsd } from './budget.js'
+import { createCostGuard, estimateItemUsd, estimateRunUsd, sliceToBudget } from './budget.js'
 
 const CFG: ModelConfig = {
   baseUrl: 'http://localhost:4000/v1',
@@ -45,6 +45,64 @@ describe('estimateRunUsd', () => {
 
   it('üres kötegre nullát ad', () => {
     expect(estimateRunUsd([], 2, CFG)).toEqual({ usd: 0, tokens: 0 })
+  })
+})
+
+describe('sliceToBudget', () => {
+  const limitel = (costLimitUsd: number): ModelConfig => ({ ...CFG, costLimitUsd })
+
+  it('addig vág, amíg a becslés a plafon alá fér', () => {
+    const egy = estimateItemUsd(1_000, 0, CFG)
+    const cfg = limitel(egy * 2.5)
+    const slice = sliceToBudget(
+      [
+        { value: 'a', words: 1_000 },
+        { value: 'b', words: 1_000 },
+        { value: 'c', words: 1_000 },
+      ],
+      0,
+      cfg,
+    )
+
+    expect(slice.planned).toEqual(['a', 'b'])
+    expect(slice.deferred).toEqual(['c'])
+    expect(slice.usd).toBeLessThanOrEqual(cfg.costLimitUsd)
+  })
+
+  it('a plafon alá férő teljes köteget elindítja', () => {
+    const slice = sliceToBudget([{ value: 'a', words: 100 }], 0, limitel(1_000))
+    expect(slice.planned).toEqual(['a'])
+    expect(slice.deferred).toEqual([])
+  })
+
+  it('ha az első elem sem fér be, üres tervet ad', () => {
+    const slice = sliceToBudget([{ value: 'a', words: 5_000 }], 0, limitel(0.000001))
+    expect(slice.planned).toEqual([])
+    expect(slice.deferred).toEqual(['a'])
+    expect(slice.usd).toBe(0)
+  })
+
+  it('üres bemenetre üres tervet ad', () => {
+    expect(sliceToBudget([], 0, limitel(5))).toEqual({
+      planned: [],
+      deferred: [],
+      usd: 0,
+      tokens: 0,
+    })
+  })
+
+  it('a tokenbecslés ugyanazt adja, mint az estimateRunUsd a tervezett elemekre', () => {
+    const cfg = limitel(1_000)
+    const slice = sliceToBudget(
+      [
+        { value: 'a', words: 800 },
+        { value: 'b', words: 1_200 },
+      ],
+      1,
+      cfg,
+    )
+
+    expect(slice.tokens).toBe(estimateRunUsd([800, 1_200], 1, cfg).tokens)
   })
 })
 

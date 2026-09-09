@@ -68,6 +68,59 @@ export function estimateRunUsd(
   return { usd, tokens }
 }
 
+export interface BudgetEntry<T> {
+  value: T
+  /** A normalizált átirat szószáma — ebből jön a becslés. */
+  words: number
+}
+
+export interface BudgetSlice<T> {
+  /** Ezek indulnak ebben a futásban. */
+  planned: T[]
+  /** Ezek maradnak a következőre, mert nem fértek a plafon alá. */
+  deferred: T[]
+  usd: number
+  tokens: number
+}
+
+/**
+ * A köteg vágása a plafonig.
+ *
+ * A tiltás helyett szeletelünk: egy 153 elemes korpusz becsült költsége
+ * sokszorosa lehet a futásonkénti plafonnak, és ilyenkor a helyes válasz nem
+ * az, hogy a köteg indíthatatlan, hanem az, hogy annyi megy át, amennyi
+ * belefér — a maradékot az állapottár tartja számon.
+ */
+export function sliceToBudget<T>(
+  entries: readonly BudgetEntry<T>[],
+  maxIterations: number,
+  cfg: ModelConfig,
+): BudgetSlice<T> {
+  const planned: T[] = []
+  const deferred: T[] = []
+  let usd = 0
+  let tokens = 0
+  let full = false
+
+  for (const entry of entries) {
+    if (full) {
+      deferred.push(entry.value)
+      continue
+    }
+    const itemUsd = estimateItemUsd(entry.words, maxIterations, cfg)
+    if (usd + itemUsd > cfg.costLimitUsd) {
+      full = true
+      deferred.push(entry.value)
+      continue
+    }
+    usd += itemUsd
+    tokens += estimateRunUsd([entry.words], maxIterations, cfg).tokens
+    planned.push(entry.value)
+  }
+
+  return { planned, deferred, usd, tokens }
+}
+
 export interface CostGuard {
   add(role: ModelRole, usage: ModelUsage, cfg: ModelConfig): void
   spentUsd(): number
