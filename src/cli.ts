@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import {
   CONFIG_FILENAME,
@@ -10,17 +10,23 @@ import {
   readConfigFile,
   validateConfig,
   type Config,
+  type ModelConfig,
 } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
-import { createCostGuard, estimateRunUsd } from './model/budget.js'
-import { createModelClient } from './model/client.js'
+import { createCostGuard, estimateItemUsd, sliceToBudget, type BudgetEntry } from './model/budget.js'
+import { createModelClient, type ModelClient } from './model/client.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
-import { normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
+import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
-import { parseSubtitle } from './subtitle/parse.js'
+import { countRunLogs, installSigint, writeReport } from './run/finish.js'
+import { reserveRunId, runId } from './run/id.js'
+import { openRunLog } from './run/log.js'
+import { renderReport } from './run/report.js'
+import { nextCommand } from './run/suggest.js'
 import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
+import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 
@@ -42,11 +48,14 @@ Kapcsolók:
                     modellhívások VALÓS költséggel megtörténnek
   --force           létező fájlt is felülír
   --no-commit       nem commitol és nem pushol a vault repójába
+  --retry-failed    csak a korábban hibára futott elemek
+
+  A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
 
 function applyFilters(
   items: SourceItem[],
-  filters: { source?: string; channel?: string; limit?: number },
+  filters: { source?: string; channel?: string },
 ): SourceItem[] {
   let out = items
   if (filters.source) {
@@ -58,7 +67,6 @@ function applyFilters(
     const wanted = filters.channel.toLocaleLowerCase()
     out = out.filter((i) => i.metadata.channel?.toLocaleLowerCase() === wanted)
   }
-  if (filters.limit !== undefined) out = out.slice(0, filters.limit)
   return out
 }
 
@@ -75,11 +83,17 @@ function render(event: RunEvent): string | null {
     case 'item:failed':
       return `  ✗ ${event.itemId}: ${event.error}`
     case 'run:estimate':
-      return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(2)} $ (plafon: ${event.limitUsd.toFixed(2)} $)`
+      return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(4)} $ (plafon: ${event.limitUsd.toFixed(4)} $)`
     case 'run:aborted':
-      return `A futás megállt: ${event.reason} (${event.spentUsd.toFixed(2)} $ / ${event.limitUsd.toFixed(2)} $)`
+      // Négy tizedes, mint az `item:refined`-nél: elemenkénti nagyságrendben
+      // a két tizedes minden számot `0.00`-ként mutatna.
+      return `A futás megállt: ${event.reason} (${event.spentUsd.toFixed(4)} $ / ${event.limitUsd.toFixed(4)} $)`
+    case 'run:sliced':
+      return `  A plafon alá ${String(event.planned)} elem fér; ${String(event.deferred)} a következő futásra marad.`
     case 'item:refined':
       return `  ~ ${event.itemId}: ${event.recipe} pontszám ${event.score.toFixed(2)}, ${String(event.generations)} generálás, ${event.usd.toFixed(4)} $`
+    case 'item:retry':
+      return `  ↻ ${event.itemId}: ${event.reason} — újrapróba ${String(event.attempt)}., ${String(event.delayMs / 1000)} mp múlva`
     default:
       return null
   }
@@ -106,6 +120,15 @@ async function commandScan(cfg: Config): Promise<number> {
   return 0
 }
 
+export interface RunRuntime {
+  /** A SIGINT forrása. A tesztek saját kibocsátót adnak. */
+  signals?: { on(event: string, listener: () => void): unknown }
+  /** Kilépés megszakításkor. */
+  exit?: (code: number) => void
+  /** A modellkliens gyártása; alapértelmezésben a valódi LiteLLM-kliens. */
+  createClient?: (cfg: ModelConfig) => ModelClient
+}
+
 export async function commandRun(
   cfg: Config,
   raw: unknown,
@@ -117,8 +140,15 @@ export async function commandRun(
     dryRun: boolean
     force: boolean
     commit: boolean
+    /** Csak a korábban `failed` állapotú elemeket futtatja újra. */
+    retryFailed?: boolean
+    /** A riport fejlécében megjelenő parancssor; hiányában „run”. */
+    command?: string
   },
+  runtime: RunRuntime = {},
 ): Promise<number> {
+  const commandLine = flags.command ?? 'run'
+
   let recipeDeps: RecipeDeps | undefined
   let maxIterations = 0
   if (flags.recipe) {
@@ -126,62 +156,167 @@ export async function commandRun(
     const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
     recipeDeps = {
       recipe,
-      client: createModelClient(modelConfig),
+      client: (runtime.createClient ?? createModelClient)(modelConfig),
       modelConfig,
       guard: createCostGuard(modelConfig.costLimitUsd),
     }
     maxIterations = recipe.maxIterations
   }
 
+  // A futás műtermék-típusa: recepttel a recept azonosítója, enélkül az
+  // átirat. Egyszer számoljuk ki — a riport és a hibás-szűrő ugyanazt kérdezi.
+  const artifactKind = recipeDeps?.recipe.id ?? ARTIFACT_KIND
+
   if (flags.commit && !flags.dryRun) await gitPullFfOnly(cfg.vaultPath)
 
   const store = openState(cfg.statePath)
+
+  const startedAt = new Date()
+  // Ütközésmentes név: két azonos másodpercben induló futás nem írhat
+  // egymás naplójába, és nem írhatja felül egymás riportját.
+  const id = reserveRunId(cfg.logsDir, runId(startedAt))
+  const logPath = join(cfg.logsDir, `${id}.jsonl`)
+  const reportPath = join(cfg.logsDir, `${id}.md`)
+  const log = openRunLog(logPath)
+
   const { sink, events } = collectEvents()
   const printing = (e: RunEvent) => {
     sink(e)
+    log.sink(e)
     const line = render(e)
     if (line !== null) console.log(line)
   }
 
+  // A discoverAll teljes, szűretlen eredménye — a korpusz állapota a teljes
+  // korpuszról szól, nem a szűrt szeletről. Korán inicializálva, hogy egy
+  // korai SIGINT is riportot írjon (üres korpusszal), ne undefined-ra
+  // hivatkozzon.
+  let discovered: SourceItem[] = []
+
+  // Egyszeri lefutás: a megszakítás és a normál befejezés is meghívja a
+  // `finish`-t, és versenyben lehetnek egymással (a `process.exit` a SIGINT
+  // ágon csak a riport kiírása UTÁN fut le, addig a fő ág is tovább
+  // haladhat). Az őr szinkron, még az első `await` előtt fut le, tehát
+  // bármelyik hívás érkezzen is előbb, a másik nem írja felül a riportot.
+  let finished = false
+
+  const finish = async (interrupted: boolean): Promise<void> => {
+    if (finished) return
+    finished = true
+
+    const summary = summarize(events)
+    const corpus = store.corpusStatus(discovered, artifactKind)
+    const markdown = renderReport({
+      runId: id,
+      startedAt,
+      finishedAt: new Date(),
+      command: commandLine,
+      summary,
+      corpus,
+      runs: countRunLogs(cfg.logsDir),
+      logPath,
+      cost: recipeDeps
+        ? {
+            spentUsd: recipeDeps.guard.spentUsd(),
+            limitUsd: recipeDeps.modelConfig.costLimitUsd,
+            capped: recipeDeps.guard.exceeded(),
+          }
+        : undefined,
+      nextCommand: nextCommand(commandLine, corpus),
+    })
+    await writeReport(reportPath, markdown)
+    // A naplót SZÁNDÉKOSAN nem itt zárjuk: a `finish(true)` (megszakítás) és
+    // a fő ág versenyezhet, és egy itt lezárt napló a fő ág további
+    // eseményeit némán elnyelné. A napló lezárása a `finally` dolga —
+    // egyszer fut le, akkor, amikor a `commandRun` valóban véget ér.
+    console.log(`${interrupted ? '\nMegszakítva. ' : ''}Riport: ${reportPath}`)
+  }
+
+  // A kezelő nem zárja az állapottárat. Egy valódi Ctrl+C-nél a
+  // process.exit úgyis véget vet a folyamatnak, és az állapottár minden
+  // írása már commitolva van; a tesztben pedig a hamis exit után a futás
+  // zavartalanul befejeződik, ami egy lezárt adatbázison hibát dobna.
+  const uninstallSigint = installSigint(() => {
+    void finish(true).then(() => (runtime.exit ?? process.exit)(130))
+  }, runtime.signals)
+
   try {
-    const all = await discoverAll(cfg.sources, cfg.languages)
-    const items = applyFilters(all, flags)
+    discovered = await discoverAll(cfg.sources, cfg.languages)
+    // A limitnek a JELÖLTEKET kell határolnia, nem a teljes korpuszt: a
+    // forrás/csatorna szűrés (`applyFilters`) és a hibás-szűrő UTÁN vágunk,
+    // különben pl. `--retry-failed --limit 1` a felfedezés szerint elöl
+    // álló (esetleg kész) elemet nézné meg, nem a hibásak közül az elsőt.
+    let items = applyFilters(discovered, flags)
+    if (flags.retryFailed) items = store.listFailed(items, artifactKind)
+    if (flags.limit !== undefined) items = items.slice(0, flags.limit)
     printing({ type: 'scan:found', count: items.length })
 
+    let planned = items
     if (recipeDeps) {
       const pending = flags.force ? items : store.listPending(items, recipeDeps.recipe.id)
-      const wordCounts: number[] = []
+      const entries: BudgetEntry<SourceItem>[] = []
       for (const item of pending) {
         try {
-          wordCounts.push((await normalizeItem(item)).wordsNormalized)
+          entries.push({ value: item, words: (await normalizeItem(item)).wordsNormalized })
         } catch {
-          // Az olvashatatlan feliratot a feldolgozás jelenti majd; a
-          // becslésből egyszerűen kimarad.
+          // Az elem, aminek a normalizálása dob (olvashatatlan fájl, üres
+          // felirat), csak a BECSLÉSBŐL marad ki — szószám híján nincs mit
+          // becsülni rá. A feldolgozás sorra veszi: a `planned` a szűrt
+          // `items`-ből épül, tehát a hibája `item:failed`-ként megjelenik a
+          // naplóban, a riportban és a kilépőkódban is.
         }
       }
 
-      const estimate = estimateRunUsd(wordCounts, maxIterations, recipeDeps.modelConfig)
+      const slice = sliceToBudget(entries, maxIterations, recipeDeps.modelConfig)
+      const limitUsd = recipeDeps.modelConfig.costLimitUsd
+
       printing({
         type: 'run:estimate',
-        items: wordCounts.length,
-        tokens: estimate.tokens,
-        usd: estimate.usd,
-        limitUsd: recipeDeps.modelConfig.costLimitUsd,
+        items: slice.planned.length,
+        tokens: slice.tokens,
+        usd: slice.usd,
+        limitUsd,
       })
 
-      if (estimate.usd > recipeDeps.modelConfig.costLimitUsd) {
+      // Az üres `entries` (nincs feldolgozandó elem — a szűrők vagy a már
+      // kész elemek miatt) nem plafon-túllépés: a köteg simán, nulla elemmel
+      // fut le. A 2-es kilépőkód KIZÁRÓLAG akkor jár, ha VAN jelölt, de az
+      // első sem fér a plafon alá.
+      const first = entries[0]
+      if (first !== undefined && slice.planned.length === 0) {
+        const firstUsd = estimateItemUsd(first.words, maxIterations, recipeDeps.modelConfig)
         printing({
           type: 'run:aborted',
-          reason: 'a becsült költség meghaladja a plafont',
+          reason: `már az első elem becsült költsége (${firstUsd.toFixed(4)} $) meghaladja a plafont`,
           spentUsd: 0,
-          limitUsd: recipeDeps.modelConfig.costLimitUsd,
+          limitUsd,
         })
+        await finish(false)
         return 2
       }
+
+      if (slice.deferred.length > 0) {
+        printing({
+          type: 'run:sliced',
+          planned: slice.planned.length,
+          deferred: slice.deferred.length,
+          usd: slice.usd,
+          limitUsd,
+        })
+      }
+
+      // A `planned` a SZŰRT lista, csökkentve a plafon miatt elhalasztott
+      // elemekkel. Így a már kész elem a kihagyás ágára jut, a hibás elem a
+      // feldolgozás hibaágára — modellhívás egyikkel sem jár, tehát a plafon
+      // szemantikája sértetlen. A `slice` számai a becslésről szólnak, azaz a
+      // ténylegesen modellhívást igénylő elemekről; a feldolgozandó lista
+      // ennél tágabb.
+      const deferredIds = new Set(slice.deferred.map((i) => i.itemId))
+      planned = items.filter((i) => !deferredIds.has(i.itemId))
     }
 
     const written: string[] = []
-    for (const item of items) {
+    for (const item of planned) {
       const outcome = await processItem(item, {
         notesRoot: cfg.notesRoot,
         store,
@@ -207,9 +342,16 @@ export async function commandRun(
     }
 
     const summary = summarize(events)
-    printing({ type: 'run:done', ...summary })
+    printing({
+      type: 'run:done',
+      succeeded: summary.succeeded,
+      skipped: summary.skipped,
+      failed: summary.failed,
+    })
     console.log(
-      `\nKész: ${summary.succeeded} sikeres, ${summary.skipped} kihagyva, ${summary.failed} hibás.`,
+      `\nKész: ${summary.succeeded} sikeres ` +
+        `(kreátori ${summary.byCaptionSource.creator} / automatikus ${summary.byCaptionSource.auto}), ` +
+        `${summary.skipped} kihagyva, ${summary.failed} hibás.`,
     )
 
     if (flags.commit && !flags.dryRun && written.length > 0) {
@@ -220,8 +362,24 @@ export async function commandRun(
       }
     }
 
+    await finish(false)
     return summary.failed > 0 ? 1 : 0
   } finally {
+    // A riport a `finally`-ből is elkészül: a törzsben dobott kivétel
+    // (git-hiba, tele lemez) enélkül naplót hagyna maga után, riportot nem.
+    // A `finish` idempotens, tehát a normál ág után ez már nem csinál semmit.
+    // Saját try/catch-ben, hogy egy riportírási hiba se akadályozza meg a
+    // leiratkozást és a lezárásokat — és hogy ne nyelje el a törzs eredeti
+    // kivételét sem.
+    try {
+      await finish(false)
+    } catch (error) {
+      console.error(`A riport nem készült el: ${(error as Error).message}`)
+    }
+    // A leiratkozás azért kerül ide, hogy a `commandRun` visszatérte után
+    // egy késői jel ne fusson neki egy lent már lezárt állapottárnak.
+    uninstallSigint()
+    log.close()
     store.close()
   }
 }
@@ -244,6 +402,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       'dry-run': { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
       'no-commit': { type: 'boolean', default: false },
+      'retry-failed': { type: 'boolean', default: false },
     },
     allowPositionals: false,
   })
@@ -263,6 +422,8 @@ export async function main(argv: readonly string[]): Promise<number> {
       dryRun: values['dry-run'],
       force: values.force,
       commit: !values['no-commit'],
+      retryFailed: values['retry-failed'],
+      command: argv.join(' '),
     })
   }
 

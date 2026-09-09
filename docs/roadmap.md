@@ -47,6 +47,10 @@ Az újratranszkribálás kikerült az appból ([`decisions/0008`](<./decisions/0
 a whisper-futtatás külön eszköz, aminek a kimenete egy újabb forrásmappa. Ami
 itt marad, az a köteg és a jelentés.
 
+**Státusz: kész** (2026-09-06). A riport, a napló, a szeletelő plafon és az
+újrapróbálkozás a helyén; a negyedik kritériumot a `0008` utáni forrásfüggetlen
+mag adja.
+
 **Kész, ha:**
 
 - A futás záró riportja **számszerűen** megnevezi, hány elem készült

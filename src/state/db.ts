@@ -68,6 +68,33 @@ export interface ArtifactRecord {
   model: string | null
 }
 
+/** Egy forrásmappa állapota a köteg szempontjából. */
+export interface SourceStatus {
+  source: string
+  total: number
+  done: number
+  failed: number
+  pending: number
+}
+
+/**
+ * A teljes korpusz állapota. Kizárólag olvasó összegzés: ez teszi a riportot
+ * újraindítás után is teljessé.
+ *
+ * A kész/hibás/hátralévő számok EGY megadott műtermék-típusra szólnak (arra,
+ * amit a futás készít), a `totalCostUsd` viszont MINDEN típuson összegez: a
+ * kérdés az, hogy erre a korpuszra eddig összesen mennyit költöttünk, nem az,
+ * hogy melyik recept vitte el.
+ */
+export interface CorpusStatus {
+  bySource: SourceStatus[]
+  byCaptionSource: Record<CaptionSource, number>
+  done: number
+  failed: number
+  pending: number
+  totalCostUsd: number
+}
+
 export interface StateStore {
   readonly path: string
   recordItem(item: SourceItem): void
@@ -89,6 +116,8 @@ export interface StateStore {
   transcriptOf(itemId: string): TranscriptRecord | null
   isDone(itemId: string, kind: string): boolean
   listPending(items: SourceItem[], kind: string): SourceItem[]
+  corpusStatus(items: readonly SourceItem[], kind: string): CorpusStatus
+  listFailed(items: readonly SourceItem[], kind: string): SourceItem[]
   close(): void
 }
 
@@ -261,6 +290,75 @@ export function openState(path: string): StateStore {
 
     listPending(items, kind) {
       return items.filter((item) => !isDone(item.itemId, kind))
+    },
+
+    corpusStatus(items, kind) {
+      const rows = db
+        .prepare('SELECT item_id, status FROM artifacts WHERE kind = ?')
+        .all(kind) as { item_id: string; status: string }[]
+      const statusOf = new Map(rows.map((r) => [r.item_id, r.status]))
+
+      const captions = db
+        .prepare('SELECT item_id, source FROM transcripts')
+        .all() as { item_id: string; source: string }[]
+      const captionOf = new Map(captions.map((r) => [r.item_id, r.source as CaptionSource]))
+
+      const bySourceName = new Map<string, SourceStatus>()
+      const byCaptionSource: Record<CaptionSource, number> = { creator: 0, auto: 0 }
+      let done = 0
+      let failed = 0
+
+      for (const item of items) {
+        const entry = bySourceName.get(item.source) ?? {
+          source: item.source,
+          total: 0,
+          done: 0,
+          failed: 0,
+          pending: 0,
+        }
+        entry.total++
+
+        const status = statusOf.get(item.itemId)
+        if (status === 'done') {
+          entry.done++
+          done++
+        } else if (status === 'failed') {
+          entry.failed++
+          failed++
+        } else {
+          entry.pending++
+        }
+        bySourceName.set(item.source, entry)
+
+        const caption = captionOf.get(item.itemId)
+        if (caption !== undefined) byCaptionSource[caption]++
+      }
+
+      // A költés minden műtermék-típusra összegződik: a kérdés az, hogy erre
+      // a korpuszra eddig mennyit költöttünk, nem az, hogy melyik recept vitte.
+      const cost = db
+        .prepare('SELECT COALESCE(SUM(cost_usd), 0) AS total FROM artifacts')
+        .get() as { total: number }
+
+      return {
+        bySource: [...bySourceName.values()].sort((a, b) => a.source.localeCompare(b.source)),
+        byCaptionSource,
+        done,
+        failed,
+        pending: items.length - done - failed,
+        totalCostUsd: cost.total,
+      }
+    },
+
+    listFailed(items, kind) {
+      const failed = new Set(
+        (
+          db
+            .prepare("SELECT item_id FROM artifacts WHERE kind = ? AND status = 'failed'")
+            .all(kind) as { item_id: string }[]
+        ).map((r) => r.item_id),
+      )
+      return items.filter((item) => failed.has(item.itemId))
     },
 
     close() {

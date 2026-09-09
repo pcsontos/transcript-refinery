@@ -3,11 +3,10 @@
 Kész `.vtt`/`.srt` feliratfájlokból strukturált tudásjegyzeteket készít egy
 Obsidian vaultba — mindegy, mi állította elő őket.
 
-> **Állapot: a Fázis 1 kész.** A normalizált átiratból modellel készül
-> összefoglaló jegyzet a vaultba, korlátos evaluator–optimizer loopban, a
-> futás előtt kikényszerített költségplafon alatt. A modellréteg, a
-> receptmotor és a mérési harness megvan; a további receptek, a köteges
-> feldolgozás és a felület hátravannak. Lásd:
+> **Állapot: a Fázis 2 kész.** A teljes korpusz felügyelet nélkül végigfut: a
+> futás JSONL naplót és Markdown riportot hagy maga után, a költségplafon a
+> tiltás helyett szeletel, az átmeneti modellhibát korlátos újrapróbálkozás
+> nyeli el. A további receptek és a felület hátravannak. Lásd:
 > [`docs/roadmap.md`](<./docs/roadmap.md>).
 
 ## A probléma
@@ -102,7 +101,7 @@ fordítói lánc kell: macOS-en az Xcode parancssori eszközei
 (`xcode-select --install`), Debian/Ubuntu-n a `build-essential` és a `python3`
 csomag. Maga a mérés (`pnpm eval`) ezután API-kulcs és hálózat nélkül fut.
 
-247 teszttel, 33 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
+364 teszttel, 39 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
 végpontig teszttel, és a fenti, valós adaton mért eredményekkel a Fázis 1-re.
 
 ## Beállítás

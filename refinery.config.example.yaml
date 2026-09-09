@@ -32,6 +32,12 @@ state:
   # migrálja automatikusan.
   path: .state/refinery.db
 
+logs:
+  # A futásnaplók és riportok mappája. Relatív útvonal a projekt gyökeréhez
+  # képest. Futásonként két fájl keletkezik: egy JSONL eseménynapló és egy
+  # Markdown riport. Rotáció nincs — a régiek törlése a te dolgod.
+  dir: logs
+
 # Szerep → modell. A receptek szerepet kérnek, nem modellnevet; a konkrét
 # választás mérési eredmény lesz, nem vélemény (decisions/0004).
 model:

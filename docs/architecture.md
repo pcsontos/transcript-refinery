@@ -73,6 +73,15 @@ Az 1–4. és a 6–8. lépés determinisztikus és offline. Modell csak az 5.
 lépésben van — az újratranszkribálás nem lépése a csővezetéknek, lásd a
 9. fejezetet.
 
+Az eseményfolyamnak (2. fejezet) három fogyasztója van: a konzol emberi
+olvasásra rendereli soronként, a JSONL napló gépi feldolgozásra rögzíti, a
+Markdown riport pedig a futás végén összegzi. A riport két forrásból építkezik:
+a futás összegzése a folyamat közben gyűjtött eseményekből (memória) jön, a
+korpusz állapota viszont az állapottár lekérdezéséből — nem a futás
+memóriájából. Emiatt egy megszakadt és később folytatott köteg riportja is
+helyesen összesíti a teljes korpuszt, akkor is, ha a jelen futás annak csak
+egy részét dolgozta fel.
+
 ### A normalizálás hozama
 
 Az egymás utáni ismétlődések kiejtése a legnagyobb hozamú lépés, és teljesen

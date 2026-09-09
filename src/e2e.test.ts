@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DEFAULT_NOTES_DIR, loadConfig } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
 import { processItem } from './pipeline.js'
+import { renderReport } from './run/report.js'
 import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
 import { gitCommitPaths, isDirty } from './vault/git.js'
@@ -25,6 +26,17 @@ Ismételt sor.
 3
 00:00:02,000 --> 00:00:04,000
 Egy második, eltérő sor.
+`
+
+// Írásjelek nélkül: a `classifyCaptions` a 2/100 szavas küszöb alatt
+// automatikusnak sorolja be — nulla írásjel messze a küszöb alatt van.
+const AUTO_SRT = `1
+00:00:00,000 --> 00:00:02,000
+ez egy automatikus felirat irasjelek nelkul
+
+2
+00:00:02,000 --> 00:00:04,000
+a masodik sor is irasjel nelkul jon
 `
 
 let work: string
@@ -81,6 +93,25 @@ async function processAll(sources: string[], notesDir?: string) {
   }
   store.close()
   return { written, summary: summarize(events), notesRoot: cfg.notesRoot, events, items }
+}
+
+/** Az első `limit` elemet dolgozza fel — a megszakadt köteget utánozza. */
+async function processSome(sources: string[], limit: number) {
+  const cfg = config(sources)
+  const store = openState(cfg.statePath)
+  const { sink, events } = collectEvents()
+  const items = (await discoverAll(cfg.sources, cfg.languages)).slice(0, limit)
+  for (const item of items) {
+    await processItem(item, {
+      notesRoot: cfg.notesRoot,
+      store,
+      sink,
+      version: '0.1.0',
+      options: { force: false, dryRun: false },
+    })
+  }
+  store.close()
+  return { summary: summarize(events), events, items }
 }
 
 describe('végponttól végpontig', () => {
@@ -193,5 +224,68 @@ describe('végponttól végpontig', () => {
     expect(await isDirty(vault)).toBe(false)
     const log = await run('git', ['log', '--oneline'], { cwd: vault })
     expect(log.stdout.trim().split('\n')).toHaveLength(1)
+  })
+
+  it('a köteg közepén megszakadt futás után az újrafuttatás nem ír újra', async () => {
+    await write(join(subsA, 'Cs', 'Elso.en.srt'), SRT)
+    await write(join(subsA, 'Cs', 'Masodik.en.srt'), SRT)
+
+    // Első futás: a köteg az első elem után „megszakad".
+    const elso = await processSome([subsA], 1)
+    expect(elso.summary.succeeded).toBe(1)
+
+    // Második futás: mindkét elem sorra kerül, de a kész kimarad.
+    const masodik = await processAll([subsA])
+    expect(masodik.summary.succeeded).toBe(1)
+    expect(masodik.summary.skipped).toBe(1)
+
+    // A köteg-szintű állapot a két futás összegét mutatja.
+    const cfg = config([subsA])
+    const store = openState(cfg.statePath)
+    const corpus = store.corpusStatus(masodik.items, 'transcript')
+    store.close()
+
+    expect(corpus.done).toBe(2)
+    expect(corpus.pending).toBe(0)
+  })
+
+  it('a riport a felirat-forrás szerint bont, és megnevezi az automatikus elemet', async () => {
+    await write(join(subsA, 'Cs', 'Kreatori.en.srt'), SRT)
+    await write(join(subsB, 'Cs', 'Automatikus.en.srt'), AUTO_SRT)
+    // A metaadat szándékosan más címet ad, mint a fájlnév, és az azonosító
+    // sem a címből jön: így a riport állítása tényleg a NÉVRŐL szól.
+    await write(
+      join(subsB, 'Cs', 'Automatikus.info.json'),
+      JSON.stringify({ id: 'auto-1', title: 'Gépi felirattal készült előadás' }),
+    )
+
+    const { summary, items } = await processAll([subsA, subsB])
+    expect(summary.byCaptionSource).toEqual({ creator: 1, auto: 1 })
+    expect(summary.autoItems).toHaveLength(1)
+
+    const cfg = config([subsA, subsB])
+    const store = openState(cfg.statePath)
+    const corpus = store.corpusStatus(items, 'transcript')
+    store.close()
+
+    const markdown = renderReport({
+      runId: '2026-09-07T02-14-03',
+      startedAt: new Date('2026-09-07T02:14:03Z'),
+      finishedAt: new Date('2026-09-07T02:20:00Z'),
+      command: 'run',
+      summary,
+      corpus,
+      runs: 1,
+      logPath: join(cfg.logsDir, '2026-09-07T02-14-03.jsonl'),
+    })
+
+    const auto = summary.autoItems[0]!
+    expect(auto).toEqual({ itemId: 'auto-1', title: 'Gépi felirattal készült előadás' })
+
+    expect(markdown).toContain('kreátori 1 / automatikus 1')
+    // A felsorolás a nevet viszi, az azonosító csak mellette áll.
+    expect(markdown).toContain(`- ${auto.title} (\`${auto.itemId}\`)`)
+    expect(markdown).toContain('| youtube |')
+    expect(markdown).toContain('| meetings |')
   })
 })

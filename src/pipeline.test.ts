@@ -5,8 +5,8 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { collectEvents } from './events.js'
 import { createCostGuard } from './model/budget.js'
-import { modelClientFrom } from './model/client.js'
-import { processItem, type PipelineDeps } from './pipeline.js'
+import { modelClientFrom, type ModelClient } from './model/client.js'
+import { ARTIFACT_KIND, processItem, type PipelineDeps } from './pipeline.js'
 import type { Recipe } from './recipe/types.js'
 import { openState, type StateStore } from './state/db.js'
 import type { SourceItem } from './types.js'
@@ -326,5 +326,98 @@ describe('processItem recepttel', () => {
     })
 
     expect(deps.store.artifactOf(current.itemId, 'nem-publikus-dry')).toBeNull()
+  })
+
+  it('átmeneti modellhiba után újrapróbálkozik, és eseményt küld róla', async () => {
+    let hivasok = 0
+    // A `ModelClient` szerződése async; ez a próba-kliens szinkron dob vagy
+    // ad vissza, tehát nincs mire várnia.
+    const client: ModelClient = {
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async generate() {
+        hivasok++
+        if (hivasok === 1) {
+          throw Object.assign(new Error('HTTP 429'), { statusCode: 429 })
+        }
+        return { value: '## Jegyzet\n', usage: { inputTokens: 10, outputTokens: 5 } }
+      },
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async generateObject<T>() {
+        return { value: { score: 1, gaps: [] } as T, usage: { inputTokens: 1, outputTokens: 1 } }
+      },
+    }
+
+    const { sink, events } = collectEvents()
+    const outcome = await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client,
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+        sleep: async () => {},
+      },
+    })
+
+    expect(outcome.status).toBe('published')
+    expect(hivasok).toBe(2)
+    expect(events.filter((e) => e.type === 'item:retry')).toHaveLength(1)
+  })
+
+  it('végleges modellhibára nem próbálkozik újra, és az elem hibás lesz', async () => {
+    let hivasok = 0
+    const client: ModelClient = {
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async generate() {
+        hivasok++
+        throw Object.assign(new Error('HTTP 400'), { statusCode: 400 })
+      },
+      // eslint-disable-next-line @typescript-eslint/require-await
+      async generateObject<T>() {
+        return { value: { score: 1, gaps: [] } as T, usage: { inputTokens: 1, outputTokens: 1 } }
+      },
+    }
+
+    const { sink, events } = collectEvents()
+    await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client,
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+        sleep: async () => {},
+      },
+    })
+
+    expect(hivasok).toBe(1)
+    expect(events.filter((e) => e.type === 'item:retry')).toHaveLength(0)
+    expect(events.filter((e) => e.type === 'item:failed')).toHaveLength(1)
+  })
+
+  it('sérült feliratnál recept-futásban MINDKÉT érintett típus alatt hibát rögzít', async () => {
+    // Az 1. kör javítása óta a `planned` recept-futásnál is tartalmazza a
+    // normalizáláson elbukó elemet (korábban a becslési ciklus kiszűrte,
+    // mielőtt a `processItem` ezt a `catch`-ágat elérte volna). A hiba tehát
+    // most már mindkét típusra (`transcript` ÉS a recept azonosítója) alatt
+    // kell landoljon, különben a `corpusStatus`/`listFailed` a recept
+    // kind-je alatt sosem találja meg — örökre „hátra" marad.
+    const broken = item({ subtitlePath: join(dir, 'nincs.en.srt') })
+    const deps = alapDeps()
+    const recipeDeps = {
+      recipe: ATMENO_RECEPT,
+      client: probaKliens('## Jegyzet\n'),
+      modelConfig: MODELL_CFG,
+      guard: createCostGuard(5),
+    }
+
+    const outcome = await processItem(broken, { ...deps, recipeDeps })
+
+    expect(outcome.status).toBe('failed')
+    expect(deps.store.artifactOf(broken.itemId, ARTIFACT_KIND)?.status).toBe('failed')
+    expect(deps.store.artifactOf(broken.itemId, recipeDeps.recipe.id)?.status).toBe('failed')
+    expect(deps.store.corpusStatus([broken], recipeDeps.recipe.id).failed).toBe(1)
   })
 })
