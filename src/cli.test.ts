@@ -80,14 +80,21 @@ async function makeBrokenVideo(downloads: string, id: string, title: string, cha
  * Hamis modellkliens: a generálás fix szöveget ad, a bíró mindig egyest.
  * A `hivasok` a tényleges generálások számát számolja — ezen múlik, hogy a
  * szeletelés tényleg csak a tervezett elemeket futtatta-e.
+ *
+ * Az `onGenerate` horog a hányadik generálást kapja meg; a megszakítási
+ * teszt ebből süti el a hamis SIGINT-et, pontosan a köteg közepén.
  */
-function hamisKliens(hivasok: { generate: number }): ModelClient {
+function hamisKliens(
+  hivasok: { generate: number },
+  onGenerate?: (hanyadik: number) => void,
+): ModelClient {
   return {
     // A `ModelClient` interfész Promise-t vár vissza; itt nincs mire várni,
     // de az `async` a szerződés, nem hiba.
     // eslint-disable-next-line @typescript-eslint/require-await
     async generate() {
       hivasok.generate++
+      onGenerate?.(hivasok.generate)
       return {
         value: '## Összefoglaló\n\nEgy mondat a jegyzetből.\n',
         usage: { inputTokens: 10, outputTokens: 5 },
@@ -324,24 +331,39 @@ describe('commandRun — napló és riport', () => {
     expect(report).toContain('## A korpusz állapota')
   })
 
-  it('a megszakítás riportot hagy maga után, és 130-cal lép ki', async () => {
+  it('a megszakítás a addig elkészült elemekről ír riportot, és 130-cal lép ki', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+
     const raw = rawWithVault(5)
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
+    // A második elem átirata ELŐRE kész: így a második elem feldolgozása
+    // egyenesen a generálásnál tart, amikor a jel érkezik, és a riportnak
+    // pontosan egy elkészült elemet kell számolnia.
+    const items = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const pre = openState(cfg.statePath)
+    const masodik = items.find((i) => i.itemId === 'a2')!
+    pre.recordItem(masodik)
+    pre.recordArtifact('a2', 'transcript', 'done', join(vault, 'a2_transcript.md'), null)
+    pre.close()
+
     let exitCode: number | undefined
+    let sigint: (() => void) | undefined
     let interrupted: () => void
     const exited = new Promise<void>((resolve) => (interrupted = resolve))
 
+    const hivasok = { generate: 0 }
     await commandRun(
       cfg,
       raw,
-      { dryRun: false, force: false, commit: false },
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
       {
-        // A megszakítás közvetlenül a kezelő beszerelése után érkezik.
+        // A jel nem a kezelő beszerelésekor, hanem a MÁSODIK elem
+        // generálásakor érkezik: az első elem ekkor már publikálva van.
         signals: {
           on(_event: string, listener: () => void) {
-            setTimeout(listener, 0)
+            sigint = listener
             return this
           },
         },
@@ -349,12 +371,67 @@ describe('commandRun — napló és riport', () => {
           exitCode = code
           interrupted()
         },
+        createClient: () =>
+          hamisKliens(hivasok, (hanyadik) => {
+            if (hanyadik === 2) sigint?.()
+          }),
       },
     )
     await exited
 
     expect(exitCode).toBe(130)
-    expect((await readdir(cfg.logsDir)).some((f) => f.endsWith('.md'))).toBe(true)
+
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+    // A megszakításig pontosan egy elem készült el.
+    expect(report).toContain('| sikeres | 1 ')
+  })
+
+  it('a plafon alatti megállás üzenete megnevezi a becsült költséget és a plafont', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const recipe = getRecipe('summary')
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
+
+    // Ebben a nagyságrendben a két tizedes mindkét számot nullának mutatná —
+    // pontosan ezért formáz a `run:aborted` négy tizedessel.
+    expect(cost.toFixed(2)).toBe('0.00')
+    expect(cost.toFixed(4)).not.toBe('0.0000')
+    expect((cost / 2).toFixed(4)).not.toBe('0.0000')
+
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
+      recipe: 'summary',
+      dryRun: false,
+      force: false,
+      commit: false,
+    })
+    const megallt: string[] = []
+    for (const [line] of logSpy.mock.calls) {
+      if (typeof line === 'string' && line.startsWith('A futás megállt:')) megallt.push(line)
+    }
+    logSpy.mockRestore()
+
+    expect(code).toBe(2)
+    expect(megallt).toHaveLength(1)
+    // Az 5. sikerkritérium: az üzenet megnevezi a becsült költséget ÉS a plafont.
+    expect(megallt[0]).toContain(`${cost.toFixed(4)} $`)
+    expect(megallt[0]).toContain(`${(cost / 2).toFixed(4)} $`)
+
+    const jsonl = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.jsonl'))!
+    const aborted = (await readFile(join(cfg.logsDir, jsonl), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as RunEvent)
+      .find((e) => e.type === 'run:aborted')
+    expect(aborted).toMatchObject({ limitUsd: cost / 2 })
+    expect(aborted?.type === 'run:aborted' && aborted.reason).toContain(`${cost.toFixed(4)} $`)
   })
 
   it('a becslési plafon-túllépés is riportot hagy maga után', async () => {
@@ -609,6 +686,66 @@ describe('commandRun — a plafon szeletel', () => {
 
     expect(code).toBe(2)
     expect(hivasok.generate).toBe(0)
+  })
+})
+
+describe('commandRun — a riport folytatási javaslata', () => {
+  it('a javaslatból kimarad a --limit, hogy a folytatás a hátralévőket vigye', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+    await makeVideo(downloads, 'a3', 'Harmadik videó', 'Csatorna A')
+
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const hivasok = { generate: 0 }
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      {
+        recipe: 'summary',
+        limit: 2,
+        dryRun: false,
+        force: false,
+        commit: false,
+        command: 'run --recipe summary --limit 2',
+      },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+
+    expect(report).toContain('1 elem hátravan')
+    expect(report).toContain('Folytatás: `run --recipe summary`')
+  })
+
+  it('hátralévő elem nélkül, hibással a --retry-failed-et ajánlja', async () => {
+    // Átirat-futás: a sérült elem `transcript` típusra hibás, tehát a korpusz
+    // végigment (nincs hátralévő), de maradt hibás elem — ez a reggel-utáni
+    // eset, amiért a --retry-failed egyáltalán elkészült.
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeBrokenVideo(downloads, 'a2', 'Sérült videó', 'Csatorna A')
+
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const code = await commandRun(cfg, raw, {
+      limit: 5,
+      dryRun: false,
+      force: false,
+      commit: false,
+      command: 'run --limit 5',
+    })
+
+    expect(code).toBe(1)
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+
+    expect(report).toContain('A korpusz feldolgozva, de maradtak hibás elemek.')
+    // A --limit kimarad a javaslatból, a --retry-failed rákerül.
+    expect(report).toContain('Újrapróbálás: `run --retry-failed`')
   })
 })
 

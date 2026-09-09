@@ -23,6 +23,7 @@ import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { runId } from './run/id.js'
 import { openRunLog } from './run/log.js'
 import { renderReport } from './run/report.js'
+import { nextCommand } from './run/suggest.js'
 import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
 import { parseSubtitle } from './subtitle/parse.js'
@@ -84,7 +85,9 @@ function render(event: RunEvent): string | null {
     case 'run:estimate':
       return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(2)} $ (plafon: ${event.limitUsd.toFixed(2)} $)`
     case 'run:aborted':
-      return `A futás megállt: ${event.reason} (${event.spentUsd.toFixed(2)} $ / ${event.limitUsd.toFixed(2)} $)`
+      // Négy tizedes, mint az `item:refined`-nél: elemenkénti nagyságrendben
+      // a két tizedes minden számot `0.00`-ként mutatna.
+      return `A futás megállt: ${event.reason} (${event.spentUsd.toFixed(4)} $ / ${event.limitUsd.toFixed(4)} $)`
     case 'run:sliced':
       return `  A plafon alá ${String(event.planned)} elem fér; ${String(event.deferred)} a következő futásra marad.`
     case 'item:refined':
@@ -217,7 +220,7 @@ export async function commandRun(
             capped: recipeDeps.guard.exceeded(),
           }
         : undefined,
-      nextCommand: corpus.pending > 0 ? commandLine : undefined,
+      nextCommand: nextCommand(commandLine, corpus),
     })
     await writeReport(reportPath, markdown)
     // A naplót SZÁNDÉKOSAN nem itt zárjuk: a `finish(true)` (megszakítás) és
@@ -282,7 +285,7 @@ export async function commandRun(
         const firstUsd = estimateItemUsd(first.words, maxIterations, recipeDeps.modelConfig)
         printing({
           type: 'run:aborted',
-          reason: `már az első elem becsült költsége (${firstUsd.toFixed(2)} $) meghaladja a plafont`,
+          reason: `már az első elem becsült költsége (${firstUsd.toFixed(4)} $) meghaladja a plafont`,
           spentUsd: 0,
           limitUsd,
         })
