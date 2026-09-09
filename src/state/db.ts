@@ -78,8 +78,13 @@ export interface SourceStatus {
 }
 
 /**
- * A teljes korpusz állapota egy adott műtermék-típusra. Kizárólag olvasó
- * összegzés: ez teszi a riportot újraindítás után is teljessé.
+ * A teljes korpusz állapota. Kizárólag olvasó összegzés: ez teszi a riportot
+ * újraindítás után is teljessé.
+ *
+ * A kész/hibás/hátralévő számok EGY megadott műtermék-típusra szólnak (arra,
+ * amit a futás készít), a `totalCostUsd` viszont MINDEN típuson összegez: a
+ * kérdés az, hogy erre a korpuszra eddig összesen mennyit költöttünk, nem az,
+ * hogy melyik recept vitte el.
  */
 export interface CorpusStatus {
   bySource: SourceStatus[]

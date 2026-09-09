@@ -9,6 +9,7 @@ import { estimateItemUsd } from './model/budget.js'
 import type { ModelClient } from './model/client.js'
 import { normalizeItem } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
+import { runId } from './run/id.js'
 import { folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
 
@@ -495,6 +496,44 @@ describe('commandRun — napló és riport', () => {
 
     expect(lines.length).toBeGreaterThan(0)
     for (const line of lines) expect(() => JSON.parse(line) as unknown).not.toThrow()
+  })
+
+  it('a törzsben dobott hiba után is elkészül a riport', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    // A `gitCommitPaths` mockja dob. A riport a `finally`-ből is elkészül:
+    // egy git-hiba vagy tele lemez enélkül naplót hagyna, riportot nem.
+    await expect(
+      commandRun(cfg, raw, { dryRun: false, force: false, commit: true }),
+    ).rejects.toThrow('szimulált git hiba')
+
+    expect((await readdir(cfg.logsDir)).some((f) => f.endsWith('.md'))).toBe(true)
+  })
+
+  it('nem ír bele egy már létező futás naplójába', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    // Előre lefoglaljuk azt a két másodpercet, amelyikben a futás indulhat:
+    // bármelyikben indul is, a bázisnév foglalt, tehát utótagot kell kapnia.
+    await mkdir(cfg.logsDir, { recursive: true })
+    const most = new Date()
+    const foglalt = [runId(most), runId(new Date(most.getTime() + 1000))]
+    for (const id of foglalt) await writeFile(join(cfg.logsDir, `${id}.jsonl`), '', 'utf8')
+
+    await commandRun(cfg, raw, { dryRun: false, force: false, commit: false })
+
+    // Egyik korábbi napló sem hízott meg.
+    for (const id of foglalt) {
+      expect(await readFile(join(cfg.logsDir, `${id}.jsonl`), 'utf8')).toBe('')
+    }
+    const files = await readdir(cfg.logsDir)
+    expect(files.filter((f) => f.endsWith('.jsonl'))).toHaveLength(3)
+    expect(files.some((f) => f.endsWith('-2.jsonl'))).toBe(true)
+    expect(files.some((f) => f.endsWith('-2.md'))).toBe(true)
   })
 
   it('a megszakítás után a normál befejezés nem ír riportot kétszer', async () => {

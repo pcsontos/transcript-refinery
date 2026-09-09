@@ -20,7 +20,7 @@ import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
 import { getRecipe } from './recipe/registry.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
-import { runId } from './run/id.js'
+import { reserveRunId, runId } from './run/id.js'
 import { openRunLog } from './run/log.js'
 import { renderReport } from './run/report.js'
 import { nextCommand } from './run/suggest.js'
@@ -172,7 +172,9 @@ export async function commandRun(
   const store = openState(cfg.statePath)
 
   const startedAt = new Date()
-  const id = runId(startedAt)
+  // Ütközésmentes név: két azonos másodpercben induló futás nem írhat
+  // egymás naplójába, és nem írhatja felül egymás riportját.
+  const id = reserveRunId(cfg.logsDir, runId(startedAt))
   const logPath = join(cfg.logsDir, `${id}.jsonl`)
   const reportPath = join(cfg.logsDir, `${id}.md`)
   const log = openRunLog(logPath)
@@ -363,6 +365,17 @@ export async function commandRun(
     await finish(false)
     return summary.failed > 0 ? 1 : 0
   } finally {
+    // A riport a `finally`-ből is elkészül: a törzsben dobott kivétel
+    // (git-hiba, tele lemez) enélkül naplót hagyna maga után, riportot nem.
+    // A `finish` idempotens, tehát a normál ág után ez már nem csinál semmit.
+    // Saját try/catch-ben, hogy egy riportírási hiba se akadályozza meg a
+    // leiratkozást és a lezárásokat — és hogy ne nyelje el a törzs eredeti
+    // kivételét sem.
+    try {
+      await finish(false)
+    } catch (error) {
+      console.error(`A riport nem készült el: ${(error as Error).message}`)
+    }
     // A leiratkozás azért kerül ide, hogy a `commandRun` visszatérte után
     // egy késői jel ne fusson neki egy lent már lezárt állapottárnak.
     uninstallSigint()
