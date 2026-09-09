@@ -104,6 +104,30 @@ describe('sliceToBudget', () => {
 
     expect(slice.tokens).toBe(estimateRunUsd([800, 1_200], 1, cfg).tokens)
   })
+
+  it('kemény megállás: plafon-túllépés után egy olcsóbb, később jövő elem sem csúszik be', () => {
+    const costA = estimateItemUsd(1_000, 0, CFG)
+    const costC = estimateItemUsd(200, 0, CFG)
+    // A plafon éppen A-ra és C-re elég, bőséges tartalékkal — egy
+    // legjobb-illeszkedést kereső (a plafon-túllépés után is tovább
+    // kereső) implementáció a b kihagyása után C-t még beengedné. A helyes
+    // viselkedés a kemény megállás: a plafon elfogyása után semmi más nem
+    // indulhat, még ha önmagában befért volna is.
+    const cfg = limitel(costA + costC * 1.5)
+
+    const slice = sliceToBudget(
+      [
+        { value: 'a', words: 1_000 }, // befér, tölti a keretet
+        { value: 'b', words: 5_000 }, // jóval túllépi a plafont — itt kell megállnia
+        { value: 'c', words: 200 }, // önmagában beférne, de a plafon már elfogyott
+      ],
+      0,
+      cfg,
+    )
+
+    expect(slice.planned).toEqual(['a'])
+    expect(slice.deferred).toEqual(['b', 'c'])
+  })
 })
 
 describe('createCostGuard', () => {
