@@ -1,4 +1,4 @@
-import type { ModelClient, ModelUsage } from '../model/client.js'
+import type { ModelClient, ModelResult, ModelUsage } from '../model/client.js'
 import type { Recipe, RecipeInput } from '../recipe/types.js'
 import { scoreRubric } from '../rubric/types.js'
 
@@ -38,7 +38,17 @@ export async function refine(
     usage.outputTokens += u.outputTokens
   }
 
-  const first = await client.generate(recipe.role, recipe.prompt(input))
+  /**
+   * A generálás egyetlen elágazása: strukturált receptnél sémás hívás és
+   * renderelés, egyébként a prózaút. Mindkét ág **stringet** ad vissza, ezért
+   * innentől a loop többi része nem tud a különbségről.
+   */
+  const generate = (prompt: string): Promise<ModelResult<string>> =>
+    recipe.structured
+      ? recipe.structured.generate(client, recipe.role, prompt)
+      : client.generate(recipe.role, prompt)
+
+  const first = await generate(recipe.prompt(input))
   add(first.usage)
 
   const firstScore = await scoreRubric(
@@ -52,8 +62,7 @@ export async function refine(
   let generations = 1
 
   while (best.score < recipe.rubric.passThreshold && generations <= maxIterations) {
-    const next = await client.generate(
-      recipe.role,
+    const next = await generate(
       recipe.repairPrompt({ ...input, previous: best.output, gaps: best.gaps }),
     )
     add(next.usage)

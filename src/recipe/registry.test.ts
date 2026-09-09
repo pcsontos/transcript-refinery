@@ -23,7 +23,7 @@ describe('registry', () => {
     }
   })
 
-  it('a Fázis 1-ben pontosan egy recept van', () => {
-    expect(RECIPE_IDS).toEqual(['summary'])
+  it('a receptek azonosítói a regisztráció sorrendjében állnak', () => {
+    expect(RECIPE_IDS).toEqual(['summary', 'flashcards', 'qa'])
   })
 })

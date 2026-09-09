@@ -1,22 +1,27 @@
 import { coverageCriterion, faithfulnessCriterion } from '../rubric/judge.js'
 import { formatCriterion } from '../rubric/format.js'
 import type { SourceItem } from '../types.js'
+import { RULE } from './rules.js'
 import type { Recipe } from './types.js'
 
 /**
  * A közös szabályok. Mindkét prompt ugyanezeket idézi, mert a javító kör
  * ugyanazokat a megkötéseket kell hogy betartsa — enélkül a második
  * generálás kijavítaná a tartalmi hiányt, és közben elrontaná a formátumot.
+ *
+ * A vault-invariáns tagok a `rules.ts`-ből jönnek; a szerkezeti és a hossz-
+ * szabály ezé a recepté. A sorrend szándékos: a szerkezeti szabály a
+ * visszavezethetőség után áll, mert az olvasás sorrendje is ez.
  */
 const RULES = [
-  '- Write in the same language as the transcript. Do not translate.',
-  '- Every statement must be traceable to the transcript. Do not add outside',
-  '  knowledge, and do not speculate about what the speaker meant.',
-  '- Open with a short paragraph on what the video is about, then use `##`',
-  '  sections with bullet points for the substance.',
-  '- Do not emit YAML frontmatter; it is added separately.',
-  '- Do not use wikilinks (`[[...]]`). If you link, wrap the target in angle',
-  '  brackets: `[Name](<https://example.com>)`.',
+  RULE.language,
+  RULE.traceable,
+  [
+    '- Open with a short paragraph on what the video is about, then use `##`',
+    '  sections with bullet points for the substance.',
+  ].join('\n'),
+  RULE.noFrontmatter,
+  RULE.noWikilinks,
   "- Aim for roughly a tenth of the transcript's length.",
 ].join('\n')
 

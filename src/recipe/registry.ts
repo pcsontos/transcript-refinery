@@ -1,3 +1,5 @@
+import { flashcardsRecipe } from './flashcards.js'
+import { qaRecipe } from './qa.js'
 import { summaryRecipe } from './summary.js'
 import type { Recipe } from './types.js'
 
@@ -11,6 +13,8 @@ import type { Recipe } from './types.js'
  */
 export const RECIPES: Record<string, Recipe> = {
   [summaryRecipe.id]: summaryRecipe,
+  [flashcardsRecipe.id]: flashcardsRecipe,
+  [qaRecipe.id]: qaRecipe,
 }
 
 export const RECIPE_IDS: string[] = Object.keys(RECIPES)

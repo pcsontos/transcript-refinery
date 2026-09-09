@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import type { ModelClient } from '../model/client.js'
+import { structuredOutput } from '../recipe/structured.js'
 import type { Recipe } from '../recipe/types.js'
 import type { Criterion } from '../rubric/types.js'
 import type { SourceItem } from '../types.js'
@@ -208,5 +210,107 @@ describe('refine', () => {
     await refine(recept(criteria), INPUT, client)
 
     expect(latottAtiratok).toEqual([INPUT.transcript, INPUT.transcript])
+  })
+})
+
+/**
+ * Kliens, ami **csak** a sémás úton válaszol: a `generate` hívása hiba. Így a
+ * teszt bizonyítja, hogy a strukturált recept tényleg a sémás ágon megy.
+ */
+function strukturaltKliens(valaszok: { cards: string[] }[]): ModelClient {
+  let i = 0
+  return {
+    generate: () => Promise.reject(new Error('prózautat hívott a strukturált recept')),
+    generateObject: <T>() => {
+      const valasz = valaszok[Math.min(i, valaszok.length - 1)]!
+      i++
+      return Promise.resolve({
+        value: valasz as T,
+        usage: { inputTokens: 100, outputTokens: 10 },
+      })
+    },
+  }
+}
+
+const Cards = z.object({ cards: z.array(z.string()) })
+
+/** Kártyák → Markdown; a teszt ezen a renderelt alakon méri a pontozást. */
+const kartyakRenderelese = structuredOutput(Cards, (v: { cards: string[] }) =>
+  v.cards.map((c) => `- ${c}`).join('\n'),
+)
+
+describe('refine — strukturált recept', () => {
+  it('a sémás úton generál, és a RENDERELT Markdownt pontozza', async () => {
+    const pontszamok = new Map([['- egy\n- kettő', 0.9]])
+    const recipe: Recipe = {
+      ...recept(tablazatosRubrika(pontszamok)),
+      structured: kartyakRenderelese,
+    }
+
+    const result = await refine(recipe, INPUT, strukturaltKliens([{ cards: ['egy', 'kettő'] }]))
+
+    expect(result.output).toBe('- egy\n- kettő')
+    expect(result.score).toBe(0.9)
+    expect(result.generations).toBe(1)
+  })
+
+  it('a javító kör is a sémás úton megy, és a jobbik kimenetet tartja meg', async () => {
+    const pontszamok = new Map([
+      ['- gyenge', 0.4],
+      ['- jobb', 0.95],
+    ])
+    const recipe: Recipe = {
+      ...recept(tablazatosRubrika(pontszamok)),
+      structured: kartyakRenderelese,
+    }
+
+    const result = await refine(
+      recipe,
+      INPUT,
+      strukturaltKliens([{ cards: ['gyenge'] }, { cards: ['jobb'] }]),
+    )
+
+    expect(result.output).toBe('- jobb')
+    expect(result.generations).toBe(2)
+  })
+
+  it('a javító prompt a RENDERELT Markdownt kapja előzményként, nem az objektumot', async () => {
+    const elozmenyek: string[] = []
+    const pontszamok = new Map([
+      ['- gyenge', 0.4],
+      ['- jobb', 0.95],
+    ])
+    const recipe: Recipe = {
+      ...recept(tablazatosRubrika(pontszamok)),
+      structured: kartyakRenderelese,
+      repairPrompt: ({ previous }) => {
+        elozmenyek.push(previous)
+        return 'JAVÍTÓ PROMPT'
+      },
+    }
+
+    await refine(recipe, INPUT, strukturaltKliens([{ cards: ['gyenge'] }, { cards: ['jobb'] }]))
+
+    expect(elozmenyek).toEqual(['- gyenge'])
+  })
+
+  it('a sémás hívások használatát is összegzi', async () => {
+    const pontszamok = new Map([
+      ['- gyenge', 0.4],
+      ['- jobb', 0.95],
+    ])
+    const recipe: Recipe = {
+      ...recept(tablazatosRubrika(pontszamok)),
+      structured: kartyakRenderelese,
+    }
+
+    const result = await refine(
+      recipe,
+      INPUT,
+      strukturaltKliens([{ cards: ['gyenge'] }, { cards: ['jobb'] }]),
+    )
+
+    // Két sémás generálás × {100, 10}; a rubrika itt determinisztikus, nem költ.
+    expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 20 })
   })
 })
