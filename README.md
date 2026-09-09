@@ -101,7 +101,7 @@ fordítói lánc kell: macOS-en az Xcode parancssori eszközei
 (`xcode-select --install`), Debian/Ubuntu-n a `build-essential` és a `python3`
 csomag. Maga a mérés (`pnpm eval`) ezután API-kulcs és hálózat nélkül fut.
 
-339 teszttel, 38 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
+364 teszttel, 39 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
 végpontig teszttel, és a fenti, valós adaton mért eredményekkel a Fázis 1-re.
 
 ## Beállítás

@@ -83,7 +83,7 @@ function render(event: RunEvent): string | null {
     case 'item:failed':
       return `  ✗ ${event.itemId}: ${event.error}`
     case 'run:estimate':
-      return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(2)} $ (plafon: ${event.limitUsd.toFixed(2)} $)`
+      return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(4)} $ (plafon: ${event.limitUsd.toFixed(4)} $)`
     case 'run:aborted':
       // Négy tizedes, mint az `item:refined`-nél: elemenkénti nagyságrendben
       // a két tizedes minden számot `0.00`-ként mutatna.
