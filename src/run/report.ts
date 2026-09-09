@@ -29,6 +29,13 @@ function stamp(date: Date): string {
   return date.toISOString().slice(0, 16).replace('T', ' ')
 }
 
+/** Markdown táblázatcella-értékek biztonságossá tétele: újsorok → szóköz, | → \| */
+function escapeTableCell(value: string): string {
+  return value
+    .replace(/[\r\n]+/g, ' ') // Újsorok és kocsivissza → szóköz
+    .replace(/\|/g, '\\|') // Pipe → escaped pipe
+}
+
 /**
  * A futás riportja Markdownban. Tiszta függvény: nem ír fájlt és nem olvas
  * órát — így a tesztje a szövegről szól, nem a környezetről.
@@ -40,6 +47,7 @@ export function renderReport(input: ReportInput): string {
   lines.push(`# Futás — ${stamp(input.startedAt)} → ${stamp(input.finishedAt)}`)
   lines.push('')
   lines.push(`Parancs: \`${input.command}\``)
+  lines.push(`Futásazonosító: \`${input.runId}\``)
   if (input.cost) {
     const { spentUsd, limitUsd, capped } = input.cost
     const suffix = capped ? ' — plafon elérve' : ''
@@ -75,7 +83,7 @@ export function renderReport(input: ReportInput): string {
     lines.push('| elem | ok |')
     lines.push('|---|---|')
     for (const failure of summary.failures) {
-      lines.push(`| \`${failure.itemId}\` | ${failure.error} |`)
+      lines.push(`| \`${failure.itemId}\` | ${escapeTableCell(failure.error)} |`)
     }
     lines.push('')
   }
@@ -86,7 +94,7 @@ export function renderReport(input: ReportInput): string {
   lines.push('|---|---|---|---|---|')
   for (const s of corpus.bySource) {
     lines.push(
-      `| ${s.source} | ${String(s.total)} | ${String(s.done)} | ` +
+      `| ${escapeTableCell(s.source)} | ${String(s.total)} | ${String(s.done)} | ` +
         `${String(s.failed)} | ${String(s.pending)} |`,
     )
   }

@@ -36,7 +36,12 @@ describe('renderReport', () => {
   it('a futás bontását a felirat-forrás szerint írja ki', () => {
     const md = renderReport(input())
     expect(md).toContain('kreátori 1 / automatikus 1')
-    expect(md).toContain('sikeres | 2')
+    expect(md).toContain('| sikeres | 2 (kreátori 1 / automatikus 1) |')
+  })
+
+  it('a futásazonosítót a fejlécben jeleníti meg', () => {
+    const md = renderReport(input())
+    expect(md).toContain('Futásazonosító: `2026-09-07T02-14-03`')
   })
 
   it('felsorolja az automatikus feliratból készült elemeket', () => {
@@ -73,6 +78,17 @@ describe('renderReport', () => {
     expect(md).not.toContain('Folytatás:')
   })
 
+  it('tiszta korpusznál nem említi a hibás elemeket', () => {
+    const md = renderReport(
+      input({
+        corpus: { ...input().corpus, pending: 0, done: 4, failed: 0 },
+        nextCommand: undefined,
+      }),
+    )
+    expect(md).toContain('A korpusz feldolgozva.')
+    expect(md).not.toContain('maradtak hibás elemek')
+  })
+
   it('a plafon elérését kiírja a fejlécben', () => {
     const md = renderReport(input({ cost: { spentUsd: 4.87, limitUsd: 5, capped: true } }))
     expect(md).toContain('4.87 $ / 5.00 $')
@@ -98,5 +114,27 @@ describe('renderReport', () => {
       }),
     )
     expect(md).not.toContain('Automatikus feliratból készült')
+  })
+
+  it('a hibaszöveg újsorait és pipe-jait biztonságossá teszi a táblázatban', () => {
+    const md = renderReport(
+      input({
+        summary: {
+          ...input().summary,
+          failures: [
+            {
+              itemId: 'test-item',
+              error: 'YAML parse error at line 5\nexpected "key" | got "|"',
+            },
+          ],
+        },
+      }),
+    )
+    // A hiba kijelenik, de az újsorok szóközök lesznek
+    expect(md).toContain('YAML parse error at line 5 expected "key"')
+    // Az escape pipe megjelenik (escaped as \|) — mind az eredeti szöveg közepéről, mind a végéről
+    expect(md).toContain('\\|')
+    // A táblázat sor a helyes táblázat formátumban jelenik meg, mind az eredeti | escapeolva van
+    expect(md).toContain('| `test-item` | YAML parse error at line 5 expected "key" \\| got "\\|" |')
   })
 })
