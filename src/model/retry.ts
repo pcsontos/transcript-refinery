@@ -17,6 +17,22 @@ const TRANSIENT_CODES = new Set([
 const TRANSIENT_NAMES = new Set(['AbortError', 'TimeoutError'])
 
 /**
+ * Számmá alakítja a státuszkódot, ha az szám vagy szám alakú string —
+ * néhány SDK és proxy stringként küldi (`statusCode: '429'`). Minden más
+ * esetben `undefined`-ot ad, hogy a hívó a maradék jeleket (kód, név, ok)
+ * is megvizsgálhassa, ahelyett hogy egy nem-státusz stringet félreértelmezve
+ * véglegesnek minősítené a hibát.
+ */
+function toStatus(value: unknown): number | undefined {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+/**
  * Átmeneti-e a hiba, tehát van-e értelme újrapróbálni.
  *
  * A besorolás szándékosan szigorú: a 4xx (a 408 és a 429 kivételével), a
@@ -33,12 +49,10 @@ export function isTransient(error: unknown): boolean {
     cause?: unknown
   }
 
-  const status =
-    typeof e.statusCode === 'number'
-      ? e.statusCode
-      : typeof e.status === 'number'
-        ? e.status
-        : undefined
+  // A közvetlen státusz — ha értelmezhető — a specifikusabb jel, ezért
+  // szándékosan megelőzi az ok-lánc vizsgálatát: pl. egy 400-as hiba akkor
+  // is végleges marad, ha az oka egy burkolt 503-as.
+  const status = toStatus(e.statusCode) ?? toStatus(e.status)
   if (status !== undefined) return status === 408 || status === 429 || status >= 500
 
   if (typeof e.code === 'string' && TRANSIENT_CODES.has(e.code)) return true

@@ -35,6 +35,25 @@ describe('isTransient', () => {
     expect(isTransient(new Error('burkolt', { cause: httpError(503) }))).toBe(true)
   })
 
+  it('a stringként érkező státuszkódot is felismeri (egyes SDK-k és proxyk így küldik)', () => {
+    expect(isTransient(Object.assign(new Error('HTTP 429'), { statusCode: '429' }))).toBe(true)
+    expect(isTransient(Object.assign(new Error('HTTP 400'), { statusCode: '400' }))).toBe(false)
+  })
+
+  it('a nem szám alakú string státuszkódot nem olvassa státusznak, a lánc többi része érvényesül', () => {
+    expect(
+      isTransient(Object.assign(new Error('proba'), { statusCode: 'nope', cause: httpError(503) })),
+    ).toBe(true)
+  })
+
+  it('a közvetlen státuszkód szándékosan nyer a burkolt átmeneti ok felett', () => {
+    // A közvetlen hiba státusza a specifikusabb jel: egy 400-as hiba akkor
+    // is végleges marad, ha az oka egy burkolt 503-as.
+    expect(
+      isTransient(Object.assign(new Error('proba'), { statusCode: 400, cause: httpError(503) })),
+    ).toBe(false)
+  })
+
   it('a séma- és egyéb hibák véglegesek', () => {
     expect(isTransient(new Error('a válasz nem felel meg a sémának'))).toBe(false)
     expect(isTransient('nem is hiba')).toBe(false)
