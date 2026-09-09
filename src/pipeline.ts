@@ -4,6 +4,7 @@ import type { EventSink } from './events.js'
 import type { CostGuard } from './model/budget.js'
 import type { ModelClient } from './model/client.js'
 import { costOf } from './model/pricing.js'
+import { retrying } from './model/retry.js'
 import { classifyCaptions, punctuationDensity } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import type { Recipe } from './recipe/types.js'
@@ -21,6 +22,8 @@ export interface RecipeDeps {
   client: ModelClient
   modelConfig: ModelConfig
   guard: CostGuard
+  /** Az újrapróbálkozás várakozása; a tesztek azonnalira cserélik. */
+  sleep?: (ms: number) => Promise<void>
 }
 
 export interface PipelineDeps {
@@ -106,8 +109,16 @@ async function runRecipe(
   deps: PipelineDeps,
   recipeDeps: RecipeDeps,
 ): Promise<ItemOutcome> {
-  const { recipe, client, modelConfig, guard } = recipeDeps
+  const { recipe, modelConfig, guard } = recipeDeps
   const text = transcript.lines.join(' ')
+
+  // A dekorátor elemenként készül, hogy az esemény meg tudja nevezni, melyik
+  // elem hívása bukott el.
+  const client = retrying(recipeDeps.client, {
+    sleep: recipeDeps.sleep,
+    onRetry: ({ attempt, delayMs, reason }) =>
+      deps.sink({ type: 'item:retry', itemId: item.itemId, attempt, delayMs, reason }),
+  })
 
   // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
