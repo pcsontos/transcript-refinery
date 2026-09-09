@@ -589,3 +589,35 @@ describe('commandRun — a plafon szeletel', () => {
     expect(hivasok.generate).toBe(0)
   })
 })
+
+describe('commandRun — a megszakadt köteg folytatása', () => {
+  it('a megszakadt köteg folytatása a kész elemre nulla modellhívást tesz', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const hivasok = { generate: 0 }
+
+    // Első futás: csak egy elem — ez a „megszakadt" köteg.
+    await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', limit: 1, dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+    const elsoUtan = hivasok.generate
+    expect(elsoUtan).toBeGreaterThan(0)
+
+    // Második futás: mindkét elem sorra kerül, de a kész elem egyetlen
+    // hívást sem termel — a második elem ugyanannyiba kerül, mint az első.
+    await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+
+    expect(hivasok.generate).toBe(elsoUtan * 2)
+  })
+})
