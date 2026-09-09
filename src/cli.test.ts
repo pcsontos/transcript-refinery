@@ -12,6 +12,7 @@ import { getRecipe } from './recipe/registry.js'
 import { runId } from './run/id.js'
 import { folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
+import type { ModelRole } from './types.js'
 
 // A git-integrációt a `vault/git.test.ts` fedi. Itt csak arra kell, hogy a
 // `commandRun` törzse egy valódi (nem szimulált) hibát kapjon: a
@@ -891,5 +892,134 @@ describe('commandRun — a hibás elem a naplóban és a riportban', () => {
     const md = (await readdir(masodikCfg.logsDir)).find((f) => f.endsWith('.md'))!
     const report = await readFile(join(masodikCfg.logsDir, md), 'utf8')
     expect(report).toContain('| kihagyva | 3 |')
+  })
+})
+
+/**
+ * Kártyás hamis kliens: a `draft` szerep sémás kártyakészletet ad, a `judge`
+ * az ítéletet. A `generate` sosem hívódhat — a kártyarecept a sémás úton megy.
+ */
+function kartyasKliens(
+  cards: { question: string; answer: string }[],
+  hivasok = { judge: 0 },
+): ModelClient {
+  return {
+    generate: () => Promise.reject(new Error('a kártyarecept nem hívhat generate-et')),
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async generateObject<T>(role: ModelRole) {
+      if (role === 'judge') {
+        hivasok.judge++
+        return { value: { score: 1, gaps: [] } as T, usage: { inputTokens: 5, outputTokens: 2 } }
+      }
+      return { value: { cards } as T, usage: { inputTokens: 10, outputTokens: 5 } }
+    },
+  }
+}
+
+const HAROM_KARTYA = [
+  { question: 'Mi az A?', answer: 'Az A egy dolog.' },
+  { question: 'Mi a B?', answer: 'A B másik.' },
+  { question: 'Mi a C?', answer: 'A C harmadik.' },
+]
+
+/** A kártyajegyzet útvonala a vaultban, a `makeVideo` mappaszerkezetéhez. */
+const kartyaJegyzet = (notesRoot: string) =>
+  join(notesRoot, 'downloads', 'youtube', 'Csatorna A', 'Első videó_flashcards.md')
+
+describe('commandRun — a kártyarecept a vaultban', () => {
+  it('minden kártya `##` fejléc plusz bekezdés, és a frontmatter megnevezi a receptet', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { dryRun: false, force: false, commit: false, recipe: 'flashcards' },
+      { createClient: () => kartyasKliens(HAROM_KARTYA) },
+    )
+
+    expect(code).toBe(0)
+    const note = await readFile(kartyaJegyzet(cfg.notesRoot), 'utf8')
+    expect(note.match(/^## .+$/gm)).toHaveLength(3)
+    expect(note).toContain('## Mi az A?\n\nAz A egy dolog.')
+    expect(note).toContain('recipe: flashcards')
+  })
+
+  it('a kérdésbe került sortörés nem tör szét kártyát a vaultban', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    await commandRun(
+      cfg,
+      raw,
+      { dryRun: false, force: false, commit: false, recipe: 'flashcards' },
+      {
+        createClient: () =>
+          kartyasKliens([
+            { question: 'Mi az\nA fogalom?', answer: 'Ez az.' },
+            ...HAROM_KARTYA.slice(1),
+          ]),
+      },
+    )
+
+    const note = await readFile(kartyaJegyzet(cfg.notesRoot), 'utf8')
+    expect(note).toContain('## Mi az A fogalom?')
+    expect(note.match(/^## .+$/gm)).toHaveLength(3)
+  })
+
+  it('az ismétlődő kérdés nulla bíró-hívással megáll a kapun', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const hivasok = { judge: 0 }
+
+    await commandRun(
+      cfg,
+      raw,
+      { dryRun: false, force: false, commit: false, recipe: 'flashcards' },
+      {
+        createClient: () =>
+          kartyasKliens(
+            [
+              HAROM_KARTYA[0]!,
+              HAROM_KARTYA[1]!,
+              { question: 'mi az a?', answer: 'Ugyanaz még egyszer.' },
+            ],
+            hivasok,
+          ),
+      },
+    )
+
+    expect(hivasok.judge).toBe(0)
+  })
+
+  it('séma-sértő modellkimenetnél az elem hibás lesz, és a riport megnevezi az okot', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const semaHiba = Object.assign(new Error('cards: array must contain at least 3 element(s)'), {
+      name: 'AI_TypeValidationError',
+    })
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { dryRun: false, force: false, commit: false, recipe: 'flashcards' },
+      {
+        createClient: () => ({
+          generate: () => Promise.reject(new Error('nem ez az út')),
+          generateObject: () => Promise.reject(semaHiba),
+        }),
+      },
+    )
+
+    expect(code).toBe(1)
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+    expect(report).toContain('## Hibák')
+    expect(report).toMatch(/nem a sémának megfelelő/i)
   })
 })
