@@ -294,4 +294,48 @@ describe('commandRun — napló és riport', () => {
     expect(exitCode).toBe(130)
     expect((await readdir(cfg.logsDir)).some((f) => f.endsWith('.md'))).toBe(true)
   })
+
+  it('a becslési plafon-túllépés is riportot hagy maga után', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const recipe = getRecipe('summary')
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
+
+    // A plafon szándékosan a becsült költség fele — a becslésnek meg kell
+    // állítania a köteget, mielőtt bármi lefutna.
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
+      recipe: 'summary',
+      dryRun: false,
+      force: false,
+      commit: false,
+    })
+
+    expect(code).toBe(2)
+    expect((await readdir(cfg.logsDir)).some((f) => f.endsWith('.md'))).toBe(true)
+  })
+
+  it('a riport Parancs sora megnevezi az indító parancssort', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    await commandRun(cfg, raw, {
+      source: 'downloads',
+      dryRun: false,
+      force: false,
+      commit: false,
+      command: 'run --source downloads',
+    })
+
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+
+    expect(report).toContain('Parancs: `run --source downloads`')
+  })
 })

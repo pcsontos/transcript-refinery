@@ -246,6 +246,9 @@ export async function commandRun(
           spentUsd: 0,
           limitUsd: recipeDeps.modelConfig.costLimitUsd,
         })
+        // A plafon-túllépés miatti megállás is futás: a felhasználó enélkül
+        // egy tiszta hibaüzenetnél többet nem kap a kézhez.
+        await finish(false)
         return 2
       }
     }
