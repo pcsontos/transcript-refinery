@@ -5,6 +5,24 @@ import { scoreRubric } from '../rubric/types.js'
 export interface RefineOptions {
   /** Felülbírálja a recept saját korlátját. Nulla = nincs javító kör. */
   maxIterations?: number
+  /**
+   * Hamisra állítva a loop minden kört lefuttat: sem a küszöb átlépése, sem a
+   * nem-javulási őr nem szakítja meg. Kizárólag a mérés használja — a
+   * produkciós út alapértelmezése változatlanul `true`.
+   */
+  stopEarly?: boolean
+}
+
+/**
+ * Egy generálási kör mérőszámai. **Számokat visz, szöveget nem**: a `gaps` a
+ * hiányok száma, nem a listája. Így a nyomvonalon keresztül nem juthat
+ * vault-tartalom a mérési adatba vagy a publikált riportba.
+ */
+export interface RoundTrace {
+  score: number
+  gaps: number
+  /** A kör generálásának és pontozásának együttes felhasználása. */
+  usage: ModelUsage
 }
 
 export interface RefineResult {
@@ -16,6 +34,8 @@ export interface RefineResult {
   generations: number
   /** A loop teljes token-felhasználása, generálás és pontozás együtt. */
   usage: ModelUsage
+  /** Körönkénti mérőszámok, generálásonként egy bejegyzés. */
+  rounds: RoundTrace[]
 }
 
 /**
@@ -32,11 +52,17 @@ export async function refine(
   opts: RefineOptions = {},
 ): Promise<RefineResult> {
   const maxIterations = opts.maxIterations ?? recipe.maxIterations
+  const stopEarly = opts.stopEarly ?? true
   const usage: ModelUsage = { inputTokens: 0, outputTokens: 0 }
   const add = (u: ModelUsage): void => {
     usage.inputTokens += u.inputTokens
     usage.outputTokens += u.outputTokens
   }
+  const rounds: RoundTrace[] = []
+  const roundUsage = (a: ModelUsage, b: ModelUsage): ModelUsage => ({
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+  })
 
   /**
    * A generálás egyetlen elágazása: strukturált receptnél sémás hívás és
@@ -58,10 +84,19 @@ export async function refine(
   )
   add(firstScore.usage)
 
+  rounds.push({
+    score: firstScore.value,
+    gaps: firstScore.gaps.length,
+    usage: roundUsage(first.usage, firstScore.usage),
+  })
+
   let best = { output: first.value, score: firstScore.value, gaps: firstScore.gaps }
   let generations = 1
 
-  while (best.score < recipe.rubric.passThreshold && generations <= maxIterations) {
+  while (
+    generations <= maxIterations &&
+    (!stopEarly || best.score < recipe.rubric.passThreshold)
+  ) {
     const next = await generate(
       recipe.repairPrompt({ ...input, previous: best.output, gaps: best.gaps }),
     )
@@ -75,12 +110,23 @@ export async function refine(
     )
     add(scored.usage)
 
+    rounds.push({
+      score: scored.value,
+      gaps: scored.gaps.length,
+      usage: roundUsage(next.usage, scored.usage),
+    })
+
     // Nem-javulási őr. Az azonos pontszám is megállás: ha egy újabb kör nem
-    // hozott előrelépést, a következő sem fog, és a loop csak költene.
-    if (scored.value <= best.score) break
+    // hozott előrelépést, a következő sem fog, és a loop csak költene. Mérési
+    // módban nem állunk meg — a rosszabb kört sem tartjuk meg, de lefuttatjuk,
+    // mert a mérés épp arra kíváncsi, mit hoz a kör.
+    if (scored.value <= best.score) {
+      if (stopEarly) break
+      continue
+    }
 
     best = { output: next.value, score: scored.value, gaps: scored.gaps }
   }
 
-  return { ...best, generations, usage }
+  return { ...best, generations, usage, rounds }
 }

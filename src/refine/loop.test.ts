@@ -314,3 +314,76 @@ describe('refine — strukturált recept', () => {
     expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 20 })
   })
 })
+
+describe('refine — mérési mód', () => {
+  it('stopEarly: false mellett az elsőre átmenő elem is végigfuttatja a köröket', async () => {
+    const { client, generalt, pontszamok } = scriptedClient([
+      { text: 'jo', score: 0.95 },
+      { text: 'masodik', score: 0.5 },
+      { text: 'harmadik', score: 0.6 },
+    ])
+
+    const result = await refine(recept(tablazatosRubrika(pontszamok)), INPUT, client, {
+      stopEarly: false,
+    })
+
+    // Alapból egyetlen generálás lenne: 0,95 átmegy a 0,8-as küszöbön.
+    expect(result.generations).toBe(3)
+    expect(generalt).toEqual(['jo', 'masodik', 'harmadik'])
+    expect(result.rounds.map((r) => r.score)).toEqual([0.95, 0.5, 0.6])
+  })
+
+  it('mérési módban is a legjobb kört tartja meg, nem az utolsót', async () => {
+    const { client, pontszamok } = scriptedClient([
+      { text: 'jo', score: 0.95 },
+      { text: 'gyenge', score: 0.2 },
+      { text: 'kozepes', score: 0.6 },
+    ])
+
+    const result = await refine(recept(tablazatosRubrika(pontszamok)), INPUT, client, {
+      stopEarly: false,
+    })
+
+    expect(result.output).toBe('jo')
+    expect(result.score).toBe(0.95)
+  })
+
+  it('a nyomvonal a hiányok SZÁMÁT viszi, nem a szövegét', async () => {
+    const { client, pontszamok } = scriptedClient([{ text: 'jo', score: 0.95 }])
+
+    const result = await refine(recept(tablazatosRubrika(pontszamok)), INPUT, client)
+
+    // A teszt-rubrika egyetlen hiányt ad: 'valami hiányzik'.
+    expect(result.rounds[0]!.gaps).toBe(1)
+    expect(JSON.stringify(result.rounds)).not.toContain('valami hiányzik')
+  })
+
+  it('a körök használata összegezve a teljes futás használatát adja', async () => {
+    const { client, pontszamok } = scriptedClient([
+      { text: 'gyenge', score: 0.4 },
+      { text: 'jobb', score: 0.9 },
+    ])
+
+    const result = await refine(recept(tablazatosRubrika(pontszamok)), INPUT, client)
+
+    const osszeg = result.rounds.reduce(
+      (acc, r) => ({
+        inputTokens: acc.inputTokens + r.usage.inputTokens,
+        outputTokens: acc.outputTokens + r.usage.outputTokens,
+      }),
+      { inputTokens: 0, outputTokens: 0 },
+    )
+    expect(osszeg).toEqual(result.usage)
+  })
+
+  it('produkciós futásban is kitölti a nyomvonalat, körönként egy bejegyzéssel', async () => {
+    const { client, pontszamok } = scriptedClient([
+      { text: 'gyenge', score: 0.4 },
+      { text: 'jobb', score: 0.9 },
+    ])
+
+    const result = await refine(recept(tablazatosRubrika(pontszamok)), INPUT, client)
+
+    expect(result.rounds).toHaveLength(result.generations)
+  })
+})
