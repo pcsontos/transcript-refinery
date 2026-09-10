@@ -29,7 +29,7 @@ export function renderMeasurementReport(
   recipes: readonly RecipeResult[],
   meta: ReportMeta,
 ): string {
-  const sorok: string[] = [
+  const lines: string[] = [
     '# Javít-e a javító kör?',
     '',
     'Mérés a valós korpuszon, valódi modellhívásokkal. A dokumentum kizárólag',
@@ -49,27 +49,31 @@ export function renderMeasurementReport(
   ]
 
   for (const { recipe, agg, decision } of recipes) {
-    sorok.push(
+    lines.push(
       `## \`${recipe}\``,
       '',
       `Zajszint (az elemenkénti első köri szórások mediánja): **${n(agg.noise)}**`,
       '',
-      '| kör | átlagpontszám | javulás | mentési arány | mentés nevezője | átlagköltség |',
-      '|---|---|---|---|---|---|',
+      'A javulás és a mentési arány **ugyanazon a mintán** számít: azokon a',
+      'párokon, ahol az előző kör a küszöb alatt maradt — vagyis ahol éles',
+      'futásban a javító kör egyáltalán elindulna.',
+      '',
+      '| kör | átlagpontszám | javulás | ± standard hiba | mentési arány | minta | átlagköltség |',
+      '|---|---|---|---|---|---|---|',
     )
     for (const r of agg.rounds) {
-      sorok.push(
-        `| ${String(r.round)} | ${n(r.meanScore)} | ${n(r.meanGain)} | ${pct(r.rescueRate)} | ${String(r.rescueBase)} | $${r.meanUsd.toFixed(4)} |`,
+      lines.push(
+        `| ${String(r.round)} | ${n(r.meanScore)} | ${n(r.meanGain)} | ${n(r.gainStdErr)} | ${pct(r.rescueRate)} | ${String(r.rescueBase)} | $${r.meanUsd.toFixed(4)} |`,
       )
     }
-    sorok.push(
+    lines.push(
       '',
       `**Döntés: \`maxIterations: ${String(decision.maxIterations)}\`** — ${decision.reason}`,
       '',
     )
   }
 
-  sorok.push(
+  lines.push(
     '## Korlátok',
     '',
     'A bíró maga is **nem-determinisztikus**: ugyanannak a kimenetnek két',
@@ -81,5 +85,5 @@ export function renderMeasurementReport(
     '',
   )
 
-  return sorok.join('\n')
+  return lines.join('\n')
 }

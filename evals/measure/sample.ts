@@ -32,22 +32,22 @@ export function stratifiedSample(
     )
   }
 
-  const rendezett = [...candidates].sort(
+  const sorted = [...candidates].sort(
     (a, b) => a.words - b.words || a.itemId.localeCompare(b.itemId),
   )
 
-  const valasztott: string[] = []
-  const retegMeret = Math.floor(rendezett.length / strata)
+  const picked: string[] = []
+  const stratumSize = Math.floor(sorted.length / strata)
   for (let reteg = 0; reteg < strata; reteg++) {
-    const kezdet = reteg * retegMeret
+    const start = reteg * stratumSize
     // Az utolsó réteg viszi a maradékot, hogy egyetlen elem se vesszen el.
-    const veg = reteg === strata - 1 ? rendezett.length : kezdet + retegMeret
-    const hossz = veg - kezdet
+    const veg = reteg === strata - 1 ? sorted.length : start + stratumSize
+    const hossz = veg - start
     for (let i = 0; i < perStratum; i++) {
       // Egyenletes szétszórás a rétegen belül, a szélek elkerülésével.
-      const eltolas = Math.floor(((i + 0.5) * hossz) / perStratum)
-      valasztott.push(rendezett[kezdet + eltolas]!.itemId)
+      const offset = Math.floor(((i + 0.5) * hossz) / perStratum)
+      picked.push(sorted[start + offset]!.itemId)
     }
   }
-  return valasztott
+  return picked
 }

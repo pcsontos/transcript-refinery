@@ -26,7 +26,7 @@ export interface RateLimitOptions {
  * amíg a legrégebbi kiöregszik. A mérés soros, ezért versenyhelyzet nincs.
  */
 export function rateLimited(client: ModelClient, opts: RateLimitOptions): ModelClient {
-  // Nulla vagy negatív korlátnál a kapu sosem engedne át semmit, és a ciklus
+  // Nulla vagy negatív korlátnál a gate sosem engedne át semmit, és a ciklus
   // örökre pörögne. Egy elgépelt kapcsoló így beszédes hibát ad, nem fagyást.
   if (!Number.isFinite(opts.perMinute) || opts.perMinute < 1) {
     throw new Error(
@@ -36,27 +36,27 @@ export function rateLimited(client: ModelClient, opts: RateLimitOptions): ModelC
   const now = opts.now ?? ((): number => Date.now())
   const sleep =
     opts.sleep ?? ((ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms)))
-  const ablak: number[] = []
+  const window: number[] = []
 
-  const kapu = async (): Promise<void> => {
+  const gate = async (): Promise<void> => {
     for (;;) {
       const t = now()
-      while (ablak.length > 0 && t - ablak[0]! >= WINDOW_MS) ablak.shift()
-      if (ablak.length < opts.perMinute) {
-        ablak.push(t)
+      while (window.length > 0 && t - window[0]! >= WINDOW_MS) window.shift()
+      if (window.length < opts.perMinute) {
+        window.push(t)
         return
       }
-      await sleep(WINDOW_MS - (t - ablak[0]!))
+      await sleep(WINDOW_MS - (t - window[0]!))
     }
   }
 
   return {
     async generate(role, prompt) {
-      await kapu()
+      await gate()
       return client.generate(role, prompt)
     },
     async generateObject(role, prompt, schema) {
-      await kapu()
+      await gate()
       return client.generateObject(role, prompt, schema)
     },
   }

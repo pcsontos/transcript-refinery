@@ -20,7 +20,7 @@ const META = {
 }
 
 describe('renderMeasurementReport', () => {
-  it('receptenként kiírja a döntést és a három mennyiséget', () => {
+  it('receptenként kiírja a döntést és a mennyiségeket', () => {
     const md = renderMeasurementReport(
       [{ recipe: 'summary', agg: AGG, decision: decide(AGG) }],
       META,
@@ -28,7 +28,51 @@ describe('renderMeasurementReport', () => {
     expect(md).toContain('summary')
     expect(md).toMatch(/zajszint/i)
     expect(md).toMatch(/mentési arány/i)
+    expect(md).toMatch(/standard hiba/i)
     expect(md).toMatch(/maxIterations/)
+  })
+
+  it('a táblába a TÉNYLEGES számok kerülnek, négy tizedesre', () => {
+    const md = renderMeasurementReport(
+      [{ recipe: 'summary', agg: AGG, decision: decide(AGG) }],
+      META,
+    )
+    const masodik = md.split('\n').find((s) => s.startsWith('| 2 |'))
+    expect(masodik).toBeDefined()
+    // Átlagpontszám a 2. körben: (0,9 + 0,9 + 0,95) / 3 = 0,9167.
+    expect(masodik).toContain('0.9167')
+    // Javulás a bukott párokon: (0,4 + 0,3 + 0,25) / 3 = 0,3167.
+    expect(masodik).toContain('0.3167')
+    // Mentési arány: mindhárom pár átjutott.
+    expect(masodik).toContain('100.0%')
+  })
+
+  it('a százalék tényleg százalék, nem a nyers arány', () => {
+    const felenek = aggregate(
+      [
+        { itemId: 'x', repeat: 0, scores: [0.5, 0.9], usdPerRound: [0.02, 0.02] },
+        { itemId: 'y', repeat: 0, scores: [0.5, 0.6], usdPerRound: [0.02, 0.02] },
+      ],
+      0.8,
+    )
+    const md = renderMeasurementReport(
+      [{ recipe: 'summary', agg: felenek, decision: decide(felenek) }],
+      META,
+    )
+    expect(md.split('\n').find((s) => s.startsWith('| 2 |'))).toContain('50.0%')
+  })
+
+  it('a döntés maxIterations értéke a tényleges döntésből jön', () => {
+    // Nulla bukott pár: a javító kör sosem indulna, tehát nullára áll.
+    const mind = aggregate(
+      [{ itemId: 'x', repeat: 0, scores: [1, 1], usdPerRound: [0.02, 0.02] }],
+      0.8,
+    )
+    const d = decide(mind)
+    expect(d.maxIterations).toBe(0)
+    const md = renderMeasurementReport([{ recipe: 'summary', agg: mind, decision: d }], META)
+    expect(md).toContain('`maxIterations: 0`')
+    expect(md).not.toContain('`maxIterations: 2`')
   })
 
   it('egyetlen elemazonosítót sem tartalmaz', () => {

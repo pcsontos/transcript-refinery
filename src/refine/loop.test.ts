@@ -358,22 +358,88 @@ describe('refine — mérési mód', () => {
     expect(JSON.stringify(result.rounds)).not.toContain('valami hiányzik')
   })
 
+  it('a hiányok számát MINDEN körben rögzíti, nem csak az elsőben', async () => {
+    const { client, pontszamok } = scriptedClient([
+      { text: 'egy', score: 0.3 },
+      { text: 'ketto', score: 0.5 },
+      { text: 'harom', score: 0.7 },
+    ])
+    // Körönként eltérő számú hiány: így a második kör értéke nem esik
+    // véletlenül egybe az elsőével.
+    const hianyokSzama = new Map([
+      ['egy', 3],
+      ['ketto', 1],
+      ['harom', 2],
+    ])
+    const criteria: Criterion[] = [
+      {
+        name: 'proba',
+        score: (ctx) =>
+          Promise.resolve({
+            value: pontszamok.get(ctx.output) ?? 0,
+            gaps: Array.from({ length: hianyokSzama.get(ctx.output) ?? 0 }, (_, i) => `h${String(i)}`),
+          }),
+      },
+    ]
+
+    const result = await refine(recept(criteria), INPUT, client)
+
+    expect(result.rounds.map((r) => r.gaps)).toEqual([3, 1, 2])
+  })
+
   it('a körök használata összegezve a teljes futás használatát adja', async () => {
     const { client, pontszamok } = scriptedClient([
       { text: 'gyenge', score: 0.4 },
       { text: 'jobb', score: 0.9 },
     ])
+    // Költő rubrika: a bíró oldalának is kell felhasználást adnia, különben
+    // az összegzés két nullát hasonlítana össze, és a `scoreUsage` mező
+    // észrevétlenül elhagyható lenne.
+    const criteria: Criterion[] = [
+      {
+        name: 'kolto',
+        score: (ctx) =>
+          Promise.resolve({
+            value: pontszamok.get(ctx.output) ?? 0,
+            gaps: ['valami hiányzik'],
+            usage: { inputTokens: 7, outputTokens: 3 },
+          }),
+      },
+    ]
 
-    const result = await refine(recept(tablazatosRubrika(pontszamok)), INPUT, client)
+    const result = await refine(recept(criteria), INPUT, client)
 
     const osszeg = result.rounds.reduce(
       (acc, r) => ({
-        inputTokens: acc.inputTokens + r.usage.inputTokens,
-        outputTokens: acc.outputTokens + r.usage.outputTokens,
+        inputTokens: acc.inputTokens + r.generateUsage.inputTokens + r.scoreUsage.inputTokens,
+        outputTokens: acc.outputTokens + r.generateUsage.outputTokens + r.scoreUsage.outputTokens,
       }),
       { inputTokens: 0, outputTokens: 0 },
     )
     expect(osszeg).toEqual(result.usage)
+  })
+
+  it('a generálás és a pontozás felhasználását KÜLÖN viszi, szerep szerint', async () => {
+    const { client, pontszamok } = scriptedClient([{ text: 'jo', score: 0.95 }])
+    const criteria: Criterion[] = [
+      {
+        name: 'kolto',
+        score: (ctx) =>
+          Promise.resolve({
+            value: pontszamok.get(ctx.output) ?? 0,
+            gaps: [],
+            usage: { inputTokens: 7, outputTokens: 3 },
+          }),
+      },
+    ]
+
+    const result = await refine(recept(criteria), INPUT, client)
+
+    // A generálás a szkriptelt kliens értékei, a pontozás a rubrikáé.
+    // Ha a kettő össze lenne vonva, a bíró tokenjeit a vázlatmodell árán
+    // számolnánk — ez a mező-szétválasztás célja.
+    expect(result.rounds[0]!.generateUsage).toEqual({ inputTokens: 100, outputTokens: 10 })
+    expect(result.rounds[0]!.scoreUsage).toEqual({ inputTokens: 7, outputTokens: 3 })
   })
 
   it('produkciós futásban is kitölti a nyomvonalat, körönként egy bejegyzéssel', async () => {

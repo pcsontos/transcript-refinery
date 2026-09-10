@@ -140,29 +140,63 @@ Mindhárom receptenként külön is, mert a prózaág és a strukturált ág elt
 A szabály a futás **előtt** rögzül. Enélkül a számok megnézése után bármelyik
 eredmény megmagyarázható, és a mérés önigazolássá válik.
 
-A szabály három mennyiséggel dolgozik, mindegyik pontosan definiálva:
+A szabály három mennyiséggel dolgozik, mindegyik pontosan definiálva. Mindhárom
+**ugyanazon a mintán**: azokon a `(elem, ismétlés)` párokon, ahol a `k−1`-edik
+kör a küszöb alatt maradt — vagyis ahol éles futásban a javító kör egyáltalán
+elindulna.
 
-- **Javulás** (`javulas_k`): a `(elem, ismétlés)` párokon vett átlaga annak,
-  hogy a *k*-adik kör pontszáma mennyivel magasabb a `k−1`-edikénél.
-- **Zajszint** (`zaj`): elemenként vesszük az első kör pontszámának szórását a
-  három ismétlés között, majd ezeknek a szórásoknak a **mediánját**. Ez az a
-  mérték, amennyit ugyanaz az elem magától ingadozik.
-- **Mentési arány** (`mentes_k`): azoknak a `(elem, ismétlés)` pároknak az
-  aránya, ahol a `k−1`-edik kör a küszöb alatt maradt **és** a *k*-adik elérte.
-  A nevező csak a `k−1`-edik körben megbukott párok száma.
+- **Javulás** (`javulas_k`): a megbukott párokon vett átlaga annak, hogy a
+  *k*-adik kör pontszáma mennyivel magasabb a `k−1`-edikénél.
+- **Standard hiba** (`hiba_k`): ugyanezen javulások szórása osztva a
+  mintaszám gyökével. Ez mondja meg, mennyire pontosan ismerjük az átlagot.
+- **Mentési arány** (`mentes_k`): a megbukott párok közül hányad érte el a
+  küszöböt a *k*-adik körben.
+
+A **zajszint** — az elemenkénti első köri szórások mediánja — továbbra is
+szerepel a riportban leíró adatként, de **nem** a döntés alapja. Lásd a
+módosítás indoklását alább.
 
 A szabály **receptenként külön** alkalmazandó, mert a `maxIterations` is
 receptenkénti érték — a prózaág és a strukturált ág eltérő döntést kaphat:
 
 - Az alapértelmezés **egy generálásra** áll (`maxIterations: 0`), ha
-  `javulas_2 ≤ zaj` **és** `mentes_2 < 20%`.
+  `javulas_2 ≤ 2 × hiba_2` **és** `mentes_2 < 20%`.
 - Ha a második kör átmegy ezen (tehát legalább az egyik feltétel nem teljesül),
-  de a harmadikra `javulas_3 ≤ zaj` **és** `mentes_3 < 20%`, akkor az
+  de a harmadikra `javulas_3 ≤ 2 × hiba_3` **és** `mentes_3 < 20%`, akkor az
   alapértelmezés **két generálás** (`maxIterations: 1`).
 - Egyébként marad a mai három (`maxIterations: 2`).
 
+A kétszeres szorzó a szokásos ~95%-os konvenció. A bizonyítás terhe
+szándékosan a **javító körön** van: minden futásnál pénzbe kerül, ezért
+maradjon bekapcsolva csak akkor, ha a haszna kimutatható.
+
 A döntés végrehajtása — a receptek `maxIterations` értékének átállítása — **ennek
 a szeletnek a része**, nem külön feladat. A roadmap ezt így ígéri.
+
+### Módosítás: mihez mérjük a javulást
+
+A szabály eredetileg a javulás átlagát a **zajszinthez** — az egyedi
+megfigyelések szórásához — hasonlította. Ez kategóriahiba, és a záró review
+megsemmisítő ellenpéldát adott rá: egy olyan eloszlás, ahol **hatvan párból
+hatvan pontosan +0,05-tel javul**, tehát a javulás saját szórása nulla,
+a régi szabály szerint „zajnak" minősült volna. Az átlag standard hibája ott
+0,011 — a javulás ~4,5σ.
+
+Az összehasonlítási alap ezért a javulás **saját standard hibája** lett. Ez
+teszi fel azt a kérdést, amit fel akarunk tenni: megkülönböztethető-e a
+javulás a nullától. A régi szabály erősen elfogult volt a „kapcsold ki a
+loopot" irányba — épp abba, amit a legvalószínűbb eredménynek gondoltunk.
+
+### Módosítás: min mérjük a javulást
+
+A javulás eredetileg **minden** páron számított. A mérési mód azonban
+`stopEarly: false` mellett az elsőre átmenő elemnek is küld javító promptot,
+**üres hiánylistával** — ilyet a produkció sosem küld ki. A javulás így
+részben mesterséges bemeneten mérődött.
+
+A javulás mostantól csak azokon a párokon számít, ahol az előző kör a küszöb
+alatt maradt. Ez ugyanaz a minta, mint a mentési arányé: mindkét mérőszám
+pontosan a produkciós feltételt méri.
 
 ### Módosítás: `≤` a `<` helyett
 

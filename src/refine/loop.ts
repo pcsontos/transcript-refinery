@@ -21,8 +21,14 @@ export interface RefineOptions {
 export interface RoundTrace {
   score: number
   gaps: number
-  /** A kör generálásának és pontozásának együttes felhasználása. */
-  usage: ModelUsage
+  /**
+   * A generálás felhasználása, a **recept szerepén**. Szándékosan külön a
+   * pontozásétól: a két szerep ára nagyságrenddel eltérhet, és összevonva
+   * már nem lenne visszabontható, melyik token melyik modellé.
+   */
+  generateUsage: ModelUsage
+  /** A pontozás felhasználása, a **bíró szerepén**. */
+  scoreUsage: ModelUsage
 }
 
 export interface RefineResult {
@@ -59,10 +65,6 @@ export async function refine(
     usage.outputTokens += u.outputTokens
   }
   const rounds: RoundTrace[] = []
-  const roundUsage = (a: ModelUsage, b: ModelUsage): ModelUsage => ({
-    inputTokens: a.inputTokens + b.inputTokens,
-    outputTokens: a.outputTokens + b.outputTokens,
-  })
 
   /**
    * A generálás egyetlen elágazása: strukturált receptnél sémás hívás és
@@ -87,7 +89,8 @@ export async function refine(
   rounds.push({
     score: firstScore.value,
     gaps: firstScore.gaps.length,
-    usage: roundUsage(first.usage, firstScore.usage),
+    generateUsage: first.usage,
+    scoreUsage: firstScore.usage,
   })
 
   let best = { output: first.value, score: firstScore.value, gaps: firstScore.gaps }
@@ -113,7 +116,8 @@ export async function refine(
     rounds.push({
       score: scored.value,
       gaps: scored.gaps.length,
-      usage: roundUsage(next.usage, scored.usage),
+      generateUsage: next.usage,
+      scoreUsage: scored.usage,
     })
 
     // Nem-javulási őr. Az azonos pontszám is megállás: ha egy újabb kör nem
