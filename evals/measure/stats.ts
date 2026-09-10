@@ -69,6 +69,10 @@ export function aggregate(
   records: readonly RunRecord[],
   passThreshold: number,
 ): Aggregate {
+  // Üres bemenetnél a `Math.max()` `-Infinity`-t adna; ez az ág teszi
+  // egyértelművé, hogy nincs mit összesíteni.
+  if (records.length === 0) return { noise: 0, rounds: [] }
+
   const korokSzama = Math.max(...records.map((r) => r.scores.length))
 
   const elemek = new Map<string, number[]>()
@@ -106,16 +110,30 @@ export function aggregate(
  * Az előre rögzített döntési szabály (spec §5). A szabály a futás **előtt**
  * született; ez a függvény csak alkalmazza.
  *
- * Egy kör akkor „nem éri meg", ha a javulása a zajszint alatt van **és** a
- * mentési aránya a küszöb alatt. A két feltétel kapcsolata `és`: egy kör,
+ * Egy kör akkor „nem éri meg", ha a javulása **legfeljebb** a zajszint **és**
+ * a mentési aránya a küszöb alatt. A két feltétel kapcsolata `és`: egy kör,
  * ami keveset javít átlagban, de sok bukott elemet átvisz a küszöbön,
  * megéri a pénzét.
+ *
+ * Az összehasonlítás azért `<=` és nem `<`, ahogy a spec eredetileg írta: ha
+ * a bíró minden körre ugyanazt a pontszámot adja, a javulás **és** a zajszint
+ * is nulla, és a szigorú `<` mellett a `0 < 0` hamis lenne — a szabály azt
+ * állítaná, hogy a kör kifizeti magát, holott semmit nem csinált. A javítás a
+ * valós adaton derült ki, de még a mérés lefuttatása **előtt**, tehát a
+ * szabály továbbra is előre rögzített.
  */
 export function decide(agg: Aggregate, rescueFloor = 0.2): Decision {
+  // Adat nélkül nincs döntés. E nélkül az őr nélkül egy olyan recept, aminek
+  // minden futása elbukott, magabiztosan azt kapná, hogy „mindkét javító kör
+  // kifizeti magát" — nulla mérésből.
+  if (agg.rounds.length === 0) {
+    throw new Error('nincs mérési adat: döntés nem hozható')
+  }
+
   const nemEriMeg = (k: number): boolean => {
     const r = agg.rounds[k]
     if (!r) return false
-    return r.meanGain < agg.noise && r.rescueRate < rescueFloor
+    return r.meanGain <= agg.noise && r.rescueRate < rescueFloor
   }
 
   const szam = (n: number): string => n.toFixed(4)

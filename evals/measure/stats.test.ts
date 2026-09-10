@@ -57,7 +57,20 @@ describe('aggregate', () => {
   })
 })
 
+describe('aggregate — üres bemenet', () => {
+  it('üres nyomvonalat ad, nem `-Infinity` körszámot', () => {
+    const agg = aggregate([], 0.8)
+    expect(agg.rounds).toEqual([])
+    expect(agg.noise).toBe(0)
+  })
+})
+
 describe('decide', () => {
+  it('adat nélkül hibát dob, nem hoz magabiztos döntést', () => {
+    // Ha egy recept minden futása elbukik, a döntés nem lehet „kifizeti magát".
+    expect(() => decide(aggregate([], 0.8))).toThrow(/nincs mérési adat/i)
+  })
+
   it('a zaj alatti javulás és az alacsony mentési arány egy generálásra állít', () => {
     // Zaj 0,05; a második kör javulása 0,01; mentés 0/2.
     const agg = aggregate(
@@ -111,6 +124,20 @@ describe('decide', () => {
       0.8,
     )
     expect(decide(agg).maxIterations).toBe(1)
+  })
+
+  it('ha minden kör ugyanazt a pontszámot adja, a javító körök nem érnek semmit', () => {
+    // A valós füstpróbán a `summary` 1,00 → 1,00 → 1,00-t adott. Ilyenkor a
+    // javulás ÉS a zajszint is nulla. A szigorú `<` mellett a `0 < 0` hamis
+    // lenne, és a szabály azt állítaná, hogy a körök kifizetik magukat —
+    // holott egyikük sem mozdított semmit.
+    const agg = aggregate(
+      rekordok([{ itemId: 'a', korok: [[1, 1, 1], [1, 1, 1], [1, 1, 1]] }]),
+      0.8,
+    )
+    expect(agg.noise).toBe(0)
+    expect(agg.rounds[1]!.meanGain).toBe(0)
+    expect(decide(agg).maxIterations).toBe(0)
   })
 
   it('a döntés megnevezi az indokot, a három mennyiség értékével', () => {

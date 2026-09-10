@@ -6,6 +6,7 @@ import { loadConfig, loadDotEnv, loadModelConfig } from '../../src/config.js'
 import { createModelClient } from '../../src/model/client.js'
 import { createCostGuard, estimateItemUsd } from '../../src/model/budget.js'
 import { costOf } from '../../src/model/pricing.js'
+import { retrying } from '../../src/model/retry.js'
 import { normalizeItem } from '../../src/pipeline.js'
 import { flashcardsRecipe } from '../../src/recipe/flashcards.js'
 import { summaryRecipe } from '../../src/recipe/summary.js'
@@ -13,6 +14,7 @@ import type { Recipe } from '../../src/recipe/types.js'
 import { refine } from '../../src/refine/loop.js'
 import { folderSource } from '../../src/source/folder.js'
 import type { SourceItem } from '../../src/types.js'
+import { rateLimited } from './rate-limit.js'
 import { renderMeasurementReport } from './report.js'
 import { stratifiedSample, type SampleCandidate } from './sample.js'
 import { aggregate, decide, type RunRecord } from './stats.js'
@@ -27,6 +29,13 @@ const { values } = parseArgs({
     budget: { type: 'string' },
     repeats: { type: 'string', default: '3' },
     items: { type: 'string', default: '20' },
+    /** Hány elemre szűkítsük a rögzített mintát — pilóta futáshoz. */
+    limit: { type: 'string' },
+    /**
+     * Percenkénti kéréskorlát. A gateway kulcsonként 20-nál elvágja; a
+     * mérés ezernél több hívást indít, tehát alatta kell maradni.
+     */
+    rpm: { type: 'string', default: '18' },
   },
 })
 
@@ -41,6 +50,7 @@ if (!values.budget) {
 const keret = Number(values.budget)
 const ismetlesek = Number(values.repeats)
 const elemszam = Number(values.items)
+const rpm = Number(values.rpm)
 
 // A CLI is így tölti be a kulcsot: a YAML sosem tartalmazhatja, a `.env`-ből
 // (vagy a környezetből) jön (`src/cli.ts`).
@@ -80,6 +90,16 @@ try {
   console.log(`Új minta rögzítve ide: ${MINTA_UTVONAL}`)
 }
 
+// A `--limit` a rögzített mintát szűkíti, de **nem írja felül** a fájlt: a
+// pilóta futás nem ronthatja el a teljes mérés mintáját. A szűkítés minden
+// negyedből vesz, hogy a pilóta is lásson rövid és hosszú elemet is.
+if (values.limit) {
+  const n = Number(values.limit)
+  const lepes = Math.max(1, Math.floor(mintaIdk.length / n))
+  mintaIdk = mintaIdk.filter((_, i) => i % lepes === 0).slice(0, n)
+  console.log(`Pilóta: a minta ${String(mintaIdk.length)} elemre szűkítve.`)
+}
+
 // 3. Költségkapu a becslésből: a keret fölött el sem indulunk.
 const maxIterations = RECEPTEK[0]!.maxIterations
 let becsult = 0
@@ -96,51 +116,90 @@ if (becsult > keret) {
 // 4. A mérés. A költségőr a TÉNYLEGES használatból összegez, mert a becslés
 //    tévedhet (decisions/0004).
 const guard = createCostGuard(keret)
-const client = createModelClient(modelConfig)
+// A produkciós csővezeték mintája: az újrapróbálkozás a **hívás** szintjén
+// véd. Az ütemező elé kerül, mert a korlát alatt maradni olcsóbb, mint a
+// túllépést utólag gyógyítani.
+const client = retrying(rateLimited(createModelClient(modelConfig), { perMinute: rpm }))
 const eredmenyek = new Map<string, RunRecord[]>()
+const hibak: { recipe: string; itemId: string; repeat: number; uzenet: string }[] = []
+
+/** Részeredmény kiírása, hogy egy összeomlás ne vigye el az addigi munkát. */
+async function mentsdANyersadatot(): Promise<void> {
+  await mkdir(join('evals', 'private'), { recursive: true })
+  await writeFile(
+    NYERS_UTVONAL,
+    JSON.stringify({ eredmenyek: [...eredmenyek], hibak }, null, 2),
+    'utf8',
+  )
+}
 
 for (const recipe of RECEPTEK) {
   const rekordok: RunRecord[] = []
+  eredmenyek.set(recipe.id, rekordok)
   for (const id of mintaIdk) {
     const bejegyzes = atiratok.get(id)
     if (!bejegyzes) continue
     for (let repeat = 0; repeat < ismetlesek; repeat++) {
       if (guard.exceeded()) {
         console.error(`A költségkeret elfogyott ($${guard.spentUsd().toFixed(2)}) — a mérés megáll.`)
+        await mentsdANyersadatot()
         process.exit(1)
       }
-      const result = await refine(
-        recipe,
-        { item: bejegyzes.item, transcript: bejegyzes.transcript },
-        client,
-        { stopEarly: false },
-      )
-      for (const kor of result.rounds) {
-        guard.add(recipe.role, kor.usage, modelConfig)
+      // Egy elem bukása nem viheti el az egész mérést. A produkciós
+      // csővezeték is elemenként kapja el a hibát; itt ugyanez a logika,
+      // különben egyetlen séma-hiba órákat töröl el eredmény nélkül.
+      try {
+        const result = await refine(
+          recipe,
+          { item: bejegyzes.item, transcript: bejegyzes.transcript },
+          client,
+          { stopEarly: false },
+        )
+        for (const kor of result.rounds) {
+          guard.add(recipe.role, kor.usage, modelConfig)
+        }
+        rekordok.push({
+          itemId: id,
+          repeat,
+          scores: result.rounds.map((r) => r.score),
+          usdPerRound: result.rounds.map((r) =>
+            costOf(r.usage, modelConfig.pricing[recipe.role]),
+          ),
+        })
+        console.log(
+          `${recipe.id} ${id} #${String(repeat + 1)}: ${result.rounds.map((r) => r.score.toFixed(2)).join(' → ')}`,
+        )
+      } catch (error) {
+        const uzenet = error instanceof Error ? error.message : String(error)
+        hibak.push({ recipe: recipe.id, itemId: id, repeat, uzenet })
+        console.error(`${recipe.id} ${id} #${String(repeat + 1)}: HIBA — ${uzenet}`)
       }
-      rekordok.push({
-        itemId: id,
-        repeat,
-        scores: result.rounds.map((r) => r.score),
-        usdPerRound: result.rounds.map((r) =>
-          costOf(r.usage, modelConfig.pricing[recipe.role]),
-        ),
-      })
-      console.log(
-        `${recipe.id} ${id} #${String(repeat + 1)}: ${result.rounds.map((r) => r.score.toFixed(2)).join(' → ')}`,
-      )
+      await mentsdANyersadatot()
     }
   }
-  eredmenyek.set(recipe.id, rekordok)
 }
 
 // 5. Kiírás: a nyers adat privát, a riport publikus.
-await writeFile(NYERS_UTVONAL, JSON.stringify([...eredmenyek], null, 2), 'utf8')
+await mentsdANyersadatot()
+if (hibak.length > 0) {
+  console.error(`\n${String(hibak.length)} futás bukott el a mérés során.`)
+}
 
-const receptEredmenyek = RECEPTEK.map((recipe) => {
+// Egy recept, aminek minden futása elbukott, kimarad a riportból — döntést
+// nulla adatból nem hozunk. A tény viszont látható marad a konzolon.
+const receptEredmenyek = RECEPTEK.flatMap((recipe) => {
   const agg = aggregate(eredmenyek.get(recipe.id) ?? [], recipe.rubric.passThreshold)
-  return { recipe: recipe.id, agg, decision: decide(agg) }
+  if (agg.rounds.length === 0) {
+    console.error(`${recipe.id}: egyetlen sikeres futás sincs — kimarad a riportból.`)
+    return []
+  }
+  return [{ recipe: recipe.id, agg, decision: decide(agg) }]
 })
+
+if (receptEredmenyek.length === 0) {
+  console.error('Egyetlen recept sem adott értékelhető adatot — riport nem készül.')
+  process.exit(1)
+}
 
 await mkdir(join('docs', 'measurements'), { recursive: true })
 await writeFile(
