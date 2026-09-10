@@ -155,14 +155,27 @@ A szabály **receptenként külön** alkalmazandó, mert a `maxIterations` is
 receptenkénti érték — a prózaág és a strukturált ág eltérő döntést kaphat:
 
 - Az alapértelmezés **egy generálásra** áll (`maxIterations: 0`), ha
-  `javulas_2 < zaj` **és** `mentes_2 < 20%`.
+  `javulas_2 ≤ zaj` **és** `mentes_2 < 20%`.
 - Ha a második kör átmegy ezen (tehát legalább az egyik feltétel nem teljesül),
-  de a harmadikra `javulas_3 < zaj` **és** `mentes_3 < 20%`, akkor az
+  de a harmadikra `javulas_3 ≤ zaj` **és** `mentes_3 < 20%`, akkor az
   alapértelmezés **két generálás** (`maxIterations: 1`).
 - Egyébként marad a mai három (`maxIterations: 2`).
 
 A döntés végrehajtása — a receptek `maxIterations` értékének átállítása — **ennek
 a szeletnek a része**, nem külön feladat. A roadmap ezt így ígéri.
+
+### Módosítás: `≤` a `<` helyett
+
+A szabály eredetileg szigorú `<`-t írt. Egy valódi hívásokkal végzett
+füstpróbán — **a mérés lefuttatása előtt** — kiderült, hogy a bíró ugyanarra a
+kimenetre körről körre azonos pontszámot adhat (a `summary` első elemre
+`1,00 → 1,00 → 1,00`). Ilyenkor a javulás **és** a zajszint is nulla, és a
+szigorú `<` mellett a `0 < 0` hamis: a szabály azt állítaná, hogy a javító kör
+kifizeti magát, holott semmit nem mozdított. Ez a szabály hibája, nem a mérésé.
+
+A módosítás azért nem sérti az előzetes rögzítést, mert **a mérési adat
+keletkezése előtt** történt: egy rosszul specifikált szabályt a kísérlet előtt
+kell javítani. A publikált riport ezt a módosítást és az indokát is közli.
 
 ## 6. A publikált eredmény
 
