@@ -1280,6 +1280,26 @@ EOF
 
 ## Feladat 6: A mérés lefuttatása, a publikálás és a döntés végrehajtása
 
+> **ÁLLAPOT: elhalasztva.** Egy 5 elemes, valódi hívásokkal végzett pilóta
+> ($0,92) három termékhibát talált a `main`-en, amik miatt a mérés jelenleg
+> értelmetlen számot adna:
+>
+> 1. **A sémás kimenet sosem megy ki.** A `createOpenAICompatible`
+>    `supportsStructuredOutputs` beállítása alapból hamis, ezért a szolgáltató
+>    `{type: "json_object"}`-öt küld a séma helyett. A `flashcards` recept
+>    **0/5** sikeres futást produkált; a bíró ~40%-ban kiesett.
+> 2. **A prompt `Channel:` sora elsodorja a kimenet nyelvét.** Kontrollált
+>    A/B-vel igazolva: holland névvel holland, `John Smith`-szel és név nélkül
+>    angol a válasz — ugyanarra az angol átiratra, „ne fordíts" szabály mellett.
+> 3. **Semmi nem ellenőrzi a nyelvet.** Egy rossz nyelvű jegyzet 1,00-t kap a
+>    rubrikától, és kikerül a vaultba.
+>
+> Mérni egy ilyen rendszert azt a következtetést adná, hogy „minden tökéletes,
+> javító kör nem kell" — magabiztosan és fordítva. A három hiba saját szeletet
+> kap; a Feladat 6 utána fut le, változatlan tartalommal.
+>
+> A `#16` ezért **nyitva marad**, amíg a mérés tényleg lefut.
+
 **Fájlok:**
 - Létrehoz: `docs/measurements/2026-09-09-iteracio.md` (a futtató generálja)
 - Módosít: `docs/evaluation.md` (§6), `docs/roadmap.md` (Fázis 3),

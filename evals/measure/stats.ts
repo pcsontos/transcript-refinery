@@ -143,14 +143,14 @@ export function decide(agg: Aggregate, rescueFloor = 0.2): Decision {
     const r = agg.rounds[1]!
     return {
       maxIterations: 0,
-      reason: `a második kör javulása ${szam(r.meanGain)} < ${alap}, mentési aránya ${szam(r.rescueRate)} — nem éri meg`,
+      reason: `a második kör javulása ${szam(r.meanGain)} ≤ ${alap}, mentési aránya ${szam(r.rescueRate)} — nem éri meg`,
     }
   }
   if (nemEriMeg(2)) {
     const r = agg.rounds[2]!
     return {
       maxIterations: 1,
-      reason: `a harmadik kör javulása ${szam(r.meanGain)} < ${alap}, mentési aránya ${szam(r.rescueRate)} — nem éri meg`,
+      reason: `a harmadik kör javulása ${szam(r.meanGain)} ≤ ${alap}, mentési aránya ${szam(r.rescueRate)} — nem éri meg`,
     }
   }
   return {
