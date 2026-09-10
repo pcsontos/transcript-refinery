@@ -25,7 +25,7 @@ const rules = (item: SourceItem): string =>
 /**
  * Kérdés-felelet jegyzet a normalizált átiratból.
  *
- * A `summary` felállását követi: ugyanaz a három kritérium, ugyanaz a küszöb,
+ * A `summary` felállását követi: ugyanaz a négy kritérium, ugyanaz a küszöb,
  * ugyanaz az iterációs korlát. A különbség a promptban van — és pontosan ez
  * az, amit ez a recept bizonyít: egy új dokumentumtípus felvétele nem
  * architekturális esemény, a motorhoz nem kell nyúlni.

@@ -179,6 +179,16 @@ describe('flashcardsRecipe', () => {
     expect(prompt).toContain('Title: Cím')
     expect(prompt).not.toContain('Channel:')
     expect(prompt).not.toContain('Csatorna')
+
+    const repairPrompt = flashcardsRecipe.repairPrompt({
+      item: ITEM,
+      transcript: 'A, majd B.',
+      previous: 'placeholder',
+      gaps: ['placeholder'],
+    })
+    expect(repairPrompt).toContain('Title: Cím')
+    expect(repairPrompt).not.toContain('Channel:')
+    expect(repairPrompt).not.toContain('Csatorna')
   })
 
   it('a javító prompt tartalmazza a hiányokat és az előző kimenetet', () => {

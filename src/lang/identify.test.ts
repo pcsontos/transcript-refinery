@@ -127,6 +127,11 @@ spec:
     expect(identifyLanguage(kod)).toBeNull()
   })
 
+  it('számokra és azonosítókra null', () => {
+    const azonositok = '15001 15006 envoy 1.29 v2 x86_64 sha256 10.0.0.1:8443'
+    expect(identifyLanguage(azonositok)).toBeNull()
+  })
+
   it('a négyszavas angolt a FÖLÉNY-őr fogja meg, nem az arány', () => {
     // Fontos eset: az arány 0,25, bőven a küszöb fölött. Csak a fölény —
     // 1,00× — állítja meg. Ha csak arányra szűrnénk, egy négyszavas mondat

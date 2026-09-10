@@ -81,5 +81,14 @@ describe('summaryRecipe', () => {
     expect(prompt).toContain('Title: Agent orchestration explained')
     expect(prompt).not.toContain('Channel:')
     expect(prompt).not.toContain('Some Channel')
+
+    const repairPrompt = summaryRecipe.repairPrompt({
+      ...INPUT,
+      previous: 'placeholder',
+      gaps: ['placeholder'],
+    })
+    expect(repairPrompt).toContain('Title: Agent orchestration explained')
+    expect(repairPrompt).not.toContain('Channel:')
+    expect(repairPrompt).not.toContain('Some Channel')
   })
 })

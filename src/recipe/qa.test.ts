@@ -73,5 +73,14 @@ describe('qaRecipe', () => {
     expect(prompt).toContain('Title: Cím')
     expect(prompt).not.toContain('Channel:')
     expect(prompt).not.toContain('Csatorna')
+
+    const repairPrompt = qaRecipe.repairPrompt({
+      ...INPUT,
+      previous: 'placeholder',
+      gaps: ['placeholder'],
+    })
+    expect(repairPrompt).toContain('Title: Cím')
+    expect(repairPrompt).not.toContain('Channel:')
+    expect(repairPrompt).not.toContain('Csatorna')
   })
 })

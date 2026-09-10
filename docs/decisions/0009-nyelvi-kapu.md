@@ -81,3 +81,10 @@ invariáns, amit a szabály kimond, és metaadat nélküli elemen is működik. 
   akkor jön, ha egy valódi eset kéri.
 - A `RULE.language` konstans megszűnt; helyette `languageRule(item)` függvény
   áll, mert a szabály elemenként változik.
+- **Ha az `item.language` metaadat téves** — például hibás `.en` utótag egy
+  valójában magyar átiraton —, a prompt és a kapu szükségképp ellentmond
+  egymásnak: a prompt angolul parancsol, a kapu viszont az átirat (magyar)
+  nyelvéhez méri a választ, minden kör nyelvi hiányt jelez, és a javító prompt
+  egyszerre hordozza a „Write in English" és a „Rewrite it in Hungarian"
+  utasítást. Az elem felemészti az összes javító kört, és `item:failed`-del
+  zár — zajosan, pontosan úgy, ahogy a 3. pont választása szándékozta.
