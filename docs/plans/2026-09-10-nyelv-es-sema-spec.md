@@ -116,7 +116,7 @@ függvényt csinál. Ez a szelet legszélesebb, de legmechanikusabb módosítás
 Új modul: `src/lang/identify.ts`. Egy felelőssége van — megmondani, milyen
 nyelvű egy szöveg, és mi a nyelv angol neve.
 
-Nyelvenként nagyjából negyven **funkciószó**; a szöveg szavaira vett találati
+Nyelvenként 50–80 **funkciószó**; a szöveg szavaira vett találati
 arány argmaxa dönt. Latin betűs európai nyelvek: `en`, `hu`, `nl`, `de`, `es`,
 `fr`, `it`. A holland azért van a listán, mert a megfigyelt hiba pont az volt.
 
