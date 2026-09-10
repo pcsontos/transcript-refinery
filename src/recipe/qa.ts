@@ -1,34 +1,26 @@
 import { formatCriterion } from '../rubric/format.js'
 import { coverageCriterion, faithfulnessCriterion } from '../rubric/judge.js'
+import { languageCriterion } from '../rubric/language.js'
 import type { SourceItem } from '../types.js'
-import { RULE } from './rules.js'
+import { languageRule, RULE } from './rules.js'
 import type { Recipe } from './types.js'
 
 /**
  * A közös szabályok. Mindkét prompt ugyanezeket idézi, mert a javító körnek
  * ugyanazokat a megkötéseket kell betartania.
  */
-const RULES = [
-  RULE.language,
-  RULE.traceable,
-  '- Write question-and-answer pairs in prose. Put the question in bold on its',
-  '  own line, then the answer in the paragraph below it.',
-  '- Every question must be answerable from the transcript alone.',
-  '- Ask about substance, not about the speaker or the video itself.',
-  RULE.noFrontmatter,
-  RULE.noWikilinks,
-  '- Cover the main points; roughly one pair per distinct idea.',
-].join('\n')
-
-/**
- * A prompt fejléce. A `Channel:` sor kimarad metaadat híján: az üres vagy
- * kitalált csatornanév félrevezetné a generálást.
- */
-function header(item: SourceItem): string[] {
-  const lines = [`Title: ${item.title}`]
-  if (item.metadata.channel) lines.push(`Channel: ${item.metadata.channel}`)
-  return lines
-}
+const rules = (item: SourceItem): string =>
+  [
+    languageRule(item),
+    RULE.traceable,
+    '- Write question-and-answer pairs in prose. Put the question in bold on its',
+    '  own line, then the answer in the paragraph below it.',
+    '- Every question must be answerable from the transcript alone.',
+    '- Ask about substance, not about the speaker or the video itself.',
+    RULE.noFrontmatter,
+    RULE.noWikilinks,
+    '- Cover the main points; roughly one pair per distinct idea.',
+  ].join('\n')
 
 /**
  * Kérdés-felelet jegyzet a normalizált átiratból.
@@ -50,9 +42,9 @@ export const qaRecipe: Recipe = {
       'Write a question-and-answer study note from the transcript of the video below.',
       '',
       'Rules:',
-      RULES,
+      rules(item),
       '',
-      ...header(item),
+      `Title: ${item.title}`,
       '',
       '--- TRANSCRIPT ---',
       transcript,
@@ -65,9 +57,9 @@ export const qaRecipe: Recipe = {
       'do not rewrite the note wholesale.',
       '',
       'The original rules still apply:',
-      RULES,
+      rules(item),
       '',
-      ...header(item),
+      `Title: ${item.title}`,
       '',
       '--- GAPS TO FIX ---',
       ...gaps.map((gap) => `- ${gap}`),
@@ -80,7 +72,7 @@ export const qaRecipe: Recipe = {
     ].join('\n'),
 
   rubric: {
-    criteria: [formatCriterion, faithfulnessCriterion, coverageCriterion],
+    criteria: [formatCriterion, languageCriterion, faithfulnessCriterion, coverageCriterion],
     // A két bíró-kritérium átlaga, ahogy a `summary`-nál.
     passThreshold: 0.8,
   },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SourceItem } from '../types.js'
-import { RULE } from './rules.js'
+import { languageRule, RULE } from './rules.js'
 import { summaryRecipe } from './summary.js'
 
 const ITEM: SourceItem = {
@@ -16,7 +16,7 @@ const ITEM: SourceItem = {
 
 /** A mai `summary` szabályblokkja, szó szerint. Ez a regressziós horgony. */
 const EXPECTED = [
-  '- Write in the same language as the transcript. Do not translate.',
+  '- Write in English. Do not translate the transcript into another language.',
   '- Every statement must be traceable to the transcript. Do not add outside',
   '  knowledge, and do not speculate about what the speaker meant.',
   '- Open with a short paragraph on what the video is about, then use `##`',
@@ -34,8 +34,13 @@ describe('vault-invariáns szabályok', () => {
   })
 
   it('a szabályok angolul szólnak, mert a promptba mennek', () => {
-    expect(RULE.language).toMatch(/do not translate/i)
+    expect(languageRule(ITEM)).toMatch(/do not translate/i)
     expect(RULE.noWikilinks).toMatch(/wikilink/i)
+  })
+
+  it('a megnevezett nyelv az elemtől függ, nem beégetett', () => {
+    expect(languageRule({ ...ITEM, language: 'hu' })).toContain('Hungarian')
+    expect(languageRule({ ...ITEM, language: null })).toContain('English')
   })
 
   it('a nem-invariáns szabályokat nem tartalmazza', () => {

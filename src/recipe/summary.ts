@@ -1,7 +1,8 @@
 import { coverageCriterion, faithfulnessCriterion } from '../rubric/judge.js'
 import { formatCriterion } from '../rubric/format.js'
+import { languageCriterion } from '../rubric/language.js'
 import type { SourceItem } from '../types.js'
-import { RULE } from './rules.js'
+import { languageRule, RULE } from './rules.js'
 import type { Recipe } from './types.js'
 
 /**
@@ -13,28 +14,18 @@ import type { Recipe } from './types.js'
  * szabály ezé a recepté. A sorrend szándékos: a szerkezeti szabály a
  * visszavezethetőség után áll, mert az olvasás sorrendje is ez.
  */
-const RULES = [
-  RULE.language,
-  RULE.traceable,
+const rules = (item: SourceItem): string =>
   [
-    '- Open with a short paragraph on what the video is about, then use `##`',
-    '  sections with bullet points for the substance.',
-  ].join('\n'),
-  RULE.noFrontmatter,
-  RULE.noWikilinks,
-  "- Aim for roughly a tenth of the transcript's length.",
-].join('\n')
-
-/**
- * A prompt fejléce. A `Channel:` sor **kimarad**, ha nincs metaadat: az üres
- * vagy kitalált csatornanév félrevezetné a generálást, és a rubrika olyan
- * kontextust kérne számon, ami nem is létezett.
- */
-function header(item: SourceItem): string[] {
-  const lines = [`Title: ${item.title}`]
-  if (item.metadata.channel) lines.push(`Channel: ${item.metadata.channel}`)
-  return lines
-}
+    languageRule(item),
+    RULE.traceable,
+    [
+      '- Open with a short paragraph on what the video is about, then use `##`',
+      '  sections with bullet points for the substance.',
+    ].join('\n'),
+    RULE.noFrontmatter,
+    RULE.noWikilinks,
+    "- Aim for roughly a tenth of the transcript's length.",
+  ].join('\n')
 
 /**
  * Az első recept: strukturált tanulójegyzet a normalizált átiratból.
@@ -55,9 +46,9 @@ export const summaryRecipe: Recipe = {
       'Write structured study notes from the transcript of the video below.',
       '',
       'Rules:',
-      RULES,
+      rules(item),
       '',
-      ...header(item),
+      `Title: ${item.title}`,
       '',
       '--- TRANSCRIPT ---',
       transcript,
@@ -70,9 +61,9 @@ export const summaryRecipe: Recipe = {
       'the notes wholesale.',
       '',
       'The original rules still apply:',
-      RULES,
+      rules(item),
       '',
-      ...header(item),
+      `Title: ${item.title}`,
       '',
       '--- GAPS TO FIX ---',
       ...gaps.map((gap) => `- ${gap}`),
@@ -85,7 +76,7 @@ export const summaryRecipe: Recipe = {
     ].join('\n'),
 
   rubric: {
-    criteria: [formatCriterion, faithfulnessCriterion, coverageCriterion],
+    criteria: [formatCriterion, languageCriterion, faithfulnessCriterion, coverageCriterion],
     // A két bíró-kritérium átlaga. A 0,8 azt jelenti: a hűség és a
     // lefedettség együtt legfeljebb egy közepes hiányt viselhet el.
     passThreshold: 0.8,
