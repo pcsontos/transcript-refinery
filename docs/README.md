@@ -24,6 +24,7 @@ együtt ez a dokumentáció a projekt egyik terméke, nem melléktermék.
 | [0006](<./decisions/0006-eval-stack.md>) | mérési keretrendszer | Evalite, saját rubrikákkal |
 | [0007](<./decisions/0007-elso-szelet.md>) | az első szelet | normalizálás vault-írással, modell nélkül |
 | [0008](<./decisions/0008-forras-fuggetlen-bemenet.md>) | mi a bemenet | a kész feliratfájl; a forrás és a transzkribálás kívül esik |
+| [0009](<./decisions/0009-nyelvi-kapu.md>) | a jegyzet nyelve | kimondott nyelv a promptban, determinisztikus blokkoló kapu az átirathoz mérve |
 
 A döntéseket alakító személyes kontextus — géppark, meglévő privát infrastruktúra,
 karriercélok — szándékosan a repón kívül marad.

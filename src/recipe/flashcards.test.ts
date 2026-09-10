@@ -157,27 +157,38 @@ describe('flashcardsRecipe', () => {
     expect(flashcardsRecipe.structured).toBeDefined()
   })
 
-  it('rubrikája négy kritériumból áll, az első kettő blokkoló', () => {
+  it('rubrikája öt kritériumból áll, az első három blokkoló', () => {
     const nevek = flashcardsRecipe.rubric.criteria.map((c) => c.name)
-    expect(nevek).toEqual(['format', 'flashcards-format', 'faithfulness', 'coverage'])
+    expect(nevek).toEqual(['format', 'flashcards-format', 'language', 'faithfulness', 'coverage'])
     expect(flashcardsRecipe.rubric.criteria[0]!.blocking).toBe(true)
     expect(flashcardsRecipe.rubric.criteria[1]!.blocking).toBe(true)
+    expect(flashcardsRecipe.rubric.criteria[2]!.blocking).toBe(true)
   })
 
-  it('a promptba bekerül az átirat, a cím és a csatorna', () => {
+  it('a promptba bekerül az átirat és a cím', () => {
     const prompt = flashcardsRecipe.prompt({ item: ITEM, transcript: 'A, majd B.' })
     expect(prompt).toContain('A, majd B.')
     expect(prompt).toContain('Cím')
-    expect(prompt).toContain('Csatorna')
   })
 
-  it('metaadat nélkül nem ír kitalált csatornát a promptba', () => {
-    const prompt = flashcardsRecipe.prompt({
-      item: { ...ITEM, metadata: {} },
-      transcript: 'A, majd B.',
-    })
+  it('a prompt SOHA nem tartalmaz Channel: sort, metaadattal sem', () => {
+    // Ez a hiba magja: a `Channel:` sorból a modell a beszélő nevére, abból
+    // pedig kimeneti nyelvre következtetett. Kontrollált A/B igazolta, hogy
+    // a sor eltávolítása megszünteti a sodródást (`0009`).
+    const prompt = flashcardsRecipe.prompt({ item: ITEM, transcript: 'A, majd B.' })
     expect(prompt).toContain('Title: Cím')
     expect(prompt).not.toContain('Channel:')
+    expect(prompt).not.toContain('Csatorna')
+
+    const repairPrompt = flashcardsRecipe.repairPrompt({
+      item: ITEM,
+      transcript: 'A, majd B.',
+      previous: 'placeholder',
+      gaps: ['placeholder'],
+    })
+    expect(repairPrompt).toContain('Title: Cím')
+    expect(repairPrompt).not.toContain('Channel:')
+    expect(repairPrompt).not.toContain('Csatorna')
   })
 
   it('a javító prompt tartalmazza a hiányokat és az előző kimenetet', () => {

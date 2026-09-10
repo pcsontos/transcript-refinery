@@ -1,7 +1,8 @@
 import { MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { modelClientFrom } from './client.js'
+import { createModelClient, modelClientFrom } from './client.js'
+import type { ModelConfig } from '../config.js'
 
 /** Fixture-modell: rögzített szöveget ad vissza, rögzített használattal. */
 function fixModell(text: string, inputTokens = 100, outputTokens = 20) {
@@ -59,5 +60,78 @@ describe('modelClientFrom', () => {
 
     expect(result.value).toEqual({ score: 0.8, gaps: ['hiányzik a második pont'] })
     expect(result.usage.inputTokens).toBe(100)
+  })
+})
+
+const CFG: ModelConfig = {
+  baseUrl: 'https://gateway.example/v1',
+  apiKey: 'teszt-kulcs',
+  models: { draft: 'draft-model', judge: 'judge-model' },
+  pricing: {
+    draft: { inputPerMillion: 1, outputPerMillion: 1 },
+    judge: { inputPerMillion: 1, outputPerMillion: 1 },
+  },
+  costLimitUsd: 1,
+}
+
+/**
+ * Hamis `fetch`: elkapja a kimenő kérés törzsét, és konzerv választ ad.
+ *
+ * Ez az egyetlen módja annak, hogy a **ténylegesen elküldött** kérésről
+ * állítsunk valamit. Egy olyan teszt, ami azt nézi, hogy a kliens
+ * `supportsStructuredOutputs: true`-val hívja a providert, a konfigurációt
+ * ismételné meg, nem a viselkedést írná le.
+ */
+function keresElkapo(): {
+  torzs: () => Record<string, unknown>
+  fetch: typeof globalThis.fetch
+} {
+  let latott: Record<string, unknown> | undefined
+  const fetch: typeof globalThis.fetch = (_input, init) => {
+    latott = JSON.parse(init?.body as string) as Record<string, unknown>
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({
+          id: 'chatcmpl-1',
+          object: 'chat.completion',
+          created: 1,
+          model: 'draft-model',
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content: '{"answer":"igen"}' },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    )
+  }
+  return { torzs: () => latott!, fetch }
+}
+
+describe('createModelClient', () => {
+  it('a kimenő kérés a sémát viszi, nem csak „adj JSON-t" utasítást', async () => {
+    const elkapo = keresElkapo()
+    const client = createModelClient(CFG, elkapo.fetch)
+
+    const result = await client.generateObject(
+      'draft',
+      'kérdés',
+      z.object({ answer: z.string() }),
+    )
+
+    expect(result.value).toEqual({ answer: 'igen' })
+
+    const rf = elkapo.torzs().response_format as {
+      type: string
+      json_schema?: { schema?: { properties?: Record<string, unknown> } }
+    }
+    // A javítás előtt itt `json_object` áll, séma nélkül: a modell csak annyit
+    // tud, hogy „valamilyen JSON-t adj", a mezőket nem.
+    expect(rf.type).toBe('json_schema')
+    expect(rf.json_schema?.schema?.properties).toHaveProperty('answer')
   })
 })

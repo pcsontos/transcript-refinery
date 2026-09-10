@@ -1,9 +1,10 @@
 import { z } from 'zod'
 import { formatCriterion } from '../rubric/format.js'
 import { coverageCriterion, faithfulnessCriterion } from '../rubric/judge.js'
+import { languageCriterion } from '../rubric/language.js'
 import type { Criterion, Score } from '../rubric/types.js'
 import type { SourceItem } from '../types.js'
-import { RULE } from './rules.js'
+import { languageRule, RULE } from './rules.js'
 import { structuredOutput } from './structured.js'
 import type { Recipe } from './types.js'
 
@@ -145,27 +146,18 @@ const flashcardFormatCriterion: Criterion = {
   score: (ctx) => Promise.resolve(checkFlashcards(ctx.output)),
 }
 
-const RULES = [
-  RULE.language,
-  RULE.traceable,
-  '- One card per idea. Ask about a single fact, definition, or causal link.',
-  '- The question must be answerable from the transcript alone, without the video.',
-  '- Keep the answer to one or two sentences.',
-  '- Do not ask the same question twice.',
-  RULE.noFrontmatter,
-  RULE.noWikilinks,
-  '- Aim for 8 to 15 cards for a typical video; never fewer than three.',
-].join('\n')
-
-/**
- * A prompt fejléce. A `Channel:` sor kimarad metaadat híján: az üres vagy
- * kitalált csatornanév félrevezetné a generálást.
- */
-function header(item: SourceItem): string[] {
-  const lines = [`Title: ${item.title}`]
-  if (item.metadata.channel) lines.push(`Channel: ${item.metadata.channel}`)
-  return lines
-}
+const rules = (item: SourceItem): string =>
+  [
+    languageRule(item),
+    RULE.traceable,
+    '- One card per idea. Ask about a single fact, definition, or causal link.',
+    '- The question must be answerable from the transcript alone, without the video.',
+    '- Keep the answer to one or two sentences.',
+    '- Do not ask the same question twice.',
+    RULE.noFrontmatter,
+    RULE.noWikilinks,
+    '- Aim for 8 to 15 cards for a typical video; never fewer than three.',
+  ].join('\n')
 
 /**
  * Az első strukturált recept: tanulókártyák a normalizált átiratból.
@@ -187,9 +179,9 @@ export const flashcardsRecipe: Recipe = {
       'Write study flashcards from the transcript of the video below.',
       '',
       'Rules:',
-      RULES,
+      rules(item),
       '',
-      ...header(item),
+      `Title: ${item.title}`,
       '',
       '--- TRANSCRIPT ---',
       transcript,
@@ -202,9 +194,9 @@ export const flashcardsRecipe: Recipe = {
       'rewrite the whole set.',
       '',
       'The original rules still apply:',
-      RULES,
+      rules(item),
       '',
-      ...header(item),
+      `Title: ${item.title}`,
       '',
       '--- GAPS TO FIX ---',
       ...gaps.map((gap) => `- ${gap}`),
@@ -220,6 +212,7 @@ export const flashcardsRecipe: Recipe = {
     criteria: [
       formatCriterion,
       flashcardFormatCriterion,
+      languageCriterion,
       faithfulnessCriterion,
       coverageCriterion,
     ],

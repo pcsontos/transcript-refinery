@@ -24,7 +24,7 @@ címkézett halmaz ezt a hibát elkapja.
 
 ## 2. Mit mér a rubrika
 
-Receptenként három szempont, és **csak az egyik igényel modellt**:
+Receptenként négy szempont, és **csak az egyik igényel modellt**:
 
 ### Formátum-megfelelés — determinisztikus
 
@@ -33,6 +33,13 @@ nulla wikilink, előírt szerkezet. Sima függvény, nulla token.
 
 Ez a hibák jelentős részét kiszűri, **mielőtt bármi drága elindulna** — és a
 futásidejű optimalizáló loopban is ez ad először visszajelzést.
+
+### Nyelvi megfelelés — determinisztikus
+
+A kimeneti nyelvét az átirat nyelvéhez méri, funkciószó-profillal, nulla
+tokenből. Ez a második determinisztikus kapu, és blokkoló: ha az elemzés más
+nyelvnek talál egy szöveget, amit az átirat beszél, a jegyzet nem kerül
+modell-bíró-hívásba. Lásd [`decisions/0009-nyelvi-kapu.md`](<./decisions/0009-nyelvi-kapu.md>).
 
 ### Hűség — modell-bíró, referencia nélkül
 

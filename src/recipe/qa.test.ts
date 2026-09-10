@@ -31,17 +31,16 @@ describe('qaRecipe', () => {
     expect(qaRecipe.structured).toBeUndefined()
   })
 
-  it('rubrikája a három közös kritériumot tartalmazza, a formátumot elsőként', () => {
+  it('rubrikája mind a négy kritériumot tartalmazza, a formátumot elsőként', () => {
     const nevek = qaRecipe.rubric.criteria.map((c) => c.name)
-    expect(nevek).toEqual(['format', 'faithfulness', 'coverage'])
+    expect(nevek).toEqual(['format', 'language', 'faithfulness', 'coverage'])
     expect(qaRecipe.rubric.criteria[0]!.blocking).toBe(true)
   })
 
-  it('a promptba bekerül az átirat, a cím és a csatorna', () => {
+  it('a promptba bekerül az átirat és a cím', () => {
     const prompt = qaRecipe.prompt(INPUT)
     expect(prompt).toContain('The speaker explains A, then B.')
     expect(prompt).toContain('Cím')
-    expect(prompt).toContain('Csatorna')
   })
 
   it('a prompt megtiltja a fordítást, a frontmattert és a wikilinket', () => {
@@ -66,9 +65,22 @@ describe('qaRecipe', () => {
     expect(prompt).toMatch(/do not rewrite/i)
   })
 
-  it('metaadat nélkül nem ír kitalált csatornát a promptba', () => {
-    const prompt = qaRecipe.prompt({ item: { ...ITEM, metadata: {} }, transcript: 'A, majd B.' })
+  it('a prompt SOHA nem tartalmaz Channel: sort, metaadattal sem', () => {
+    // Ez a hiba magja: a `Channel:` sorból a modell a beszélő nevére, abból
+    // pedig kimeneti nyelvre következtetett. Kontrollált A/B igazolta, hogy
+    // a sor eltávolítása megszünteti a sodródást (`0009`).
+    const prompt = qaRecipe.prompt(INPUT)
     expect(prompt).toContain('Title: Cím')
     expect(prompt).not.toContain('Channel:')
+    expect(prompt).not.toContain('Csatorna')
+
+    const repairPrompt = qaRecipe.repairPrompt({
+      ...INPUT,
+      previous: 'placeholder',
+      gaps: ['placeholder'],
+    })
+    expect(repairPrompt).toContain('Title: Cím')
+    expect(repairPrompt).not.toContain('Channel:')
+    expect(repairPrompt).not.toContain('Csatorna')
   })
 })

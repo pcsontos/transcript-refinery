@@ -30,17 +30,16 @@ describe('summaryRecipe', () => {
     expect(summaryRecipe.maxIterations).toBe(2)
   })
 
-  it('rubrikája mindhárom kritériumot tartalmazza, a formátumot elsőként', () => {
+  it('rubrikája mind a négy kritériumot tartalmazza, a formátumot elsőként', () => {
     const nevek = summaryRecipe.rubric.criteria.map((c) => c.name)
-    expect(nevek).toEqual(['format', 'faithfulness', 'coverage'])
+    expect(nevek).toEqual(['format', 'language', 'faithfulness', 'coverage'])
     expect(summaryRecipe.rubric.criteria[0]!.blocking).toBe(true)
   })
 
-  it('a promptba bekerül az átirat, a cím és a csatorna', () => {
+  it('a promptba bekerül az átirat és a cím', () => {
     const prompt = summaryRecipe.prompt(INPUT)
     expect(prompt).toContain('The speaker explains A, then B.')
     expect(prompt).toContain('Agent orchestration explained')
-    expect(prompt).toContain('Some Channel')
   })
 
   it('a prompt megtiltja a fordítást — a jegyzet nyelve a forrás nyelve', () => {
@@ -74,10 +73,22 @@ describe('summaryRecipe', () => {
     expect(prompt).toMatch(/do not rewrite/i)
   })
 
-  it('metaadat nélkül nem ír kitalált csatornát a promptba', () => {
-    const item: SourceItem = { ...ITEM, metadata: {} }
-    const prompt = summaryRecipe.prompt({ item, transcript: 'A, majd B.' })
+  it('a prompt SOHA nem tartalmaz Channel: sort, metaadattal sem', () => {
+    // Ez a hiba magja: a `Channel:` sorból a modell a beszélő nevére, abból
+    // pedig kimeneti nyelvre következtetett. Kontrollált A/B igazolta, hogy
+    // a sor eltávolítása megszünteti a sodródást (`0009`).
+    const prompt = summaryRecipe.prompt(INPUT)
     expect(prompt).toContain('Title: Agent orchestration explained')
     expect(prompt).not.toContain('Channel:')
+    expect(prompt).not.toContain('Some Channel')
+
+    const repairPrompt = summaryRecipe.repairPrompt({
+      ...INPUT,
+      previous: 'placeholder',
+      gaps: ['placeholder'],
+    })
+    expect(repairPrompt).toContain('Title: Agent orchestration explained')
+    expect(repairPrompt).not.toContain('Channel:')
+    expect(repairPrompt).not.toContain('Some Channel')
   })
 })
