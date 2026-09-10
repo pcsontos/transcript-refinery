@@ -69,11 +69,22 @@ export function modelClientFrom(
  * alap-URL-jére. Az útválasztás, a tartalék-útvonal és a terheléselosztás a
  * gateway dolga, nem az alkalmazásé (`architecture.md` §13).
  */
-export function createModelClient(cfg: ModelConfig): ModelClient {
+export function createModelClient(
+  cfg: ModelConfig,
+  fetch?: typeof globalThis.fetch,
+): ModelClient {
   const provider = createOpenAICompatible({
     name: 'litellm',
     baseURL: cfg.baseUrl,
     apiKey: cfg.apiKey,
+    // E nélkül a séma **nem hagyja el a gépet**: az SDK alapértelmezése
+    // hamis (`@ai-sdk/openai-compatible@3.0.43`, `dist/index.js:447`), és
+    // akkor `{ type: "json_object" }` megy ki a `json_schema` helyett
+    // (`:569`). A pilótán ettől lett a `flashcards` 0/5.
+    supportsStructuredOutputs: true,
+    // Kizárólag a teszt adja meg: így a kimenő kérés törzse valódi hálózat
+    // nélkül ellenőrizhető.
+    ...(fetch ? { fetch } : {}),
   })
 
   const models = Object.fromEntries(
