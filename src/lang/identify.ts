@@ -43,7 +43,7 @@ const PROFILES: Record<LanguageTag, string> = {
 }
 
 const SETS = Object.entries(PROFILES).map(
-  ([tag, lista]) => [tag as LanguageTag, new Set(lista.split(' '))] as const,
+  ([tag, list]) => [tag as LanguageTag, new Set(list.split(' '))] as const,
 )
 
 /**
@@ -87,12 +87,12 @@ export function identifyLanguage(text: string): LanguageTag | null {
   rates.sort((a, b) => b[1] - a[1])
 
   const [topTag, topRate] = rates[0]!
-  const masodik = rates[1]?.[1] ?? 0
+  const second = rates[1]?.[1] ?? 0
 
   if (topRate < MIN_RATE) return null
   // Nulla futam-második mellett a fölény végtelen; ilyenkor az arányőr az
   // egyetlen kapu, és az már lefutott.
-  if (masodik > 0 && topRate / masodik < MIN_MARGIN) return null
+  if (second > 0 && topRate / second < MIN_MARGIN) return null
   return topTag
 }
 
@@ -105,6 +105,6 @@ export function identifyLanguage(text: string): LanguageTag | null {
  */
 export function languageName(tag: string | null): string {
   if (tag === null) return LANGUAGE_NAMES.en
-  const alap = tag.toLowerCase().split('-')[0]!
-  return LANGUAGE_NAMES[alap as LanguageTag] ?? LANGUAGE_NAMES.en
+  const base = tag.toLowerCase().split('-')[0]!
+  return LANGUAGE_NAMES[base as LanguageTag] ?? LANGUAGE_NAMES.en
 }
