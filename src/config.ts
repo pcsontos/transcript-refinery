@@ -107,8 +107,14 @@ export async function readConfigFile(path: string): Promise<unknown> {
   }
 }
 
-/** YAML → konfiguráció. Fájlrendszertől független, hogy tesztelhető legyen. */
-export function loadConfig(raw: unknown, configPath: string): Config {
+/**
+ * YAML → konfiguráció. Fájlrendszertől független, hogy tesztelhető legyen.
+ *
+ * A relatív `state.path` és `logs.dir` a `baseDir`-hez oldódik fel. A CLI nem
+ * adja át — nála ez a munkakönyvtár, ahogy eddig —, a webes felület viszont a
+ * repó gyökerét adja, mert a szervere más munkakönyvtárból is indulhat.
+ */
+export function loadConfig(raw: unknown, configPath: string, baseDir = process.cwd()): Config {
   const parsed = CoreSchema.safeParse(raw)
   if (!parsed.success) fail(parsed.error, configPath)
   const c = parsed.data
@@ -118,8 +124,8 @@ export function loadConfig(raw: unknown, configPath: string): Config {
     notesRoot: join(c.vault.path, c.vault.notes_dir),
     sources: c.sources.map((p) => ({ name: basename(p), path: p })),
     languages: c.languages,
-    statePath: resolve(process.cwd(), c.state.path),
-    logsDir: resolve(process.cwd(), c.logs.dir),
+    statePath: resolve(baseDir, c.state.path),
+    logsDir: resolve(baseDir, c.logs.dir),
   }
 }
 

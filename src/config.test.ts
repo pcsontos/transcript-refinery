@@ -178,3 +178,31 @@ describe('validateConfig', () => {
     expect(message).toContain(path2)
   })
 })
+
+describe('loadConfig — alapmappa', () => {
+  it('a relatív állapot- és naplóútvonalat a megadott alapmappához oldja fel', () => {
+    const cfg = loadConfig(
+      { ...MIN, state: { path: '.state/refinery.db' }, logs: { dir: 'logs' } },
+      '/p/refinery.config.yaml',
+      '/repo',
+    )
+    expect(cfg.statePath).toBe('/repo/.state/refinery.db')
+    expect(cfg.logsDir).toBe('/repo/logs')
+  })
+
+  it('alapmappa nélkül a munkakönyvtárhoz oldja fel, ahogy eddig', () => {
+    const cfg = loadConfig(MIN, '/p/refinery.config.yaml')
+    expect(cfg.statePath).toBe(resolve(process.cwd(), '.state', 'refinery.db'))
+    expect(cfg.logsDir).toBe(resolve(process.cwd(), 'logs'))
+  })
+
+  it('az abszolút útvonalat az alapmappa nem írja át', () => {
+    const cfg = loadConfig(
+      { ...MIN, state: { path: '/abs/state.db' }, logs: { dir: '/abs/logs' } },
+      '/p/refinery.config.yaml',
+      '/repo',
+    )
+    expect(cfg.statePath).toBe('/abs/state.db')
+    expect(cfg.logsDir).toBe('/abs/logs')
+  })
+})
