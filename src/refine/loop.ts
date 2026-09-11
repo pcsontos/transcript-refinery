@@ -11,6 +11,10 @@ export interface RefineOptions {
    * produkciós út alapértelmezése változatlanul `true`.
    */
   stopEarly?: boolean
+  /** Minden generálás előtt, egytől számozva. Az élő követés ebből látja, hol tart a loop. */
+  onGenerate?: (generation: number) => void
+  /** Minden pontozás után: a pontszám és a megnevezett hiányok száma. */
+  onScore?: (score: number, gaps: number) => void
 }
 
 /**
@@ -76,6 +80,7 @@ export async function refine(
       ? recipe.structured.generate(client, recipe.role, prompt)
       : client.generate(recipe.role, prompt)
 
+  opts.onGenerate?.(1)
   const first = await generate(recipe.prompt(input))
   add(first.usage)
 
@@ -85,6 +90,7 @@ export async function refine(
     client,
   )
   add(firstScore.usage)
+  opts.onScore?.(firstScore.value, firstScore.gaps.length)
 
   rounds.push({
     score: firstScore.value,
@@ -100,6 +106,7 @@ export async function refine(
     generations <= maxIterations &&
     (!stopEarly || best.score < recipe.rubric.passThreshold)
   ) {
+    opts.onGenerate?.(generations + 1)
     const next = await generate(
       recipe.repairPrompt({ ...input, previous: best.output, gaps: best.gaps }),
     )
@@ -112,6 +119,7 @@ export async function refine(
       client,
     )
     add(scored.usage)
+    opts.onScore?.(scored.value, scored.gaps.length)
 
     rounds.push({
       score: scored.value,

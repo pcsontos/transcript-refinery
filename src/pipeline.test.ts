@@ -528,3 +528,26 @@ describe('processItem — a hiánylista rögzítése', () => {
     expect(deps.store.gapsOf(current.itemId, 'proba')).toEqual(['kimaradt: a második pont'])
   })
 })
+
+describe('processItem — generálási és pontozási események', () => {
+  it('generálás előtt és pontozás után eseményt bocsát ki', async () => {
+    const { sink, events } = collectEvents()
+    await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(
+      events.filter((e) => e.type === 'item:generating' || e.type === 'item:scored'),
+    ).toEqual([
+      { type: 'item:generating', itemId: 'a1b2c3', recipe: 'proba', generation: 1 },
+      { type: 'item:scored', itemId: 'a1b2c3', recipe: 'proba', score: 1, gaps: 0 },
+    ])
+  })
+})

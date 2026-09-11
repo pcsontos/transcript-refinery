@@ -123,7 +123,14 @@ async function runRecipe(
 
   // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
-  const result = await refine(recipe, { item, transcript: text }, client)
+  const result = await refine(recipe, { item, transcript: text }, client, {
+    // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
+    // alatt — a futásidő nagyobb részében — nem jönne esemény.
+    onGenerate: (generation) =>
+      deps.sink({ type: 'item:generating', itemId: item.itemId, recipe: recipe.id, generation }),
+    onScore: (score, gaps) =>
+      deps.sink({ type: 'item:scored', itemId: item.itemId, recipe: recipe.id, score, gaps }),
+  })
 
   // Körönként és szerepenként könyvelünk: a generálás a recept szerepén, a
   // pontozás a bíróén. Az összevont `result.usage` a bíró tokenjeit is a
