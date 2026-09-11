@@ -26,8 +26,8 @@ describe('summaryRecipe', () => {
     expect(summaryRecipe.role).toBe('draft')
   })
 
-  it('alapból két javító kört enged, tehát három generálást', () => {
-    expect(summaryRecipe.maxIterations).toBe(2)
+  it('alapból nem enged javító kört — a mérés (2026-09-09) szerint nem térül meg', () => {
+    expect(summaryRecipe.maxIterations).toBe(0)
   })
 
   it('rubrikája mind a négy kritériumot tartalmazza, a formátumot elsőként', () => {

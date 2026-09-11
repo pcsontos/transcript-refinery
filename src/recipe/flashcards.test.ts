@@ -147,10 +147,10 @@ describe('flashcardsRecipe', () => {
     expect(flashcardsRecipe.outputFile).toBe('_flashcards.md')
   })
 
-  it('publikálható, a draft szerepet kéri, és két javító kört enged', () => {
+  it('publikálható, a draft szerepet kéri, és nem enged javító kört — a mérés (2026-09-09) szerint nem térül meg', () => {
     expect(flashcardsRecipe.publishable).toBe(true)
     expect(flashcardsRecipe.role).toBe('draft')
-    expect(flashcardsRecipe.maxIterations).toBe(2)
+    expect(flashcardsRecipe.maxIterations).toBe(0)
   })
 
   it('sémával kikényszerített kimenetet kér', () => {

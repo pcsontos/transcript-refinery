@@ -39,7 +39,7 @@ export const summaryRecipe: Recipe = {
   outputFile: '_summary.md',
   publishable: true,
   role: 'draft',
-  maxIterations: 2,
+  maxIterations: 0,
 
   prompt: ({ item, transcript }) =>
     [
