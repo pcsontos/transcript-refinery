@@ -17,6 +17,7 @@ import type { SourceItem } from '../../src/types.js'
 import { metered } from './metered.js'
 import { rateLimited } from './rate-limit.js'
 import { renderMeasurementReport } from './report.js'
+import { alreadyDone, loadRawData } from './resume.js'
 import { stratifiedSample, type SampleCandidate } from './sample.js'
 import { aggregate, decide, type RunRecord } from './stats.js'
 
@@ -130,14 +131,35 @@ if (values.limit) {
   console.log(`Pilóta: a minta ${String(sampleIds.length)} elemre szűkítve.`)
 }
 
-// 3. Költségkapu a becslésből: a budget fölött el sem indulunk.
+// 2b. Korábbi (esetleg keret miatt félbeszakadt) futás nyers adata: amit már
+//    megmértünk, azt nem fizetjük ki még egyszer.
+const results = new Map<string, RunRecord[]>()
+let previousTotalUsd = 0
+try {
+  const parsed: unknown = JSON.parse(await readFile(RAW_PATH, 'utf8'))
+  const loaded = loadRawData(parsed)
+  for (const [recipeId, records] of loaded.results) results.set(recipeId, records)
+  previousTotalUsd = loaded.totalSpentUsd
+  const doneCount = [...results.values()].reduce((n, rs) => n + rs.length, 0)
+  console.log(
+    `Korábbi nyers adat betöltve: ${String(doneCount)} kombináció már megvan ($${previousTotalUsd.toFixed(2)}).`,
+  )
+} catch {
+  // Nincs korábbi futás — üres állapotból indulunk.
+}
+
+// 3. Költségkapu a becslésből: a budget fölött el sem indulunk. Csak a még
+//    hiányzó kombinációkra becsül — a meglévők nem kerülnek újra kifizetésre.
 let estimated = 0
 for (const id of sampleIds) {
   const words = candidates.find((j) => j.itemId === id)?.words ?? 0
   // Receptenként külön: a Feladat 6 épp receptenkénti maxIterations-re
   // állítja őket, és onnantól egyetlen közös érték az egyikre hazudna.
   for (const recipe of RECIPES) {
-    estimated += estimateItemUsd(words, recipe.maxIterations, modelConfig) * repeats
+    for (let repeat = 0; repeat < repeats; repeat++) {
+      if (alreadyDone(results, recipe.id, id, repeat)) continue
+      estimated += estimateItemUsd(words, recipe.maxIterations, modelConfig)
+    }
   }
 }
 console.log(`Becsült költség: $${estimated.toFixed(2)} (budget: $${budget.toFixed(2)})`)
@@ -160,7 +182,6 @@ const client = retrying(
     perMinute: rpm,
   }),
 )
-const results = new Map<string, RunRecord[]>()
 const failures: { recipe: string; itemId: string; repeat: number; message: string }[] = []
 
 /** Részeredmény kiírása, hogy egy összeomlás ne vigye el az addigi munkát. */
@@ -168,18 +189,24 @@ async function saveRawData(): Promise<void> {
   await mkdir(join('evals', 'private'), { recursive: true })
   await writeFile(
     RAW_PATH,
-    JSON.stringify({ results: [...results], failures }, null, 2),
+    JSON.stringify(
+      { results: [...results], failures, totalSpentUsd: previousTotalUsd + guard.spentUsd() },
+      null,
+      2,
+    ),
     'utf8',
   )
 }
 
 for (const recipe of RECIPES) {
-  const records: RunRecord[] = []
+  const records: RunRecord[] = results.get(recipe.id) ?? []
   results.set(recipe.id, records)
   for (const id of sampleIds) {
     const entry = transcripts.get(id)
     if (!entry) continue
     for (let repeat = 0; repeat < repeats; repeat++) {
+      // Korábbi futásból már megvan — nem fizetjük ki még egyszer.
+      if (alreadyDone(results, recipe.id, id, repeat)) continue
       if (guard.exceeded()) {
         console.error(`A költségkeret elfogyott ($${guard.spentUsd().toFixed(2)}) — a mérés megáll.`)
         await saveRawData()
@@ -258,14 +285,18 @@ await writeFile(
     ).size,
     repeats: repeats,
     generations: Math.max(...RECIPES.map((r) => r.maxIterations)) + 1,
-    totalUsd: guard.spentUsd(),
+    // Halmozott: egy korábbi, keret miatt félbeszakadt futás költése is beleszámít,
+    // különben a publikált riport a valós ráfordítás töredékét mutatná.
+    totalUsd: previousTotalUsd + guard.spentUsd(),
     draftModel: modelConfig.models.draft,
     judgeModel: modelConfig.models.judge,
   }),
   'utf8',
 )
 
-console.log(`\nKész. Tényleges költés: $${guard.spentUsd().toFixed(2)}`)
+console.log(
+  `\nKész. E futás költése: $${guard.spentUsd().toFixed(2)} — összesen (korábbi futásokkal): $${(previousTotalUsd + guard.spentUsd()).toFixed(2)}`,
+)
 console.log(`Riport: ${REPORT_PATH}`)
 for (const r of recipeResults) {
   console.log(`  ${r.recipe}: maxIterations: ${String(r.decision.maxIterations)} — ${r.decision.reason}`)
