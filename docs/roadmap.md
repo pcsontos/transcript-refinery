@@ -116,6 +116,22 @@ mérés előbb.
 - A saját megjegyzéssorok és a kézi átrendezés túlélik a `scan --queue`-t és a
   `run --queue`-t.
 
+**A Nuxt-felület — státusz: kész** (2026-09-11). Spec és terv:
+[`plans/2026-09-11-fazis-5-nuxt-felulet-spec.md`](<./plans/2026-09-11-fazis-5-nuxt-felulet-spec.md>),
+[`plans/2026-09-11-fazis-5-nuxt-felulet.md`](<./plans/2026-09-11-fazis-5-nuxt-felulet.md>).
+
+**Kész, ha (Nuxt-felület):**
+
+- A felület a `127.0.0.1`-en válaszol, a gép hálózati címén nem.
+- Az áttekintő típusonkénti kész / hibás / hátra számai megegyeznek egy
+  ugyanarra az állapotra futtatott `run` riportjának korpusz-állapotával.
+- Egy a változás után generált receptjegyzet oldalán látszik a bíró
+  hiánylistája, a jegyzet és a normalizált átirat egymás mellett.
+- Egy CLI-ből indított futás élőben követhető; megszakítás után „megszakítva",
+  kemény leállítás után „nyom nélkül leállt"; frissítés után egyetlen esemény
+  sem ismétlődik.
+- A felület nem ír: a vault munkafája a használata után tiszta.
+
 ## v2 és utána
 
 Nem befolyásolja a v1 architektúráját:
