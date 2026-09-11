@@ -274,7 +274,7 @@ describe('végponttól végpontig', () => {
       finishedAt: new Date('2026-09-07T02:20:00Z'),
       command: 'run',
       summary,
-      corpus,
+      corpora: [{ kind: 'transcript', status: corpus }],
       runs: 1,
       logPath: join(cfg.logsDir, '2026-09-07T02-14-03.jsonl'),
     })

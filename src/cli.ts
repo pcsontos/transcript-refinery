@@ -245,7 +245,7 @@ export async function commandRun(
       finishedAt: new Date(),
       command: commandLine,
       summary,
-      corpus,
+      corpora: [{ kind: artifactKind, status: corpus }],
       runs: countRunLogs(cfg.logsDir),
       logPath,
       cost: recipeDeps
