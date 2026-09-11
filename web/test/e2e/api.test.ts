@@ -1,18 +1,26 @@
+import { appendFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { $fetch, setup } from '@nuxt/test-utils/e2e'
+import { $fetch, fetch, setup } from '@nuxt/test-utils/e2e'
 import type {
   ArtifactDetail,
   FailureGroup,
   ItemDetail,
   ItemListRow,
   Overview,
+  RunDetail,
+  RunSummaryView,
 } from 'transcript-refinery'
-import { RUNNING_RUN, createFixture } from './fixture'
+import { FINISHED_RUN, RUNNING_RUN, createFixture } from './fixture'
 
 type ItemResponse = Omit<ItemDetail, 'artifacts'> & {
   artifacts: (ArtifactDetail & { html: string | null; obsidianUrl: string | null })[]
 }
+
+type RunResponse = RunDetail & { reportHtml: string | null }
+
+const eventIds = (text: string): string[] =>
+  [...text.matchAll(/^id: (\d+)$/gm)].map((match) => match[1] ?? '')
 
 const fixture = await createFixture()
 
@@ -93,5 +101,87 @@ describe('API', async () => {
         items: [{ itemId: 'szint0001', title: 'Első példavideó', kind: 'qa' }],
       },
     ])
+  })
+
+  it('a futáslista legújabb elöl, állapottal', async () => {
+    const runs = await $fetch<RunSummaryView[]>('/api/runs')
+    expect(runs.map((run) => [run.runId, run.status])).toEqual([
+      [RUNNING_RUN, 'running'],
+      [FINISHED_RUN, 'done'],
+    ])
+  })
+
+  it('a lezárt futás oldala a sorokat, az állapotot és a renderelt riportot adja', async () => {
+    const run = await $fetch<RunResponse>(`/api/runs/${FINISHED_RUN}`)
+    expect(run.summary.status).toBe('done')
+    expect(run.lines).toHaveLength(8)
+    expect(run.state.spentUsd).toBeCloseTo(0.0123, 10)
+    expect(run.reportHtml).toContain('<h1>Futás</h1>')
+  })
+
+  it('a nem futásazonosító alakú kérésre 404, az SSE-nél is', async () => {
+    for (const path of [
+      '/api/runs/..%2F..%2Fetc',
+      '/api/runs/nincs-ilyen',
+      '/api/runs/..%2F..%2Fetc/events',
+    ]) {
+      const error = await $fetch(path).catch((e: unknown) => e)
+      expect((error as { statusCode?: number }).statusCode).toBe(404)
+    }
+  })
+
+  it('a lezárt futás folyama minden sort ad, end eseménnyel zár, és a Last-Event-ID-től folytat', async () => {
+    const all = await (await fetch(`/api/runs/${FINISHED_RUN}/events`)).text()
+    expect(all).toContain('event: end')
+    const ids = eventIds(all)
+    expect(ids).toHaveLength(8)
+
+    const rest = await (
+      await fetch(`/api/runs/${FINISHED_RUN}/events`, { headers: { 'Last-Event-ID': ids[0]! } })
+    ).text()
+    expect(eventIds(rest)).toEqual(ids.slice(1))
+  })
+
+  it('a futó napló hozzáfűzött sora megjelenik a folyamban, az állapottal együtt', async () => {
+    const response = await fetch(`/api/runs/${RUNNING_RUN}/events`)
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+
+    /** Addig olvas, amíg a keresett szöveget tartalmazó üzenet teljesen meg nem jött. */
+    const messageWith = async (needle: string): Promise<string> => {
+      for (;;) {
+        const at = text.indexOf(needle)
+        const endAt = at === -1 ? -1 : text.indexOf('\n\n', at)
+        if (endAt !== -1) {
+          const before = text.lastIndexOf('\n\n', at)
+          return text.slice(before === -1 ? 0 : before + 2, endAt)
+        }
+        const { value, done } = await reader.read()
+        if (done) throw new Error(`a folyam véget ért, mielőtt megjött: ${needle}`)
+        text += decoder.decode(value, { stream: true })
+      }
+    }
+
+    await messageWith('"type":"scan:found"')
+    await appendFile(
+      fixture.runningLog,
+      `${JSON.stringify({
+        at: new Date().toISOString(),
+        type: 'item:start',
+        itemId: 'szint0002',
+        title: 'Második példavideó',
+      })}\n`,
+    )
+    const message = await messageWith('"type":"item:start"')
+    await reader.cancel()
+
+    const dataLine = message.split('\n').find((l) => l.startsWith('data: ')) ?? ''
+    const data = JSON.parse(dataLine.slice('data: '.length)) as {
+      line: { itemId: string }
+      state: { current: { title: string } | null }
+    }
+    expect(data.line.itemId).toBe('szint0002')
+    expect(data.state.current?.title).toBe('Második példavideó')
   })
 })
