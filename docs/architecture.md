@@ -170,6 +170,13 @@ Két szabály, mindkettő tesztelhető:
 Írás csak akkor, ha a célfájl nem létezik. Felülírás kizárólag explicit
 `--force`-szal. A vaultban évek kézi munkája van; a pipeline nem írhatja felül.
 
+**Egyetlen kivétel a feldolgozási sor** (`_queue.md`): ezt a pipeline helyben
+frissíti, mert a kipipált párok eredménye oda íródik vissza. Két szabály védi.
+Csak a saját részeit írja — új videóblokk, a videósor jelölése, a receptsor
+állapota —, a pipákhoz és a saját sorokhoz soha nem nyúl. És **atomian** ír,
+ideiglenes fájlon át, átnevezéssel, mert a jegyzet közben nyitva lehet
+Obsidianban.
+
 ### Nyelv
 
 **A jegyzet nyelve megegyezik a forrás nyelvével.** Ez nem stílusdöntés, hanem
@@ -339,11 +346,12 @@ feliratforrásokból.
   feliratfájl, értelmezési hiba) → rögzít és lép tovább.
 - **Szűrők:** csatorna, darabszám, dátum — és elsődlegesen az állapottár, ami a
   már feldolgozott elemeket kihagyja.
-- **A lista formátuma sima szöveg**: soronként egy feliratforrás-elem (forrás +
-  alapnév), `#`-kommenttel. A per-sor felülbírálás (CSV, YAML) szándékosan
-  kimarad: a receptválasztás futás-szintű, és a per-elem igény spekulatív.
-  Cserébe a fájl kézzel is kellemesen bemásolható marad — ami a lényege,
-  hiszen ez lesz az Obsidian queue-jegyzet is.
+- **A lista a vault feldolgozási sora** (`<notes_dir>/_queue.md`): videónként
+  receptenként egy pipálható sor. A `scan --queue` fésüli bele a felderített
+  elemeket, a `run --queue` a kipipált (videó, recept) párokat dolgozza fel,
+  és az eredményt ugyanazokba a sorokba írja vissza. A receptválasztás így
+  videónként is lehetséges ([`decisions/0010`](<./decisions/0010-videonkenti-receptvalasztas.md>));
+  a `--recipe` kapcsolóval indított futás futás-szintű marad.
 
 ### Felderítés: nem figyelő, hanem szkennelés
 
