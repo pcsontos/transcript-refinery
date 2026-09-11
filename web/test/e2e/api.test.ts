@@ -202,4 +202,15 @@ describe('API', async () => {
     const failures = await $fetch<string>('/failures')
     expect(failures).toContain('wikilink tiltott')
   })
+
+  it('a futás oldalai a szerveren renderelve az adatot mutatják', async () => {
+    const list = await $fetch<string>('/runs')
+    expect(list).toContain('run --recipe summary')
+    expect(list).toContain('run --queue')
+
+    const run = await $fetch<string>(`/runs/${FINISHED_RUN}`)
+    expect(run).toContain('item:refined')
+    expect(run).toContain('$0.0123')
+    expect(run).toContain('Riport')
+  })
 })
