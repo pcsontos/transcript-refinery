@@ -121,11 +121,20 @@ transcript-refinery/        ← a mag a mostani helyén, egyben a workspace gyö
   `ignores` listája a `web/`-et kihagyja. A `web/` saját typechecket
   (`nuxi typecheck`, `vue-tsc`), lintet (`@nuxt/eslint`) és tesztet
   (`@nuxt/test-utils`) kap.
-- **Az első feladat három kockázatot próbál ki**, mielőtt bármi másra épülne:
-  a gyökércsomag behúzható-e a `web/`-be `workspace:*`-gal; a Nitro build
-  lefordítja-e a mag `dist/`-jét a `node:sqlite` importtal; és a
-  `createEventStream` a `node_server` presettel eljuttat-e egy eseményt a
-  böngészőig.
+- **A három kockázatot a terv írásakor kipróbáltuk** (2026-09-11, a repó
+  eldobható klónjában), ezért a terv a mag feladataival kezd:
+  - a `workspace:*` a gyökércsomagra működik
+    (`web/node_modules/transcript-refinery` → a gyökér);
+  - a Nitro build lefordítja a mag `dist/`-jét; a `node:sqlite`-ot a
+    `nitro.rollupConfig.external` jelöli külsőnek, figyelmeztetés nélkül;
+  - a `createEventStream` a `node_server` presettel darabonként eljuttatja az
+    eseményeket, `id`-vel és `Last-Event-ID`-vel;
+  - a szerver a `127.0.0.1`-en válaszol, a gép hálózati címén nem;
+  - a `@nuxt/test-utils` e2e-tesztje fájlonként egyetlen `setup()`-ot enged, a
+    szerver környezetét a `setup({ env })` adja;
+  - a pnpm 11 az új build scriptekre helykitöltőt ír az `allowBuilds`-ba
+    (`unrs-resolver`, `vue-demi` → `false`); a Nuxt UI `ui.fonts: false`-szal
+    és helyi `@iconify-json/lucide`-dal kifelé nem hív.
 
 ## 2. Nézetek és adatfolyam
 
@@ -204,23 +213,27 @@ transcript-refinery/        ← a mag a mostani helyén, egyben a workspace gyö
 
 ```sql
 CREATE TABLE IF NOT EXISTS artifact_gaps (
-  item_id  TEXT NOT NULL,
-  kind     TEXT NOT NULL,
-  position INTEGER NOT NULL,
-  gap      TEXT NOT NULL,
-  PRIMARY KEY (item_id, kind, position),
+  item_id TEXT NOT NULL,
+  kind    TEXT NOT NULL,
+  gaps    TEXT NOT NULL,
+  PRIMARY KEY (item_id, kind),
   FOREIGN KEY (item_id, kind) REFERENCES artifacts(item_id, kind)
 );
 ```
 
+- **Műtermékenként egy sor**, a hiánylista JSON-tömbként. A sor megléte
+  jelenti, hogy a lista rögzítve van; az üres tömb azt, hogy a bíró nem
+  nevezett meg hiányt. Soronként egy hiánnyal a kettő nem volna
+  megkülönböztethető, pedig az elem oldalának a változás előtti jegyzeteknél
+  ki kell írnia: „nincs rögzített hiánylista". (Pontosítás a terv írásakor.)
 - A meglévő `SCHEMA`-ba kerül; a `CREATE TABLE IF NOT EXISTS` miatt egy régi
   állapotfájl megnyitáskor megkapja. Oszlop nem változik, migráció nincs.
-- Az `ArtifactMetrics` új mezője: `gaps: string[]`. A `runRecipe` mindkét
-  rögzítő ágon (publikálható és `publishable: false`) a `RefineResult.gaps`-t
-  adja át.
-- A `recordArtifact` egyetlen tranzakcióban frissíti a műterméket, törli a
-  hozzá tartozó hiánysorokat, és beírja az újakat. `failed` rögzítésnél és
-  metrika nélküli rögzítésnél a hiánysorok törlődnek. Így egy `--force`
+- Az `ArtifactMetrics` új, opcionális mezője: `gaps?: string[]`. A `runRecipe`
+  mindkét rögzítő ágon (publikálható és `publishable: false`) a
+  `RefineResult.gaps`-t adja át.
+- A `recordArtifact` egyetlen tranzakcióban frissíti a műterméket és a
+  hiánylistáját: `done` állapotnál megadott listával lecseréli, minden más
+  esetben (`failed`, lista nélküli rögzítés) törli. Így egy `--force`
   újrafuttatás után nem marad régi hiány.
 - A `RoundTrace`, a mérés és az események nem változnak: az események
   továbbra is csak a hiányok **számát** viszik.
@@ -234,8 +247,9 @@ CREATE TABLE IF NOT EXISTS artifact_gaps (
   `openStateReader` is használ; a `corpusStatus` egyetlen helyen él.
 - A `StateReader` a felület igényeire szabott olvasó felület: az elemek sorai
   (az `items` és a `transcripts` összekapcsolva), a műtermékek sorai minden
-  típusra, egy (elem, típus) hiánylistája, a `corpusStatus`, a teljes költés és
-  a `close()`.
+  típusra, egy (elem, típus) hiánylistája (`null`, ha nincs rögzítve, vagy ha a
+  régi állapotfájlban még nincs meg a tábla), a `corpusStatus` — benne a teljes
+  költéssel — és a `close()`.
 
 ### Konfiguráció és export
 
@@ -311,10 +325,13 @@ ezért a `run:aborted` vizsgálata jön előbb.
 - `listRuns(logsDir)`: a mappa `<runId>.jsonl` fájljai (a nem `runId` alakú
   nevek kimaradnak), a párjuk riportjával, ha van; legújabb elöl. Hiányzó
   mappánál üres lista.
-- `readRunEvents(path, offset) → { lines, nextOffset, invalid }`: az `offset`-től
-  csak az újsorral lezárt sorokat adja vissza; a félig kiírt sort a következő
-  olvasásra hagyja; az értelmezhetetlen sort kihagyja, és az `invalid`
-  számlálóban jelzi.
+- `readRunEvents(path, offset) → { lines: { line, end }[], nextOffset, invalid }`:
+  az `offset`-től csak az újsorral lezárt sorokat adja vissza; a félig kiírt
+  sort a következő olvasásra hagyja; az értelmezhetetlen sort kihagyja, és az
+  `invalid` számlálóban jelzi.
+- `followRunLog(path, …)`: a napló követése az SSE-útvonal lépései szerint;
+  soronként a sort, az offsetet és a `liveRunState`-et adja. A követés logikája
+  így a magban, tesztelve él; a szerverútvonal csak továbbítja.
 
 ### Az SSE-útvonal
 
@@ -323,14 +340,17 @@ ezért a `run:aborted` vizsgálata jön előbb.
 1. A `runId`-t az `isRunId` ellenőrzi; nem illeszkedő vagy nem létező futásra 404.
 2. A kezdő offset a `Last-Event-ID` fejléc, ha az nemnegatív egész és nem
    nagyobb a fájl méreténél; különben 0.
-3. Minden sor egy üzenet: `data` = a naplósor JSON-ja, `id` = a sor utáni
-   `nextOffset`. Újracsatlakozáskor a böngésző ezt küldi vissza, így esemény
-   nem marad ki és nem ismétlődik.
+3. Minden sor egy üzenet: `data` = `{ line, state }` — a naplósor és a futás
+   állapota a napló elejétől számolva (a mag `liveRunState`-je) —, `id` = a sor
+   utáni offset. Újracsatlakozáskor a böngésző ezt küldi vissza, így esemény
+   nem marad ki és nem ismétlődik. Az állapot a magban számolódik, a kliens
+   csak megjeleníti.
 4. Az eddigi tartalom elküldése után 500 ms-onként megnézi, nőtt-e a fájl, és
    az új sorokat továbbítja.
 5. Lezárás: ha megjött a `run:ended`, vagy a `pid` már nem él — előtte még
    egyszer kiolvassa a fájlt. Ha a futás a csatlakozáskor már nem fut, a teljes
-   tartalom után azonnal zár.
+   tartalom után azonnal zár. Zárás előtt egy `end` nevű eseményt küld: enélkül
+   a böngésző `EventSource`-a a lezárt folyamra újra és újra csatlakozna.
 6. A kliens bontásakor (`onClosed`) a figyelés leáll.
 
 Méretfigyelés, nem fájlfigyelő: egyetlen fájl méretének ellenőrzése egyszerű
@@ -376,7 +396,7 @@ adattal, modellhívás nélkül:
   plafonos úton; az `item:generating` és `item:scored` sorrendje egy
   javítókörös futásban; a konzolkimenet változatlan (a meglévő
   `src/e2e.test.ts` stdout-állítása őrzi);
-- mutációs ellenőrzés: a `readOnly` kapcsoló, a hiánysorok cseréje, az
+- mutációs ellenőrzés: a `readOnly` kapcsoló, a hiánylista cseréje, az
   `isRunId` őr és a `run:aborted` előbb-vizsgálata egyenként eltávolítva
   legalább egy tesztet megbuktat.
 
@@ -388,7 +408,9 @@ ideiglenes vaultra, állapottárra és naplómappára):
 - a `..`-t tartalmazó futásazonosító 404;
 - a renderelt jegyzetben a nyers `<script>` szövegként jelenik meg
   (a `html: false` mutációja megbuktatja);
-- a naplóhoz hozzáfűzött sor megjelenik az SSE-folyamban.
+- a naplóhoz hozzáfűzött sor megjelenik az SSE-folyamban;
+- külön tesztfájlban, hiányzó konfigurációval: az API és az oldal is a
+  konfigurációs hibát mutatja (fájlonként egyetlen `setup()`).
 
 A Vue-komponensek nem kapnak egységtesztet: megjelenítenek, a typecheck és a
 lint védi őket.
