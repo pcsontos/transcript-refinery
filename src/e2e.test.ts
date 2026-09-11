@@ -2,16 +2,20 @@ import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { commandRun, commandScanQueue } from './cli.js'
 import { DEFAULT_NOTES_DIR, loadConfig } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
+import type { ModelClient } from './model/client.js'
 import { processItem } from './pipeline.js'
+import { queuePath } from './queue/file.js'
 import { renderReport } from './run/report.js'
 import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
 import { gitCommitPaths, isDirty } from './vault/git.js'
+import { noteFile } from './vault/paths.js'
 
 const run = promisify(execFile)
 
@@ -287,5 +291,91 @@ describe('végponttól végpontig', () => {
     expect(markdown).toContain(`- ${auto.title} (\`${auto.itemId}\`)`)
     expect(markdown).toContain('| youtube |')
     expect(markdown).toContain('| meetings |')
+  })
+})
+
+describe('végponttól végpontig — a feldolgozási sor valódi gittel', () => {
+  it('scan --queue, pipálás, run --queue: pontosan a várt commitok, tiszta és pusholt munkafa', async () => {
+    // Csupasz távoli repó, hogy a pull --ff-only és a push is valódi legyen.
+    const remote = join(work, 'remote.git')
+    const repo = join(work, 'vault-klon')
+    await run('git', ['init', '-q', '--bare', remote])
+    await run('git', ['clone', '-q', remote, repo])
+    await run('git', ['config', 'user.email', 'teszt@pelda.hu'], { cwd: repo })
+    await run('git', ['config', 'user.name', 'Teszt'], { cwd: repo })
+    await run('git', ['commit', '-q', '--allow-empty', '-m', 'kezdet'], { cwd: repo })
+    await run('git', ['push', '-q', '-u', 'origin', 'HEAD'], { cwd: repo })
+
+    await write(join(subsA, 'Cs', 'Elso.en.srt'), SRT)
+    await write(join(subsA, 'Cs', 'Masodik.en.srt'), SRT)
+    const raw = {
+      vault: { path: repo },
+      sources: [subsA],
+      state: { path: join(work, 'state.db') },
+      logs: { dir: join(work, 'logs') },
+      model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
+      pricing: {
+        draft: { input_per_million: 3, output_per_million: 15 },
+        judge: { input_per_million: 0.2, output_per_million: 0.5 },
+      },
+      cost_limit_usd: 5,
+    }
+    const cfg = loadConfig(raw, join(work, 'refinery.config.yaml'))
+    const client: ModelClient = {
+      generate: () =>
+        Promise.resolve({
+          value: '## Összefoglaló\n\nEgy mondat a jegyzetből.\n',
+          usage: { inputTokens: 10, outputTokens: 5 },
+        }),
+      generateObject: <T>() =>
+        Promise.resolve({
+          value: { score: 1, gaps: [] } as T,
+          usage: { inputTokens: 5, outputTokens: 2 },
+        }),
+    }
+
+    const mentettKulcs = process.env.LITELLM_API_KEY
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    try {
+      expect(await commandScanQueue(cfg, { dryRun: false, commit: true })).toBe(0)
+      const sor = queuePath(cfg.notesRoot)
+      // Az első videó summary-sora: a felderítés rendezett, az `Elso` áll elöl.
+      await writeFile(
+        sor,
+        (await readFile(sor, 'utf8')).replace('  - [ ] summary', '  - [x] summary'),
+        'utf8',
+      )
+
+      const code = await commandRun(
+        cfg,
+        raw,
+        { queue: true, dryRun: false, force: false, commit: true },
+        { createClient: () => client },
+      )
+      expect(code).toBe(0)
+
+      const log = await run('git', ['log', '--format=%s'], { cwd: repo })
+      expect(log.stdout.trim().split('\n')).toEqual([
+        'docs(videos): 2 jegyzet a feldolgozási sorból',
+        'docs(videos): feldolgozási sor frissítése',
+        'kezdet',
+      ])
+
+      const elso = (await discoverAll(cfg.sources, cfg.languages)).find((i) => i.baseName === 'Elso')!
+      const show = await run('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: repo })
+      expect(show.stdout.trim().split('\n').sort()).toEqual(
+        [
+          relative(repo, noteFile(cfg.notesRoot, elso, '_transcript.md')),
+          relative(repo, noteFile(cfg.notesRoot, elso, '_summary.md')),
+          relative(repo, sor),
+        ].sort(),
+      )
+      expect(await isDirty(repo)).toBe(false)
+      const status = await run('git', ['status', '-sb'], { cwd: repo })
+      expect(status.stdout).not.toContain('ahead')
+    } finally {
+      if (mentettKulcs === undefined) delete process.env.LITELLM_API_KEY
+      else process.env.LITELLM_API_KEY = mentettKulcs
+    }
   })
 })
