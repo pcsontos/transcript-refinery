@@ -460,4 +460,25 @@ describe('processItem recepttel', () => {
     )
     expect(refined!.usd).toBeCloseTo(3.2, 10)
   })
+
+  it('sérült feliratnál recept-futásban típusonként egy hibaeseményt küld', async () => {
+    const broken = item({ subtitlePath: join(dir, 'nincs.en.srt') })
+    const { sink, events } = collectEvents()
+
+    await processItem(broken, {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    const failed = events.filter(
+      (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
+    )
+    expect(failed.map((e) => e.kind)).toEqual([ARTIFACT_KIND, 'proba'])
+  })
 })

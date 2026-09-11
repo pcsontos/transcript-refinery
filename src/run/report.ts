@@ -86,12 +86,12 @@ export function renderReport(input: ReportInput): string {
   if (summary.failures.length > 0) {
     lines.push('## Hibák')
     lines.push('')
-    lines.push('| elem | forrás | ok |')
-    lines.push('|---|---|---|')
+    lines.push('| elem | típus | forrás | ok |')
+    lines.push('|---|---|---|---|')
     for (const failure of summary.failures) {
       lines.push(
-        `| \`${failure.itemId}\` | ${escapeTableCell(failure.source)} | ` +
-          `${escapeTableCell(failure.error)} |`,
+        `| \`${failure.itemId}\` | ${escapeTableCell(failure.kind)} | ` +
+          `${escapeTableCell(failure.source)} | ${escapeTableCell(failure.error)} |`,
       )
     }
     lines.push('')

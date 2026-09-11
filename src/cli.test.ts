@@ -847,16 +847,20 @@ describe('commandRun — a hibás elem a naplóban és a riportban', () => {
       .split('\n')
       .map((line) => JSON.parse(line) as RunEvent)
     const failed = events.filter((e) => e.type === 'item:failed')
-    expect(failed).toHaveLength(1)
+    // Recept-futásban a normalizáláson elbukó elem mindkét érintett típus
+    // alatt hibás: típusonként egy esemény.
+    expect(failed).toHaveLength(2)
     // A JSONL sor is megnevezi a forrásmappát — ugyanaz a bizonyítékigény
     // egy szinttel a riport alatt.
-    expect(failed[0]).toMatchObject({ itemId: 'a2', source: 'downloads' })
+    expect(failed[0]).toMatchObject({ itemId: 'a2', source: 'downloads', kind: 'transcript' })
+    expect(failed[1]).toMatchObject({ itemId: 'a2', source: 'downloads', kind: 'summary' })
 
     const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
     const report = await readFile(join(cfg.logsDir, md), 'utf8')
     expect(report).toContain('## Hibák')
-    // A spec §2.2: elemenként az azonosító, a FORRÁSMAPPA NEVE és az ok.
-    expect(report).toMatch(/\| `a2` \| downloads \| .+ \|/)
+    // A spec §2.2: elemenként az azonosító, a típus, a FORRÁSMAPPA NEVE és az ok.
+    expect(report).toMatch(/\| `a2` \| transcript \| downloads \| .+ \|/)
+    expect(report).toMatch(/\| `a2` \| summary \| downloads \| .+ \|/)
   })
 
   it('a már feldolgozott korpuszon a második futás kihagyottnak jelenti az elemeket', async () => {

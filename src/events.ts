@@ -23,6 +23,12 @@ export type RunEvent =
       itemId: string
       /** A forrásmappa neve — a riport „Hibák" táblája ezt is kiírja. */
       source: string
+      /**
+       * Az elbukott műtermék-típus: `transcript` vagy a recept azonosítója.
+       * Egy futás több receptet is vihet ugyanarra az elemre; enélkül a
+       * második hiba felülírná az elsőt.
+       */
+      kind: string
       error: string
     }
   | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
@@ -80,6 +86,8 @@ export interface RunFailure {
   itemId: string
   /** A forrásmappa neve: a hiba önmagában, keresés nélkül is elhelyezhető. */
   source: string
+  /** Az elbukott műtermék-típus. */
+  kind: string
   error: string
 }
 
@@ -115,14 +123,18 @@ export function collectEvents(): { sink: EventSink; events: RunEvent[] } {
  * Az összegzés **elemet** számol, nem eseményt: egy elem két jegyzetet is
  * publikálhat (átirat és recept), és az ugyanaz az egy siker. A hiba erősebb
  * a publikálásnál — ha a recept elbukott, az elem hibás, akkor is, ha az
- * átirata már kiment.
+ * átirata már kiment. A hibalista viszont (elem, típus) párokra bomlik: egy
+ * elem két receptjének hibája két sor.
  */
 export function summarize(events: readonly RunEvent[]): RunSummary {
   const captionOf = new Map<string, CaptionSource>()
   const titleOf = new Map<string, string>()
   const published = new Set<string>()
   const skipped = new Set<string>()
-  const failed = new Map<string, { source: string; error: string }>()
+  const failedItems = new Set<string>()
+  // (elem, típus) → hibasor. A Map beszúrási sorrendje az első előfordulásé,
+  // az érték az utolsó hibáé.
+  const failures = new Map<string, RunFailure>()
 
   for (const e of events) {
     switch (e.type) {
@@ -139,14 +151,20 @@ export function summarize(events: readonly RunEvent[]): RunSummary {
         skipped.add(e.itemId)
         break
       case 'item:failed':
-        failed.set(e.itemId, { source: e.source, error: e.error })
+        failedItems.add(e.itemId)
+        failures.set(JSON.stringify([e.itemId, e.kind]), {
+          itemId: e.itemId,
+          source: e.source,
+          kind: e.kind,
+          error: e.error,
+        })
         break
       default:
         break
     }
   }
 
-  for (const itemId of failed.keys()) {
+  for (const itemId of failedItems) {
     published.delete(itemId)
     skipped.delete(itemId)
   }
@@ -174,9 +192,9 @@ export function summarize(events: readonly RunEvent[]): RunSummary {
   return {
     succeeded: published.size,
     skipped: skipped.size,
-    failed: failed.size,
+    failed: failedItems.size,
     byCaptionSource,
     autoItems,
-    failures: [...failed].map(([itemId, { source, error }]) => ({ itemId, source, error })),
+    failures: [...failures.values()],
   }
 }

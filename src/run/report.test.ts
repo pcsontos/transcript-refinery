@@ -14,7 +14,7 @@ function input(overrides: Partial<ReportInput> = {}): ReportInput {
       byCaptionSource: { creator: 1, auto: 1 },
       autoItems: [{ itemId: 'eloadas-02', title: 'Második előadás' }],
       failures: [
-        { itemId: 'mit-6-042-l14', source: 'youtube', error: 'olvashatatlan felirat' },
+        { itemId: 'mit-6-042-l14', source: 'youtube', kind: 'summary', error: 'olvashatatlan felirat' },
       ],
     },
     corpus: {
@@ -65,10 +65,10 @@ describe('renderReport', () => {
     expect(md).toContain('- Első sor Második sor (`x`)')
   })
 
-  it('a hibát az elemmel, a forrásmappával és az okkal együtt nevezi meg', () => {
+  it('a hibát az elemmel, a típussal, a forrásmappával és az okkal együtt nevezi meg', () => {
     const md = renderReport(input())
-    expect(md).toContain('| elem | forrás | ok |')
-    expect(md).toContain('| `mit-6-042-l14` | youtube | olvashatatlan felirat |')
+    expect(md).toContain('| elem | típus | forrás | ok |')
+    expect(md).toContain('| `mit-6-042-l14` | summary | youtube | olvashatatlan felirat |')
   })
 
   it('forrásonként kiírja a korpusz állapotát', () => {
@@ -141,6 +141,7 @@ describe('renderReport', () => {
             {
               itemId: 'test-item',
               source: 'furcsa | forrás',
+              kind: 'summary',
               error: 'YAML parse error at line 5\nexpected "key" | got "|"',
             },
           ],
@@ -153,7 +154,7 @@ describe('renderReport', () => {
     expect(md).toContain('\\|')
     // A teljes sor: a forrás és az ok oszlopa is átment az escapelésen.
     expect(md).toContain(
-      '| `test-item` | furcsa \\| forrás | YAML parse error at line 5 expected "key" \\| got "\\|" |',
+      '| `test-item` | summary | furcsa \\| forrás | YAML parse error at line 5 expected "key" \\| got "\\|" |',
     )
   })
 })

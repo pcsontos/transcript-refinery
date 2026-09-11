@@ -19,14 +19,14 @@ describe('openRunLog', () => {
   it('eseményenként egy önállóan értelmezhető JSON sort ír', async () => {
     const log = openRunLog(join(work, 'naplo', '2026-09-07T02-14-03.jsonl'))
     log.sink({ type: 'scan:found', count: 2 })
-    log.sink({ type: 'item:failed', itemId: 'a', source: 'youtube', error: 'olvashatatlan felirat' })
+    log.sink({ type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'transcript', error: 'olvashatatlan felirat' })
     log.close()
 
     const lines = (await readFile(log.path, 'utf8')).trim().split('\n')
     expect(lines).toHaveLength(2)
     expect(lines.map((line) => JSON.parse(line) as unknown)).toEqual([
       { type: 'scan:found', count: 2 },
-      { type: 'item:failed', itemId: 'a', source: 'youtube', error: 'olvashatatlan felirat' },
+      { type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'transcript', error: 'olvashatatlan felirat' },
     ])
   })
 

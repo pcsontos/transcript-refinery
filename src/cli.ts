@@ -84,7 +84,7 @@ function render(event: RunEvent): string | null {
     case 'item:skipped':
       return `  – ${event.itemId}: ${event.reason}`
     case 'item:failed':
-      return `  ✗ ${event.itemId}: ${event.error}`
+      return `  ✗ ${event.itemId} (${event.kind}): ${event.error}`
     case 'run:estimate':
       return `Becslés: ${String(event.items)} elem, ~${event.tokens.toLocaleString('hu-HU')} token, ~${event.usd.toFixed(4)} $ (plafon: ${event.limitUsd.toFixed(4)} $)`
     case 'run:aborted':
