@@ -41,6 +41,18 @@ export type RunEvent =
     }
   | { type: 'run:aborted'; reason: string; spentUsd: number; limitUsd: number }
   | {
+      type: 'run:started'
+      /** A futást indító parancssor, kapcsolókkal. */
+      command: string
+      /** A futó folyamat azonosítója: a felület ebből dönti el, él-e még a futás. */
+      pid: number
+    }
+  | {
+      type: 'run:ended'
+      /** Igaz, ha a futást megszakítás (SIGINT) zárta le. */
+      interrupted: boolean
+    }
+  | {
       type: 'item:generating'
       itemId: string
       recipe: string
