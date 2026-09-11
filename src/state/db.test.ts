@@ -206,3 +206,69 @@ describe('listFailed', () => {
     expect(store.listFailed([a], 'transcript').map((i) => i.itemId)).toEqual(['a'])
   })
 })
+
+describe('StateStore — hiánylista', () => {
+  const metrics = { iterations: 1, score: 0.6, costUsd: 0.01, model: 'szintetikus-modell' }
+
+  it('a metrikákkal együtt rögzíti, és visszaadja', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'summary', 'done', '/v/a_summary.md', null, {
+      ...metrics,
+      gaps: ['kimaradt: a zárás'],
+    })
+    expect(store.gapsOf('a1b2c3', 'summary')).toEqual(['kimaradt: a zárás'])
+  })
+
+  it('az üres lista rögzített, és különbözik a nem rögzítettől', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'summary', 'done', '/v/a.md', null, { ...metrics, gaps: [] })
+    store.recordArtifact('a1b2c3', 'qa', 'done', '/v/b.md', null, metrics)
+    expect(store.gapsOf('a1b2c3', 'summary')).toEqual([])
+    expect(store.gapsOf('a1b2c3', 'qa')).toBeNull()
+  })
+
+  it('újrarögzítéskor lecseréli a régit', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'summary', 'done', '/v/a.md', null, {
+      ...metrics,
+      gaps: ['régi hiány'],
+    })
+    store.recordArtifact('a1b2c3', 'summary', 'done', '/v/a.md', null, {
+      ...metrics,
+      gaps: ['új hiány'],
+    })
+    expect(store.gapsOf('a1b2c3', 'summary')).toEqual(['új hiány'])
+  })
+
+  it('hibás rögzítésnél törli', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'summary', 'done', '/v/a.md', null, {
+      ...metrics,
+      gaps: ['hiány'],
+    })
+    store.recordArtifact('a1b2c3', 'summary', 'failed', null, 'szintetikus hiba')
+    expect(store.gapsOf('a1b2c3', 'summary')).toBeNull()
+  })
+
+  it('a hiánylista-tábla nélküli állapotfájl megnyitás után megkapja a táblát', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'refinery-regi-'))
+    const path = join(dir, 'state.db')
+    const old = new DatabaseSync(path)
+    old.exec(
+      `CREATE TABLE artifacts (
+         item_id TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL, path TEXT,
+         error TEXT, iterations INTEGER, score REAL, cost_usd REAL, model TEXT,
+         created_at TEXT NOT NULL, PRIMARY KEY (item_id, kind))`,
+    )
+    old.close()
+
+    openState(path).close()
+
+    const check = new DatabaseSync(path)
+    const tables = check
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'artifact_gaps'")
+      .all()
+    check.close()
+    expect(tables).toHaveLength(1)
+  })
+})

@@ -155,6 +155,7 @@ async function runRecipe(
         score: result.score,
         costUsd: usd,
         model: modelConfig.models[recipe.role],
+        gaps: result.gaps,
       })
     }
     return { status: 'skipped' }
@@ -188,6 +189,7 @@ async function runRecipe(
         score: result.score,
         costUsd: usd,
         model: modelConfig.models[recipe.role],
+        gaps: result.gaps,
       },
     )
   }

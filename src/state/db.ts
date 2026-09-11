@@ -40,6 +40,14 @@ CREATE TABLE IF NOT EXISTS artifacts (
   created_at TEXT NOT NULL,
   PRIMARY KEY (item_id, kind)
 );
+
+CREATE TABLE IF NOT EXISTS artifact_gaps (
+  item_id TEXT NOT NULL,
+  kind    TEXT NOT NULL,
+  gaps    TEXT NOT NULL,
+  PRIMARY KEY (item_id, kind),
+  FOREIGN KEY (item_id, kind) REFERENCES artifacts(item_id, kind)
+);
 `
 
 export interface TranscriptRecord {
@@ -56,6 +64,12 @@ export interface ArtifactMetrics {
   costUsd: number
   /** A ténylegesen futott generáló modell neve. */
   model: string
+  /**
+   * A megtartott kimenet hiánylistája, ahogy a bíró megnevezte. Hiánya azt
+   * jelenti, hogy nincs rögzítve; az üres tömb azt, hogy a bíró nem talált
+   * hiányt. A felület a kettőt megkülönbözteti.
+   */
+  gaps?: string[]
 }
 
 export interface ArtifactRecord {
@@ -113,6 +127,8 @@ export interface StateStore {
     metrics?: ArtifactMetrics,
   ): void
   artifactOf(itemId: string, kind: string): ArtifactRecord | null
+  /** A rögzített hiánylista; `null`, ha nincs rögzítve. */
+  gapsOf(itemId: string, kind: string): string[] | null
   transcriptOf(itemId: string): TranscriptRecord | null
   isDone(itemId: string, kind: string): boolean
   listPending(items: SourceItem[], kind: string): SourceItem[]
@@ -214,31 +230,55 @@ export function openState(path: string): StateStore {
     },
 
     recordArtifact(itemId, kind, status, path, error, metrics) {
-      db.prepare(
-        `INSERT INTO artifacts
-           (item_id, kind, status, path, error, iterations, score, cost_usd, model, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(item_id, kind) DO UPDATE SET
-           status = excluded.status,
-           path = excluded.path,
-           error = excluded.error,
-           iterations = excluded.iterations,
-           score = excluded.score,
-           cost_usd = excluded.cost_usd,
-           model = excluded.model,
-           created_at = excluded.created_at`,
-      ).run(
-        itemId,
-        kind,
-        status,
-        path,
-        error,
-        metrics?.iterations ?? null,
-        metrics?.score ?? null,
-        metrics?.costUsd ?? null,
-        metrics?.model ?? null,
-        now(),
-      )
+      // Egy tranzakcióban: a műtermék és a hiánylistája együtt változik, így egy
+      // újrafuttatás után sem maradhat a régi kimenet hiánylistája az új mellett.
+      db.exec('BEGIN')
+      try {
+        db.prepare(
+          `INSERT INTO artifacts
+             (item_id, kind, status, path, error, iterations, score, cost_usd, model, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(item_id, kind) DO UPDATE SET
+             status = excluded.status,
+             path = excluded.path,
+             error = excluded.error,
+             iterations = excluded.iterations,
+             score = excluded.score,
+             cost_usd = excluded.cost_usd,
+             model = excluded.model,
+             created_at = excluded.created_at`,
+        ).run(
+          itemId,
+          kind,
+          status,
+          path,
+          error,
+          metrics?.iterations ?? null,
+          metrics?.score ?? null,
+          metrics?.costUsd ?? null,
+          metrics?.model ?? null,
+          now(),
+        )
+        db.prepare('DELETE FROM artifact_gaps WHERE item_id = ? AND kind = ?').run(itemId, kind)
+        if (status === 'done' && metrics?.gaps !== undefined) {
+          db.prepare('INSERT INTO artifact_gaps (item_id, kind, gaps) VALUES (?, ?, ?)').run(
+            itemId,
+            kind,
+            JSON.stringify(metrics.gaps),
+          )
+        }
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
+    },
+
+    gapsOf(itemId, kind) {
+      const row = db
+        .prepare('SELECT gaps FROM artifact_gaps WHERE item_id = ? AND kind = ?')
+        .get(itemId, kind) as { gaps: string } | undefined
+      return row ? (JSON.parse(row.gaps) as string[]) : null
     },
 
     artifactOf(itemId, kind) {

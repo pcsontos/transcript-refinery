@@ -482,3 +482,49 @@ describe('processItem recepttel', () => {
     expect(failed.map((e) => e.kind)).toEqual([ARTIFACT_KIND, 'proba'])
   })
 })
+
+describe('processItem — a hiánylista rögzítése', () => {
+  /** Recept, aminek a bírója hiányt nevez meg; javító kör nincs. */
+  const HIANYOS_RECEPT: Recipe = {
+    ...ATMENO_RECEPT,
+    rubric: {
+      criteria: [
+        {
+          name: 'hianyos',
+          score: () => Promise.resolve({ value: 0.6, gaps: ['kimaradt: a második pont'] }),
+        },
+      ],
+      passThreshold: 0.8,
+    },
+  }
+
+  it('a megtartott kimenet hiánylistáját az állapottárba írja', async () => {
+    const deps = alapDeps()
+    const current = item()
+    await processItem(current, {
+      ...deps,
+      recipeDeps: {
+        recipe: HIANYOS_RECEPT,
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+    expect(deps.store.gapsOf(current.itemId, 'proba')).toEqual(['kimaradt: a második pont'])
+  })
+
+  it('a nem publikálható receptnél is rögzíti', async () => {
+    const deps = alapDeps()
+    const current = item()
+    await processItem(current, {
+      ...deps,
+      recipeDeps: {
+        recipe: { ...HIANYOS_RECEPT, publishable: false },
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+    expect(deps.store.gapsOf(current.itemId, 'proba')).toEqual(['kimaradt: a második pont'])
+  })
+})
