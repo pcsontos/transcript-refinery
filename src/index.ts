@@ -68,3 +68,15 @@ export {
   type ScoreDistribution,
 } from './view/overview.js'
 export type { KindCorpus } from './run/report.js'
+export {
+  buildItemRows,
+  readItemDetail,
+  readItems,
+  stripFrontmatter,
+  type ArtifactDetail,
+  type CellStatus,
+  type ItemCell,
+  type ItemDetail,
+  type ItemListRow,
+} from './view/items.js'
+export { groupFailures, readFailures, type FailureGroup } from './view/failures.js'
