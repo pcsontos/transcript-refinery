@@ -290,7 +290,11 @@ export async function commandRun(
       const entries: BudgetEntry<SourceItem>[] = []
       for (const item of pending) {
         try {
-          entries.push({ value: item, words: (await normalizeItem(item)).wordsNormalized })
+          entries.push({
+            value: item,
+            words: (await normalizeItem(item)).wordsNormalized,
+            maxIterations,
+          })
         } catch {
           // Az elem, aminek a normalizálása dob (olvashatatlan fájl, üres
           // felirat), csak a BECSLÉSBŐL marad ki — szószám híján nincs mit
@@ -300,7 +304,7 @@ export async function commandRun(
         }
       }
 
-      const slice = sliceToBudget(entries, maxIterations, recipeDeps.modelConfig)
+      const slice = sliceToBudget(entries, recipeDeps.modelConfig)
       const limitUsd = recipeDeps.modelConfig.costLimitUsd
 
       printing({
@@ -317,7 +321,7 @@ export async function commandRun(
       // első sem fér a plafon alá.
       const first = entries[0]
       if (first !== undefined && slice.planned.length === 0) {
-        const firstUsd = estimateItemUsd(first.words, maxIterations, recipeDeps.modelConfig)
+        const firstUsd = estimateItemUsd(first.words, first.maxIterations, recipeDeps.modelConfig)
         printing({
           type: 'run:aborted',
           reason: `már az első elem becsült költsége (${firstUsd.toFixed(4)} $) meghaladja a plafont`,

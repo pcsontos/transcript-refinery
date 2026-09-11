@@ -56,11 +56,10 @@ describe('sliceToBudget', () => {
     const cfg = limitel(egy * 2.5)
     const slice = sliceToBudget(
       [
-        { value: 'a', words: 1_000 },
-        { value: 'b', words: 1_000 },
-        { value: 'c', words: 1_000 },
+        { value: 'a', words: 1_000, maxIterations: 0 },
+        { value: 'b', words: 1_000, maxIterations: 0 },
+        { value: 'c', words: 1_000, maxIterations: 0 },
       ],
-      0,
       cfg,
     )
 
@@ -70,20 +69,23 @@ describe('sliceToBudget', () => {
   })
 
   it('a plafon alá férő teljes köteget elindítja', () => {
-    const slice = sliceToBudget([{ value: 'a', words: 100 }], 0, limitel(1_000))
+    const slice = sliceToBudget([{ value: 'a', words: 100, maxIterations: 0 }], limitel(1_000))
     expect(slice.planned).toEqual(['a'])
     expect(slice.deferred).toEqual([])
   })
 
   it('ha az első elem sem fér be, üres tervet ad', () => {
-    const slice = sliceToBudget([{ value: 'a', words: 5_000 }], 0, limitel(0.000001))
+    const slice = sliceToBudget(
+      [{ value: 'a', words: 5_000, maxIterations: 0 }],
+      limitel(0.000001),
+    )
     expect(slice.planned).toEqual([])
     expect(slice.deferred).toEqual(['a'])
     expect(slice.usd).toBe(0)
   })
 
   it('üres bemenetre üres tervet ad', () => {
-    expect(sliceToBudget([], 0, limitel(5))).toEqual({
+    expect(sliceToBudget([], limitel(5))).toEqual({
       planned: [],
       deferred: [],
       usd: 0,
@@ -95,10 +97,9 @@ describe('sliceToBudget', () => {
     const cfg = limitel(1_000)
     const slice = sliceToBudget(
       [
-        { value: 'a', words: 800 },
-        { value: 'b', words: 1_200 },
+        { value: 'a', words: 800, maxIterations: 1 },
+        { value: 'b', words: 1_200, maxIterations: 1 },
       ],
-      1,
       cfg,
     )
 
@@ -117,16 +118,39 @@ describe('sliceToBudget', () => {
 
     const slice = sliceToBudget(
       [
-        { value: 'a', words: 1_000 }, // befér, tölti a keretet
-        { value: 'b', words: 5_000 }, // jóval túllépi a plafont — itt kell megállnia
-        { value: 'c', words: 200 }, // önmagában beférne, de a plafon már elfogyott
+        { value: 'a', words: 1_000, maxIterations: 0 }, // befér, tölti a keretet
+        { value: 'b', words: 5_000, maxIterations: 0 }, // jóval túllépi a plafont — itt kell megállnia
+        { value: 'c', words: 200, maxIterations: 0 }, // önmagában beférne, de a plafon már elfogyott
       ],
-      0,
       cfg,
     )
 
     expect(slice.planned).toEqual(['a'])
     expect(slice.deferred).toEqual(['b', 'c'])
+  })
+
+  it('bejegyzésenként a saját maxIterations-szel becsül', () => {
+    const olcso = estimateItemUsd(1_000, 0, CFG)
+    const draga = estimateItemUsd(1_000, 2, CFG)
+    // A plafon egy olcsó és egy drága elemre elég, egy második olcsóra már
+    // nem. Közös iterációszámmal a vágás mást adna: 2-vel már a második elem
+    // sem férne be, 0-val a harmadik is befutna.
+    const cfg = limitel(olcso + draga + olcso * 0.5)
+    const slice = sliceToBudget(
+      [
+        { value: 'olcso', words: 1_000, maxIterations: 0 },
+        { value: 'draga', words: 1_000, maxIterations: 2 },
+        { value: 'olcso2', words: 1_000, maxIterations: 0 },
+      ],
+      cfg,
+    )
+
+    expect(slice.planned).toEqual(['olcso', 'draga'])
+    expect(slice.deferred).toEqual(['olcso2'])
+    expect(slice.usd).toBeCloseTo(olcso + draga, 10)
+    expect(slice.tokens).toBe(
+      estimateRunUsd([1_000], 0, cfg).tokens + estimateRunUsd([1_000], 2, cfg).tokens,
+    )
   })
 })
 

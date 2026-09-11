@@ -72,6 +72,11 @@ export interface BudgetEntry<T> {
   value: T
   /** A normalizált átirat szószáma — ebből jön a becslés. */
   words: number
+  /**
+   * A bejegyzés receptjének javítási korlátja. Bejegyzésenként, mert egy
+   * futás több receptet vihet, és azok korlátja eltérhet.
+   */
+  maxIterations: number
 }
 
 export interface BudgetSlice<T> {
@@ -93,7 +98,6 @@ export interface BudgetSlice<T> {
  */
 export function sliceToBudget<T>(
   entries: readonly BudgetEntry<T>[],
-  maxIterations: number,
   cfg: ModelConfig,
 ): BudgetSlice<T> {
   const planned: T[] = []
@@ -107,14 +111,14 @@ export function sliceToBudget<T>(
       deferred.push(entry.value)
       continue
     }
-    const itemUsd = estimateItemUsd(entry.words, maxIterations, cfg)
+    const itemUsd = estimateItemUsd(entry.words, entry.maxIterations, cfg)
     if (usd + itemUsd > cfg.costLimitUsd) {
       full = true
       deferred.push(entry.value)
       continue
     }
     usd += itemUsd
-    tokens += estimateRunUsd([entry.words], maxIterations, cfg).tokens
+    tokens += estimateRunUsd([entry.words], entry.maxIterations, cfg).tokens
     planned.push(entry.value)
   }
 
