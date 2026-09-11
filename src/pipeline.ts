@@ -125,8 +125,17 @@ async function runRecipe(
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
   const result = await refine(recipe, { item, transcript: text }, client)
 
-  guard.add('draft', result.usage, modelConfig)
-  const usd = costOf(result.usage, modelConfig.pricing.draft)
+  // Körönként és szerepenként könyvelünk: a generálás a recept szerepén, a
+  // pontozás a bíróén. Az összevont `result.usage` a bíró tokenjeit is a
+  // vázlatmodell árán számolná — a mérő script ezt épp elkerüli.
+  let usd = 0
+  for (const round of result.rounds) {
+    guard.add(recipe.role, round.generateUsage, modelConfig)
+    guard.add('judge', round.scoreUsage, modelConfig)
+    usd +=
+      costOf(round.generateUsage, modelConfig.pricing[recipe.role]) +
+      costOf(round.scoreUsage, modelConfig.pricing.judge)
+  }
 
   deps.sink({
     type: 'item:refined',
