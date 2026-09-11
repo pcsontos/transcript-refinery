@@ -98,6 +98,24 @@ A sorrend nem ízlés kérdése: **egy szép felület egy ki nem értékelt cső
 fölött pont az ellenkezőjét üzeni annak, amit ez a projekt állít magáról.** A
 mérés előbb.
 
+**A queue-jegyzet — státusz: kész** (2026-09-11). Spec és terv:
+[`plans/2026-09-11-fazis-5-queue-jegyzet-spec.md`](<./plans/2026-09-11-fazis-5-queue-jegyzet-spec.md>),
+[`plans/2026-09-11-fazis-5-queue-jegyzet.md`](<./plans/2026-09-11-fazis-5-queue-jegyzet.md>).
+
+**Kész, ha (queue-jegyzet):**
+
+- Friss vaulton a `scan --queue` létrehozza a sort minden felderített
+  videóval, receptenként egy üres pipával; másodszor futtatva **bájtra
+  azonos**, commit nélkül.
+- Kipipált párokra a `run --queue` pontosan azokat a jegyzeteket készíti el,
+  pontosan azokat a sorokat írja vissza, és **egyetlen commitot** készít, benne
+  csak ezekkel a fájlokkal és a sorral.
+- Ugyanaz a `run --queue` másodszor **nulla modellhívással** és commit nélkül
+  fut le.
+- A plafon az egész indításra vonatkozik: ami nem fér alá, a sorban ⏳-t kap.
+- A saját megjegyzéssorok és a kézi átrendezés túlélik a `scan --queue`-t és a
+  `run --queue`-t.
+
 ## v2 és utána
 
 Nem befolyásolja a v1 architektúráját:

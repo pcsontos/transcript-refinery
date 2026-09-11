@@ -125,8 +125,17 @@ async function runRecipe(
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
   const result = await refine(recipe, { item, transcript: text }, client)
 
-  guard.add('draft', result.usage, modelConfig)
-  const usd = costOf(result.usage, modelConfig.pricing.draft)
+  // Körönként és szerepenként könyvelünk: a generálás a recept szerepén, a
+  // pontozás a bíróén. Az összevont `result.usage` a bíró tokenjeit is a
+  // vázlatmodell árán számolná — a mérő script ezt épp elkerüli.
+  let usd = 0
+  for (const round of result.rounds) {
+    guard.add(recipe.role, round.generateUsage, modelConfig)
+    guard.add('judge', round.scoreUsage, modelConfig)
+    usd +=
+      costOf(round.generateUsage, modelConfig.pricing[recipe.role]) +
+      costOf(round.scoreUsage, modelConfig.pricing.judge)
+  }
 
   deps.sink({
     type: 'item:refined',
@@ -249,7 +258,13 @@ export async function processItem(
       } catch (error) {
         const message = (error as Error).message
         store.recordArtifact(item.itemId, recipeDeps.recipe.id, 'failed', null, message)
-        sink({ type: 'item:failed', itemId: item.itemId, source: item.source, error: message })
+        sink({
+          type: 'item:failed',
+          itemId: item.itemId,
+          source: item.source,
+          kind: recipeDeps.recipe.id,
+          error: message,
+        })
         // A recept hibája nem ronthatja el az átirat már sikeres állapotát —
         // az `outcome` a már elért eredményt (vagy a kezdeti 'skipped'-et) tartja meg.
       }
@@ -262,11 +277,28 @@ export async function processItem(
     // a `store.corpusStatus`/`store.listFailed` a recept azonosítója alatt
     // keres (lásd `cli.ts` `artifactKind`), nem `ARTIFACT_KIND` alatt —
     // enélkül az elem örökre „hátra" (pending) maradna a korpuszriportban.
-    if (kellAtirat) store.recordArtifact(item.itemId, ARTIFACT_KIND, 'failed', null, message)
+    // Típusonként egy esemény is megy: a riport hibalistája (elem, típus)
+    // párokra bomlik.
+    if (kellAtirat) {
+      store.recordArtifact(item.itemId, ARTIFACT_KIND, 'failed', null, message)
+      sink({
+        type: 'item:failed',
+        itemId: item.itemId,
+        source: item.source,
+        kind: ARTIFACT_KIND,
+        error: message,
+      })
+    }
     if (kellRecept && recipeDeps) {
       store.recordArtifact(item.itemId, recipeDeps.recipe.id, 'failed', null, message)
+      sink({
+        type: 'item:failed',
+        itemId: item.itemId,
+        source: item.source,
+        kind: recipeDeps.recipe.id,
+        error: message,
+      })
     }
-    sink({ type: 'item:failed', itemId: item.itemId, source: item.source, error: message })
     return { status: 'failed', error: message }
   }
 }

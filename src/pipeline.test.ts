@@ -3,10 +3,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { MockLanguageModelV4 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { collectEvents } from './events.js'
+import { collectEvents, type RunEvent } from './events.js'
 import { createCostGuard } from './model/budget.js'
 import { modelClientFrom, type ModelClient } from './model/client.js'
 import { ARTIFACT_KIND, processItem, type PipelineDeps } from './pipeline.js'
+import { faithfulnessCriterion } from './rubric/judge.js'
 import type { Recipe } from './recipe/types.js'
 import { openState, type StateStore } from './state/db.js'
 import type { SourceItem } from './types.js'
@@ -419,5 +420,65 @@ describe('processItem recepttel', () => {
     expect(deps.store.artifactOf(broken.itemId, ARTIFACT_KIND)?.status).toBe('failed')
     expect(deps.store.artifactOf(broken.itemId, recipeDeps.recipe.id)?.status).toBe('failed')
     expect(deps.store.corpusStatus([broken], recipeDeps.recipe.id).failed).toBe(1)
+  })
+
+  it('a bíró tokenjeit a bíró árán könyveli, nem a vázlatmodellén', async () => {
+    // Egy generálás és egy bíró-hívás, egyenként egymillió bemeneti tokennel.
+    // Helyesen: 1M × 3 $ (draft) + 1M × 0,2 $ (judge) = 3,20 $. A javítás
+    // előtt mindkettő a draft árán ment: 2M × 3 $ = 6,00 $.
+    const biroRecept: Recipe = {
+      ...ATMENO_RECEPT,
+      id: 'biros',
+      rubric: { criteria: [faithfulnessCriterion], passThreshold: 0.8 },
+    }
+    const client: ModelClient = {
+      generate: () =>
+        Promise.resolve({
+          value: '## Jegyzet\n',
+          usage: { inputTokens: 1_000_000, outputTokens: 0 },
+        }),
+      generateObject: <T>() =>
+        Promise.resolve({
+          value: { score: 1, gaps: [] } as T,
+          usage: { inputTokens: 1_000_000, outputTokens: 0 },
+        }),
+    }
+    const guard = createCostGuard(100)
+    const { sink, events } = collectEvents()
+    const deps = { ...alapDeps(), sink }
+    const current = item()
+
+    await processItem(current, {
+      ...deps,
+      recipeDeps: { recipe: biroRecept, client, modelConfig: MODELL_CFG, guard },
+    })
+
+    expect(guard.spentUsd()).toBeCloseTo(3.2, 10)
+    expect(deps.store.artifactOf(current.itemId, 'biros')!.costUsd).toBeCloseTo(3.2, 10)
+    const refined = events.find(
+      (e): e is Extract<RunEvent, { type: 'item:refined' }> => e.type === 'item:refined',
+    )
+    expect(refined!.usd).toBeCloseTo(3.2, 10)
+  })
+
+  it('sérült feliratnál recept-futásban típusonként egy hibaeseményt küld', async () => {
+    const broken = item({ subtitlePath: join(dir, 'nincs.en.srt') })
+    const { sink, events } = collectEvents()
+
+    await processItem(broken, {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    const failed = events.filter(
+      (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
+    )
+    expect(failed.map((e) => e.kind)).toEqual([ARTIFACT_KIND, 'proba'])
   })
 })

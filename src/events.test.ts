@@ -90,12 +90,12 @@ describe('summarize — elemszintű összegzés', () => {
     const summary = summarize([
       { type: 'item:normalized', itemId: 'a', wordsRaw: 100, wordsNormalized: 40, captionSource: 'auto' },
       { type: 'item:published', itemId: 'a', path: '/v/a_transcript.md' },
-      { type: 'item:failed', itemId: 'a', source: 'youtube', error: 'a bíró nem válaszolt' },
+      { type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'summary', error: 'a bíró nem válaszolt' },
     ])
     expect(summary).toEqual({
       ...EMPTY_SUMMARY,
       failed: 1,
-      failures: [{ itemId: 'a', source: 'youtube', error: 'a bíró nem válaszolt' }],
+      failures: [{ itemId: 'a', source: 'youtube', kind: 'summary', error: 'a bíró nem válaszolt' }],
     })
   })
 
@@ -122,12 +122,12 @@ describe('summarize — elemszintű összegzés', () => {
 
   it('metaadat nélküli, normalizálás előtt elbukott elem nem kerül a bontásba', () => {
     const summary = summarize([
-      { type: 'item:failed', itemId: 'x', source: 'meetings', error: 'olvashatatlan felirat' },
+      { type: 'item:failed', itemId: 'x', source: 'meetings', kind: 'transcript', error: 'olvashatatlan felirat' },
     ])
     expect(summary).toEqual({
       ...EMPTY_SUMMARY,
       failed: 1,
-      failures: [{ itemId: 'x', source: 'meetings', error: 'olvashatatlan felirat' }],
+      failures: [{ itemId: 'x', source: 'meetings', kind: 'transcript', error: 'olvashatatlan felirat' }],
     })
   })
 
@@ -137,7 +137,7 @@ describe('summarize — elemszintű összegzés', () => {
       { type: 'item:published', itemId: 'a', path: '/x/a.md' },
       { type: 'item:normalized', itemId: 'b', wordsRaw: 100, wordsNormalized: 40, captionSource: 'auto' },
       { type: 'item:skipped', itemId: 'b', reason: 'már feldolgozva' },
-      { type: 'item:failed', itemId: 'c', source: 'youtube', error: 'nincs felirat' },
+      { type: 'item:failed', itemId: 'c', source: 'youtube', kind: 'transcript', error: 'nincs felirat' },
       { type: 'item:normalized', itemId: 'd', wordsRaw: 100, wordsNormalized: 40, captionSource: 'creator' },
       { type: 'item:published', itemId: 'd', path: '/x/d.md' },
     ])
@@ -147,16 +147,40 @@ describe('summarize — elemszintű összegzés', () => {
       skipped: 1,
       failed: 1,
       byCaptionSource: { creator: 2, auto: 0 },
-      failures: [{ itemId: 'c', source: 'youtube', error: 'nincs felirat' }],
+      failures: [{ itemId: 'c', source: 'youtube', kind: 'transcript', error: 'nincs felirat' }],
     })
   })
 
   it('a hiba a forrásmappát is megőrzi', () => {
     const summary = summarize([
-      { type: 'item:failed', itemId: 'x', source: 'eloadasok', error: 'olvashatatlan felirat' },
+      { type: 'item:failed', itemId: 'x', source: 'eloadasok', kind: 'transcript', error: 'olvashatatlan felirat' },
     ])
     expect(summary.failures).toEqual([
-      { itemId: 'x', source: 'eloadasok', error: 'olvashatatlan felirat' },
+      { itemId: 'x', source: 'eloadasok', kind: 'transcript', error: 'olvashatatlan felirat' },
+    ])
+  })
+
+  it('egy elem két típusának hibája két hibasor, de egyetlen hibás elem', () => {
+    const summary = summarize([
+      { type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'transcript', error: 'olvashatatlan felirat' },
+      { type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'summary', error: 'olvashatatlan felirat' },
+    ])
+    expect(summary.failed).toBe(1)
+    expect(summary.failures).toEqual([
+      { itemId: 'a', source: 'youtube', kind: 'transcript', error: 'olvashatatlan felirat' },
+      { itemId: 'a', source: 'youtube', kind: 'summary', error: 'olvashatatlan felirat' },
+    ])
+  })
+
+  it('ugyanannak a párnak az ismételt hibája az első helyén, az utolsó szöveggel marad', () => {
+    const summary = summarize([
+      { type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'summary', error: 'első' },
+      { type: 'item:failed', itemId: 'b', source: 'youtube', kind: 'summary', error: 'b hibája' },
+      { type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'summary', error: 'második' },
+    ])
+    expect(summary.failures).toEqual([
+      { itemId: 'a', source: 'youtube', kind: 'summary', error: 'második' },
+      { itemId: 'b', source: 'youtube', kind: 'summary', error: 'b hibája' },
     ])
   })
 

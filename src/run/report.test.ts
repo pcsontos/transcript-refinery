@@ -14,20 +14,25 @@ function input(overrides: Partial<ReportInput> = {}): ReportInput {
       byCaptionSource: { creator: 1, auto: 1 },
       autoItems: [{ itemId: 'eloadas-02', title: 'Második előadás' }],
       failures: [
-        { itemId: 'mit-6-042-l14', source: 'youtube', error: 'olvashatatlan felirat' },
+        { itemId: 'mit-6-042-l14', source: 'youtube', kind: 'summary', error: 'olvashatatlan felirat' },
       ],
     },
-    corpus: {
-      bySource: [
-        { source: 'meetings', total: 1, done: 1, failed: 0, pending: 0 },
-        { source: 'youtube', total: 4, done: 2, failed: 1, pending: 1 },
-      ],
-      byCaptionSource: { creator: 3, auto: 2 },
-      done: 3,
-      failed: 1,
-      pending: 1,
-      totalCostUsd: 11.9,
-    },
+    corpora: [
+      {
+        kind: 'summary',
+        status: {
+          bySource: [
+            { source: 'meetings', total: 1, done: 1, failed: 0, pending: 0 },
+            { source: 'youtube', total: 4, done: 2, failed: 1, pending: 1 },
+          ],
+          byCaptionSource: { creator: 3, auto: 2 },
+          done: 3,
+          failed: 1,
+          pending: 1,
+          totalCostUsd: 11.9,
+        },
+      },
+    ],
     runs: 3,
     logPath: '/p/logs/2026-09-07T02-14-03.jsonl',
     ...overrides,
@@ -65,10 +70,10 @@ describe('renderReport', () => {
     expect(md).toContain('- Első sor Második sor (`x`)')
   })
 
-  it('a hibát az elemmel, a forrásmappával és az okkal együtt nevezi meg', () => {
+  it('a hibát az elemmel, a típussal, a forrásmappával és az okkal együtt nevezi meg', () => {
     const md = renderReport(input())
-    expect(md).toContain('| elem | forrás | ok |')
-    expect(md).toContain('| `mit-6-042-l14` | youtube | olvashatatlan felirat |')
+    expect(md).toContain('| elem | típus | forrás | ok |')
+    expect(md).toContain('| `mit-6-042-l14` | summary | youtube | olvashatatlan felirat |')
   })
 
   it('forrásonként kiírja a korpusz állapotát', () => {
@@ -86,7 +91,7 @@ describe('renderReport', () => {
   it('hátralévő elem nélkül nem ajánl folytatást', () => {
     const md = renderReport(
       input({
-        corpus: { ...input().corpus, pending: 0, done: 4 },
+        corpora: [{ kind: 'summary', status: { ...input().corpora[0]!.status, pending: 0, done: 4 } }],
         nextCommand: undefined,
       }),
     )
@@ -97,7 +102,9 @@ describe('renderReport', () => {
   it('tiszta korpusznál nem említi a hibás elemeket', () => {
     const md = renderReport(
       input({
-        corpus: { ...input().corpus, pending: 0, done: 4, failed: 0 },
+        corpora: [
+          { kind: 'summary', status: { ...input().corpora[0]!.status, pending: 0, done: 4, failed: 0 } },
+        ],
         nextCommand: undefined,
       }),
     )
@@ -141,6 +148,7 @@ describe('renderReport', () => {
             {
               itemId: 'test-item',
               source: 'furcsa | forrás',
+              kind: 'summary',
               error: 'YAML parse error at line 5\nexpected "key" | got "|"',
             },
           ],
@@ -153,7 +161,73 @@ describe('renderReport', () => {
     expect(md).toContain('\\|')
     // A teljes sor: a forrás és az ok oszlopa is átment az escapelésen.
     expect(md).toContain(
-      '| `test-item` | furcsa \\| forrás | YAML parse error at line 5 expected "key" \\| got "\\|" |',
+      '| `test-item` | summary | furcsa \\| forrás | YAML parse error at line 5 expected "key" \\| got "\\|" |',
     )
+  })
+
+  it('a korpusz-szakasz fejléce megnevezi a műtermék-típust', () => {
+    expect(renderReport(input())).toContain('## A korpusz állapota — summary')
+  })
+
+  it('több típusnál típusonként külön szakaszt ír, az összesítő sort egyszer', () => {
+    const status = input().corpora[0]!.status
+    const md = renderReport(
+      input({ corpora: [{ kind: 'summary', status }, { kind: 'qa', status }] }),
+    )
+    expect(md).toContain('## A korpusz állapota — summary')
+    expect(md).toContain('## A korpusz állapota — qa')
+    expect(md.match(/összköltség:/g)).toHaveLength(1)
+  })
+
+  it('queue-futásnál receptenként kiírja a sor állapotát', () => {
+    const md = renderReport(
+      input({
+        queue: [{ recipe: 'summary', selected: 3, done: 1, failed: 1, pending: 0, deferred: 1 }],
+      }),
+    )
+    expect(md).toContain('## A sor állapota')
+    expect(md).toContain('| recept | kipipálva | kész | hibás | hátra | plafon miatt maradt |')
+    expect(md).toContain('| summary | 3 | 1 | 1 | 0 | 1 |')
+  })
+
+  it('queue-futásnál a következő lépés a sorból számol, nem a korpuszból', () => {
+    const md = renderReport(
+      input({
+        queue: [{ recipe: 'summary', selected: 2, done: 0, failed: 0, pending: 0, deferred: 2 }],
+        nextCommand: 'run --queue',
+      }),
+    )
+    expect(md).toContain('2 pár hátravan.')
+    expect(md).toContain('Folytatás: `run --queue`')
+    expect(md).not.toContain('elem hátravan')
+  })
+
+  it('queue-futásnál, ha csak hibás pár maradt, újrapróbálást ajánl', () => {
+    const md = renderReport(
+      input({
+        queue: [{ recipe: 'qa', selected: 1, done: 0, failed: 1, pending: 0, deferred: 0 }],
+        nextCommand: 'run --queue --retry-failed',
+      }),
+    )
+    expect(md).toContain('A sor feldolgozva, de maradtak hibás párok.')
+    expect(md).toContain('Újrapróbálás: `run --queue --retry-failed`')
+  })
+
+  it('queue-futásnál minden kész párnál a sort nevezi feldolgozottnak', () => {
+    const md = renderReport(
+      input({
+        queue: [{ recipe: 'qa', selected: 1, done: 1, failed: 0, pending: 0, deferred: 0 }],
+        nextCommand: undefined,
+      }),
+    )
+    expect(md).toContain('A sor feldolgozva.')
+    expect(md).not.toContain('A korpusz feldolgozva')
+  })
+
+  it('a figyelmeztetéseket felsorolja; nélkülük nincs szakasz', () => {
+    const md = renderReport(input({ warnings: ['ismeretlen recept a sorban: foo (abcDEF12345)'] }))
+    expect(md).toContain('## Figyelmeztetések')
+    expect(md).toContain('- ismeretlen recept a sorban: foo (abcDEF12345)')
+    expect(renderReport(input())).not.toContain('## Figyelmeztetések')
   })
 })

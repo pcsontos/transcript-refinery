@@ -93,6 +93,14 @@ sorformátumot kér a modelltől, hanem sémás objektumot, és a vault alakját
 kapu előbb fut, mint a bírók — ismétlődő kérdésnél vagy válasz nélküli
 fejlécnél a drága pontozás el sem indul.
 
+A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
+`_queue.md` jegyzetébe fésüli a felderített videókat, videónként receptenként
+egy üres pipával; a `run --queue` a kipipált (videó, recept) párokat dolgozza
+fel — egyetlen közös becsléssel és költségplafonnal —, és az eredményt
+pontszámmal, költséggel és a jegyzet linkjével ugyanazokba a sorokba írja
+vissza. A pipákhoz és a saját sorokhoz nem nyúl, a jegyzetet atomian írja, és
+ha nincs mit feldolgozni, nulla modellhívással, commit nélkül fut le.
+
 A mérési harness (`pnpm eval`) ugyanezt a loopot futtatja egy determinisztikus
 fixture-modellel: kulcs és hálózat nélkül, három szintetikus feliraton fut le,
 és mindegyikre valódi pontszámot ír ki. A minőségi kapu precisionje és
@@ -110,7 +118,7 @@ fordítói lánc kell: macOS-en az Xcode parancssori eszközei
 (`xcode-select --install`), Debian/Ubuntu-n a `build-essential` és a `python3`
 csomag. Maga a mérés (`pnpm eval`) ezután API-kulcs és hálózat nélkül fut.
 
-364 teszttel, 39 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
+586 teszttel, 60 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
 végpontig teszttel, és a fenti, valós adaton mért eredményekkel a Fázis 1-re.
 
 ## Beállítás
