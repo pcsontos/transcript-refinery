@@ -15,6 +15,7 @@ import {
 import { collectEvents, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, sliceToBudget, type BudgetEntry } from './model/budget.js'
 import { createModelClient, type ModelClient } from './model/client.js'
+import { comparePricing, fetchLivePricing } from './model/pricing-check.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
@@ -35,8 +36,9 @@ const VERSION = '0.1.0'
 const USAGE = `refinery <parancs> [kapcsolók]
 
 Parancsok:
-  scan    Felderíti a feldolgozható videókat, és nem ír semmit.
-  run     Átiratot készít és a vaultba írja.
+  scan            Felderíti a feldolgozható videókat, és nem ír semmit.
+  run             Átiratot készít és a vaultba írja.
+  check-pricing   Összeveti a config árazását a LiteLLM élő áraival.
 
 Kapcsolók:
   --config <út>     konfigurációs fájl (alapértelmezés: refinery.config.yaml)
@@ -118,6 +120,36 @@ async function commandScan(cfg: Config): Promise<number> {
     console.log(`      ${detail}`)
   }
   return 0
+}
+
+/**
+ * Összeveti a `refinery.config.yaml` árazását a LiteLLM élő adataival. A
+ * statikus árazás elavulhat (modellváltás, díjszabás-változás) anélkül, hogy
+ * bármi jelezné — ez a parancs ezt kapja el, mielőtt egy valódi futás rossz
+ * becsléssel indulna.
+ */
+export async function commandCheckPricing(modelConfig: ModelConfig): Promise<number> {
+  let live: Awaited<ReturnType<typeof fetchLivePricing>>
+  try {
+    live = await fetchLivePricing(modelConfig.baseUrl, modelConfig.apiKey)
+  } catch (error) {
+    console.error(`Nem sikerült lekérdezni a LiteLLM árazását: ${(error as Error).message}`)
+    return 2
+  }
+
+  const { mismatches, unknown } = comparePricing(modelConfig.models, modelConfig.pricing, live)
+  for (const u of unknown) {
+    console.log(`? ${u.role} (${u.model}): a LiteLLM nem ismeri ezt a modellt — nem ellenőrizhető.`)
+  }
+  for (const m of mismatches) {
+    console.log(
+      `ELTÉR ${m.role} (${m.model}): config $${m.configured.inputPerMillion.toFixed(2)}/$${m.configured.outputPerMillion.toFixed(2)} (be/ki, milliónként) — LiteLLM $${m.live.inputPerMillion.toFixed(2)}/$${m.live.outputPerMillion.toFixed(2)}`,
+    )
+  }
+  if (mismatches.length === 0 && unknown.length === 0) {
+    console.log('Az árazás egyezik a LiteLLM élő adataival.')
+  }
+  return mismatches.length > 0 ? 1 : 0
 }
 
 export interface RunRuntime {
@@ -413,6 +445,9 @@ export async function main(argv: readonly string[]): Promise<number> {
   await validateConfig(cfg)
 
   if (command === 'scan') return commandScan(cfg)
+  if (command === 'check-pricing') {
+    return commandCheckPricing(loadModelConfig(raw, process.env, cfg.configPath))
+  }
   if (command === 'run') {
     return commandRun(cfg, raw, {
       source: values.source,

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { commandRun } from './cli.js'
+import { commandCheckPricing, commandRun } from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
 import type { RunEvent } from './events.js'
 import { estimateItemUsd } from './model/budget.js'
@@ -1078,5 +1078,73 @@ describe('commandRun — a Q&A recept a vaultban', () => {
     expect(note).toMatch(/^iterations: \d+$/m)
     expect(note).toMatch(/^score: \d\.\d\d$/m)
     expect(note).toMatch(/^cost_usd: \d\.\d{4}$/m)
+  })
+})
+
+describe('commandCheckPricing', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const MODEL_CONFIG = {
+    baseUrl: 'http://localhost:4000/v1',
+    apiKey: 'sk-proba',
+    models: { draft: 'claude-sonnet-5', judge: 'grok-4-fast-reasoning' } as Record<
+      ModelRole,
+      string
+    >,
+    pricing: {
+      draft: { inputPerMillion: 2, outputPerMillion: 10 },
+      judge: { inputPerMillion: 1.25, outputPerMillion: 2.5 },
+    },
+    costLimitUsd: 5,
+  }
+
+  function stubLiteLLM(data: { model_name: string; input: number; output: number }[]) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: data.map((d) => ({
+              model_name: d.model_name,
+              model_info: { input_cost_per_token: d.input, output_cost_per_token: d.output },
+            })),
+          }),
+      }),
+    )
+  }
+
+  it('0-val tér vissza, ha a config egyezik a LiteLLM élő áraival', async () => {
+    stubLiteLLM([
+      { model_name: 'claude-sonnet-5', input: 0.000002, output: 0.00001 },
+      { model_name: 'grok-4-fast-reasoning', input: 0.00000125, output: 0.0000025 },
+    ])
+
+    expect(await commandCheckPricing(MODEL_CONFIG)).toBe(0)
+  })
+
+  it('1-gyel tér vissza, és jelzi az eltérést, ha a config elavult', async () => {
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    stubLiteLLM([
+      { model_name: 'claude-sonnet-5', input: 0.000003, output: 0.000015 },
+      { model_name: 'grok-4-fast-reasoning', input: 0.00000125, output: 0.0000025 },
+    ])
+
+    const code = await commandCheckPricing(MODEL_CONFIG)
+
+    expect(code).toBe(1)
+    expect(naplo.mock.calls.flat().join('\n')).toContain('ELTÉR draft')
+    naplo.mockRestore()
+  })
+
+  it('2-vel tér vissza, ha a LiteLLM nem érhető el', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 401 }))
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    expect(await commandCheckPricing(MODEL_CONFIG)).toBe(2)
+
+    hiba.mockRestore()
   })
 })
