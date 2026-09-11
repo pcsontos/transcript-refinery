@@ -1050,6 +1050,342 @@ const qaJegyzet = (notesRoot: string) =>
 
 const QA_KIMENET = '**Mit magyaráz a beszélő?**\n\nAz A fogalmat, majd a B-t.\n'
 
+/**
+ * Receptenként helyes kimenetet adó hamis kliens: a prompt eleje dönti el,
+ * melyik recept hív. A bíró mindig átengedi. A kimenetek a meglévő, a kapukon
+ * bizonyítottan átmenő szövegek.
+ */
+function sorKliens(hivasok: { generate: number }): ModelClient {
+  return {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async generate(_role: ModelRole, prompt: string) {
+      hivasok.generate++
+      const value = prompt.startsWith('Write a question-and-answer')
+        ? QA_KIMENET
+        : '## Összefoglaló\n\nEgy mondat a jegyzetből.\n'
+      return { value, usage: { inputTokens: 10, outputTokens: 5 } }
+    },
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async generateObject<T>() {
+      return { value: { score: 1, gaps: [] } as T, usage: { inputTokens: 5, outputTokens: 2 } }
+    },
+  }
+}
+
+/** Kipipálja a megadott (videó, recept) sorokat a sor szövegében. */
+function pipal(text: string, parok: readonly (readonly [string, string])[]): string {
+  let video: string | undefined
+  return text
+    .split('\n')
+    .map((line) => {
+      const id = /^- .*? %%(.+?)%%/.exec(line)?.[1]
+      if (id !== undefined) video = id
+      const recipeId = /^\s+- \[ \] (\S+)$/.exec(line)?.[1]
+      return recipeId !== undefined && parok.some(([v, r]) => v === video && r === recipeId)
+        ? line.replace('- [ ]', '- [x]')
+        : line
+    })
+    .join('\n')
+}
+
+/** A futás JSONL naplójának eseményei. */
+async function naploEsemenyek(logsDir: string): Promise<RunEvent[]> {
+  const jsonl = (await readdir(logsDir)).find((f) => f.endsWith('.jsonl'))!
+  return (await readFile(join(logsDir, jsonl), 'utf8'))
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as RunEvent)
+}
+
+describe('commandRun --queue', () => {
+  beforeEach(() => {
+    vi.mocked(gitCommitPaths).mockClear()
+  })
+
+  it('a kipipált párokat dolgozza fel, csak azok sorait írja vissza, és egyetlen commitot készít', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+    await makeVideo(downloads, 'b1', 'Harmadik videó', 'Csatorna B')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+
+    // Kézzel előrehozott blokk és saját megjegyzés: mindkettőnek túl kell élnie.
+    const friss = await readFile(sor, 'utf8')
+    const blokk = (id: string): string => {
+      const lines = friss.split('\n')
+      const start = lines.findIndex((line) => line.includes(`%%${id}%%`))
+      return lines.slice(start, start + 4).join('\n')
+    }
+    const kezi = pipal(
+      friss
+        .replace(`${blokk('a1')}\n${blokk('a2')}`, `${blokk('a2')}\n${blokk('a1')}`)
+        .replace(
+          '## downloads/youtube/Csatorna B',
+          'Saját megjegyzés: ezt nézem meg először.\n\n## downloads/youtube/Csatorna B',
+        ),
+      [
+        ['a1', 'summary'],
+        ['a1', 'qa'],
+        ['b1', 'summary'],
+      ],
+    )
+    await writeFile(sor, kezi, 'utf8')
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    expect(await readFile(sor, 'utf8')).toBe(kezi)
+
+    const hivasok = { generate: 0 }
+    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: true },
+      { createClient: () => sorKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    const items = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const elem = (id: string) => items.find((i) => i.itemId === id)!
+    const vart = [
+      noteFile(cfg.notesRoot, elem('a1'), '_transcript.md'),
+      noteFile(cfg.notesRoot, elem('a1'), '_summary.md'),
+      noteFile(cfg.notesRoot, elem('a1'), '_qa.md'),
+      noteFile(cfg.notesRoot, elem('b1'), '_transcript.md'),
+      noteFile(cfg.notesRoot, elem('b1'), '_summary.md'),
+    ]
+    for (const path of vart) expect(existsSync(path)).toBe(true)
+    expect(existsSync(noteFile(cfg.notesRoot, elem('a2'), '_transcript.md'))).toBe(false)
+
+    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
+    const [, commitolt, uzenet] = vi.mocked(gitCommitPaths).mock.calls[0]!
+    expect([...commitolt].sort()).toEqual([...vart, sor].sort())
+    expect(uzenet).toBe('docs(videos): 5 jegyzet a feldolgozási sorból')
+
+    const elotte = kezi.split('\n')
+    const utana = (await readFile(sor, 'utf8')).split('\n')
+    expect(utana).toHaveLength(elotte.length)
+    const valtozott = utana.filter((line, i) => line !== elotte[i])
+    expect(valtozott).toHaveLength(3)
+    for (const line of valtozott) {
+      expect(line).toMatch(/^ {2}- \[x\] (summary|qa) — ✓ 1\.00 · \$\d\.\d{4} · \[jegyzet\]\(<.+>\)$/)
+    }
+  })
+
+  it('másodszor futtatva nulla modellhívás, nincs új commit, és a sor bájtra változatlan', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(sor, pipal(await readFile(sor, 'utf8'), [['a1', 'summary']]), 'utf8')
+    const hivasok = { generate: 0 }
+    await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens(hivasok) },
+    )
+    const elsoHivasok = hivasok.generate
+    const elsoSor = await readFile(sor, 'utf8')
+    expect(elsoHivasok).toBeGreaterThan(0)
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: true },
+      { createClient: () => sorKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    expect(hivasok.generate).toBe(elsoHivasok)
+    expect(vi.mocked(gitCommitPaths)).not.toHaveBeenCalled()
+    expect(await readFile(sor, 'utf8')).toBe(elsoSor)
+  })
+
+  it('ha a plafon csak az első párra elég, egyetlen közös szeletelés után a többi ⏳-t kap', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const alap = rawWithVault(5)
+    const alapCfg = loadConfig(alap, '/p/refinery.config.yaml')
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const summary = getRecipe('summary')
+    // Mindhárom recept maxIterations-e ma 0: egy pár becslése mindegyikre
+    // ugyanaz, tehát a plafon pontosan az első párra elég.
+    const egyPar = estimateItemUsd(
+      words,
+      summary.maxIterations,
+      loadModelConfig(alap, process.env, alapCfg.configPath),
+    )
+    const raw = { ...alap, cost_limit_usd: egyPar * 1.5 }
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(
+      sor,
+      pipal(await readFile(sor, 'utf8'), [
+        ['a1', 'summary'],
+        ['a1', 'flashcards'],
+        ['a1', 'qa'],
+      ]),
+      'utf8',
+    )
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens({ generate: 0 }) },
+    )
+
+    expect(code).toBe(0)
+    const sliced = (await naploEsemenyek(cfg.logsDir)).filter((e) => e.type === 'run:sliced')
+    expect(sliced).toMatchObject([{ planned: 1, deferred: 2 }])
+    const note = await readFile(sor, 'utf8')
+    expect(note).toMatch(/ {2}- \[x\] summary — ✓ /)
+    expect(note).toContain('  - [x] flashcards — ⏳ a plafon miatt a következő futásra maradt')
+    expect(note).toContain('  - [x] qa — ⏳ a plafon miatt a következő futásra maradt')
+  })
+
+  it('ha már az első pár sem fér a plafon alá, 2-vel lép ki, és a sorba ⏳ kerül', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(0.000001)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(sor, pipal(await readFile(sor, 'utf8'), [['a1', 'summary']]), 'utf8')
+    const hivasok = { generate: 0 }
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens(hivasok) },
+    )
+
+    expect(code).toBe(2)
+    expect(hivasok.generate).toBe(0)
+    expect(await readFile(sor, 'utf8')).toContain(
+      '  - [x] summary — ⏳ a plafon miatt a következő futásra maradt',
+    )
+  })
+
+  it('sor nélkül indulás előtt hibával megáll, és a scan --queue-t javasolja', async () => {
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens({ generate: 0 }) },
+    )
+
+    expect(code).toBe(1)
+    expect(hiba.mock.calls.flat().join('\n')).toContain('refinery scan --queue')
+    expect(existsSync(cfg.logsDir)).toBe(false)
+    hiba.mockRestore()
+  })
+
+  it('--dry-run mellett nem ír vissza a sorba', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    const kipipalt = pipal(await readFile(sor, 'utf8'), [['a1', 'summary']])
+    await writeFile(sor, kipipalt, 'utf8')
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: true, force: false, commit: false },
+      { createClient: () => sorKliens({ generate: 0 }) },
+    )
+
+    expect(code).toBe(0)
+    expect(await readFile(sor, 'utf8')).toBe(kipipalt)
+  })
+
+  it('a --recipe csak az adott recept kipipált párjait viszi', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(
+      sor,
+      pipal(await readFile(sor, 'utf8'), [
+        ['a1', 'summary'],
+        ['a1', 'qa'],
+      ]),
+      'utf8',
+    )
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, recipe: 'qa', dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens({ generate: 0 }) },
+    )
+
+    expect(code).toBe(0)
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    expect(existsSync(noteFile(cfg.notesRoot, item!, '_qa.md'))).toBe(true)
+    expect(existsSync(noteFile(cfg.notesRoot, item!, '_summary.md'))).toBe(false)
+    const note = await readFile(sor, 'utf8')
+    expect(note).toContain('  - [x] summary\n')
+    expect(note).toMatch(/ {2}- \[x\] qa — ✓ /)
+  })
+
+  it('a kipipált, de már nem felderített videó párja ✗-t kap, és a kilépőkód 1', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(sor, pipal(await readFile(sor, 'utf8'), [['a2', 'summary']]), 'utf8')
+    await rm(join(downloads, 'youtube', 'Csatorna A', 'Második videó.en.srt'))
+    await rm(join(downloads, 'youtube', 'Csatorna A', 'Második videó.info.json'))
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens({ generate: 0 }) },
+    )
+
+    expect(code).toBe(1)
+    expect(await readFile(sor, 'utf8')).toContain('  - [x] summary — ✗ a felirat nem található')
+  })
+
+  it('ismeretlen receptnevű kipipált sor nem fut, és a riport figyelmeztet', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(sor, (await readFile(sor, 'utf8')).replace('  - [ ] qa', '  - [x] nincsilyen'), 'utf8')
+    const hivasok = { generate: 0 }
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    expect(hivasok.generate).toBe(0)
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+    expect(report).toContain('## Figyelmeztetések')
+    expect(report).toContain('- ismeretlen recept a sorban: nincsilyen (a1)')
+  })
+})
+
 describe('commandRun — a Q&A recept a vaultban', () => {
   it('a jegyzet átmegy a vault linterén, és a frontmatter mind az öt recept-mezőt viszi', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')

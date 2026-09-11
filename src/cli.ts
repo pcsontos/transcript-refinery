@@ -22,13 +22,29 @@ import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { ARTIFACT_KIND, processItem, type RecipeDeps } from './pipeline.js'
 import { queuePath, readQueueFile } from './queue/file.js'
 import { mergeQueue } from './queue/merge.js'
-import { RECIPE_IDS, getRecipe } from './recipe/registry.js'
+import { checkedPairs, parseQueue, type QueuePair } from './queue/parse.js'
+import {
+  DEFERRED_STATUS,
+  NOT_FOUND_STATUS,
+  applyStatuses,
+  doneStatus,
+  failedStatus,
+  pairKey,
+} from './queue/status.js'
+import { RECIPES, RECIPE_IDS, getRecipe } from './recipe/registry.js'
 import type { Recipe } from './recipe/types.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { reserveRunId, runId } from './run/id.js'
 import { openRunLog } from './run/log.js'
-import { estimateUnits, filterItems, unitKey, unitKind, type WorkUnit } from './run/plan.js'
-import { renderReport } from './run/report.js'
+import {
+  estimateUnits,
+  filterItems,
+  matchesFilters,
+  unitKey,
+  unitKind,
+  type WorkUnit,
+} from './run/plan.js'
+import { renderReport, type QueueRecipeStatus } from './run/report.js'
 import { nextCommand } from './run/suggest.js'
 import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
@@ -207,11 +223,14 @@ export async function commandRun(
     source?: string
     channel?: string
     limit?: number
+    /** Queue nélkül a futás receptje; queue-módban szűrő a kipipált párokra. */
     recipe?: string
+    /** A vault `_queue.md` sorának kipipált (videó, recept) párjait dolgozza fel. */
+    queue?: boolean
     dryRun: boolean
     force: boolean
     commit: boolean
-    /** Csak a korábban `failed` állapotú elemeket futtatja újra. */
+    /** Csak a korábban `failed` állapotú elemeket — queue-módban párokat — futtatja újra. */
     retryFailed?: boolean
     /** A riport fejlécében megjelenő parancssor; hiányában „run”. */
     command?: string
@@ -219,12 +238,14 @@ export async function commandRun(
   runtime: RunRuntime = {},
 ): Promise<number> {
   const commandLine = flags.command ?? 'run'
+  const queueMode = flags.queue === true
+  const commit = flags.commit && !flags.dryRun
   const recipe = flags.recipe ? getRecipe(flags.recipe) : null
 
   // Egy kliens és egy költségőr az egész indításra: a plafon így nem
   // receptenként, hanem együtt vonatkozik minden egységre.
   let model: ModelRuntime | undefined
-  if (recipe) {
+  if (recipe || queueMode) {
     const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
     model = {
       modelConfig,
@@ -242,11 +263,19 @@ export async function commandRun(
         }
       : undefined
 
-  // A futás műtermék-típusa: recepttel a recept azonosítója, enélkül az
-  // átirat. Egyszer számoljuk ki — a riport és a hibás-szűrő ugyanazt kérdezi.
+  // A futás műtermék-típusa queue nélkül: recepttel a recept azonosítója,
+  // enélkül az átirat. A riport és a hibás-szűrő ugyanazt kérdezi.
   const artifactKind = recipe?.id ?? ARTIFACT_KIND
 
-  if (flags.commit && !flags.dryRun) await gitPullFfOnly(cfg.vaultPath)
+  if (commit) await gitPullFfOnly(cfg.vaultPath)
+
+  // A sort a pull UTÁN olvassuk: a pull frissebb változatot hozhat.
+  const sorPath = queuePath(cfg.notesRoot)
+  const queueText = queueMode ? await readQueueFile(sorPath) : null
+  if (queueMode && queueText === null) {
+    console.error(`Nincs feldolgozási sor: ${sorPath}\nElőbb: refinery scan --queue`)
+    return 1
+  }
 
   const store = openState(cfg.statePath)
 
@@ -271,6 +300,73 @@ export async function commandRun(
   // korai SIGINT is riportot írjon (üres korpusszal), ne undefined-ra
   // hivatkozzon.
   let discovered: SourceItem[] = []
+  /** A szűrés utáni egységek: a visszaírás és a sor-állapot ezekről szól. */
+  let selected: WorkUnit[] = []
+  /** Kipipált párok, amelyek eleme nem található. */
+  let notFound: QueuePair[] = []
+  /** A plafon miatt nem futott egységek kulcsai: szeletelés vagy futás közbeni megállás. */
+  const capped = new Set<string>()
+  const warnings: string[] = []
+
+  let wroteBack = false
+  /**
+   * A sor visszaírása az állapottárból. Egy futáson belül legfeljebb egyszer:
+   * normál befejezéskor a commit előtt, egyébként a `finish`-ben.
+   */
+  const writeBack = async (): Promise<boolean> => {
+    if (!queueMode || flags.dryRun || wroteBack) return false
+    wroteBack = true
+    const current = await readQueueFile(sorPath)
+    if (current === null) return false
+    const statuses = new Map<string, string>()
+    for (const unit of selected) {
+      const kind = unitKind(unit)
+      const record = store.artifactOf(unit.item.itemId, kind)
+      const key = pairKey(unit.item.itemId, kind)
+      if (record?.status === 'done') statuses.set(key, doneStatus(record, cfg.notesRoot))
+      else if (record?.status === 'failed') statuses.set(key, failedStatus(record.error))
+      else if (capped.has(unitKey(unit))) statuses.set(key, DEFERRED_STATUS)
+    }
+    for (const pair of notFound) {
+      statuses.set(pairKey(pair.itemId, pair.recipeId), NOT_FOUND_STATUS)
+    }
+    const next = applyStatuses(current, statuses)
+    if (next === current) return false
+    await writeFileAtomic(sorPath, next)
+    return true
+  }
+
+  /** A sor állapota receptenként, registry-sorrendben — csak queue-futásnál. */
+  const queueStatus = (): QueueRecipeStatus[] | undefined => {
+    if (!queueMode) return undefined
+    const rows = new Map<string, QueueRecipeStatus>()
+    const row = (recipeId: string): QueueRecipeStatus => {
+      let r = rows.get(recipeId)
+      if (!r) {
+        r = { recipe: recipeId, selected: 0, done: 0, failed: 0, pending: 0, deferred: 0 }
+        rows.set(recipeId, r)
+      }
+      return r
+    }
+    for (const unit of selected) {
+      const r = row(unitKind(unit))
+      r.selected++
+      const status = store.artifactOf(unit.item.itemId, unitKind(unit))?.status
+      if (status === 'done') r.done++
+      else if (status === 'failed') r.failed++
+      else if (capped.has(unitKey(unit))) r.deferred++
+      else r.pending++
+    }
+    for (const pair of notFound) {
+      const r = row(pair.recipeId)
+      r.selected++
+      r.failed++
+    }
+    return RECIPE_IDS.flatMap((recipeId) => {
+      const r = rows.get(recipeId)
+      return r ? [r] : []
+    })
+  }
 
   // Egyszeri lefutás: a megszakítás és a normál befejezés is meghívja a
   // `finish`-t, és versenyben lehetnek egymással (a `process.exit` a SIGINT
@@ -283,15 +379,36 @@ export async function commandRun(
     if (finished) return
     finished = true
 
+    // Megszakításnál, a törzsben dobott kivételnél és a 2-es kilépőkódnál a
+    // visszaírás itt történik; a normál ágon már megtörtént, ez pedig nem
+    // csinál semmit.
+    try {
+      await writeBack()
+    } catch (error) {
+      console.error(`A sor visszaírása nem sikerült: ${(error as Error).message}`)
+    }
+
     const summary = summarize(events)
-    const corpus = store.corpusStatus(discovered, artifactKind)
+    const kinds = queueMode
+      ? RECIPE_IDS.filter((recipeId) => selected.some((unit) => unitKind(unit) === recipeId))
+      : [artifactKind]
+    const corpora = kinds.map((kind) => ({ kind, status: store.corpusStatus(discovered, kind) }))
+    const queue = queueStatus()
+    const remaining = queue
+      ? {
+          pending: queue.reduce((n, q) => n + q.pending + q.deferred, 0),
+          failed: queue.reduce((n, q) => n + q.failed, 0),
+        }
+      : (corpora[0]?.status ?? { pending: 0, failed: 0 })
     const markdown = renderReport({
       runId: id,
       startedAt,
       finishedAt: new Date(),
       command: commandLine,
       summary,
-      corpora: [{ kind: artifactKind, status: corpus }],
+      corpora,
+      queue,
+      warnings,
       runs: countRunLogs(cfg.logsDir),
       logPath,
       cost: model
@@ -301,7 +418,7 @@ export async function commandRun(
             capped: model.guard.exceeded(),
           }
         : undefined,
-      nextCommand: nextCommand(commandLine, corpus),
+      nextCommand: nextCommand(commandLine, remaining),
     })
     await writeReport(reportPath, markdown)
     // A naplót SZÁNDÉKOSAN nem itt zárjuk: a `finish(true)` (megszakítás) és
@@ -321,14 +438,47 @@ export async function commandRun(
 
   try {
     discovered = await discoverAll(cfg.sources, cfg.languages)
-    // A limitnek a JELÖLTEKET kell határolnia, nem a teljes korpuszt: a
-    // forrás/csatorna szűrés és a hibás-szűrő UTÁN vágunk, különben pl.
-    // `--retry-failed --limit 1` a felfedezés szerint elöl álló (esetleg kész)
-    // elemet nézné meg, nem a hibásak közül az elsőt.
-    let items = filterItems(discovered, flags)
-    if (flags.retryFailed) items = store.listFailed(items, artifactKind)
-    if (flags.limit !== undefined) items = items.slice(0, flags.limit)
-    const units: WorkUnit[] = items.map((item) => ({ item, recipe }))
+
+    let units: WorkUnit[]
+    if (queueMode) {
+      const byId = new Map(discovered.map((item) => [item.itemId, item] as const))
+      units = []
+      for (const pair of checkedPairs(parseQueue(queueText ?? ''))) {
+        const pairRecipe = RECIPES[pair.recipeId]
+        if (!pairRecipe) {
+          warnings.push(`ismeretlen recept a sorban: ${pair.recipeId} (${pair.itemId})`)
+          continue
+        }
+        const item = byId.get(pair.itemId)
+        if (item) units.push({ item, recipe: pairRecipe })
+        else notFound.push(pair)
+      }
+      // A kapcsolók a párokat szűkítik. A nem található pár eleméről nem
+      // tudunk forrást vagy csatornát, ezért csak a receptszűrő vonatkozik
+      // rá; az újrapróbálás pedig csak állapottárban rögzített hibára értelmes.
+      units = units.filter((unit) => matchesFilters(unit.item, flags))
+      if (recipe) {
+        units = units.filter((unit) => unit.recipe?.id === recipe.id)
+        notFound = notFound.filter((pair) => pair.recipeId === recipe.id)
+      }
+      if (flags.retryFailed) {
+        units = units.filter(
+          (unit) => store.artifactOf(unit.item.itemId, unitKind(unit))?.status === 'failed',
+        )
+        notFound = []
+      }
+      if (flags.limit !== undefined) units = units.slice(0, flags.limit)
+    } else {
+      // A limitnek a JELÖLTEKET kell határolnia, nem a teljes korpuszt: a
+      // forrás/csatorna szűrés és a hibás-szűrő UTÁN vágunk, különben pl.
+      // `--retry-failed --limit 1` a felfedezés szerint elöl álló (esetleg
+      // kész) elemet nézné meg, nem a hibásak közül az elsőt.
+      let items = filterItems(discovered, flags)
+      if (flags.retryFailed) items = store.listFailed(items, artifactKind)
+      if (flags.limit !== undefined) items = items.slice(0, flags.limit)
+      units = items.map((item) => ({ item, recipe }))
+    }
+    selected = units
     printing({ type: 'scan:found', count: units.length })
 
     let planned = units
@@ -338,6 +488,7 @@ export async function commandRun(
         : units.filter((unit) => !store.isDone(unit.item.itemId, unitKind(unit)))
       const { slice, first } = await estimateUnits(pending, model.modelConfig)
       const limitUsd = model.modelConfig.costLimitUsd
+      for (const unit of slice.deferred) capped.add(unitKey(unit))
 
       printing({
         type: 'run:estimate',
@@ -377,12 +528,11 @@ export async function commandRun(
       // elhalasztottakkal. Így a már kész egység a kihagyás ágára jut, a
       // hibás elem a feldolgozás hibaágára — modellhívás egyikkel sem jár,
       // tehát a plafon szemantikája sértetlen.
-      const deferred = new Set(slice.deferred.map(unitKey))
-      planned = units.filter((unit) => !deferred.has(unitKey(unit)))
+      planned = units.filter((unit) => !capped.has(unitKey(unit)))
     }
 
     const written = new Set<string>()
-    for (const unit of planned) {
+    for (const [index, unit] of planned.entries()) {
       const outcome = await processItem(unit.item, {
         notesRoot: cfg.notesRoot,
         store,
@@ -403,6 +553,8 @@ export async function commandRun(
           spentUsd: model.guard.spentUsd(),
           limitUsd: model.modelConfig.costLimitUsd,
         })
+        // A plafon miatt el sem indult egységek a sorban ⏳-t kapnak.
+        for (const rest of planned.slice(index + 1)) capped.add(unitKey(rest))
         break
       }
     }
@@ -420,16 +572,21 @@ export async function commandRun(
         `${summary.skipped} kihagyva, ${summary.failed} hibás.`,
     )
 
-    if (flags.commit && !flags.dryRun && written.size > 0) {
-      const message = `docs(videos): átirat ${String(written.size)} videóhoz`
-      if (await gitCommitPaths(cfg.vaultPath, [...written], message)) {
+    // A visszaírás a commit ELŐTT: a frissített sor ugyanabba a commitba kerül.
+    const queueChanged = await writeBack()
+    const paths = queueChanged ? [...written, sorPath] : [...written]
+    if (commit && paths.length > 0) {
+      const message = queueMode
+        ? `docs(videos): ${String(written.size)} jegyzet a feldolgozási sorból`
+        : `docs(videos): átirat ${String(written.size)} videóhoz`
+      if (await gitCommitPaths(cfg.vaultPath, paths, message)) {
         const push = await gitPush(cfg.vaultPath)
         if (!push.pushed) console.log(`A push nem sikerült, a commit lokálisan maradt.`)
       }
     }
 
     await finish(false)
-    return summary.failed > 0 ? 1 : 0
+    return summary.failed > 0 || notFound.length > 0 ? 1 : 0
   } finally {
     // A riport a `finally`-ből is elkészül: a törzsben dobott kivétel
     // (git-hiba, tele lemez) enélkül naplót hagyna maga után, riportot nem.
@@ -493,6 +650,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       channel: values.channel,
       limit: values.limit === undefined ? undefined : Number(values.limit),
       recipe: values.recipe,
+      queue: values.queue,
       dryRun: values['dry-run'],
       force: values.force,
       commit: !values['no-commit'],
