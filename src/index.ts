@@ -18,7 +18,16 @@ export type { CaptionSource, Cue, ItemMetadata, NormalizedTranscript, SourceItem
 export { collectEvents, summarize, type EventSink, type RunEvent } from './events.js'
 export { processItem, type ItemOutcome, type PipelineDeps } from './pipeline.js'
 export type { Source } from './source/types.js'
-export { openState, type StateStore } from './state/db.js'
+export {
+  openState,
+  type ArtifactMetrics,
+  type ArtifactRecord,
+  type CorpusStatus,
+  type SourceStatus,
+  type StateStore,
+} from './state/db.js'
+export { openReadOnlyDatabase, openStateReader, type StateReader } from './state/reader.js'
+export type { ArtifactRow, ItemRow } from './state/queries.js'
 export { normalizeItem, type RecipeDeps } from './pipeline.js'
 export { getRecipe, RECIPES, RECIPE_IDS } from './recipe/registry.js'
 export type { Recipe, RecipeInput } from './recipe/types.js'

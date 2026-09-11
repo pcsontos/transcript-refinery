@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { CaptionSource, SourceItem } from '../types.js'
+import { assertCurrentSchema, selectArtifact, selectCorpusStatus, selectGaps } from './queries.js'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS items (
@@ -148,23 +149,7 @@ export function openState(path: string): StateStore {
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(SCHEMA)
 
-  // A `CREATE TABLE IF NOT EXISTS` szándékosan nem migrál: egy Fázis 1-ből
-  // maradt állapotfájlon a régi, `video_id`-alapú `artifacts` tábla
-  // érintetlen marad. Enélkül az ellenőrzés nélkül az `isDone` egy
-  // beazonosíthatatlan `no such column: item_id` hibával állítaná meg a
-  // TELJES köteget (a `pipeline.ts` try-ágán kívül), ahelyett hogy megnevezné
-  // a valódi okot.
-  const cols = db.prepare("SELECT name FROM pragma_table_info('artifacts')").all() as {
-    name: string
-  }[]
-  if (!cols.some((c) => c.name === 'item_id')) {
-    db.close()
-    throw new Error(
-      `A(z) ${path} állapotfájl a régi, videó-alapú sémát használja. ` +
-        `Töröld — a vaultban lévő jegyzeteid érintetlenek maradnak, ` +
-        `az állapot az első futáskor újraépül.`,
-    )
-  }
+  assertCurrentSchema(db, path)
 
   const now = () => new Date().toISOString()
 
@@ -275,39 +260,11 @@ export function openState(path: string): StateStore {
     },
 
     gapsOf(itemId, kind) {
-      const row = db
-        .prepare('SELECT gaps FROM artifact_gaps WHERE item_id = ? AND kind = ?')
-        .get(itemId, kind) as { gaps: string } | undefined
-      return row ? (JSON.parse(row.gaps) as string[]) : null
+      return selectGaps(db, itemId, kind)
     },
 
     artifactOf(itemId, kind) {
-      const row = db
-        .prepare(
-          `SELECT status, path, error, iterations, score, cost_usd, model
-             FROM artifacts WHERE item_id = ? AND kind = ?`,
-        )
-        .get(itemId, kind) as
-        | {
-            status: string
-            path: string | null
-            error: string | null
-            iterations: number | null
-            score: number | null
-            cost_usd: number | null
-            model: string | null
-          }
-        | undefined
-      if (!row) return null
-      return {
-        status: row.status,
-        path: row.path,
-        error: row.error,
-        iterations: row.iterations,
-        score: row.score,
-        costUsd: row.cost_usd,
-        model: row.model,
-      }
+      return selectArtifact(db, itemId, kind)
     },
 
     transcriptOf(itemId) {
@@ -333,61 +290,7 @@ export function openState(path: string): StateStore {
     },
 
     corpusStatus(items, kind) {
-      const rows = db
-        .prepare('SELECT item_id, status FROM artifacts WHERE kind = ?')
-        .all(kind) as { item_id: string; status: string }[]
-      const statusOf = new Map(rows.map((r) => [r.item_id, r.status]))
-
-      const captions = db
-        .prepare('SELECT item_id, source FROM transcripts')
-        .all() as { item_id: string; source: string }[]
-      const captionOf = new Map(captions.map((r) => [r.item_id, r.source as CaptionSource]))
-
-      const bySourceName = new Map<string, SourceStatus>()
-      const byCaptionSource: Record<CaptionSource, number> = { creator: 0, auto: 0 }
-      let done = 0
-      let failed = 0
-
-      for (const item of items) {
-        const entry = bySourceName.get(item.source) ?? {
-          source: item.source,
-          total: 0,
-          done: 0,
-          failed: 0,
-          pending: 0,
-        }
-        entry.total++
-
-        const status = statusOf.get(item.itemId)
-        if (status === 'done') {
-          entry.done++
-          done++
-        } else if (status === 'failed') {
-          entry.failed++
-          failed++
-        } else {
-          entry.pending++
-        }
-        bySourceName.set(item.source, entry)
-
-        const caption = captionOf.get(item.itemId)
-        if (caption !== undefined) byCaptionSource[caption]++
-      }
-
-      // A költés minden műtermék-típusra összegződik: a kérdés az, hogy erre
-      // a korpuszra eddig mennyit költöttünk, nem az, hogy melyik recept vitte.
-      const cost = db
-        .prepare('SELECT COALESCE(SUM(cost_usd), 0) AS total FROM artifacts')
-        .get() as { total: number }
-
-      return {
-        bySource: [...bySourceName.values()].sort((a, b) => a.source.localeCompare(b.source)),
-        byCaptionSource,
-        done,
-        failed,
-        pending: items.length - done - failed,
-        totalCostUsd: cost.total,
-      }
+      return selectCorpusStatus(db, items, kind)
     },
 
     listFailed(items, kind) {
