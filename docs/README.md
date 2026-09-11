@@ -25,6 +25,8 @@ együtt ez a dokumentáció a projekt egyik terméke, nem melléktermék.
 | [0007](<./decisions/0007-elso-szelet.md>) | az első szelet | normalizálás vault-írással, modell nélkül |
 | [0008](<./decisions/0008-forras-fuggetlen-bemenet.md>) | mi a bemenet | a kész feliratfájl; a forrás és a transzkribálás kívül esik |
 | [0009](<./decisions/0009-nyelvi-kapu.md>) | a jegyzet nyelve | kimondott nyelv a promptban, determinisztikus blokkoló kapu az átirathoz mérve |
+| [0010](<./decisions/0010-videonkenti-receptvalasztas.md>) | a receptválasztás egysége | videónként és receptenként, a feldolgozási sorból |
+| [0011](<./decisions/0011-webes-felulet-csak-olvas.md>) | a webes felület szerepe | csak olvas: áttekintés, átnézés, élő követés; futtatás és jóváhagyás nélkül |
 
 A döntéseket alakító személyes kontextus — géppark, meglévő privát infrastruktúra,
 karriercélok — szándékosan a repón kívül marad.

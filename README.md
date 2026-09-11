@@ -101,6 +101,13 @@ pontszámmal, költséggel és a jegyzet linkjével ugyanazokba a sorokba írja
 vissza. A pipákhoz és a saját sorokhoz nem nyúl, a jegyzetet atomian írja, és
 ha nincs mit feldolgozni, nulla modellhívással, commit nélkül fut le.
 
+A felület (`mise exec -- pnpm web`, `http://127.0.0.1:4310`) csak olvas. Az
+áttekintő a korpusz állapotát, a pontszámok eloszlását receptenként és a
+feldolgozási sort mutatja; az elem oldalán a jegyzet és a normalizált átirat
+egymás mellett látszik, a bíró hiánylistájával — így kiderül, *miért* maradt egy
+jegyzet a küszöb alatt. Egy CLI-ből indított futás élőben követhető: az éppen
+feldolgozott elem, a pontszám és a költés a plafonhoz mérve, SSE-n.
+
 A mérési harness (`pnpm eval`) ugyanezt a loopot futtatja egy determinisztikus
 fixture-modellel: kulcs és hálózat nélkül, három szintetikus feliraton fut le,
 és mindegyikre valódi pontszámot ír ki. A minőségi kapu precisionje és
@@ -118,8 +125,9 @@ fordítói lánc kell: macOS-en az Xcode parancssori eszközei
 (`xcode-select --install`), Debian/Ubuntu-n a `build-essential` és a `python3`
 csomag. Maga a mérés (`pnpm eval`) ezután API-kulcs és hálózat nélkül fut.
 
-586 teszttel, 60 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
-végpontig teszttel, és a fenti, valós adaton mért eredményekkel a Fázis 1-re.
+668 teszttel, 69 tesztfájlban — köztük egy Fázis 0-ra írt végponttól
+végpontig teszttel, és a fenti, valós adaton mért eredményekkel a Fázis 1-re,
+valamint a felület e2e-tesztjeivel (15 teszt, 2 fájl).
 
 ## Beállítás
 
@@ -128,6 +136,7 @@ cp refinery.config.example.yaml refinery.config.yaml
 # írd át benne a vault és a feliratmappák útvonalát
 echo "LITELLM_API_KEY=sk-..." > .env   # csak recepthez kell
 mise exec -- pnpm build && mise exec -- node dist/cli.js scan
+mise exec -- pnpm web   # a felület: http://127.0.0.1:4310
 ```
 
 Minden beállítás a `refinery.config.yaml`-ból jön; a `--config` kapcsolóval

@@ -47,12 +47,15 @@ igényel modellhívást. A formátumellenőrzés sem. A modell csak oda kerül, 
                      ┌──────────────┬───────────────────┤
                      ▼              ▼                   ▼
                     CLI       Obsidian-queue         Nuxt-felület
-                   (mag)      (jegyzet I/O)          (SSE, később)
+                   (mag)      (jegyzet I/O)          (csak olvas, SSE)
 ```
 
 A CLI az elsődleges kliens, és minden más ennek a testvére, nem a fölöttese. Az
 Obsidian queue-jegyzet és a Nuxt-felület egyaránt a mag fogyasztója: sem
 promptot, sem csővezeték-logikát nem tartalmaznak.
+
+A Nuxt-felület ráadásul csak olvas: futást nem indít, és az állapottárat
+írásvédett kapcsolaton nyitja meg ([`decisions/0011`](<./decisions/0011-webes-felulet-csak-olvas.md>)).
 
 ## 4. A csővezeték
 
@@ -134,13 +137,18 @@ hogy mi történik, ha a gép újraindul a batch közepén.
 videónak azért nincs jegyzete, mert még nem próbáltuk, vagy mert **háromszor
 elhasalt, és miért.** Egy hosszú futás hibariportja enélkül nem létezik.
 
-Három tábla elég:
+Négy tábla:
 
 | tábla | mit tárol |
 |---|---|
-| `videos` | felderített elemek és metaadatuk |
-| `transcripts` | a szöveg származása, modell, szószámok |
+| `items` | felderített elemek és metaadatuk |
+| `transcripts` | a szöveg származása, szószámok |
 | `artifacts` | recept, státusz, útvonal, iterációszám, pontszám, költség, hiba |
+| `artifact_gaps` | a bíró hiánylistája műtermékenként, JSON-tömbként |
+
+A felület az állapottárat írásvédett kapcsolaton olvassa (`openStateReader`),
+ugyanazokkal a lekérdezésekkel, mint az író — ezért mutatja pontosan azt a
+korpusz-állapotot, amit a futás riportja.
 
 A folytathatóság ebből ingyen adódik: ugyanannak a parancsnak az újrafuttatása
 kihagyja a késznek jelölt elemeket. **Nincs külön `resume` parancs — a hétköznapi
@@ -275,7 +283,8 @@ konzervatív. Hat recept létezhet a repóban anélkül, hogy hat lefutna.
 2. A rubrika pontoz **és konkrét hiányokat nevez meg**.
 3. Ha átment vagy elfogytak az iterációk → kész.
 4. Különben újragenerálás a vázlat és a hiányok visszaadásával.
-5. Minden revízió perzisztálódik.
+5. A megtartott kimenet pontszáma, iterációszáma, költsége és hiánylistája
+   rögzül; a köztes revíziók szövege nem.
 
 Négy megkötés, mindegyik egy valós hibamódra:
 
@@ -419,6 +428,10 @@ csak akkor kötelező, ha `--recipe` fut.
   egy nyelője — futásonként egy JSON-soros fájl, mellette olvasható konzolkimenet.
   Nem külön tervezési kérdés, hanem a 2. fejezet döntésének hozadéka.
 - **Újraindulás köteg közben:** az állapottár kezeli; az újrafuttatás folytat.
+- **A felület:** `mise exec -- pnpm web` lefordítja a magot és a felületet, és a
+  `127.0.0.1:4310`-en indítja — kézzel, amikor nézni akarod; háttérszolgáltatás
+  nincs. Egy futó CLI-köteg élőben követhető rajta: a futásnapló sorait SSE-n
+  kapja.
 
 ## 13. Amit szándékosan nem építünk
 

@@ -24,9 +24,13 @@ describe('openRunLog', () => {
 
     const lines = (await readFile(log.path, 'utf8')).trim().split('\n')
     expect(lines).toHaveLength(2)
-    expect(lines.map((line) => JSON.parse(line) as unknown)).toEqual([
-      { type: 'scan:found', count: 2 },
-      { type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'transcript', error: 'olvashatatlan felirat' },
+    const parsed = lines.map((line) => JSON.parse(line) as { at: unknown } & Record<string, unknown>)
+    expect(parsed.map(({ at, ...event }) => [typeof at, event])).toEqual([
+      ['string', { type: 'scan:found', count: 2 }],
+      [
+        'string',
+        { type: 'item:failed', itemId: 'a', source: 'youtube', kind: 'transcript', error: 'olvashatatlan felirat' },
+      ],
     ])
   })
 
@@ -49,5 +53,15 @@ describe('openRunLog', () => {
     const log = openRunLog(join(work, 'run.jsonl'))
     log.close()
     expect(() => log.close()).not.toThrow()
+  })
+
+  it('minden sor ISO időbélyeget kap', async () => {
+    const log = openRunLog(join(work, 'run.jsonl'))
+    log.sink({ type: 'scan:found', count: 1 })
+    log.close()
+
+    const [line] = (await readFile(log.path, 'utf8')).trim().split('\n')
+    const { at } = JSON.parse(line!) as { at: string }
+    expect(new Date(at).toISOString()).toBe(at)
   })
 })

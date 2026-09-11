@@ -453,3 +453,25 @@ describe('refine — mérési mód', () => {
     expect(result.rounds).toHaveLength(result.generations)
   })
 })
+
+describe('refine — visszahívások', () => {
+  it('minden generálás előtt és pontozás után jelez, sorrendben', async () => {
+    const { client, pontszamok } = scriptedClient([
+      { text: 'első', score: 0.5 },
+      { text: 'második', score: 0.9 },
+    ])
+    const jelzesek: string[] = []
+
+    await refine(recept(tablazatosRubrika(pontszamok)), INPUT, client, {
+      onGenerate: (generation) => jelzesek.push(`generálás ${String(generation)}`),
+      onScore: (score, gaps) => jelzesek.push(`pontozás ${String(score)}, ${String(gaps)} hiány`),
+    })
+
+    expect(jelzesek).toEqual([
+      'generálás 1',
+      'pontozás 0.5, 1 hiány',
+      'generálás 2',
+      'pontozás 0.9, 1 hiány',
+    ])
+  })
+})

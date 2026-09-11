@@ -295,6 +295,9 @@ export async function commandRun(
     if (line !== null) console.log(line)
   }
 
+  // A napló első sora: a felület ebből tudja, mi fut, és él-e még a folyamat.
+  printing({ type: 'run:started', command: commandLine, pid: process.pid })
+
   // A discoverAll teljes, szűretlen eredménye — a korpusz állapota a teljes
   // korpuszról szól, nem a szűrt szeletről. Korán inicializálva, hogy egy
   // korai SIGINT is riportot írjon (üres korpusszal), ne undefined-ra
@@ -387,6 +390,10 @@ export async function commandRun(
     } catch (error) {
       console.error(`A sor visszaírása nem sikerült: ${(error as Error).message}`)
     }
+
+    // A lezárás a naplóban: enélkül egy riport nélküli napló nem különböztetné
+    // meg a még futót a keményen leállítottól.
+    printing({ type: 'run:ended', interrupted })
 
     const summary = summarize(events)
     const kinds = queueMode

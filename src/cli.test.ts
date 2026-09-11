@@ -1588,3 +1588,95 @@ describe('commandRun — a commit tartalma', () => {
     )
   })
 })
+
+describe('commandRun — indulás és lezárás a naplóban', () => {
+  it('az első sor a run:started, az utolsó a run:ended', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const code = await commandRun(cfg, raw, {
+      dryRun: false,
+      force: false,
+      commit: false,
+      command: 'run --limit 1',
+    })
+
+    expect(code).toBe(0)
+    const events = await naploEsemenyek(cfg.logsDir)
+    const first = events[0]
+    expect(first?.type).toBe('run:started')
+    expect(first?.type === 'run:started' ? [first.command, first.pid] : null).toEqual([
+      'run --limit 1',
+      process.pid,
+    ])
+    const last = events.at(-1)
+    expect(last?.type).toBe('run:ended')
+    expect(last?.type === 'run:ended' ? last.interrupted : null).toBe(false)
+    expect(events.filter((e) => e.type === 'run:ended')).toHaveLength(1)
+    expect(events.findIndex((e) => e.type === 'run:done')).toBeLessThan(events.length - 1)
+  })
+
+  it('megszakításkor a run:ended megszakítottnak jelöl', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    let sigint: (() => void) | undefined
+    let interrupted: () => void
+    const exited = new Promise<void>((resolve) => (interrupted = resolve))
+    const hivasok = { generate: 0 }
+
+    await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      {
+        // A jel az első generálás közben érkezik: a megszakítás ága biztosan
+        // megelőzi a normál befejezést.
+        signals: {
+          on(_event: string, listener: () => void) {
+            sigint = listener
+            return this
+          },
+        },
+        exit: () => interrupted(),
+        createClient: () =>
+          hamisKliens(hivasok, (hanyadik) => {
+            if (hanyadik === 1) sigint?.()
+          }),
+      },
+    )
+    await exited
+
+    const lezarasok = (await naploEsemenyek(cfg.logsDir)).filter((e) => e.type === 'run:ended')
+    expect(lezarasok).toHaveLength(1)
+    expect(lezarasok[0]?.type === 'run:ended' ? lezarasok[0].interrupted : null).toBe(true)
+  })
+
+  it('a plafon miatti megállásnál a run:ended a run:aborted után jön', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawConfig(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const recipe = getRecipe('summary')
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const cost = estimateItemUsd(words, recipe.maxIterations, modelConfig)
+
+    const limited = { ...raw, cost_limit_usd: cost / 2 }
+    const code = await commandRun(loadConfig(limited, '/p/refinery.config.yaml'), limited, {
+      recipe: 'summary',
+      dryRun: false,
+      force: false,
+      commit: false,
+    })
+
+    expect(code).toBe(2)
+    const types = (await naploEsemenyek(cfg.logsDir)).map((e) => e.type)
+    expect(types.indexOf('run:aborted')).toBeGreaterThan(-1)
+    expect(types.indexOf('run:ended')).toBeGreaterThan(types.indexOf('run:aborted'))
+  })
+})

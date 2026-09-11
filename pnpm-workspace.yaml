@@ -1,6 +1,14 @@
+packages:
+  - web
+
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+  unrs-resolver: false
+  vue-demi: false
+
+minimumReleaseAgeExclude:
+  - markdown-it@15.0.2
 
 overrides:
   better-sqlite3: ^13.0.3

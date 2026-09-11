@@ -10,6 +10,12 @@
   "bin": {
     "refinery": "./dist/cli.js"
   },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
@@ -20,7 +26,12 @@
     "eval": "evalite run",
     "eval:watch": "evalite watch",
     "measure": "tsx evals/measure/run.ts",
-    "release": "bumpp"
+    "release": "bumpp",
+    "web": "pnpm build && pnpm --filter transcript-refinery-web build && pnpm --filter transcript-refinery-web start",
+    "web:dev": "pnpm build && pnpm --filter transcript-refinery-web dev",
+    "web:test": "pnpm build && pnpm --filter transcript-refinery-web test",
+    "web:typecheck": "pnpm build && pnpm --filter transcript-refinery-web typecheck",
+    "web:lint": "pnpm --filter transcript-refinery-web lint"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
