@@ -184,4 +184,22 @@ describe('API', async () => {
     expect(data.line.itemId).toBe('szint0002')
     expect(data.state.current?.title).toBe('Második példavideó')
   })
+
+  it('az oldalak a szerveren renderelve a szintetikus adatot mutatják', async () => {
+    const overview = await $fetch<string>('/')
+    expect(overview).toContain('A korpusz állapota')
+    expect(overview).toContain('Fut: run --queue')
+
+    const items = await $fetch<string>('/items')
+    expect(items).toContain('Első példavideó')
+    expect(items).toContain('Második példavideó')
+
+    const item = await $fetch<string>('/items/szint0001')
+    expect(item).toContain('kimaradt: a zárás')
+    expect(item).toContain('&lt;script&gt;')
+    expect(item).toContain('Megnyitás Obsidianban')
+
+    const failures = await $fetch<string>('/failures')
+    expect(failures).toContain('wikilink tiltott')
+  })
 })

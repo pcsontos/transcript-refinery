@@ -17,4 +17,9 @@ describe('API — hiányzó konfiguráció', async () => {
       'Nincs konfigurációs fájl: /nem/letezo/refinery.config.yaml',
     )
   })
+
+  it('az oldal is a konfigurációs hibát mutatja', async () => {
+    const html = await $fetch<string>('/')
+    expect(html).toContain('Nincs konfigurációs fájl')
+  })
 })
