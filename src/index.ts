@@ -34,6 +34,7 @@ export type { Recipe, RecipeInput } from './recipe/types.js'
 export { refine, type RefineResult } from './refine/loop.js'
 export { createModelClient, modelClientFrom, type ModelClient } from './model/client.js'
 export {
+  findRun,
   isRunId,
   listRuns,
   parseEventId,
@@ -45,4 +46,12 @@ export {
 } from './run/logfile.js'
 export { isPidAlive, runStatus, type RunStatus, type RunStatusContext } from './run/status.js'
 export { liveRunState, type LiveRunState } from './view/live.js'
-export { summarizeRun, type RunSummaryView } from './view/runs.js'
+export {
+  loadRun,
+  readRun,
+  readRuns,
+  summarizeRun,
+  type RunDetail,
+  type RunSummaryView,
+} from './view/runs.js'
+export { followRunLog, type FollowedLine, type FollowOptions } from './run/follow.js'

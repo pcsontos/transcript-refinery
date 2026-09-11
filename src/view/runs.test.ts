@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { RunEvent } from '../events.js'
 import type { RunLogLine } from '../run/logfile.js'
-import { summarizeRun } from './runs.js'
+import { readRun, readRuns, summarizeRun } from './runs.js'
 
 const files = {
   runId: '2026-09-07T02-14-03',
@@ -75,5 +79,57 @@ describe('summarizeRun', () => {
       false,
       3,
     ])
+  })
+})
+
+describe('readRuns és readRun', () => {
+  let dir: string
+  const line = (event: RunEvent): string => `${JSON.stringify(event)}\n`
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'refinery-runs-'))
+  })
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('a futásokat legújabb elöl, a folyamat élése szerinti állapottal adja', async () => {
+    await writeFile(
+      join(dir, '2026-09-10T08-00-00.jsonl'),
+      line({ type: 'run:started', command: 'run', pid: 11 }) +
+        line({ type: 'run:done', succeeded: 1, skipped: 0, failed: 0 }) +
+        line({ type: 'run:ended', interrupted: false }),
+    )
+    await writeFile(
+      join(dir, '2026-09-11T09-00-00.jsonl'),
+      line({ type: 'run:started', command: 'run --queue', pid: 22 }),
+    )
+
+    const runs = await readRuns({ logsDir: dir }, (pid) => pid === 22)
+    expect(runs.map((r) => [r.runId, r.status, r.command])).toEqual([
+      ['2026-09-11T09-00-00', 'running', 'run --queue'],
+      ['2026-09-10T08-00-00', 'done', 'run'],
+    ])
+  })
+
+  it('egy futás sorait, állapotát és riportját adja', async () => {
+    await writeFile(
+      join(dir, '2026-09-10T08-00-00.jsonl'),
+      line({ type: 'run:started', command: 'run', pid: 11 }) +
+        line({ type: 'scan:found', count: 4 }) +
+        line({ type: 'run:ended', interrupted: true }),
+    )
+    await writeFile(join(dir, '2026-09-10T08-00-00.md'), '# Futás\n')
+
+    const run = await readRun({ logsDir: dir }, '2026-09-10T08-00-00', () => false)
+    expect(run?.summary.status).toBe('interrupted')
+    expect(run?.lines.map((l) => l.type)).toEqual(['run:started', 'scan:found', 'run:ended'])
+    expect(run?.state.units).toBe(4)
+    expect(run?.report).toBe('# Futás\n')
+  })
+
+  it('nem runId alakú azonosítóra null', async () => {
+    expect(await readRun({ logsDir: dir }, '../../etc/passwd')).toBeNull()
   })
 })

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openRunLog } from './log.js'
-import { isRunId, listRuns, parseEventId, readRunEvents } from './logfile.js'
+import { findRun, isRunId, listRuns, parseEventId, readRunEvents } from './logfile.js'
 
 let dir: string
 
@@ -128,5 +128,22 @@ describe('parseEventId', () => {
     for (const value of [undefined, '', '-1', '1.5', '12a', ' 12']) {
       expect(parseEventId(value)).toBe(0)
     }
+  })
+})
+
+describe('findRun', () => {
+  it('létező futásra a fájljait adja', async () => {
+    await writeFile(join(dir, '2026-09-07T02-14-03.jsonl'), '')
+    expect(findRun(dir, '2026-09-07T02-14-03')).toEqual({
+      runId: '2026-09-07T02-14-03',
+      logPath: join(dir, '2026-09-07T02-14-03.jsonl'),
+      reportPath: null,
+    })
+  })
+
+  it('nem runId alakú vagy nem létező futásra null', async () => {
+    await writeFile(join(dir, '2026-09-07T02-14-03.jsonl'), '')
+    expect(findRun(dir, '../2026-09-07T02-14-03')).toBeNull()
+    expect(findRun(dir, '2026-09-08T00-00-00')).toBeNull()
   })
 })

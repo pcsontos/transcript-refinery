@@ -122,3 +122,12 @@ export async function readRunEvents(path: string, offset = 0): Promise<RunLogChu
 export function parseEventId(value: string | undefined): number {
   return value !== undefined && /^\d+$/.test(value) ? Number(value) : 0
 }
+
+/** Egy futás fájljai azonosító szerint; nem `runId` alakú vagy nem létező futásra `null`. */
+export function findRun(logsDir: string, runId: string): RunFiles | null {
+  if (!isRunId(runId)) return null
+  const logPath = join(logsDir, `${runId}.jsonl`)
+  if (!existsSync(logPath)) return null
+  const reportPath = join(logsDir, `${runId}.md`)
+  return { runId, logPath, reportPath: existsSync(reportPath) ? reportPath : null }
+}
