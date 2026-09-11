@@ -170,7 +170,7 @@ export const flashcardsRecipe: Recipe = {
   outputFile: '_flashcards.md',
   publishable: true,
   role: 'draft',
-  maxIterations: 2,
+  maxIterations: 0,
 
   structured: structuredOutput(FlashcardsSchema, renderCards),
 

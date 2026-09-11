@@ -64,6 +64,10 @@ mag adja.
 
 ## Fázis 3 — Több recept és az iteráció megmérése
 
+**Státusz: kész** (2026-09-10). A prózarecept (`summary`) és a strukturált
+recept (`flashcards`) a helyükön; a harmadik kritériumot [a mérés](<./measurements/2026-09-09-iteracio.md>)
+zárta le — a válasz nemleges, a loop alapból egy generálásra (`maxIterations: 0`) áll.
+
 **Kész, ha:**
 
 - **Egy prózarecept hozzáadása pontosan egy új fájlt érint** — és ezt egy commit

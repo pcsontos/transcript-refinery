@@ -21,10 +21,10 @@ describe('qaRecipe', () => {
     expect(qaRecipe.outputFile).toBe('_qa.md')
   })
 
-  it('publikálható, a draft szerepet kéri, és két javító kört enged', () => {
+  it('publikálható, a draft szerepet kéri, és nem enged javító kört — a summary döntését örökli', () => {
     expect(qaRecipe.publishable).toBe(true)
     expect(qaRecipe.role).toBe('draft')
-    expect(qaRecipe.maxIterations).toBe(2)
+    expect(qaRecipe.maxIterations).toBe(0)
   })
 
   it('prózarecept: nem kér sémás kimenetet', () => {

@@ -120,8 +120,12 @@ megmutatni. Négy válasz, egyik sem tár fel vault-tartalmat:
 Két kérdés, amit a legtöbb hasonló projekt meg sem kérdez, itt viszont számmal
 megválaszolható:
 
-- **Segít-e a második iteráció, és mennyiért?** Az optimalizáló loop minden
-  körének pontszáma rögzül. Ha a válasz az, hogy a második kör 40%-kal drágább 3%
-  javulásért, akkor az kerül a dokumentációba, és a loop alapból egy körre áll.
+- **Segít-e a második iteráció, és mennyiért?** Lemérve: [a mérés](./measurements/2026-09-09-iteracio.md)
+  20 elemen, 3 ismétléssel, valódi hívásokkal futott. A `summary`-nál és a
+  `flashcards`-nál is nulla volt a zajszint és nulla a megbukott pár — minden
+  elem elsőre átment a küszöbön, tehát a második kör javulása és mentési
+  aránya egyaránt 0. A javító kör a mai korpuszon és modelleken nem térül
+  meg, ezért mindhárom recept (a két mért, és alakja miatt a `summary`
+  döntését öröklő `qa`) alapból `maxIterations: 0`-ra áll.
 - **Melyik modell éri meg?** A jelöltek ugyanazon a halmazon futnak, és a mért
   hűség és lefedettség dönt, egységnyi költségre vetítve — nem benyomás.

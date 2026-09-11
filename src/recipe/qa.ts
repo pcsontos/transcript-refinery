@@ -35,7 +35,7 @@ export const qaRecipe: Recipe = {
   outputFile: '_qa.md',
   publishable: true,
   role: 'draft',
-  maxIterations: 2,
+  maxIterations: 0,
 
   prompt: ({ item, transcript }) =>
     [
