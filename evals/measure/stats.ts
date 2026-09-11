@@ -7,6 +7,14 @@ export interface RunRecord {
   scores: number[]
   /** Körönkénti költség dollárban. */
   usdPerRound: number[]
+  /**
+   * A megtartott (legjobb pontszámú) generálás szövege. Csak a privát,
+   * gitignore-olt nyers adatba kerül — az `aggregate()` és a `decide()` nem
+   * olvassa, a publikált riport tehát ettől függetlenül szövegmentes marad.
+   * Azért van itt, hogy egy későbbi éles futtatás ugyanazon elemekre ne
+   * fizessen rá még egyszer a generálásért.
+   */
+  output?: string
 }
 
 export interface RoundStats {

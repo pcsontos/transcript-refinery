@@ -237,6 +237,10 @@ for (const recipe of RECIPES) {
               costOf(r.generateUsage, modelConfig.pricing[recipe.role]) +
               costOf(r.scoreUsage, modelConfig.pricing.judge),
           ),
+          // Csak a privát, gitignore-olt nyers adatba: egy éles futtatás
+          // ugyanezen elemeken újrahasznosíthatja, ahelyett hogy újra
+          // kifizetné a generálást.
+          output: result.output,
         })
         console.log(
           `${recipe.id} ${id} #${String(repeat + 1)}: ${result.rounds.map((r) => r.score.toFixed(2)).join(' → ')}`,

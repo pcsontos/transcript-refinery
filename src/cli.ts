@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
   CONFIG_FILENAME,
@@ -466,7 +467,12 @@ export async function main(argv: readonly string[]): Promise<number> {
   return 1
 }
 
-const isEntrypoint = process.argv[1]?.endsWith('cli.js') ?? false
+// A fájlnév-alapú ellenőrzés (`endsWith('cli.js')`) csendben nem futtatta a
+// `main()`-t, ha a fájlt `tsx src/cli.ts`-ként hívták meg — a `.ts` kiterjesztés
+// nem `cli.js`-re végződik. Az útvonal-azonosság mindkét esetben helyesen
+// felismeri a belépési pontot, a fájlnévtől függetlenül.
+const isEntrypoint =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
 if (isEntrypoint) {
   loadDotEnv()
   main(process.argv.slice(2))
