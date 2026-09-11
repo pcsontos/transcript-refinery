@@ -27,7 +27,10 @@ export function openRunLog(path: string): RunLog {
 
     sink(event) {
       if (closed) return
-      writeSync(fd, `${JSON.stringify(event)}\n`)
+      // Az idő a napló tulajdonsága, nem az eseményé: a `RunEvent` időmentes
+      // marad, így a mag tesztjei determinisztikusak. A felület ebből rajzolja
+      // az idővonalat, és ebből látja, mióta nem jött esemény.
+      writeSync(fd, `${JSON.stringify({ at: new Date().toISOString(), ...event })}\n`)
     },
 
     // Idempotens, mint az állapottár `close()`-a: a hívónak nem feladata

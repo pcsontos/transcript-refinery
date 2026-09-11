@@ -33,3 +33,13 @@ export { getRecipe, RECIPES, RECIPE_IDS } from './recipe/registry.js'
 export type { Recipe, RecipeInput } from './recipe/types.js'
 export { refine, type RefineResult } from './refine/loop.js'
 export { createModelClient, modelClientFrom, type ModelClient } from './model/client.js'
+export {
+  isRunId,
+  listRuns,
+  parseEventId,
+  readRunEvents,
+  type RunFiles,
+  type RunLogChunk,
+  type RunLogEntry,
+  type RunLogLine,
+} from './run/logfile.js'
