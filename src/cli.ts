@@ -20,7 +20,9 @@ import { comparePricing, fetchLivePricing } from './model/pricing-check.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
-import { getRecipe } from './recipe/registry.js'
+import { queuePath, readQueueFile } from './queue/file.js'
+import { mergeQueue } from './queue/merge.js'
+import { RECIPE_IDS, getRecipe } from './recipe/registry.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { reserveRunId, runId } from './run/id.js'
 import { openRunLog } from './run/log.js'
@@ -30,6 +32,7 @@ import { discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
+import { writeFileAtomic } from './vault/atomic.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 
 const VERSION = '0.1.0'
@@ -52,6 +55,8 @@ Kapcsolók:
   --force           létező fájlt is felülír
   --no-commit       nem commitol és nem pushol a vault repójába
   --retry-failed    csak a korábban hibára futott elemek
+  --queue           scan: a vault _queue.md sorába fésül; run: a sor
+                    kipipált (videó, recept) párjait dolgozza fel
 
   A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
@@ -102,7 +107,7 @@ function render(event: RunEvent): string | null {
   }
 }
 
-async function commandScan(cfg: Config): Promise<number> {
+export async function commandScan(cfg: Config): Promise<number> {
   const items = await discoverAll(cfg.sources, cfg.languages)
   console.log(`${items.length} feldolgozható felirat\n`)
   for (const item of items) {
@@ -119,6 +124,47 @@ async function commandScan(cfg: Config): Promise<number> {
     console.log(`  ${item.source}  ${item.itemId}  ${item.title}`)
     console.log(`      ${item.sourceFile}`)
     console.log(`      ${detail}`)
+  }
+  return 0
+}
+
+/**
+ * A felderített elemek összefésülése a vault feldolgozási sorába. Modellt nem
+ * hív, ezért `LITELLM_API_KEY` sem kell hozzá. A sort csak akkor írja, ha a
+ * tartalma ténylegesen változik — így az ismételt futás nem hagy commitot
+ * maga után.
+ */
+export async function commandScanQueue(
+  cfg: Config,
+  flags: { dryRun: boolean; commit: boolean },
+): Promise<number> {
+  const commit = flags.commit && !flags.dryRun
+  if (commit) await gitPullFfOnly(cfg.vaultPath)
+
+  const items = await discoverAll(cfg.sources, cfg.languages)
+  const path = queuePath(cfg.notesRoot)
+  const current = await readQueueFile(path)
+  const { text, stats } = mergeQueue(current, items, RECIPE_IDS)
+
+  console.log(
+    `${String(items.length)} feldolgozható felirat · ${String(stats.addedVideos)} új videó, ` +
+      `${String(stats.addedRecipeLines)} új receptsor meglévő videó alatt, ` +
+      `${String(stats.changedMarks)} jelölés-változás`,
+  )
+  if (flags.dryRun) {
+    console.log('Próbafutás: a sor nem íródott.')
+    return 0
+  }
+  if (text === current) {
+    console.log(`A sor naprakész: ${path}`)
+    return 0
+  }
+
+  await writeFileAtomic(path, text)
+  console.log(`Sor: ${path}`)
+  if (commit && (await gitCommitPaths(cfg.vaultPath, [path], 'docs(videos): feldolgozási sor frissítése'))) {
+    const push = await gitPush(cfg.vaultPath)
+    if (!push.pushed) console.log('A push nem sikerült, a commit lokálisan maradt.')
   }
   return 0
 }
@@ -440,6 +486,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       force: { type: 'boolean', default: false },
       'no-commit': { type: 'boolean', default: false },
       'retry-failed': { type: 'boolean', default: false },
+      queue: { type: 'boolean', default: false },
     },
     allowPositionals: false,
   })
@@ -449,7 +496,11 @@ export async function main(argv: readonly string[]): Promise<number> {
   const cfg = loadConfig(raw, configPath)
   await validateConfig(cfg)
 
-  if (command === 'scan') return commandScan(cfg)
+  if (command === 'scan') {
+    return values.queue
+      ? commandScanQueue(cfg, { dryRun: values['dry-run'], commit: !values['no-commit'] })
+      : commandScan(cfg)
+  }
   if (command === 'check-pricing') {
     return commandCheckPricing(loadModelConfig(raw, process.env, cfg.configPath))
   }

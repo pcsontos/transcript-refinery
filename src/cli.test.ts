@@ -1,18 +1,21 @@
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { commandCheckPricing, commandRun } from './cli.js'
+import { commandCheckPricing, commandRun, commandScan, commandScanQueue } from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
 import type { RunEvent } from './events.js'
 import { estimateItemUsd } from './model/budget.js'
 import type { ModelClient } from './model/client.js'
 import { normalizeItem } from './pipeline.js'
+import { queuePath } from './queue/file.js'
 import { getRecipe } from './recipe/registry.js'
 import { runId } from './run/id.js'
 import { folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
 import type { ModelRole } from './types.js'
+import { gitCommitPaths } from './vault/git.js'
 import { lintVaultMarkdown } from './vault/lint.js'
 
 // A git-integrációt a `vault/git.test.ts` fedi. Itt csak arra kell, hogy a
@@ -1150,5 +1153,72 @@ describe('commandCheckPricing', () => {
     expect(await commandCheckPricing(MODEL_CONFIG)).toBe(2)
 
     hiba.mockRestore()
+  })
+})
+
+describe('commandScanQueue', () => {
+  beforeEach(() => {
+    vi.mocked(gitCommitPaths).mockClear()
+  })
+
+  it('friss vaulton létrehozza a sort: minden videó benne, receptenként egy üres pipával', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'b1', 'Második videó', 'Csatorna B')
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false })).toBe(0)
+
+    const note = await readFile(queuePath(cfg.notesRoot), 'utf8')
+    expect(note).toContain(
+      '## downloads/youtube/Csatorna A\n- Első videó %%a1%%\n  - [ ] summary\n  - [ ] flashcards\n  - [ ] qa\n',
+    )
+    expect(note).toContain(
+      '## downloads/youtube/Csatorna B\n- Második videó %%b1%%\n  - [ ] summary\n  - [ ] flashcards\n  - [ ] qa\n',
+    )
+  })
+
+  it('másodszor futtatva a sor bájtra azonos, és csak az első futás commitol', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+
+    await commandScanQueue(cfg, { dryRun: false, commit: true })
+    const elso = await readFile(sor, 'utf8')
+    await commandScanQueue(cfg, { dryRun: false, commit: true })
+
+    expect(await readFile(sor, 'utf8')).toBe(elso)
+    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledWith(
+      cfg.vaultPath,
+      [sor],
+      'docs(videos): feldolgozási sor frissítése',
+    )
+  })
+
+  it('LITELLM_API_KEY nélkül is lefut: modellt nem hív', async () => {
+    delete process.env.LITELLM_API_KEY
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false })).toBe(0)
+    expect(existsSync(queuePath(cfg.notesRoot))).toBe(true)
+  })
+
+  it('--dry-run mellett nem ír jegyzetet és nem commitol', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+
+    expect(await commandScanQueue(cfg, { dryRun: true, commit: true })).toBe(0)
+    expect(existsSync(queuePath(cfg.notesRoot))).toBe(false)
+    expect(vi.mocked(gitCommitPaths)).not.toHaveBeenCalled()
+  })
+
+  it('a --queue nélküli scan továbbra sem ír semmit', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+
+    expect(await commandScan(cfg)).toBe(0)
+    expect(existsSync(queuePath(cfg.notesRoot))).toBe(false)
   })
 })
