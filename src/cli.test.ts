@@ -17,6 +17,7 @@ import { openState } from './state/db.js'
 import type { ModelRole } from './types.js'
 import { gitCommitPaths } from './vault/git.js'
 import { lintVaultMarkdown } from './vault/lint.js'
+import { noteFile } from './vault/paths.js'
 
 // A git-integrációt a `vault/git.test.ts` fedi. Itt csak arra kell, hogy a
 // `commandRun` törzse egy valódi (nem szimulált) hibát kapjon: a
@@ -1220,5 +1221,34 @@ describe('commandScanQueue', () => {
 
     expect(await commandScan(cfg)).toBe(0)
     expect(existsSync(queuePath(cfg.notesRoot))).toBe(false)
+  })
+})
+
+describe('commandRun — a commit tartalma', () => {
+  beforeEach(() => {
+    vi.mocked(gitCommitPaths).mockClear()
+  })
+
+  it('--recipe mellett a commit az átiratot és a recept jegyzetét viszi, a mai üzenettel', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: true },
+      { createClient: () => hamisKliens({ generate: 0 }) },
+    )
+
+    expect(code).toBe(0)
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledWith(
+      cfg.vaultPath,
+      [noteFile(cfg.notesRoot, item!, '_transcript.md'), noteFile(cfg.notesRoot, item!, '_summary.md')],
+      'docs(videos): átirat 2 videóhoz',
+    )
   })
 })

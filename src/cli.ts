@@ -14,18 +14,20 @@ import {
   type ModelConfig,
 } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
-import { createCostGuard, estimateItemUsd, sliceToBudget, type BudgetEntry } from './model/budget.js'
+import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
 import { createModelClient, type ModelClient } from './model/client.js'
 import { comparePricing, fetchLivePricing } from './model/pricing-check.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
-import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
+import { ARTIFACT_KIND, processItem, type RecipeDeps } from './pipeline.js'
 import { queuePath, readQueueFile } from './queue/file.js'
 import { mergeQueue } from './queue/merge.js'
 import { RECIPE_IDS, getRecipe } from './recipe/registry.js'
+import type { Recipe } from './recipe/types.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { reserveRunId, runId } from './run/id.js'
 import { openRunLog } from './run/log.js'
+import { estimateUnits, filterItems, unitKey, unitKind, type WorkUnit } from './run/plan.js'
 import { renderReport } from './run/report.js'
 import { nextCommand } from './run/suggest.js'
 import { discoverAll } from './source/folder.js'
@@ -60,23 +62,6 @@ Kapcsolók:
 
   A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
-
-function applyFilters(
-  items: SourceItem[],
-  filters: { source?: string; channel?: string },
-): SourceItem[] {
-  let out = items
-  if (filters.source) {
-    const wanted = filters.source.toLocaleLowerCase()
-    out = out.filter((i) => i.source.toLocaleLowerCase() === wanted)
-  }
-  if (filters.channel) {
-    // Metaadat nélküli elemnek nincs csatornája: a szűrő ilyenkor kizárja.
-    const wanted = filters.channel.toLocaleLowerCase()
-    out = out.filter((i) => i.metadata.channel?.toLocaleLowerCase() === wanted)
-  }
-  return out
-}
 
 function render(event: RunEvent): string | null {
   switch (event.type) {
@@ -208,6 +193,13 @@ export interface RunRuntime {
   createClient?: (cfg: ModelConfig) => ModelClient
 }
 
+/** A modellréteg egy futásra: egy kliens és egy költségőr, minden receptnek közösen. */
+interface ModelRuntime {
+  modelConfig: ModelConfig
+  client: ModelClient
+  guard: CostGuard
+}
+
 export async function commandRun(
   cfg: Config,
   raw: unknown,
@@ -227,24 +219,32 @@ export async function commandRun(
   runtime: RunRuntime = {},
 ): Promise<number> {
   const commandLine = flags.command ?? 'run'
+  const recipe = flags.recipe ? getRecipe(flags.recipe) : null
 
-  let recipeDeps: RecipeDeps | undefined
-  let maxIterations = 0
-  if (flags.recipe) {
-    const recipe = getRecipe(flags.recipe)
+  // Egy kliens és egy költségőr az egész indításra: a plafon így nem
+  // receptenként, hanem együtt vonatkozik minden egységre.
+  let model: ModelRuntime | undefined
+  if (recipe) {
     const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
-    recipeDeps = {
-      recipe,
-      client: (runtime.createClient ?? createModelClient)(modelConfig),
+    model = {
       modelConfig,
+      client: (runtime.createClient ?? createModelClient)(modelConfig),
       guard: createCostGuard(modelConfig.costLimitUsd),
     }
-    maxIterations = recipe.maxIterations
   }
+  const depsFor = (unitRecipe: Recipe | null): RecipeDeps | undefined =>
+    unitRecipe && model
+      ? {
+          recipe: unitRecipe,
+          client: model.client,
+          modelConfig: model.modelConfig,
+          guard: model.guard,
+        }
+      : undefined
 
   // A futás műtermék-típusa: recepttel a recept azonosítója, enélkül az
   // átirat. Egyszer számoljuk ki — a riport és a hibás-szűrő ugyanazt kérdezi.
-  const artifactKind = recipeDeps?.recipe.id ?? ARTIFACT_KIND
+  const artifactKind = recipe?.id ?? ARTIFACT_KIND
 
   if (flags.commit && !flags.dryRun) await gitPullFfOnly(cfg.vaultPath)
 
@@ -294,11 +294,11 @@ export async function commandRun(
       corpora: [{ kind: artifactKind, status: corpus }],
       runs: countRunLogs(cfg.logsDir),
       logPath,
-      cost: recipeDeps
+      cost: model
         ? {
-            spentUsd: recipeDeps.guard.spentUsd(),
-            limitUsd: recipeDeps.modelConfig.costLimitUsd,
-            capped: recipeDeps.guard.exceeded(),
+            spentUsd: model.guard.spentUsd(),
+            limitUsd: model.modelConfig.costLimitUsd,
+            capped: model.guard.exceeded(),
           }
         : undefined,
       nextCommand: nextCommand(commandLine, corpus),
@@ -322,36 +322,22 @@ export async function commandRun(
   try {
     discovered = await discoverAll(cfg.sources, cfg.languages)
     // A limitnek a JELÖLTEKET kell határolnia, nem a teljes korpuszt: a
-    // forrás/csatorna szűrés (`applyFilters`) és a hibás-szűrő UTÁN vágunk,
-    // különben pl. `--retry-failed --limit 1` a felfedezés szerint elöl
-    // álló (esetleg kész) elemet nézné meg, nem a hibásak közül az elsőt.
-    let items = applyFilters(discovered, flags)
+    // forrás/csatorna szűrés és a hibás-szűrő UTÁN vágunk, különben pl.
+    // `--retry-failed --limit 1` a felfedezés szerint elöl álló (esetleg kész)
+    // elemet nézné meg, nem a hibásak közül az elsőt.
+    let items = filterItems(discovered, flags)
     if (flags.retryFailed) items = store.listFailed(items, artifactKind)
     if (flags.limit !== undefined) items = items.slice(0, flags.limit)
-    printing({ type: 'scan:found', count: items.length })
+    const units: WorkUnit[] = items.map((item) => ({ item, recipe }))
+    printing({ type: 'scan:found', count: units.length })
 
-    let planned = items
-    if (recipeDeps) {
-      const pending = flags.force ? items : store.listPending(items, recipeDeps.recipe.id)
-      const entries: BudgetEntry<SourceItem>[] = []
-      for (const item of pending) {
-        try {
-          entries.push({
-            value: item,
-            words: (await normalizeItem(item)).wordsNormalized,
-            maxIterations,
-          })
-        } catch {
-          // Az elem, aminek a normalizálása dob (olvashatatlan fájl, üres
-          // felirat), csak a BECSLÉSBŐL marad ki — szószám híján nincs mit
-          // becsülni rá. A feldolgozás sorra veszi: a `planned` a szűrt
-          // `items`-ből épül, tehát a hibája `item:failed`-ként megjelenik a
-          // naplóban, a riportban és a kilépőkódban is.
-        }
-      }
-
-      const slice = sliceToBudget(entries, recipeDeps.modelConfig)
-      const limitUsd = recipeDeps.modelConfig.costLimitUsd
+    let planned = units
+    if (model) {
+      const pending = flags.force
+        ? units
+        : units.filter((unit) => !store.isDone(unit.item.itemId, unitKind(unit)))
+      const { slice, first } = await estimateUnits(pending, model.modelConfig)
+      const limitUsd = model.modelConfig.costLimitUsd
 
       printing({
         type: 'run:estimate',
@@ -361,13 +347,12 @@ export async function commandRun(
         limitUsd,
       })
 
-      // Az üres `entries` (nincs feldolgozandó elem — a szűrők vagy a már
-      // kész elemek miatt) nem plafon-túllépés: a köteg simán, nulla elemmel
-      // fut le. A 2-es kilépőkód KIZÁRÓLAG akkor jár, ha VAN jelölt, de az
-      // első sem fér a plafon alá.
-      const first = entries[0]
+      // Az üres becslés (nincs feldolgozandó egység — a szűrők vagy a már
+      // kész elemek miatt) nem plafon-túllépés: a köteg simán, nulla
+      // egységgel fut le. A 2-es kilépőkód KIZÁRÓLAG akkor jár, ha VAN
+      // jelölt, de az első sem fér a plafon alá.
       if (first !== undefined && slice.planned.length === 0) {
-        const firstUsd = estimateItemUsd(first.words, first.maxIterations, recipeDeps.modelConfig)
+        const firstUsd = estimateItemUsd(first.words, first.maxIterations, model.modelConfig)
         printing({
           type: 'run:aborted',
           reason: `már az első elem becsült költsége (${firstUsd.toFixed(4)} $) meghaladja a plafont`,
@@ -388,37 +373,35 @@ export async function commandRun(
         })
       }
 
-      // A `planned` a SZŰRT lista, csökkentve a plafon miatt elhalasztott
-      // elemekkel. Így a már kész elem a kihagyás ágára jut, a hibás elem a
-      // feldolgozás hibaágára — modellhívás egyikkel sem jár, tehát a plafon
-      // szemantikája sértetlen. A `slice` számai a becslésről szólnak, azaz a
-      // ténylegesen modellhívást igénylő elemekről; a feldolgozandó lista
-      // ennél tágabb.
-      const deferredIds = new Set(slice.deferred.map((i) => i.itemId))
-      planned = items.filter((i) => !deferredIds.has(i.itemId))
+      // A `planned` a SZŰRT egységlista, csökkentve a plafon miatt
+      // elhalasztottakkal. Így a már kész egység a kihagyás ágára jut, a
+      // hibás elem a feldolgozás hibaágára — modellhívás egyikkel sem jár,
+      // tehát a plafon szemantikája sértetlen.
+      const deferred = new Set(slice.deferred.map(unitKey))
+      planned = units.filter((unit) => !deferred.has(unitKey(unit)))
     }
 
-    const written: string[] = []
-    for (const item of planned) {
-      const outcome = await processItem(item, {
+    const written = new Set<string>()
+    for (const unit of planned) {
+      const outcome = await processItem(unit.item, {
         notesRoot: cfg.notesRoot,
         store,
         sink: printing,
         version: VERSION,
         options: { force: flags.force, dryRun: flags.dryRun },
-        recipeDeps,
+        recipeDeps: depsFor(unit.recipe),
       })
       if (outcome.status === 'published') {
-        if (outcome.path) written.push(outcome.path)
-        if (outcome.recipePath && outcome.recipePath !== outcome.path) written.push(outcome.recipePath)
+        if (outcome.path) written.add(outcome.path)
+        if (outcome.recipePath) written.add(outcome.recipePath)
       }
 
-      if (recipeDeps?.guard.exceeded()) {
+      if (model?.guard.exceeded()) {
         printing({
           type: 'run:aborted',
           reason: 'a tényleges költés meghaladta a plafont',
-          spentUsd: recipeDeps.guard.spentUsd(),
-          limitUsd: recipeDeps.modelConfig.costLimitUsd,
+          spentUsd: model.guard.spentUsd(),
+          limitUsd: model.modelConfig.costLimitUsd,
         })
         break
       }
@@ -437,9 +420,9 @@ export async function commandRun(
         `${summary.skipped} kihagyva, ${summary.failed} hibás.`,
     )
 
-    if (flags.commit && !flags.dryRun && written.length > 0) {
-      const message = `docs(videos): átirat ${written.length} videóhoz`
-      if (await gitCommitPaths(cfg.vaultPath, written, message)) {
+    if (flags.commit && !flags.dryRun && written.size > 0) {
+      const message = `docs(videos): átirat ${String(written.size)} videóhoz`
+      if (await gitCommitPaths(cfg.vaultPath, [...written], message)) {
         const push = await gitPush(cfg.vaultPath)
         if (!push.pushed) console.log(`A push nem sikerült, a commit lokálisan maradt.`)
       }
