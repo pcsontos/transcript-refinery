@@ -55,6 +55,25 @@ import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 
 const VERSION = '0.1.0'
 
+/**
+ * A `finish` commitból eredő hibáját jelöli, megkülönböztetve a riportírás
+ * hibájától — a két hívó (a törzs `finally`-je és a SIGINT-kezelő) enélkül
+ * nem tudná, melyik üzenetet írja ki.
+ */
+class VaultCommitError extends Error {
+  constructor(cause: Error) {
+    super(cause.message, { cause })
+  }
+}
+
+/** A `finish` hibájából a hívónak szóló üzenet — a valódi okot nevezi meg, nem azt, melyik hívó észlelte. */
+function describeFinishError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return error instanceof VaultCommitError
+    ? `A vault-commit nem sikerült: ${message}`
+    : `A riport nem készült el: ${message}`
+}
+
 const USAGE = `refinery <parancs> [kapcsolók]
 
 Parancsok:
@@ -372,23 +391,58 @@ export async function commandRun(
   }
 
   // Egyszeri lefutás: a megszakítás és a normál befejezés is meghívja a
-  // `finish`-t, és versenyben lehetnek egymással (a `process.exit` a SIGINT
-  // ágon csak a riport kiírása UTÁN fut le, addig a fő ág is tovább
-  // haladhat). Az őr szinkron, még az első `await` előtt fut le, tehát
-  // bármelyik hívás érkezzen is előbb, a másik nem írja felül a riportot.
-  let finished = false
+  // `finish`-t, és versenyben lehetnek egymással. A második hívó ne egy
+  // azonnal teljesült, üres promise-t kapjon vissza — a `finish` MOST már
+  // valódi munkát végez (git commit, push), és a SIGINT-ág `exit`-je enélkül
+  // megelőzhetné a másik hívás tényleges befejezését. Ezért mindkét hívó
+  // ugyanazt a promise-t várja: a második hívás `interrupted` paramétere
+  // eldobódik, de a munka csak egyszer fut, és mindkét hívó a tényleges
+  // befejezésre vár.
+  let finishPromise: Promise<void> | undefined
 
-  const finish = async (interrupted: boolean): Promise<void> => {
-    if (finished) return
-    finished = true
+  const finish = (interrupted: boolean): Promise<void> => {
+    finishPromise ??= runFinish(interrupted)
+    return finishPromise
+  }
 
+  const runFinish = async (interrupted: boolean): Promise<void> => {
     // Megszakításnál, a törzsben dobott kivételnél és a 2-es kilépőkódnál a
     // visszaírás itt történik; a normál ágon már megtörtént, ez pedig nem
     // csinál semmit.
+    let queueChanged = false
     try {
-      await writeBack()
+      queueChanged = await writeBack()
     } catch (error) {
       console.error(`A sor visszaírása nem sikerült: ${(error as Error).message}`)
+    }
+
+    // A commit is itt történik, ne csak a törzs sikeres ágán: így a
+    // megszakítás vagy egy korábbi elhasalt commit miatt még commitra váró,
+    // de már megírt jegyzetek is bekerülnek — az #25 issue épp ezt hiányolta.
+    // A hibáját elkapjuk, hogy a riport akkor is elkészüljön (lásd lent), de a
+    // végén újradobjuk, hogy a hívó megtudja.
+    let commitError: Error | undefined
+    if (commit) {
+      try {
+        // MINDEN commitra váró jegyzetet felvesz, nem csak ennek a futásnak a
+        // válogatását: egy korábbi, más szűrővel futott kötegből maradt
+        // jegyzetet is pótol — enélkül egy megszakadt `--recipe summary`
+        // futás után egy `--recipe qa` futás sosem venné fel.
+        const notePaths = store.listPendingCommits()
+        const paths = queueChanged ? [...notePaths, sorPath] : notePaths
+        if (paths.length > 0) {
+          const message = queueMode
+            ? `docs(videos): ${String(notePaths.length)} jegyzet a feldolgozási sorból`
+            : `docs(videos): átirat ${String(notePaths.length)} videóhoz`
+          if (await gitCommitPaths(cfg.vaultPath, paths, message)) {
+            const push = await gitPush(cfg.vaultPath)
+            if (!push.pushed) console.log('A push nem sikerült, a commit lokálisan maradt.')
+          }
+          store.clearPendingCommits(notePaths)
+        }
+      } catch (error) {
+        commitError = error as Error
+      }
     }
 
     // A lezárás a naplóban: enélkül egy riport nélküli napló nem különböztetné
@@ -433,6 +487,8 @@ export async function commandRun(
     // eseményeit némán elnyelné. A napló lezárása a `finally` dolga —
     // egyszer fut le, akkor, amikor a `commandRun` valóban véget ér.
     console.log(`${interrupted ? '\nMegszakítva. ' : ''}Riport: ${reportPath}`)
+
+    if (commitError) throw new VaultCommitError(commitError)
   }
 
   // A kezelő nem zárja az állapottárat. Egy valódi Ctrl+C-nél a
@@ -440,7 +496,9 @@ export async function commandRun(
   // írása már commitolva van; a tesztben pedig a hamis exit után a futás
   // zavartalanul befejeződik, ami egy lezárt adatbázison hibát dobna.
   const uninstallSigint = installSigint(() => {
-    void finish(true).then(() => (runtime.exit ?? process.exit)(130))
+    void finish(true)
+      .catch((error: unknown) => console.error(describeFinishError(error)))
+      .then(() => (runtime.exit ?? process.exit)(130))
   }, runtime.signals)
 
   try {
@@ -538,20 +596,16 @@ export async function commandRun(
       planned = units.filter((unit) => !capped.has(unitKey(unit)))
     }
 
-    const written = new Set<string>()
     for (const [index, unit] of planned.entries()) {
-      const outcome = await processItem(unit.item, {
+      await processItem(unit.item, {
         notesRoot: cfg.notesRoot,
         store,
         sink: printing,
         version: VERSION,
         options: { force: flags.force, dryRun: flags.dryRun },
         recipeDeps: depsFor(unit.recipe),
+        commit,
       })
-      if (outcome.status === 'published') {
-        if (outcome.path) written.add(outcome.path)
-        if (outcome.recipePath) written.add(outcome.recipePath)
-      }
 
       if (model?.guard.exceeded()) {
         printing({
@@ -579,19 +633,6 @@ export async function commandRun(
         `${summary.skipped} kihagyva, ${summary.failed} hibás.`,
     )
 
-    // A visszaírás a commit ELŐTT: a frissített sor ugyanabba a commitba kerül.
-    const queueChanged = await writeBack()
-    const paths = queueChanged ? [...written, sorPath] : [...written]
-    if (commit && paths.length > 0) {
-      const message = queueMode
-        ? `docs(videos): ${String(written.size)} jegyzet a feldolgozási sorból`
-        : `docs(videos): átirat ${String(written.size)} videóhoz`
-      if (await gitCommitPaths(cfg.vaultPath, paths, message)) {
-        const push = await gitPush(cfg.vaultPath)
-        if (!push.pushed) console.log(`A push nem sikerült, a commit lokálisan maradt.`)
-      }
-    }
-
     await finish(false)
     return summary.failed > 0 || notFound.length > 0 ? 1 : 0
   } finally {
@@ -604,7 +645,7 @@ export async function commandRun(
     try {
       await finish(false)
     } catch (error) {
-      console.error(`A riport nem készült el: ${(error as Error).message}`)
+      console.error(describeFinishError(error))
     }
     // A leiratkozás azért kerül ide, hogy a `commandRun` visszatérte után
     // egy késői jel ne fusson neki egy lent már lezárt állapottárnak.
