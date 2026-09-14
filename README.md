@@ -3,12 +3,15 @@
 Kész `.vtt`/`.srt` feliratfájlokból strukturált tudásjegyzeteket készít egy
 Obsidian vaultba — mindegy, mi állította elő őket.
 
-> **Állapot: a Fázis 2 kész.** A teljes korpusz felügyelet nélkül végigfut: a
-> futás JSONL naplót és Markdown riportot hagy maga után, a költségplafon a
-> tiltás helyett szeletel, az átmeneti modellhibát korlátos újrapróbálkozás
-> nyeli el. Három recept van: összefoglaló, tanulókártya és kérdés-felelet.
-> Az iteráció megmérése és a felület hátravan. Lásd:
-> [`docs/roadmap.md`](<./docs/roadmap.md>).
+> **Állapot: a v1 minden fázisa kész** (Fázis 0–5, ld.
+> [`docs/roadmap.md`](<./docs/roadmap.md>)). A teljes korpusz felügyelet
+> nélkül végigfut: a futás JSONL naplót és Markdown riportot hagy maga után,
+> a költségplafon a tiltás helyett szeletel, az átmeneti modellhibát korlátos
+> újrapróbálkozás nyeli el. Három recept van: összefoglaló, tanulókártya és
+> kérdés-felelet; a második iteráció mért haszna nemleges, a loop alapból egy
+> körre áll. A feldolgozási sor Obsidianból vezérelhető (`scan --queue` /
+> `run --queue`), és van egy csak olvasó Nuxt-felület az áttekintéshez és az
+> élő követéshez.
 
 ## A probléma
 
