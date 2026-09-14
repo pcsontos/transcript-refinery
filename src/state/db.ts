@@ -49,6 +49,19 @@ CREATE TABLE IF NOT EXISTS artifact_gaps (
   PRIMARY KEY (item_id, kind),
   FOREIGN KEY (item_id, kind) REFERENCES artifacts(item_id, kind)
 );
+
+-- Egy commit-módú futás által megírt, de még nem commitolt műtermékek. Egy
+-- megszakadt vagy elhasalt commit után a következő futás ebből tudja, mit
+-- kell utólag felvennie — anélkül, hogy minden 'done' műterméket újra
+-- commitolna, azt is, amit a felhasználó korábban tudatosan --no-commit
+-- mellett írt. Új tábla, nem az artifacts oszlopa: a régi állapotfájlokon is
+-- migráció nélkül, biztonságosan létrejön.
+CREATE TABLE IF NOT EXISTS pending_commits (
+  item_id TEXT NOT NULL,
+  kind    TEXT NOT NULL,
+  path    TEXT NOT NULL,
+  PRIMARY KEY (item_id, kind)
+);
 `
 
 export interface TranscriptRecord {
@@ -126,8 +139,21 @@ export interface StateStore {
     path: string | null,
     error: string | null,
     metrics?: ArtifactMetrics,
+    /** Jelöld a műterméket commitra várónak — csak commit-módú futás adja meg. */
+    pendingCommit?: boolean,
   ): void
   artifactOf(itemId: string, kind: string): ArtifactRecord | null
+  /**
+   * Minden még commitra váró műtermék útvonala, rögzítés sorrendjében —
+   * FÜGGETLENÜL attól, hogy a hívó futás mely elemeket válogatta be. Egy
+   * korábbi, más `--recipe`/`--source`/`--queue` szűrővel futó kötegből
+   * maradt jegyzetet is felvesz: a #25 issue épp azt hiányolta, hogy egy
+   * megszakadt vagy elhasalt commit csak akkor pótlódjon, ha a következő
+   * futás véletlenül ugyanazt válogatja be.
+   */
+  listPendingCommits(): string[]
+  /** A megadott útvonalak levétele a commitra várók közül, sikeres commit után. */
+  clearPendingCommits(paths: readonly string[]): void
   /** A rögzített hiánylista; `null`, ha nincs rögzítve. */
   gapsOf(itemId: string, kind: string): string[] | null
   transcriptOf(itemId: string): TranscriptRecord | null
@@ -214,9 +240,10 @@ export function openState(path: string): StateStore {
       ).run(itemId, source, wordsRaw, wordsNormalized, now())
     },
 
-    recordArtifact(itemId, kind, status, path, error, metrics) {
-      // Egy tranzakcióban: a műtermék és a hiánylistája együtt változik, így egy
-      // újrafuttatás után sem maradhat a régi kimenet hiánylistája az új mellett.
+    recordArtifact(itemId, kind, status, path, error, metrics, pendingCommit) {
+      // Egy tranzakcióban: a műtermék, a hiánylistája és a commit-várólistán
+      // szereplése együtt változik, így egy újrafuttatás után sem maradhat a
+      // régi kimenet hiánylistája vagy commit-jelölése az új mellett.
       db.exec('BEGIN')
       try {
         db.prepare(
@@ -252,6 +279,12 @@ export function openState(path: string): StateStore {
             JSON.stringify(metrics.gaps),
           )
         }
+        if (status === 'done' && path !== null && pendingCommit === true) {
+          db.prepare(
+            `INSERT INTO pending_commits (item_id, kind, path) VALUES (?, ?, ?)
+             ON CONFLICT(item_id, kind) DO UPDATE SET path = excluded.path`,
+          ).run(itemId, kind, path)
+        }
         db.exec('COMMIT')
       } catch (error) {
         db.exec('ROLLBACK')
@@ -265,6 +298,18 @@ export function openState(path: string): StateStore {
 
     artifactOf(itemId, kind) {
       return selectArtifact(db, itemId, kind)
+    },
+
+    listPendingCommits() {
+      return (db.prepare('SELECT path FROM pending_commits ORDER BY rowid').all() as {
+        path: string
+      }[]).map((row) => row.path)
+    },
+
+    clearPendingCommits(paths) {
+      if (paths.length === 0) return
+      const placeholders = paths.map(() => '?').join(', ')
+      db.prepare(`DELETE FROM pending_commits WHERE path IN (${placeholders})`).run(...paths)
     },
 
     transcriptOf(itemId) {

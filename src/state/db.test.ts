@@ -272,3 +272,59 @@ describe('StateStore — hiánylista', () => {
     expect(tables).toHaveLength(1)
   })
 })
+
+describe('StateStore — commitra váró műtermékek', () => {
+  it('commit-módban rögzítve megjelenik a commitra várók közt', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/a.md', null, undefined, true)
+    expect(store.listPendingCommits()).toEqual(['/v/a.md'])
+  })
+
+  it('commit nélkül rögzítve nem várakozik commitra', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/a.md', null)
+    expect(store.listPendingCommits()).toEqual([])
+  })
+
+  it('hibás rögzítésnél nincs mit commitra várni, út híján sem', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'transcript', 'failed', null, 'olvashatatlan', undefined, true)
+    expect(store.listPendingCommits()).toEqual([])
+  })
+
+  it('a törlés után már nem várakozik commitra', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/a.md', null, undefined, true)
+    store.clearPendingCommits(['/v/a.md'])
+    expect(store.listPendingCommits()).toEqual([])
+  })
+
+  it('a törlés csak a megadott útvonalakat érinti', () => {
+    store.recordItem(item())
+    store.recordItem(item({ itemId: 'masik' }))
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/a.md', null, undefined, true)
+    store.recordArtifact('masik', 'transcript', 'done', '/v/b.md', null, undefined, true)
+    store.clearPendingCommits(['/v/a.md'])
+    expect(store.listPendingCommits()).toEqual(['/v/b.md'])
+  })
+
+  it('üres listával a törlés nem dob', () => {
+    expect(() => store.clearPendingCommits([])).not.toThrow()
+  })
+
+  it('újrarögzítéskor a friss útvonalat várja commitra', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/regi.md', null, undefined, true)
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/uj.md', null, undefined, true)
+    expect(store.listPendingCommits()).toEqual(['/v/uj.md'])
+  })
+
+  it('rögzítés sorrendjében sorolja fel, több elem és típus esetén is', () => {
+    store.recordItem(item())
+    store.recordItem(item({ itemId: 'masik' }))
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/a-t.md', null, undefined, true)
+    store.recordArtifact('a1b2c3', 'summary', 'done', '/v/a-s.md', null, undefined, true)
+    store.recordArtifact('masik', 'transcript', 'done', '/v/m-t.md', null, undefined, true)
+    expect(store.listPendingCommits()).toEqual(['/v/a-t.md', '/v/a-s.md', '/v/m-t.md'])
+  })
+})

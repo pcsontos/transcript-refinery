@@ -34,6 +34,12 @@ export interface PipelineDeps {
   options: PublishOptions
   /** Ha hiányzik, a csővezeték a Fázis 0 útján marad: csak átirat. */
   recipeDeps?: RecipeDeps
+  /**
+   * A hívó futás commit-módban van-e. Ha igen, minden megírt műtermék a
+   * commitra várók közé kerül — a hívó ebből tudja, mit kell commitolnia,
+   * akár egy megszakadt vagy elhasalt korábbi futásból maradt ott.
+   */
+  commit?: boolean
 }
 
 export interface ItemOutcome {
@@ -91,13 +97,13 @@ async function publishRendered(
 
   const result = await publishNote(target, markdown, deps.options)
   if (result.status === 'skipped') {
-    deps.store.recordArtifact(item.itemId, kind, 'done', result.path, null)
+    deps.store.recordArtifact(item.itemId, kind, 'done', result.path, null, undefined, deps.commit)
     deps.sink({ type: 'item:skipped', itemId: item.itemId, reason: 'a fájl már létezik' })
     return { status: 'skipped', path: result.path }
   }
 
   if (!deps.options.dryRun) {
-    deps.store.recordArtifact(item.itemId, kind, 'done', result.path, null)
+    deps.store.recordArtifact(item.itemId, kind, 'done', result.path, null, undefined, deps.commit)
   }
   deps.sink({ type: 'item:published', itemId: item.itemId, path: result.path })
   return { status: 'published', path: result.path }
@@ -198,6 +204,7 @@ async function runRecipe(
         model: modelConfig.models[recipe.role],
         gaps: result.gaps,
       },
+      deps.commit,
     )
   }
 

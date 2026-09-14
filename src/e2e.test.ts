@@ -379,3 +379,177 @@ describe('végponttól végpontig — a feldolgozási sor valódi gittel', () =>
     }
   })
 })
+
+describe('végponttól végpontig — megszakadt futás után a vault-commit', () => {
+  let repo: string
+  let mentettKulcs: string | undefined
+
+  beforeEach(async () => {
+    mentettKulcs = process.env.LITELLM_API_KEY
+    process.env.LITELLM_API_KEY = 'sk-proba'
+
+    const remote = join(work, 'remote.git')
+    repo = join(work, 'vault-klon')
+    await run('git', ['init', '-q', '--bare', remote])
+    await run('git', ['clone', '-q', remote, repo])
+    await run('git', ['config', 'user.email', 'teszt@pelda.hu'], { cwd: repo })
+    await run('git', ['config', 'user.name', 'Teszt'], { cwd: repo })
+    await run('git', ['commit', '-q', '--allow-empty', '-m', 'kezdet'], { cwd: repo })
+    await run('git', ['push', '-q', '-u', 'origin', 'HEAD'], { cwd: repo })
+
+    await write(join(subsA, 'Cs', 'Elso.en.srt'), SRT)
+    await write(join(subsA, 'Cs', 'Masodik.en.srt'), SRT)
+  })
+
+  afterEach(() => {
+    if (mentettKulcs === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = mentettKulcs
+  })
+
+  const rawConfig = () => ({
+    vault: { path: repo },
+    sources: [subsA],
+    state: { path: join(work, 'state.db') },
+    logs: { dir: join(work, 'logs') },
+    model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
+    pricing: {
+      draft: { input_per_million: 3, output_per_million: 15 },
+      judge: { input_per_million: 0.2, output_per_million: 0.5 },
+    },
+    cost_limit_usd: 5,
+  })
+
+  const summaryFlags = { recipe: 'summary', dryRun: false, force: false, commit: true }
+
+  function kliens(onGenerate: (hanyadik: number) => Promise<never> | undefined = () => undefined) {
+    const hivasok = { generate: 0 }
+    const client: ModelClient = {
+      generate: () => {
+        hivasok.generate++
+        return (
+          onGenerate(hivasok.generate) ??
+          Promise.resolve({
+            value: '## Összefoglaló\n\nEgy mondat a jegyzetből.\n',
+            usage: { inputTokens: 10, outputTokens: 5 },
+          })
+        )
+      },
+      generateObject: <T>() =>
+        Promise.resolve({
+          value: { score: 1, gaps: [] } as T,
+          usage: { inputTokens: 5, outputTokens: 2 },
+        }),
+    }
+    return { client, hivasok }
+  }
+
+  async function mindenJegyzetCommitolvaEsPusholva(cfg: ReturnType<typeof loadConfig>): Promise<void> {
+    const items = await discoverAll(cfg.sources, cfg.languages)
+    const vart = items.flatMap((item) =>
+      ['_transcript.md', '_summary.md'].map((utotag) =>
+        relative(repo, noteFile(cfg.notesRoot, item, utotag)),
+      ),
+    )
+    expect(vart).toHaveLength(4)
+    const head = await run('git', ['ls-tree', '-r', '--name-only', 'HEAD'], { cwd: repo })
+    const commitolt = head.stdout.trim().split('\n')
+    for (const path of vart) expect(commitolt).toContain(path)
+    const status = await run('git', ['status', '-sb'], { cwd: repo })
+    expect(status.stdout).not.toContain('ahead')
+  }
+
+  it('a Ctrl+C után az újrafuttatás a már megírt jegyzeteket is commitolja, a kézi fájlt nem', async () => {
+    const raw = rawConfig()
+    const cfg = loadConfig(raw, join(work, 'refinery.config.yaml'))
+    const kezi = join(cfg.notesRoot, 'kezi-jegyzet.md')
+    await write(kezi, 'félbehagyott kézi munka')
+
+    let sigint: (() => void) | undefined
+    let kilep: (code: number) => void = () => undefined
+    const kilepett = new Promise<number>((resolve) => (kilep = resolve))
+    // A második generálás soha nem tér vissza: a törzs — mint a valódi
+    // `process.exit` után — nem jut el a commitig.
+    const megszakito = kliens((hanyadik) => {
+      if (hanyadik !== 2) return undefined
+      sigint?.()
+      return new Promise<never>(() => undefined)
+    })
+    void commandRun(cfg, raw, summaryFlags, {
+      signals: {
+        on(_event: string, listener: () => void) {
+          sigint = listener
+          return this
+        },
+      },
+      exit: (code) => kilep(code),
+      createClient: () => megszakito.client,
+    })
+    expect(await kilepett).toBe(130)
+
+    const code = await commandRun(cfg, raw, summaryFlags, { createClient: () => kliens().client })
+    expect(code).toBe(0)
+
+    await mindenJegyzetCommitolvaEsPusholva(cfg)
+    const status = await run('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: repo })
+    expect(status.stdout.trim().split('\n')).toEqual([`?? ${relative(repo, kezi)}`])
+  })
+
+  it('a commit hibája után az újrafuttatás commitolja a megírt jegyzeteket, akkor is, ha nincs új munka', async () => {
+    const raw = rawConfig()
+    const cfg = loadConfig(raw, join(work, 'refinery.config.yaml'))
+    // Saját hooks-mappa: egy globális `core.hooksPath` se írhassa felül.
+    const hibazo = join(work, 'hooks-hibazo')
+    const ures = join(work, 'hooks-ures')
+    await mkdir(hibazo, { recursive: true })
+    await mkdir(ures, { recursive: true })
+    await writeFile(join(hibazo, 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    await run('git', ['config', 'core.hooksPath', hibazo], { cwd: repo })
+
+    await expect(
+      commandRun(cfg, raw, summaryFlags, { createClient: () => kliens().client }),
+    ).rejects.toThrow()
+
+    await run('git', ['config', 'core.hooksPath', ures], { cwd: repo })
+    const masodik = kliens()
+    const code = await commandRun(cfg, raw, summaryFlags, { createClient: () => masodik.client })
+    expect(code).toBe(0)
+    expect(masodik.hivasok.generate).toBe(0)
+
+    await mindenJegyzetCommitolvaEsPusholva(cfg)
+    expect(await isDirty(repo)).toBe(false)
+  })
+
+  it('egy szűkebb válogatással futó helyreállítás a kívül eső elemek elmaradt commitját is felveszi', async () => {
+    const raw = rawConfig()
+    const cfg = loadConfig(raw, join(work, 'refinery.config.yaml'))
+    const hibazo = join(work, 'hooks-hibazo-2')
+    const ures = join(work, 'hooks-ures-2')
+    await mkdir(hibazo, { recursive: true })
+    await mkdir(ures, { recursive: true })
+    await writeFile(join(hibazo, 'pre-commit'), '#!/bin/sh\nexit 1\n', { mode: 0o755 })
+    await run('git', ['config', 'core.hooksPath', hibazo], { cwd: repo })
+
+    // Mindkét elem megíródik, a commit elhasal.
+    await expect(
+      commandRun(cfg, raw, summaryFlags, { createClient: () => kliens().client }),
+    ).rejects.toThrow()
+
+    await run('git', ['config', 'core.hooksPath', ures], { cwd: repo })
+
+    // A helyreállító futás `--limit 1`-gyel csak EGY elemet válogat be — a
+    // másik elem jegyzetei mégis bekerülnek ugyanabba a commitba, mert a
+    // commitra váró lista nem a futás válogatásától függ.
+    const masodik = kliens()
+    const code = await commandRun(
+      cfg,
+      raw,
+      { ...summaryFlags, limit: 1 },
+      { createClient: () => masodik.client },
+    )
+    expect(code).toBe(0)
+    expect(masodik.hivasok.generate).toBe(0)
+
+    await mindenJegyzetCommitolvaEsPusholva(cfg)
+    expect(await isDirty(repo)).toBe(false)
+  })
+})
