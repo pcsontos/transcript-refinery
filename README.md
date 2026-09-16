@@ -4,14 +4,15 @@ Kész `.vtt`/`.srt` feliratfájlokból strukturált tudásjegyzeteket készít e
 Obsidian vaultba — mindegy, mi állította elő őket.
 
 > **Állapot: a v1 minden fázisa kész** (Fázis 0–5, ld.
-> [`docs/roadmap.md`](<./docs/roadmap.md>)). A teljes korpusz felügyelet
-> nélkül végigfut: a futás JSONL naplót és Markdown riportot hagy maga után,
-> a költségplafon a tiltás helyett szeletel, az átmeneti modellhibát korlátos
-> újrapróbálkozás nyeli el. Három recept van: összefoglaló, tanulókártya és
-> kérdés-felelet; a második iteráció mért haszna nemleges, a loop alapból egy
-> körre áll. A feldolgozási sor Obsidianból vezérelhető (`scan --queue` /
-> `run --queue`), és van egy csak olvasó Nuxt-felület az áttekintéshez és az
-> élő követéshez.
+> [`docs/roadmap.md`](<./docs/roadmap.md>)), és folyamatban a Fázis 6 négy új
+> receptje. A teljes korpusz felügyelet nélkül végigfut: a futás JSONL naplót
+> és Markdown riportot hagy maga után, a költségplafon a tiltás helyett
+> szeletel, az átmeneti modellhibát korlátos újrapróbálkozás nyeli el. Négy
+> recept van: összefoglaló, tanulókártya, kérdés-felelet és tisztított
+> leirat (bekezdésenkénti időbélyeggel); a második iteráció mért haszna
+> nemleges, a loop alapból egy körre áll. A feldolgozási sor Obsidianból
+> vezérelhető (`scan --queue` / `run --queue`), és van egy csak olvasó
+> Nuxt-felület az áttekintéshez és az élő követéshez.
 
 ## A probléma
 
@@ -95,6 +96,14 @@ sorformátumot kér a modelltől, hanem sémás objektumot, és a vault alakját
 állítja elő: a formátum így nem a modell figyelmén múlik. Egy nulla tokenes
 kapu előbb fut, mint a bírók — ismétlődő kérdésnél vagy válasz nélküli
 fejlécnél a drága pontozás el sem indul.
+
+A `--recipe clean` a feliratot enyhén szerkesztett, bekezdésekre és `##`
+szakaszcímekre tagolt leiratot ad, minden bekezdés előtt a valós elhangzási
+idővel (`[MM:SS]`, egy órán túl `[H:MM:SS]`). A modell prózát ír, időbélyeg
+nélkül; egy determinisztikus lépés utólag horgonyozza a bekezdéseket a
+feliratsorokhoz sorrendtartó illesztéssel, és a bizonytalan illesztés
+kivétellel bukik, nem néma rossz időbélyeggel. Egy nulla tokenes hűségkapu
+állítja meg a modellt, ha tisztítás helyett összefoglalna.
 
 A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
 `_queue.md` jegyzetébe fésüli a felderített videókat, videónként receptenként
