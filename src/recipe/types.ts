@@ -51,6 +51,13 @@ export interface Recipe {
   role: ModelRole
   /** Javító körök felső korlátja. Kettő javítás = három generálás. */
   maxIterations: number
+  /**
+   * A kimenet várható hossza a bemenet arányában, a költségbecsléshez.
+   * Hiánya a becslő alapértelmezését (0,1) hagyja érvényben. A tisztított
+   * leirat kimenete nagyjából akkora, mint a bemenet — enélkül a becslés
+   * többszörösen alábecsülne, és a plafon nem tartaná meg a kötegét.
+   */
+  outputRatio?: number
   prompt(input: RecipeInput): string
   repairPrompt(input: RepairInput): string
   /**

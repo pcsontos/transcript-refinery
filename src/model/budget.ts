@@ -4,14 +4,22 @@ import type { ModelUsage } from './client.js'
 import { TOKENS_PER_WORD, costOf } from './pricing.js'
 
 /**
- * A generált jegyzet hossza a bemenet töredéke. Egy összefoglaló nagyjából a
- * normalizált átirat tizede — ez felső becslés, tehát a kapu inkább
- * óvatosabb, mint megengedőbb.
+ * A generált kimenet hossza a bemenet arányában, ha a recept nem mond mást.
+ * Egy összefoglaló nagyjából a normalizált átirat tizede.
  */
-const OUTPUT_RATIO = 0.1
+const DEFAULT_OUTPUT_RATIO = 0.1
 
-/** A rubrika modell-bíró kritériumainak száma (hűség és lefedettség). */
-const JUDGE_CRITERIA = 2
+/** A rubrika modell-bíró kritériumainak száma, ha a hívó nem mond mást. */
+const DEFAULT_JUDGES = 2
+
+/**
+ * A becslés recept-függő része. Azért külön objektum, mert a két érték
+ * együtt jár: egy hosszabb kimenetet dupla áron pontozó bíró kétszer számít.
+ */
+export interface EstimateShape {
+  outputRatio?: number
+  judges?: number
+}
 
 /**
  * Egy elem becsült költsége dollárban.
@@ -25,9 +33,13 @@ export function estimateItemUsd(
   words: number,
   maxIterations: number,
   cfg: ModelConfig,
+  shape: EstimateShape = {},
 ): number {
+  const outputRatio = shape.outputRatio ?? DEFAULT_OUTPUT_RATIO
+  const judges = shape.judges ?? DEFAULT_JUDGES
+
   const transcriptTokens = words * TOKENS_PER_WORD
-  const outputTokens = transcriptTokens * OUTPUT_RATIO
+  const outputTokens = transcriptTokens * outputRatio
   const generations = maxIterations + 1
 
   const draft = costOf(
@@ -38,7 +50,7 @@ export function estimateItemUsd(
     cfg.pricing.draft,
   )
 
-  const judgeCalls = generations * JUDGE_CRITERIA
+  const judgeCalls = generations * judges
   const judge = costOf(
     {
       inputTokens: (transcriptTokens + outputTokens) * judgeCalls,
@@ -56,14 +68,14 @@ export function estimateRunUsd(
   wordCounts: readonly number[],
   maxIterations: number,
   cfg: ModelConfig,
+  shape: EstimateShape = {},
 ): { usd: number; tokens: number } {
+  const judges = shape.judges ?? DEFAULT_JUDGES
   let usd = 0
   let tokens = 0
   for (const words of wordCounts) {
-    usd += estimateItemUsd(words, maxIterations, cfg)
-    tokens += Math.round(
-      words * TOKENS_PER_WORD * (maxIterations + 1) * (1 + JUDGE_CRITERIA),
-    )
+    usd += estimateItemUsd(words, maxIterations, cfg, shape)
+    tokens += Math.round(words * TOKENS_PER_WORD * (maxIterations + 1) * (1 + judges))
   }
   return { usd, tokens }
 }
@@ -77,6 +89,8 @@ export interface BudgetEntry<T> {
    * futás több receptet vihet, és azok korlátja eltérhet.
    */
   maxIterations: number
+  /** A bejegyzés receptjének becslési alakja. Hiánya a mai alapértelmezés. */
+  shape?: EstimateShape
 }
 
 export interface BudgetSlice<T> {
@@ -111,14 +125,14 @@ export function sliceToBudget<T>(
       deferred.push(entry.value)
       continue
     }
-    const itemUsd = estimateItemUsd(entry.words, entry.maxIterations, cfg)
+    const itemUsd = estimateItemUsd(entry.words, entry.maxIterations, cfg, entry.shape)
     if (usd + itemUsd > cfg.costLimitUsd) {
       full = true
       deferred.push(entry.value)
       continue
     }
     usd += itemUsd
-    tokens += estimateRunUsd([entry.words], entry.maxIterations, cfg).tokens
+    tokens += estimateRunUsd([entry.words], entry.maxIterations, cfg, entry.shape).tokens
     planned.push(entry.value)
   }
 
