@@ -16,6 +16,10 @@ const item = (overrides: Partial<SourceItem> = {}): SourceItem => ({
 
 const transcript: NormalizedTranscript = {
   lines: ['Első mondat.', 'Második mondat.'],
+  timed: [
+    { start: 0, text: 'Első mondat.' },
+    { start: 7, text: 'Második mondat.' },
+  ],
   wordsRaw: 100,
   wordsNormalized: 90,
   captionSource: 'creator',

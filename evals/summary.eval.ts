@@ -1,5 +1,5 @@
 import { evalite } from 'evalite'
-import { dedupeLines } from '../src/normalize/dedupe.js'
+import { dedupeTimedLines } from '../src/normalize/dedupe.js'
 import { summaryRecipe } from '../src/recipe/summary.js'
 import { refine } from '../src/refine/loop.js'
 import { checkFormat } from '../src/rubric/format.js'
@@ -36,11 +36,12 @@ evalite('summary recept — teljes loop fixture-modellen', {
   task: async (fixture) => {
     // A valódi Fázis 0 út: nyers SRT → cue-k → deduplikált sorok.
     const cues = parseSubtitle(fixture.srt, `${fixture.id}.srt`)
-    const transcript = dedupeLines(cues).join(' ')
+    const timed = dedupeTimedLines(cues)
+    const transcript = timed.map((l) => l.text).join(' ')
 
     const result = await refine(
       summaryRecipe,
-      { item: itemOf(fixture), transcript },
+      { item: itemOf(fixture), transcript, timed },
       fixtureClient(fixture),
     )
 

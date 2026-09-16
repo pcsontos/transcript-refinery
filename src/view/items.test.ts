@@ -85,6 +85,7 @@ describe('buildItemRows', () => {
       summary: { status: 'done', score: 0.62, costUsd: 0.01, belowThreshold: true },
       flashcards: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
       qa: { status: 'failed', score: null, costUsd: null, belowThreshold: false },
+      clean: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
     })
     expect(row!.updatedAt).toBe('2026-09-11T10:00:00.000Z')
   })

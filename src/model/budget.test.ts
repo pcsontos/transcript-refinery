@@ -33,6 +33,24 @@ describe('estimateItemUsd', () => {
     expect(usd).toBeGreaterThan(0.01)
     expect(usd).toBeLessThan(1)
   })
+
+  it('a magasabb kimeneti arány drágább', () => {
+    const tized = estimateItemUsd(3_000, 0, CFG, { outputRatio: 0.1 })
+    const teljes = estimateItemUsd(3_000, 0, CFG, { outputRatio: 1.05 })
+    expect(teljes).toBeGreaterThan(tized)
+  })
+
+  it('a kevesebb bíró olcsóbb', () => {
+    const ketto = estimateItemUsd(3_000, 0, CFG, { judges: 2 })
+    const egy = estimateItemUsd(3_000, 0, CFG, { judges: 1 })
+    expect(egy).toBeLessThan(ketto)
+  })
+
+  it('alak nélkül a mai viselkedést adja', () => {
+    expect(estimateItemUsd(3_000, 0, CFG)).toBe(
+      estimateItemUsd(3_000, 0, CFG, { outputRatio: 0.1, judges: 2 }),
+    )
+  })
 })
 
 describe('estimateRunUsd', () => {
@@ -151,6 +169,26 @@ describe('sliceToBudget', () => {
     expect(slice.tokens).toBe(
       estimateRunUsd([1_000], 0, cfg).tokens + estimateRunUsd([1_000], 2, cfg).tokens,
     )
+  })
+
+  it('a drágább alakú bejegyzésből kevesebb fér a plafon alá', () => {
+    const cfg: ModelConfig = { ...CFG, costLimitUsd: estimateItemUsd(3_000, 0, CFG) * 2.5 }
+    const olcso = sliceToBudget(
+      [
+        { value: 'a', words: 3_000, maxIterations: 0 },
+        { value: 'b', words: 3_000, maxIterations: 0 },
+      ],
+      cfg,
+    )
+    const draga = sliceToBudget(
+      [
+        { value: 'a', words: 3_000, maxIterations: 0, shape: { outputRatio: 1.05 } },
+        { value: 'b', words: 3_000, maxIterations: 0, shape: { outputRatio: 1.05 } },
+      ],
+      cfg,
+    )
+    expect(olcso.planned).toEqual(['a', 'b'])
+    expect(draga.planned.length).toBeLessThan(2)
   })
 })
 

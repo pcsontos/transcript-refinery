@@ -34,6 +34,16 @@ export interface Cue {
   lines: string[]
 }
 
+/**
+ * Egy megtartott átiratsor a kezdetével. A deduplikáció az ELSŐ előfordulást
+ * tartja meg, tehát ez az az időpont, amikor a szöveg először megjelent.
+ */
+export interface TimedLine {
+  /** kezdet másodpercben */
+  start: number
+  text: string
+}
+
 /** Egy feldolgozandó elem a forrás-adaptertől. */
 export interface SourceItem {
   /** Stabil azonosító: a metaadat videóazonosítója, vagy útvonal-hash. */
@@ -57,6 +67,8 @@ export interface SourceItem {
 /** A normalizálás eredménye. */
 export interface NormalizedTranscript {
   lines: string[]
+  /** Ugyanaz a szöveg, soronkénti kezdőidővel. A `lines` ennek a vetülete. */
+  timed: TimedLine[]
   wordsRaw: number
   wordsNormalized: number
   captionSource: CaptionSource

@@ -104,7 +104,15 @@ describe('estimateUnits', () => {
     const { slice, first } = await estimateUnits(units, CFG)
 
     const words = (await normalizeItem(elem())).wordsNormalized
-    expect(first).toEqual({ value: units[1], words, maxIterations: summary.maxIterations })
+    expect(first).toEqual({
+      value: units[1],
+      words,
+      maxIterations: summary.maxIterations,
+      shape: {
+        outputRatio: summary.outputRatio,
+        judges: summary.rubric.criteria.filter((c) => !c.blocking).length,
+      },
+    })
     expect(slice.planned).toEqual([units[1]])
     expect(slice.usd).toBeCloseTo(estimateItemUsd(words, summary.maxIterations, CFG), 10)
   })

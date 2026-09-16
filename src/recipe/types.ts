@@ -1,6 +1,6 @@
 import type { ModelClient, ModelResult } from '../model/client.js'
 import type { Rubric } from '../rubric/types.js'
-import type { ModelRole, SourceItem } from '../types.js'
+import type { ModelRole, SourceItem, TimedLine } from '../types.js'
 
 /**
  * Sémával kikényszerített kimenet.
@@ -23,6 +23,8 @@ export interface RecipeInput {
   item: SourceItem
   /** A normalizált átirat teljes szövege. */
   transcript: string
+  /** Ugyanaz, soronkénti kezdőidővel. Az időbélyegző receptek alapja. */
+  timed: readonly TimedLine[]
 }
 
 export interface RepairInput extends RecipeInput {
@@ -51,6 +53,13 @@ export interface Recipe {
   role: ModelRole
   /** Javító körök felső korlátja. Kettő javítás = három generálás. */
   maxIterations: number
+  /**
+   * A kimenet várható hossza a bemenet arányában, a költségbecsléshez.
+   * Hiánya a becslő alapértelmezését (0,1) hagyja érvényben. A tisztított
+   * leirat kimenete nagyjából akkora, mint a bemenet — enélkül a becslés
+   * többszörösen alábecsülne, és a plafon nem tartaná meg a kötegét.
+   */
+  outputRatio?: number
   prompt(input: RecipeInput): string
   repairPrompt(input: RepairInput): string
   /**
@@ -59,5 +68,12 @@ export interface Recipe {
    * hiányzik.
    */
   structured?: StructuredOutput
+  /**
+   * Ha jelen van, a generált szöveg ezen megy át, **mielőtt** a rubrika
+   * pontozná. Így a bíró, a javító kör és a publikálás ugyanazt a szöveget
+   * látja. Dobhat: a feldolgozhatatlan kimenet `item:failed` lesz, nem néma
+   * hiba — ugyanaz a precedens, mint a séma-hibánál (`structured.ts`).
+   */
+  postprocess?(output: string, input: RecipeInput): string
   rubric: Rubric
 }

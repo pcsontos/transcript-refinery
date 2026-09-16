@@ -569,7 +569,12 @@ export async function commandRun(
       // egységgel fut le. A 2-es kilépőkód KIZÁRÓLAG akkor jár, ha VAN
       // jelölt, de az első sem fér a plafon alá.
       if (first !== undefined && slice.planned.length === 0) {
-        const firstUsd = estimateItemUsd(first.words, first.maxIterations, model.modelConfig)
+        const firstUsd = estimateItemUsd(
+          first.words,
+          first.maxIterations,
+          model.modelConfig,
+          first.shape,
+        )
         printing({
           type: 'run:aborted',
           reason: `már az első elem becsült költsége (${firstUsd.toFixed(4)} $) meghaladja a plafont`,

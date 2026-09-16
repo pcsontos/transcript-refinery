@@ -22,7 +22,7 @@ const ITEM: SourceItem = {
   },
 }
 
-const INPUT = { item: ITEM, transcript: 'az átirat' }
+const INPUT = { item: ITEM, transcript: 'az átirat', timed: [{ start: 0, text: 'az átirat' }] }
 
 /**
  * Kliens, ami a generáláskor sorban adja vissza a szövegeket, a pontozáskor
@@ -473,5 +473,29 @@ describe('refine — visszahívások', () => {
       'generálás 2',
       'pontozás 0.9, 1 hiány',
     ])
+  })
+
+  it('a postprocess a pontozás ELŐTT fut, és a javító kör is rajta megy át', async () => {
+    const { client, generalt } = scriptedClient([
+      { text: 'első', score: 0 },
+      { text: 'második', score: 0 },
+    ])
+    // A rubrika a MÁR feldolgozott szöveget látja, ezért a pontszámok kulcsai
+    // az időbélyeges alakok. A `scriptedClient` saját `pontszamok` térképét
+    // szándékosan nem használjuk: az a nyers szöveghez rendelne pontot.
+    const pontszamok = new Map([
+      ['[00:00] első', 0.5],
+      ['[00:00] második', 0.9],
+    ])
+    const recipe: Recipe = {
+      ...recept(tablazatosRubrika(pontszamok), 1),
+      postprocess: (output) => `[00:00] ${output}`,
+    }
+
+    const result = await refine(recipe, INPUT, client, {})
+
+    expect(generalt).toEqual(['első', 'második'])
+    expect(result.output).toBe('[00:00] második')
+    expect(result.score).toBe(0.9)
   })
 })
