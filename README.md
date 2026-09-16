@@ -159,7 +159,22 @@ másik fájl is megadható. Környezeti változó egyetlen értéket hoz, a
 
 ### CLI parancsok
 
-A fordítás (`pnpm build`) után a CLI a `node dist/cli.js` paranccsal futtatható (vagy fejlesztés közben közvetlenül: `npx tsx src/cli.ts`):
+A fordítás (`pnpm build`) után a CLI háromféleképpen hívható, egyenértékűen
+— a lenti példák `node dist/cli.js`-t használják, de `pnpm exec refinery` és
+`npx refinery` ugyanígy működik (fejlesztés közben közvetlenül:
+`npx tsx src/cli.ts`):
+
+```bash
+node dist/cli.js scan --queue
+pnpm exec refinery scan --queue
+npx refinery scan --queue
+```
+
+Az utóbbi kettő a `package.json` `bin` mezőjét használja. A csomag
+`devDependencies`-ei közt saját magát is felveszi, `workspace:*` verzióval —
+enélkül a pnpm egy workspace-gyökér csomag saját bin-jét nem kötné be a
+`node_modules/.bin`-be. Az `npx` ugyanezt a helyi `node_modules/.bin/refinery`-t
+találja meg; a registryhez nem is fordul, mert a csomag `"private": true`.
 
 #### Felderítés (`scan`)
 
