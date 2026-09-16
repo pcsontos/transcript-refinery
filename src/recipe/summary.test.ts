@@ -13,7 +13,7 @@ const ITEM: SourceItem = {
   metadata: { videoId: 'abc123', channel: 'Some Channel' },
 }
 
-const INPUT = { item: ITEM, transcript: 'The speaker explains A, then B.' }
+const INPUT = { item: ITEM, transcript: 'The speaker explains A, then B.', timed: [] }
 
 describe('summaryRecipe', () => {
   it('a vault névkonvenciójába illő kimeneti fájlt jelöl meg', () => {

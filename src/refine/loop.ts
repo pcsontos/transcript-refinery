@@ -75,10 +75,13 @@ export async function refine(
    * renderelés, egyébként a prózaút. Mindkét ág **stringet** ad vissza, ezért
    * innentől a loop többi része nem tud a különbségről.
    */
-  const generate = (prompt: string): Promise<ModelResult<string>> =>
-    recipe.structured
-      ? recipe.structured.generate(client, recipe.role, prompt)
-      : client.generate(recipe.role, prompt)
+  const generate = async (prompt: string): Promise<ModelResult<string>> => {
+    const raw = recipe.structured
+      ? await recipe.structured.generate(client, recipe.role, prompt)
+      : await client.generate(recipe.role, prompt)
+    if (!recipe.postprocess) return raw
+    return { value: recipe.postprocess(raw.value, input), usage: raw.usage }
+  }
 
   opts.onGenerate?.(1)
   const first = await generate(recipe.prompt(input))

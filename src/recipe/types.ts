@@ -1,6 +1,6 @@
 import type { ModelClient, ModelResult } from '../model/client.js'
 import type { Rubric } from '../rubric/types.js'
-import type { ModelRole, SourceItem } from '../types.js'
+import type { ModelRole, SourceItem, TimedLine } from '../types.js'
 
 /**
  * Sémával kikényszerített kimenet.
@@ -23,6 +23,8 @@ export interface RecipeInput {
   item: SourceItem
   /** A normalizált átirat teljes szövege. */
   transcript: string
+  /** Ugyanaz, soronkénti kezdőidővel. Az időbélyegző receptek alapja. */
+  timed: readonly TimedLine[]
 }
 
 export interface RepairInput extends RecipeInput {
@@ -66,5 +68,12 @@ export interface Recipe {
    * hiányzik.
    */
   structured?: StructuredOutput
+  /**
+   * Ha jelen van, a generált szöveg ezen megy át, **mielőtt** a rubrika
+   * pontozná. Így a bíró, a javító kör és a publikálás ugyanazt a szöveget
+   * látja. Dobhat: a feldolgozhatatlan kimenet `item:failed` lesz, nem néma
+   * hiba — ugyanaz a precedens, mint a séma-hibánál (`structured.ts`).
+   */
+  postprocess?(output: string, input: RecipeInput): string
   rubric: Rubric
 }

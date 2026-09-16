@@ -166,7 +166,7 @@ describe('flashcardsRecipe', () => {
   })
 
   it('a promptba bekerül az átirat és a cím', () => {
-    const prompt = flashcardsRecipe.prompt({ item: ITEM, transcript: 'A, majd B.' })
+    const prompt = flashcardsRecipe.prompt({ item: ITEM, transcript: 'A, majd B.', timed: [] })
     expect(prompt).toContain('A, majd B.')
     expect(prompt).toContain('Cím')
   })
@@ -175,7 +175,7 @@ describe('flashcardsRecipe', () => {
     // Ez a hiba magja: a `Channel:` sorból a modell a beszélő nevére, abból
     // pedig kimeneti nyelvre következtetett. Kontrollált A/B igazolta, hogy
     // a sor eltávolítása megszünteti a sodródást (`0009`).
-    const prompt = flashcardsRecipe.prompt({ item: ITEM, transcript: 'A, majd B.' })
+    const prompt = flashcardsRecipe.prompt({ item: ITEM, transcript: 'A, majd B.', timed: [] })
     expect(prompt).toContain('Title: Cím')
     expect(prompt).not.toContain('Channel:')
     expect(prompt).not.toContain('Csatorna')
@@ -183,6 +183,7 @@ describe('flashcardsRecipe', () => {
     const repairPrompt = flashcardsRecipe.repairPrompt({
       item: ITEM,
       transcript: 'A, majd B.',
+      timed: [],
       previous: 'placeholder',
       gaps: ['placeholder'],
     })
@@ -195,6 +196,7 @@ describe('flashcardsRecipe', () => {
     const prompt = flashcardsRecipe.repairPrompt({
       item: ITEM,
       transcript: 'A, majd B.',
+      timed: [],
       previous: '## Régi kérdés?\n\nRégi válasz.',
       gaps: ['Two cards ask the same question'],
     })

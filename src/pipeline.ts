@@ -131,7 +131,7 @@ async function runRecipe(
 
   // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
-  const result = await refine(recipe, { item, transcript: text }, client, {
+  const result = await refine(recipe, { item, transcript: text, timed: transcript.timed }, client, {
     // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
     // alatt — a futásidő nagyobb részében — nem jönne esemény.
     onGenerate: (generation) =>

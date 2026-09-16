@@ -29,7 +29,7 @@ const EXPECTED = [
 
 describe('vault-invariáns szabályok', () => {
   it('a summary szabályblokkja bájtra változatlan a kiemelés után', () => {
-    const prompt = summaryRecipe.prompt({ item: ITEM, transcript: 'A, majd B.' })
+    const prompt = summaryRecipe.prompt({ item: ITEM, transcript: 'A, majd B.', timed: [] })
     expect(prompt).toContain(EXPECTED)
   })
 
