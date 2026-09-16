@@ -146,6 +146,20 @@ Minden beállítás a `refinery.config.yaml`-ból jön; a `--config` kapcsolóva
 másik fájl is megadható. Környezeti változó egyetlen értéket hoz, a
 `LITELLM_API_KEY`-t — az titok, aminek nincs helye verziókövetett fájlban.
 
+A `pnpm build` után a CLI háromféleképpen hívható, egyenértékűen:
+
+```bash
+node dist/cli.js scan --queue
+pnpm exec refinery scan --queue
+npx refinery scan --queue
+```
+
+Az utóbbi kettő a `package.json` `bin` mezőjét használja. A csomag
+`devDependencies`-ei közt saját magát is felveszi, `workspace:*` verzióval —
+enélkül a pnpm egy workspace-gyökér csomag saját bin-jét nem kötné be a
+`node_modules/.bin`-be. Az `npx` ugyanezt a helyi `node_modules/.bin/refinery`-t
+találja meg; a registryhez nem is fordul, mert a csomag `"private": true`.
+
 ### A minta-korpusz behozatala más gépről
 
 Fejlesztéshez elég a feliratokat és a metaadatot átmásolni; médiafájlt a
