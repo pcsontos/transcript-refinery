@@ -34,6 +34,7 @@
     "web:lint": "pnpm --filter transcript-refinery-web lint"
   },
   "devDependencies": {
+    "transcript-refinery": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.0.0",
     "bumpp": "^12.2.2",

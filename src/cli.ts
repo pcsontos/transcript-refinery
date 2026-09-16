@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -715,8 +716,15 @@ export async function main(argv: readonly string[]): Promise<number> {
 // `main()`-t, ha a fájlt `tsx src/cli.ts`-ként hívták meg — a `.ts` kiterjesztés
 // nem `cli.js`-re végződik. Az útvonal-azonosság mindkét esetben helyesen
 // felismeri a belépési pontot, a fájlnévtől függetlenül.
+//
+// A `process.argv[1]`-et a valódi útvonalára oldjuk fel (`realpathSync`),
+// mert az `import.meta.url` a Node ESM-loaderében szimlinkeken átkövetkezik
+// (a valódi fájl URL-jét adja), a parancssori argumentum viszont nem — egy
+// npm/pnpm bin-szimlinken (`node_modules/.bin/refinery`) át indítva a kettő
+// enélkül sosem egyezne, és a `main()` csendben el sem indulna.
 const isEntrypoint =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
 if (isEntrypoint) {
   loadDotEnv()
   main(process.argv.slice(2))

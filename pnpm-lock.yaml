@@ -39,6 +39,9 @@ importers:
       evalite:
         specifier: 0.19.0
         version: 0.19.0
+      transcript-refinery:
+        specifier: workspace:*
+        version: 'link:'
       tsx:
         specifier: ^4.23.13
         version: 4.23.13
@@ -8072,7 +8075,7 @@ snapshots:
       '@vue/shared': 3.5.42
       estree-walker: 2.0.2
       magic-string: 0.30.21
-      postcss: 8.5.26
+      postcss: 8.5.28
       source-map-js: 1.2.1
 
   '@vue/compiler-ssr@3.5.42':
