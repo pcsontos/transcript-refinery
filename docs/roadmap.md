@@ -132,6 +132,34 @@ mérés előbb.
   sem ismétlődik.
 - A felület nem ír: a vault munkafája a használata után tiszta.
 
+## Fázis 6 — Négy új recept
+
+Négy dokumentumtípus: tisztított leirat időbélyegekkel, Bloom-taxonómiás
+tanulókártya, strukturált jegyzet, fordítás fordítási memóriával. A sorrend
+nem ízlés kérdése — a tisztított leirat hozza az időzítés megőrzését és a
+receptenkénti kimeneti arányt, és mindkettőre szüksége lesz a következő
+háromnak.
+
+**A tisztított leirat — státusz: kész** (2026-09-16). Spec és terv:
+[`plans/2026-09-16-tisztitott-leirat-spec.md`](<./plans/2026-09-16-tisztitott-leirat-spec.md>),
+[`plans/2026-09-16-tisztitott-leirat.md`](<./plans/2026-09-16-tisztitott-leirat.md>).
+
+**Kész, ha (tisztított leirat):**
+
+- A `clean` recept `_clean.md`-t ír, amiben minden bekezdés időbélyeggel
+  kezdődik, az időbélyegek nem csökkennek, a fejlécek időbélyeg nélküliek, és
+  a vault-linter átengedi a jegyzetet.
+- A futás előtti becslés egy elemre a $0,075 nagyságrendjében van, nem a régi
+  $0,024-ben; 5 dolláros plafonnal a köteg a korpusz harmada körül szeletel.
+- Ha a modell összefoglal tisztítás helyett, a hűségkapu nulla bíró-hívással
+  megállítja, és a hiányüzenet megnevezi a mért arányt.
+- Ha egy bekezdés nem horgonyozható magabiztosan, az elem `item:failed` lesz,
+  a riport megnevezi az elemet és a bekezdést, a köteg pedig végigmegy.
+- A `summary`, `flashcards` és `qa` promptja bájtra változatlan marad.
+
+A másik három recept — Bloom-taxonómiás tanulókártya, strukturált jegyzet,
+fordítás fordítási memóriával — külön szelet, saját speckel és tervvel.
+
 ## v2 és utána
 
 Nem befolyásolja a v1 architektúráját:

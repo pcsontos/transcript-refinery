@@ -76,7 +76,17 @@ export async function estimateUnits(
       words.set(unit.item.itemId, count)
     }
     if (count === null) continue
-    entries.push({ value: unit, words: count, maxIterations: unit.recipe.maxIterations })
+    entries.push({
+      value: unit,
+      words: count,
+      maxIterations: unit.recipe.maxIterations,
+      shape: {
+        outputRatio: unit.recipe.outputRatio,
+        // A bírók számát a rubrikából vesszük, nem külön mezőből: így egy
+        // recept nem tud hazudni a saját költségéről.
+        judges: unit.recipe.rubric.criteria.filter((c) => !c.blocking).length,
+      },
+    })
   }
   return { slice: sliceToBudget(entries, cfg), first: entries[0] }
 }

@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { Cue } from '../types.js'
-import { countWords, dedupeLines, toParagraphs } from './dedupe.js'
+import { countWords, dedupeLines, dedupeTimedLines, toParagraphs } from './dedupe.js'
 
 const cue = (lines: string[]): Cue => ({ start: 0, end: 1, lines })
+
+/** Cue megadott kezdettel — az időzítés megőrzésének ellenőrzéséhez. */
+const timedCue = (start: number, lines: string[]): Cue => ({
+  start,
+  end: start + 1,
+  lines,
+})
 
 describe('dedupeLines', () => {
   it('kiejti a háromszorozott sorokat', () => {
@@ -43,6 +50,34 @@ describe('dedupeLines', () => {
 
   it('üres bemenetre üres tömböt ad', () => {
     expect(dedupeLines([])).toEqual([])
+  })
+})
+
+describe('dedupeTimedLines', () => {
+  it('a megtartott sorhoz az ELSŐ előfordulás kezdetét rendeli', () => {
+    const cues = [
+      timedCue(10, ['Hey everyone, Brandon Lee here with']),
+      timedCue(12, ['Hey everyone, Brandon Lee here with']),
+      timedCue(14, ['Hey everyone, Brandon Lee here with', 'Virtualization How To and today']),
+    ]
+    expect(dedupeTimedLines(cues)).toEqual([
+      { start: 10, text: 'Hey everyone, Brandon Lee here with' },
+      { start: 14, text: 'Virtualization How To and today' },
+    ])
+  })
+
+  it('az üres és csak szóközt tartalmazó sorokat kidobja', () => {
+    const cues = [timedCue(0, ['alfa']), timedCue(5, ['   ']), timedCue(9, ['béta'])]
+    expect(dedupeTimedLines(cues)).toEqual([
+      { start: 0, text: 'alfa' },
+      { start: 9, text: 'béta' },
+    ])
+  })
+
+  it('a dedupeLines ennek a vetülete: ugyanaz a szöveg, idő nélkül', () => {
+    const cues = [timedCue(0, ['alfa']), timedCue(4, ['béta']), timedCue(8, ['alfa'])]
+    expect(dedupeLines(cues)).toEqual(dedupeTimedLines(cues).map((l) => l.text))
+    expect(dedupeLines(cues)).toEqual(['alfa', 'béta', 'alfa'])
   })
 })
 

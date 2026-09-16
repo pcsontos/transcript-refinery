@@ -33,7 +33,7 @@ const artifact = (overrides: Partial<ArtifactRow>): ArtifactRow => ({
 
 describe('artifactKinds', () => {
   it('az átirat után a registry receptjei, registry-sorrendben', () => {
-    expect(artifactKinds()).toEqual(['transcript', 'summary', 'flashcards', 'qa'])
+    expect(artifactKinds()).toEqual(['transcript', 'summary', 'flashcards', 'qa', 'clean'])
   })
 })
 
@@ -135,7 +135,7 @@ describe('buildOverview', () => {
     expect(overview.running.map((r) => r.runId)).toEqual(['2026-09-11T09-00-00'])
     expect(overview.totalCostUsd).toBe(0.01)
     expect(overview.queue).toBeNull()
-    expect(overview.scores.map((s) => s.recipe)).toEqual(['summary', 'flashcards', 'qa'])
+    expect(overview.scores.map((s) => s.recipe)).toEqual(['summary', 'flashcards', 'qa', 'clean'])
   })
 })
 
@@ -190,6 +190,7 @@ describe('readOverview', () => {
       ['summary', 2],
       ['flashcards', 2],
       ['qa', 2],
+      ['clean', 2],
     ])
     expect(overview.queue).toBeNull()
     expect(overview.running).toEqual([])

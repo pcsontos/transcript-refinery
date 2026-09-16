@@ -13,7 +13,7 @@ import { summaryRecipe } from '../../src/recipe/summary.js'
 import type { Recipe } from '../../src/recipe/types.js'
 import { refine } from '../../src/refine/loop.js'
 import { folderSource } from '../../src/source/folder.js'
-import type { SourceItem } from '../../src/types.js'
+import type { SourceItem, TimedLine } from '../../src/types.js'
 import { metered } from './metered.js'
 import { rateLimited } from './rate-limit.js'
 import { renderMeasurementReport } from './report.js'
@@ -97,12 +97,16 @@ for (const source of cfg.sources) {
   items.push(...(await folderSource(source, cfg.languages).discover()))
 }
 const candidates: SampleCandidate[] = []
-const transcripts = new Map<string, { item: SourceItem; transcript: string }>()
+const transcripts = new Map<string, { item: SourceItem; transcript: string; timed: TimedLine[] }>()
 for (const item of items) {
   try {
     const normalized = await normalizeItem(item)
     candidates.push({ itemId: item.itemId, words: normalized.wordsNormalized })
-    transcripts.set(item.itemId, { item, transcript: normalized.lines.join(' ') })
+    transcripts.set(item.itemId, {
+      item,
+      transcript: normalized.lines.join(' '),
+      timed: normalized.timed,
+    })
   } catch {
     // Sérült feliratfájl: kimarad a mintából, nem állítja meg a mérést.
   }
@@ -218,7 +222,7 @@ for (const recipe of RECIPES) {
       try {
         const result = await refine(
           recipe,
-          { item: entry.item, transcript: entry.transcript },
+          { item: entry.item, transcript: entry.transcript, timed: entry.timed },
           client,
           { stopEarly: false },
         )

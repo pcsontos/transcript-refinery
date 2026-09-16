@@ -6,7 +6,7 @@ import type { ModelClient } from './model/client.js'
 import { costOf } from './model/pricing.js'
 import { retrying } from './model/retry.js'
 import { classifyCaptions, punctuationDensity } from './normalize/classify.js'
-import { countWords, dedupeLines } from './normalize/dedupe.js'
+import { countWords, dedupeTimedLines } from './normalize/dedupe.js'
 import type { Recipe } from './recipe/types.js'
 import { refine } from './refine/loop.js'
 import { parseSubtitle } from './subtitle/parse.js'
@@ -67,14 +67,16 @@ export async function normalizeItem(
   }
 
   const rawText = cues.flatMap((c) => c.lines).join(' ')
-  const lines = dedupeLines(cues)
-  if (lines.length === 0) {
+  const timed = dedupeTimedLines(cues)
+  if (timed.length === 0) {
     throw new Error('a feliratfájl nem tartalmaz szöveget')
   }
+  const lines = timed.map((line) => line.text)
   const normalizedText = lines.join(' ')
 
   return {
     lines,
+    timed,
     wordsRaw: countWords(rawText),
     wordsNormalized: countWords(normalizedText),
     captionSource: classifyCaptions(normalizedText),
@@ -129,7 +131,7 @@ async function runRecipe(
 
   // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
-  const result = await refine(recipe, { item, transcript: text }, client, {
+  const result = await refine(recipe, { item, transcript: text, timed: transcript.timed }, client, {
     // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
     // alatt — a futásidő nagyobb részében — nem jönne esemény.
     onGenerate: (generation) =>

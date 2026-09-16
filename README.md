@@ -4,14 +4,15 @@ Kész `.vtt`/`.srt` feliratfájlokból strukturált tudásjegyzeteket készít e
 Obsidian vaultba — mindegy, mi állította elő őket.
 
 > **Állapot: a v1 minden fázisa kész** (Fázis 0–5, ld.
-> [`docs/roadmap.md`](<./docs/roadmap.md>)). A teljes korpusz felügyelet
-> nélkül végigfut: a futás JSONL naplót és Markdown riportot hagy maga után,
-> a költségplafon a tiltás helyett szeletel, az átmeneti modellhibát korlátos
-> újrapróbálkozás nyeli el. Három recept van: összefoglaló, tanulókártya és
-> kérdés-felelet; a második iteráció mért haszna nemleges, a loop alapból egy
-> körre áll. A feldolgozási sor Obsidianból vezérelhető (`scan --queue` /
-> `run --queue`), és van egy csak olvasó Nuxt-felület az áttekintéshez és az
-> élő követéshez.
+> [`docs/roadmap.md`](<./docs/roadmap.md>)), és folyamatban a Fázis 6 négy új
+> receptje. A teljes korpusz felügyelet nélkül végigfut: a futás JSONL naplót
+> és Markdown riportot hagy maga után, a költségplafon a tiltás helyett
+> szeletel, az átmeneti modellhibát korlátos újrapróbálkozás nyeli el. Négy
+> recept van: összefoglaló, tanulókártya, kérdés-felelet és tisztított
+> leirat (bekezdésenkénti időbélyeggel); a második iteráció mért haszna
+> nemleges, a loop alapból egy körre áll. A feldolgozási sor Obsidianból
+> vezérelhető (`scan --queue` / `run --queue`), és van egy csak olvasó
+> Nuxt-felület az áttekintéshez és az élő követéshez.
 
 ## A probléma
 
@@ -96,6 +97,14 @@ sorformátumot kér a modelltől, hanem sémás objektumot, és a vault alakját
 kapu előbb fut, mint a bírók — ismétlődő kérdésnél vagy válasz nélküli
 fejlécnél a drága pontozás el sem indul.
 
+A `--recipe clean` a feliratot enyhén szerkesztett, bekezdésekre és `##`
+szakaszcímekre tagolt leiratot ad, minden bekezdés előtt a valós elhangzási
+idővel (`[MM:SS]`, egy órán túl `[H:MM:SS]`). A modell prózát ír, időbélyeg
+nélkül; egy determinisztikus lépés utólag horgonyozza a bekezdéseket a
+feliratsorokhoz sorrendtartó illesztéssel, és a bizonytalan illesztés
+kivétellel bukik, nem néma rossz időbélyeggel. Egy nulla tokenes hűségkapu
+állítja meg a modellt, ha tisztítás helyett összefoglalna.
+
 A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
 `_queue.md` jegyzetébe fésüli a felderített videókat, videónként receptenként
 egy üres pipával; a `run --queue` a kipipált (videó, recept) párokat dolgozza
@@ -138,13 +147,94 @@ valamint a felület e2e-tesztjeivel (15 teszt, 2 fájl).
 cp refinery.config.example.yaml refinery.config.yaml
 # írd át benne a vault és a feliratmappák útvonalát
 echo "LITELLM_API_KEY=sk-..." > .env   # csak recepthez kell
-mise exec -- pnpm build && mise exec -- node dist/cli.js scan
-mise exec -- pnpm web   # a felület: http://127.0.0.1:4310
+pnpm install
+pnpm build
 ```
 
 Minden beállítás a `refinery.config.yaml`-ból jön; a `--config` kapcsolóval
 másik fájl is megadható. Környezeti változó egyetlen értéket hoz, a
 `LITELLM_API_KEY`-t — az titok, aminek nincs helye verziókövetett fájlban.
+
+## Futtatás
+
+### CLI parancsok
+
+A fordítás (`pnpm build`) után a CLI a `node dist/cli.js` paranccsal futtatható (vagy fejlesztés közben közvetlenül: `npx tsx src/cli.ts`):
+
+#### Felderítés (`scan`)
+
+Kilistázza a konfigurált forrásokból elérhető feliratokat, azok szószámát és becsült minőségét (fájlírás nélkül):
+
+```bash
+node dist/cli.js scan
+```
+
+A felderített videók összefésülése a vault feldolgozási sorába (`_queue.md`):
+
+```bash
+node dist/cli.js scan --queue
+```
+
+#### Feldolgozás (`run`)
+
+- **Csak átirat készítése (modellhívás nélkül, ingyenes):**  
+  Normalizálja, deduplikálja a feliratot és beírja a vaultba:
+  ```bash
+  node dist/cli.js run
+  ```
+
+- **Recept futtatása LLM-mel (összefoglaló, tanulókártyák, kérdés-felelet):**
+  ```bash
+  node dist/cli.js run --recipe summary
+  node dist/cli.js run --recipe flashcards
+  node dist/cli.js run --recipe qa
+  ```
+
+- **Feldolgozási sor (`_queue.md`) alapján:**  
+  A vault jegyzetében kipipált `[x]` (videó, recept) párok feldolgozása:
+  ```bash
+  node dist/cli.js run --queue
+  ```
+
+- **Gyakori kapcsolók:**
+  - `--dry-run`: nem ír fájlt és állapotot (de a modellhívás valós költséggel lefut)
+  - `--limit <szám>`: legfeljebb ennyi elem feldolgozása
+  - `--source <név>`: szűrés adott forrásmappára
+  - `--channel <név>`: szűrés csatornanévre
+  - `--retry-failed`: csak a korábban hibára futott elemek újrafuttatása
+  - `--force`: a már elkészült jegyzetek felülírása
+  - `--no-commit`: nem commitol és nem pushol automatikusan a vault Git repójába
+
+#### Árazás ellenőrzése (`check-pricing`)
+
+Összeveti a konfigurációban beállított árakat a LiteLLM élő díjszabásával:
+
+```bash
+node dist/cli.js check-pricing
+```
+
+### Webes felület (Web UI)
+
+A Nuxt-alapú, csak olvasási felület áttekintést ad a korpuszról és élőben közvetíti a futásokat:
+
+```bash
+# Fejlesztői mód:
+pnpm web:dev
+
+# Éles build és indítás:
+pnpm web
+```
+
+A felület a `http://127.0.0.1:4310` címen érhető el.
+
+### Tesztek és mérések
+
+```bash
+pnpm test        # Unit és integrációs tesztek (Vitest)
+pnpm eval        # Determinisztikus Evalite mérések szintetikus adaton (offline)
+pnpm typecheck   # Típusellenőrzés
+pnpm lint        # Linter futtatása
+```
 
 ### A minta-korpusz behozatala más gépről
 

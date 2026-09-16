@@ -3,6 +3,7 @@ const KIND_LABELS: Record<string, string> = {
   summary: 'összefoglaló',
   flashcards: 'tanulókártya',
   qa: 'kérdés-felelet',
+  clean: 'tisztított leirat',
 }
 
 /** A műtermék-típus magyar neve; ismeretlen típusnál maga az azonosító. */
