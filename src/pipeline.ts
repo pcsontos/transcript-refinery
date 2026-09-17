@@ -182,6 +182,7 @@ async function runRecipe(
     iterations: result.generations,
     score: result.score,
     costUsd: usd,
+    tags: recipe.tags,
   }, deps.version)
 
   const lintErrors = lintVaultMarkdown(markdown)

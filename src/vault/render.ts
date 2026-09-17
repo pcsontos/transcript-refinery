@@ -13,10 +13,29 @@ import { renderFrontmatter, type FrontmatterField } from './frontmatter.js'
  * A származás rögzítése nem díszítés: enélkül a későbbi mérés nem tudná,
  * milyen minőségű bemeneten dolgozott.
  */
+/**
+ * A metaadat-címkék érintetlenül, a mai sorrendben; utánuk a recept címkéi,
+ * csak ha még nincsenek a listában. Recept-címke nélkül a metaadat listáját
+ * adja vissza változatlanul — így a címke nélküli receptek frontmatterje
+ * bájtra ugyanaz marad.
+ */
+function mergeTags(
+  metadata: readonly string[] | undefined,
+  extra: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (extra === undefined || extra.length === 0) return metadata
+  const merged = [...(metadata ?? [])]
+  for (const tag of extra) {
+    if (!merged.includes(tag)) merged.push(tag)
+  }
+  return merged
+}
+
 function baseFields(
   item: SourceItem,
   transcript: NormalizedTranscript,
   generatorVersion: string,
+  extraTags?: readonly string[],
 ): FrontmatterField[] {
   const captionSource =
     transcript.captionSource === 'creator' ? 'creator_captions' : 'auto_captions'
@@ -32,7 +51,7 @@ function baseFields(
     ['uploaded', item.metadata.uploadedAt],
     ['url', item.metadata.url],
     ['duration', item.metadata.duration],
-    ['tags', item.metadata.tags],
+    ['tags', mergeTags(item.metadata.tags, extraTags)],
     ['description', item.metadata.description],
     ['transcript_source', captionSource],
     ['words_raw', transcript.wordsRaw],
@@ -68,6 +87,8 @@ export interface RecipeNoteMeta {
   iterations: number
   score: number
   costUsd: number
+  /** A recept címkéi; a metaadat-címkék után kerülnek a frontmatterbe. */
+  tags?: readonly string[]
 }
 
 /**
@@ -84,7 +105,7 @@ export function renderRecipeNote(
   generatorVersion: string,
 ): string {
   const frontmatter = renderFrontmatter([
-    ...baseFields(item, transcript, generatorVersion),
+    ...baseFields(item, transcript, generatorVersion, meta.tags),
     ['recipe', meta.recipe],
     ['model', meta.model],
     ['iterations', meta.iterations],

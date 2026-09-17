@@ -99,6 +99,7 @@ export const flashcardsRecipe: Recipe = {
   publishable: true,
   role: 'draft',
   maxIterations: 0,
+  tags: ['decks'],
 
   structured: structuredOutput(FlashcardsSchema, renderCards),
 
