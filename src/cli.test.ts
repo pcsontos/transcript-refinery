@@ -12,11 +12,13 @@ import { normalizeItem } from './pipeline.js'
 import { queuePath } from './queue/file.js'
 import { getRecipe } from './recipe/registry.js'
 import { runId } from './run/id.js'
+import { skeletonOf } from './rubric/skeleton.js'
 import { folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
 import type { ModelRole } from './types.js'
 import { gitCommitPaths } from './vault/git.js'
 import { lintVaultMarkdown } from './vault/lint.js'
+import { noteBody } from './vault/note-body.js'
 import { noteFile } from './vault/paths.js'
 
 // A git-integrációt a `vault/git.test.ts` fedi. Itt csak arra kell, hogy a
@@ -45,7 +47,13 @@ Ez egy hosszabb mondat a becsléshez.
 Egy második, ettől eltérő mondat is van itt.
 `
 
-async function makeVideo(downloads: string, id: string, title: string, channel: string) {
+async function makeVideo(
+  downloads: string,
+  id: string,
+  title: string,
+  channel: string,
+  srt: string = SRT,
+) {
   const dir = join(downloads, 'youtube', channel)
   await mkdir(dir, { recursive: true })
   await writeFile(
@@ -59,7 +67,7 @@ async function makeVideo(downloads: string, id: string, title: string, channel: 
     }),
     'utf8',
   )
-  await writeFile(join(dir, `${title}.en.srt`), SRT, 'utf8')
+  await writeFile(join(dir, `${title}.en.srt`), srt, 'utf8')
 }
 
 /**
@@ -1430,6 +1438,235 @@ describe('commandRun — a Q&A recept a vaultban', () => {
     expect(note).toMatch(/^iterations: \d+$/m)
     expect(note).toMatch(/^score: \d\.\d\d$/m)
     expect(note).toMatch(/^cost_usd: \d\.\d{4}$/m)
+  })
+})
+
+const ANGOL_SRT = `1
+00:00:00,000 --> 00:00:03,000
+The speaker explains why a problem should come before a tool.
+
+2
+00:00:03,000 --> 00:00:06,000
+He then gives an example from the first company that he built.
+`
+
+const ANGOL_TISZTITOTT =
+  'The speaker explains why a problem should come before a tool. He then gives an example from the first company that he built.\n'
+
+const MAGYAR_TISZTITOTT =
+  'Ez egy hosszabb mondat a becsléshez. Egy második, ettől eltérő mondat is van itt.\n'
+
+const MAGYAR_FORDITAS =
+  '[00:00] A beszélő elmagyarázza, hogy miért kell a problémának az eszköz előtt lennie. Utána egy példát is hoz az első cégéből, amelyet ő épített fel.\n'
+
+/**
+ * A fordítási tesztek hamis kliense: a prompt dönti el, mit ad. A fordító prompt
+ * a forrásjegyzetet is tartalmazza, ezért azt kell először vizsgálni. A
+ * „Hibás videó" tisztítása horgonyozhatatlan, tehát a `clean` elbukik rajta.
+ */
+function forditoKliens(hivasok: { generate: number; translate: number }): ModelClient {
+  return {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async generate(_role: ModelRole, prompt: string) {
+      hivasok.generate++
+      let value: string
+      if (prompt.startsWith('Translate the note below')) {
+        hivasok.translate++
+        value = MAGYAR_FORDITAS
+      } else if (prompt.includes('Title: Hibás videó')) {
+        value = 'Oh yeah.\n'
+      } else if (prompt.includes('The speaker explains')) {
+        value = ANGOL_TISZTITOTT
+      } else {
+        value = MAGYAR_TISZTITOTT
+      }
+      return { value, usage: { inputTokens: 10, outputTokens: 5 } }
+    },
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async generateObject<T>() {
+      return { value: { score: 1, gaps: [] } as T, usage: { inputTokens: 5, outputTokens: 2 } }
+    },
+  }
+}
+
+describe('commandRun — fordítás', () => {
+  const forditas = (costLimitUsd: number) => ({
+    ...rawWithVault(costLimitUsd),
+    translate: { to: 'hu', recipes: ['clean'] },
+  })
+
+  beforeEach(() => {
+    vi.mocked(gitCommitPaths).mockClear()
+  })
+
+  it('egy indítás előbb a forrást, aztán a fordítást készíti el, akkor is, ha a sorban a fordítás áll elöl', async () => {
+    await makeVideo(downloads, 'e1', 'Angol videó', 'Csatorna A', ANGOL_SRT)
+    const raw = forditas(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    const sorok = pipal(await readFile(sor, 'utf8'), [
+      ['e1', 'clean'],
+      ['e1', 'clean-hu'],
+    ]).split('\n')
+    const [huSor] = sorok.splice(sorok.indexOf('  - [x] clean-hu'), 1)
+    sorok.splice(sorok.indexOf('  - [x] clean'), 0, huSor!)
+    await writeFile(sor, sorok.join('\n'), 'utf8')
+
+    const hivasok = { generate: 0, translate: 0 }
+    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: true },
+      { createClient: () => forditoKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    expect(hivasok.translate).toBe(1)
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const tiszta = noteFile(cfg.notesRoot, item!, '_clean.md')
+    const magyar = noteFile(cfg.notesRoot, item!, '_clean-hu.md')
+    const forrasVaz = skeletonOf(noteBody(await readFile(tiszta, 'utf8')).body)
+    const magyarJegyzet = await readFile(magyar, 'utf8')
+    expect(forrasVaz.timestamps).toEqual(['[00:00]'])
+    expect(skeletonOf(noteBody(magyarJegyzet).body).timestamps).toEqual(forrasVaz.timestamps)
+    expect(magyarJegyzet).toContain('\nlanguage: hu\n')
+    expect(magyarJegyzet).toContain('\ntranslation_of: clean\n')
+    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
+    const [, commitolt] = vi.mocked(gitCommitPaths).mock.calls[0]!
+    expect(commitolt).toEqual(expect.arrayContaining([tiszta, magyar, sor]))
+    const note = await readFile(sor, 'utf8')
+    expect(note).toMatch(/ {2}- \[x\] clean-hu — ✓ 1\.00 · /)
+    expect(note).toMatch(/ {2}- \[x\] clean — ✓ 1\.00 · /)
+  })
+
+  it('ha csak a fordítás van kipipálva, és a forrás nincs kész, modellhívás nélkül kihagyja, és megnevezi az okot', async () => {
+    await makeVideo(downloads, 'e1', 'Angol videó', 'Csatorna A', ANGOL_SRT)
+    const raw = forditas(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(sor, pipal(await readFile(sor, 'utf8'), [['e1', 'clean-hu']]), 'utf8')
+    const hivasok = { generate: 0, translate: 0 }
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => forditoKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    expect(hivasok.generate).toBe(0)
+    const elsoSor = await readFile(sor, 'utf8')
+    expect(elsoSor).toContain('  - [x] clean-hu — ⏸ előbb a clean recept kell')
+    const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
+    const report = await readFile(join(cfg.logsDir, md), 'utf8')
+    expect(report).toContain('- clean-hu — Angol videó: előbb a clean recept kell')
+    expect(report).toContain('| clean-hu | 1 | 0 | 0 | 0 | 0 | 1 |')
+    expect(report).toContain('A sor feldolgozva.')
+    expect(report).not.toContain('Folytatás:')
+
+    const masodik = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: true },
+      { createClient: () => forditoKliens(hivasok) },
+    )
+
+    expect(masodik).toBe(0)
+    expect(hivasok.generate).toBe(0)
+    expect(await readFile(sor, 'utf8')).toBe(elsoSor)
+    expect(vi.mocked(gitCommitPaths)).not.toHaveBeenCalled()
+  })
+
+  it('ha a forrásjegyzet már magyar, a fordítás modellhívás nélkül kimarad', async () => {
+    await makeVideo(downloads, 'h1', 'Magyar videó', 'Csatorna A')
+    const raw = forditas(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(
+      sor,
+      pipal(await readFile(sor, 'utf8'), [
+        ['h1', 'clean'],
+        ['h1', 'clean-hu'],
+      ]),
+      'utf8',
+    )
+    const hivasok = { generate: 0, translate: 0 }
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => forditoKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    expect(hivasok.translate).toBe(0)
+    const note = await readFile(sor, 'utf8')
+    expect(note).toMatch(/ {2}- \[x\] clean — ✓ /)
+    expect(note).toContain('  - [x] clean-hu — ⏸ a forrás már magyar')
+  })
+
+  it('ha a forrás ugyanebben a futásban elbukik, a fordítás modellhívás nélkül kimarad', async () => {
+    await makeVideo(downloads, 'x1', 'Hibás videó', 'Csatorna A', ANGOL_SRT)
+    const raw = forditas(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(
+      sor,
+      pipal(await readFile(sor, 'utf8'), [
+        ['x1', 'clean'],
+        ['x1', 'clean-hu'],
+      ]),
+      'utf8',
+    )
+    const hivasok = { generate: 0, translate: 0 }
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => forditoKliens(hivasok) },
+    )
+
+    expect(code).toBe(1)
+    expect(hivasok.translate).toBe(0)
+    const note = await readFile(sor, 'utf8')
+    expect(note).toMatch(/ {2}- \[x\] clean — ✗ /)
+    expect(note).toContain('  - [x] clean-hu — ⏸ a clean recept jegyzete nem készült el')
+  })
+
+  it('a plafon miatt elhalasztott forrás fordítása is ⏳-t kap', async () => {
+    await makeVideo(downloads, 'e1', 'Angol videó', 'Csatorna A', ANGOL_SRT)
+    const raw = forditas(0.000001)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    await writeFile(
+      sor,
+      pipal(await readFile(sor, 'utf8'), [
+        ['e1', 'clean'],
+        ['e1', 'clean-hu'],
+      ]),
+      'utf8',
+    )
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => forditoKliens({ generate: 0, translate: 0 }) },
+    )
+
+    expect(code).toBe(2)
+    const note = await readFile(sor, 'utf8')
+    expect(note).toContain('  - [x] clean — ⏳ a plafon miatt a következő futásra maradt')
+    expect(note).toContain('  - [x] clean-hu — ⏳ a plafon miatt a következő futásra maradt')
   })
 })
 

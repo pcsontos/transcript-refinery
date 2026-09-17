@@ -7,6 +7,14 @@ import { parseQueue } from './parse.js'
 export const DEFERRED_STATUS = '⏳ a plafon miatt a következő futásra maradt'
 export const NOT_FOUND_STATUS = '✗ a felirat nem található'
 
+/**
+ * Kihagyott pár utótagja: a fordítás forrása nincs meg, vagy a forrás már a
+ * célnyelven van. Nem hiba és nem kész — a következő futás újra megvizsgálja.
+ */
+export function skippedStatus(reason: string): string {
+  return `⏸ ${reason}`
+}
+
 /** A hibaüzenet-kivonat felső korlátja, a záró `…`-lel együtt. */
 const MAX_ERROR = 120
 
