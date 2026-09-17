@@ -87,9 +87,9 @@ export function translationOf(source: Recipe, target: LanguageTag): Recipe {
     publishable: source.publishable,
     role: 'draft',
     maxIterations: 0,
-    // Becsült kezdőérték, nem mért: a magyar szöveg jellemzően több tokenbe
-    // kerül, mint az angol. A kalibrálás felülírja.
-    outputRatio: 1.5,
+    // A legnagyobb mért kimeneti arány, felfelé kerekítve
+    // (docs/measurements/2026-09-17-forditas-kalibralas.md).
+    outputRatio: 5.68,
     // A lefordított kártyák is Decks-paklik maradnak.
     tags: source.tags,
     translation: { source, target },
