@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelClient } from '../model/client.js'
-import { checkLanguage, languageCriterion } from './language.js'
+import {
+  checkLanguage,
+  checkLanguageIs,
+  languageCriterion,
+  targetLanguageCriterion,
+} from './language.js'
 import { scoreRubric, type Criterion } from './types.js'
 
 const ANGOL_ATIRAT = `The speaker explains how a service mesh handles traffic
@@ -18,6 +23,11 @@ const HOLLAND_JEGYZET = `## Wat de sidecar doet
 De proxy staat naast de applicatie container, en de applicatie praat met
 localhost. Omdat de proxy elk verzoek ziet, kan hij de latentie rapporteren
 zonder dat de code van de applicatie zelf verandert.`
+
+const MAGYAR_JEGYZET = `## Mit csinál az oldalkocsi
+A proxy az alkalmazás konténere mellett fut, és az alkalmazás csak a localhosttal
+beszél. Mivel a proxy minden kérést lát, a késleltetést is jelenteni tudja, és
+ehhez nem kell az alkalmazás kódját módosítani.`
 
 /**
  * A kliens, amit ezekben a tesztekben nem szabad meghívni. A `rubric/
@@ -59,6 +69,12 @@ describe('checkLanguage', () => {
   it('ha az átirat nyelve ismeretlen, átenged', () => {
     expect(checkLanguage(ANGOL_JEGYZET, '15001 15006 envoy 1.29').value).toBe(1)
   })
+
+  it('a hiányüzenet szövege bájtra a mai', () => {
+    expect(checkLanguage(HOLLAND_JEGYZET, ANGOL_ATIRAT).gaps).toEqual([
+      'The output is written in Dutch, but the transcript is in English. Rewrite it in English. Keep the same content; only the language must change.',
+    ])
+  })
 })
 
 describe('languageCriterion', () => {
@@ -88,5 +104,46 @@ describe('languageCriterion', () => {
     expect(futott).toBe(false)
     expect(eredmeny.value).toBe(0)
     expect(eredmeny.usage).toEqual({ inputTokens: 0, outputTokens: 0 })
+  })
+})
+
+describe('checkLanguageIs', () => {
+  it('a célnyelvű kimenetet átengedi', () => {
+    expect(checkLanguageIs(MAGYAR_JEGYZET, 'hu')).toEqual({ value: 1, gaps: [] })
+  })
+
+  it('a más nyelvű kimenetet megbuktatja, és mindkét nyelvet megnevezi', () => {
+    expect(checkLanguageIs(ANGOL_JEGYZET, 'hu')).toEqual({
+      value: 0,
+      gaps: [
+        'The output is written in English, but it must be in Hungarian. Translate it into Hungarian and keep the structure unchanged.',
+      ],
+    })
+  })
+
+  it('ha a kimenet nyelve ismeretlen, átenged — nem talál ki bukást', () => {
+    expect(checkLanguageIs('```\nkubectl get pods --output=wide\n```', 'hu').value).toBe(1)
+  })
+})
+
+describe('targetLanguageCriterion', () => {
+  it('blokkoló kapu, target-language néven', () => {
+    const criterion = targetLanguageCriterion('hu')
+    expect(criterion.blocking).toBe(true)
+    expect(criterion.name).toBe('target-language')
+  })
+
+  it('az átirat nyelvét nem nézi: angol átiraton a magyar kimenet átmegy, az angol bukik', async () => {
+    const criterion = targetLanguageCriterion('hu')
+    const magyar = await criterion.score(
+      { transcript: ANGOL_ATIRAT, output: MAGYAR_JEGYZET },
+      nemHivhatoKliens,
+    )
+    const angol = await criterion.score(
+      { transcript: ANGOL_ATIRAT, output: ANGOL_JEGYZET },
+      nemHivhatoKliens,
+    )
+    expect(magyar.value).toBe(1)
+    expect(angol.value).toBe(0)
   })
 })

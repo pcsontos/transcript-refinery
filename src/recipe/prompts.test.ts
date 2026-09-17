@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import type { SourceItem } from '../types.js'
-import { RECIPES } from './registry.js'
+import { RECIPES, RECIPE_IDS } from './registry.js'
 
 const ITEM: SourceItem = {
   itemId: 'abc123',
@@ -19,9 +19,11 @@ const INPUT = { item: ITEM, transcript: 'A, majd B.', timed: [{ start: 0, text: 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
 /**
- * A meglévő receptek promptjainak ujjlenyomata a Bloom- és jegyzetszelet
- * előtti `main`-ről. Regressziós horgony: a közös modulokba költözés és a
- * címkevarrat egyetlen bájtot sem változtathat a promptokon.
+ * A meglévő receptek promptjainak ujjlenyomata. A `summary`, `flashcards`, `qa`
+ * és `clean` értéke a Bloom- és jegyzetszelet előtti `main`-ről (2026-09-16), a
+ * `bloom` és a `notes` értéke a fordítás-szelet előttiről (2026-09-17).
+ * Regressziós horgony: egyetlen később változtatás sem módosíthat egy bájtot
+ * sem a promptokon.
  */
 const EXPECTED: Record<string, { prompt: string; repair: string }> = {
   summary: {
@@ -40,6 +42,14 @@ const EXPECTED: Record<string, { prompt: string; repair: string }> = {
     prompt: '95458655342096b5a39ea368a523273a5e41e148211ffb595098e35f56f5a302',
     repair: '5b34753065aa9cf6ebe557133be2357edb37b214d02a6db3c2def8a45264d00a',
   },
+  bloom: {
+    prompt: '9c9196b97fe0ee7b0ccada981a86750087e439c7a17c3321378a5ba3d572f6cc',
+    repair: '982741b18d089c8e87b16c7bb38b216c4e4602e9d994a36a0479990648653053',
+  },
+  notes: {
+    prompt: '7be1d2dc933adf3fa7a792678147e7e1cd7c0feee0b7beed7b8ad27ecb0168b2',
+    repair: '6f6220e3e551c189ef1baccbdd3beadcde10f09b8256d825e173459ecec9e7a3',
+  },
 }
 
 describe('a meglévő receptek promptjai', () => {
@@ -52,4 +62,8 @@ describe('a meglévő receptek promptjai', () => {
       ).toBe(expected.repair)
     })
   }
+
+  it('mind a hat alaprecept horgonyozva van, regiszter-sorrendben', () => {
+    expect(Object.keys(EXPECTED)).toEqual(RECIPE_IDS)
+  })
 })
