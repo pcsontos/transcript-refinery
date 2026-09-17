@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { loadConfig, type Config } from '../config.js'
+import { RECIPES, recipesFor } from '../recipe/registry.js'
 import { discoverAll } from '../source/folder.js'
 import { openState } from '../state/db.js'
 import type { ArtifactRow, ItemRow } from '../state/queries.js'
@@ -59,6 +60,7 @@ describe('buildItemRows', () => {
       ],
       [itemRow('a', 'Első példavideó'), itemRow('z', 'Eltűnt példavideó')],
       [],
+      RECIPES,
     )
 
     expect(rows.map((r) => [r.itemId, r.discovered, r.channel])).toEqual([
@@ -78,6 +80,7 @@ describe('buildItemRows', () => {
         artifact({ kind: 'summary', score: 0.62, costUsd: 0.01 }),
         artifact({ kind: 'qa', status: 'failed', createdAt: '2026-09-11T10:00:00.000Z' }),
       ],
+      RECIPES,
     )
 
     expect(row!.cells).toEqual({
@@ -90,6 +93,21 @@ describe('buildItemRows', () => {
       notes: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
     })
     expect(row!.updatedAt).toBe('2026-09-11T10:00:00.000Z')
+  })
+
+  it('a regiszter fordításai is saját cellát kapnak, a küszöbükkel', () => {
+    const [row] = buildItemRows(
+      [sourceItem('a', 'Első példavideó')],
+      [],
+      [artifact({ kind: 'clean-hu', score: 0.5 })],
+      recipesFor({ configPath: '/p/c.yaml', translate: { to: 'hu', recipes: ['clean'] } }),
+    )
+    expect(row!.cells['clean-hu']).toEqual({
+      status: 'done',
+      score: 0.5,
+      costUsd: null,
+      belowThreshold: true,
+    })
   })
 })
 

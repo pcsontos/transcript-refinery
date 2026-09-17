@@ -144,4 +144,47 @@ describe('renderRecipeNote', () => {
     expect(withTags).toContain('tags: [ai]')
     expect(renderRecipeNote(item(), transcript, 'A törzs.', meta, '0.1.0')).not.toContain('tags')
   })
+
+  it('fordításnál a jegyzet nyelvét és a forrás adatait írja, a mérőszámok után', () => {
+    const note = renderRecipeNote(
+      item(),
+      transcript,
+      'A törzs.',
+      {
+        ...meta,
+        recipe: 'clean-hu',
+        translation: {
+          language: 'hu',
+          sourceRecipe: 'clean',
+          sourceGeneratedAt: '2026-09-16T14:11:51.001Z',
+        },
+      },
+      '0.1.0',
+    )
+    expect(note).toContain('\nlanguage: hu\n')
+    expect(note).toContain(
+      '\ncost_usd: 0.0812\nsource_language: en\ntranslation_of: clean\n' +
+        'source_generated_at: "2026-09-16T14:11:51.001Z"\n---',
+    )
+  })
+
+  it('a forrás hiányzó időpontja és nyelve kimarad', () => {
+    const note = renderRecipeNote(
+      item({ language: null }),
+      transcript,
+      'A törzs.',
+      { ...meta, translation: { language: 'hu', sourceRecipe: 'clean', sourceGeneratedAt: null } },
+      '0.1.0',
+    )
+    expect(note).toContain('\ntranslation_of: clean\n---')
+    expect(note).not.toContain('source_language')
+    expect(note).not.toContain('source_generated_at')
+  })
+
+  it('fordítás nélkül a frontmatter mezői a maiak', () => {
+    const note = renderRecipeNote(item(), transcript, 'A törzs.', meta, '0.1.0')
+    expect(note).toContain('\nlanguage: en\n')
+    expect(note).toContain('\ncost_usd: 0.0812\n---')
+    expect(note).not.toContain('translation_of')
+  })
 })

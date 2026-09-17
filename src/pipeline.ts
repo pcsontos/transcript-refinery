@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { relative } from 'node:path'
 import type { ModelConfig } from './config.js'
 import type { EventSink } from './events.js'
 import type { CostGuard } from './model/budget.js'
@@ -7,12 +8,14 @@ import { costOf } from './model/pricing.js'
 import { retrying } from './model/retry.js'
 import { classifyCaptions, punctuationDensity } from './normalize/classify.js'
 import { countWords, dedupeTimedLines } from './normalize/dedupe.js'
-import type { Recipe } from './recipe/types.js'
+import { alreadyInTarget } from './recipe/translate.js'
+import type { Recipe, RecipeInput, Translation } from './recipe/types.js'
 import { refine } from './refine/loop.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { StateStore } from './state/db.js'
 import type { NormalizedTranscript, SourceItem } from './types.js'
 import { lintVaultMarkdown } from './vault/lint.js'
+import { noteBody, type NoteBody } from './vault/note-body.js'
 import { noteFile } from './vault/paths.js'
 import { publishNote, type PublishOptions } from './vault/publish.js'
 import { renderRecipeNote, renderTranscriptNote } from './vault/render.js'
@@ -48,6 +51,8 @@ export interface ItemOutcome {
   /** A recept jegyzetének útvonala, ha készült ilyen. */
   recipePath?: string
   error?: string
+  /** A recept kihagyásának oka, ha fordítás volt, és nem futott — a sor és a riport ebből ír. */
+  skipReason?: string
 }
 
 /** Az átirat műtermék-típusa. A CLI is ezt használja — egyetlen forrásból. */
@@ -111,6 +116,33 @@ async function publishRendered(
   return { status: 'published', path: result.path }
 }
 
+/**
+ * Egy fordítás forrásjegyzete, az állapottárban rögzített útról. A futás csak
+ * kész forrásnál indít fordítást; ez az ellenőrzés a közvetlen hívót is védi.
+ */
+async function readSourceNote(
+  item: SourceItem,
+  translation: Translation,
+  deps: PipelineDeps,
+): Promise<NoteBody> {
+  const record = deps.store.artifactOf(item.itemId, translation.source.id)
+  if (record?.status !== 'done' || record.path === null) {
+    throw new Error(`előbb a ${translation.source.id} recept kell`)
+  }
+  let markdown: string
+  try {
+    markdown = await readFile(record.path, 'utf8')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`a forrásjegyzet nem található: ${relative(deps.notesRoot, record.path)}`, {
+        cause: error,
+      })
+    }
+    throw error
+  }
+  return noteBody(markdown)
+}
+
 /** A 6. csővezeték-lépés: recept futtatása és publikálása. */
 async function runRecipe(
   item: SourceItem,
@@ -119,7 +151,20 @@ async function runRecipe(
   recipeDeps: RecipeDeps,
 ): Promise<ItemOutcome> {
   const { recipe, modelConfig, guard } = recipeDeps
-  const text = transcript.lines.join(' ')
+
+  // Fordításnál a bemenet és a viszonyítási alap a forrásjegyzet törzse, nem az
+  // átirat: így a rubrika a forráshoz mér, és a `refine` loop érintetlen.
+  let input: RecipeInput = { item, transcript: transcript.lines.join(' '), timed: transcript.timed }
+  let source: NoteBody | null = null
+  if (recipe.translation) {
+    source = await readSourceNote(item, recipe.translation, deps)
+    const reason = alreadyInTarget(source.body, recipe.translation.target)
+    if (reason !== null) {
+      deps.sink({ type: 'item:skipped', itemId: item.itemId, reason })
+      return { status: 'skipped', skipReason: reason }
+    }
+    input = { item, transcript: source.body, timed: [] }
+  }
 
   // A dekorátor elemenként készül, hogy az esemény meg tudja nevezni, melyik
   // elem hívása bukott el.
@@ -131,7 +176,7 @@ async function runRecipe(
 
   // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
-  const result = await refine(recipe, { item, transcript: text, timed: transcript.timed }, client, {
+  const result = await refine(recipe, input, client, {
     // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
     // alatt — a futásidő nagyobb részében — nem jönne esemény.
     onGenerate: (generation) =>
@@ -183,6 +228,14 @@ async function runRecipe(
     score: result.score,
     costUsd: usd,
     tags: recipe.tags,
+    translation:
+      recipe.translation && source
+        ? {
+            language: recipe.translation.target,
+            sourceRecipe: recipe.translation.source.id,
+            sourceGeneratedAt: source.generatedAt,
+          }
+        : undefined,
   }, deps.version)
 
   const lintErrors = lintVaultMarkdown(markdown)
@@ -273,6 +326,8 @@ export async function processItem(
         const recipeOutcome = await runRecipe(item, transcript, deps, recipeDeps)
         if (recipeOutcome.status === 'published') {
           outcome = { ...recipeOutcome, path: outcome.path ?? recipeOutcome.recipePath }
+        } else if (recipeOutcome.skipReason !== undefined) {
+          outcome = { ...outcome, skipReason: recipeOutcome.skipReason }
         }
       } catch (error) {
         const message = (error as Error).message

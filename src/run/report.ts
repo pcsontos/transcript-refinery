@@ -25,6 +25,8 @@ export interface QueueRecipeStatus {
   pending: number
   /** A plafon miatt a következő futásra maradt. */
   deferred: number
+  /** Kihagyva: a fordítás forrása nincs meg, vagy már a célnyelven van. Nem „hátra". */
+  skipped: number
 }
 
 export interface ReportInput {
@@ -129,14 +131,20 @@ export function renderReport(input: ReportInput): string {
   }
 
   if (queue) {
+    // A „kihagyva" oszlop csak kihagyott párnál jelenik meg: fordítás nélkül a
+    // riport bájtra a mai marad.
+    const withSkipped = queue.some((q) => q.skipped > 0)
     lines.push('## A sor állapota')
     lines.push('')
-    lines.push('| recept | kipipálva | kész | hibás | hátra | plafon miatt maradt |')
-    lines.push('|---|---|---|---|---|---|')
+    lines.push(
+      `| recept | kipipálva | kész | hibás | hátra | plafon miatt maradt |${withSkipped ? ' kihagyva |' : ''}`,
+    )
+    lines.push(`|---|---|---|---|---|---|${withSkipped ? '---|' : ''}`)
     for (const q of queue) {
       lines.push(
         `| ${escapeTableCell(q.recipe)} | ${String(q.selected)} | ${String(q.done)} | ` +
-          `${String(q.failed)} | ${String(q.pending)} | ${String(q.deferred)} |`,
+          `${String(q.failed)} | ${String(q.pending)} | ${String(q.deferred)} |` +
+          (withSkipped ? ` ${String(q.skipped)} |` : ''),
       )
     }
     lines.push('')

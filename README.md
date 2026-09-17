@@ -4,13 +4,13 @@ Kész `.vtt`/`.srt` feliratfájlokból strukturált tudásjegyzeteket készít e
 Obsidian vaultba — mindegy, mi állította elő őket.
 
 > **Állapot: a v1 minden fázisa kész** (Fázis 0–5, ld.
-> [`docs/roadmap.md`](<./docs/roadmap.md>)), és folyamatban a Fázis 6 négy új
-> receptje. A teljes korpusz felügyelet nélkül végigfut: a futás JSONL naplót
+> [`docs/roadmap.md`](<./docs/roadmap.md>)), és kész a Fázis 6 négy új
+> receptje is. A teljes korpusz felügyelet nélkül végigfut: a futás JSONL naplót
 > és Markdown riportot hagy maga után, a költségplafon a tiltás helyett
 > szeletel, az átmeneti modellhibát korlátos újrapróbálkozás nyeli el. Hat
 > recept van: összefoglaló, tanulókártya, kérdés-felelet, tisztított leirat
 > (bekezdésenkénti időbélyeggel), Bloom-taxonómiás kártyák és strukturált
-> jegyzet; a második iteráció mért haszna
+> jegyzet, és bármelyikük jegyzete lefordítható; a második iteráció mért haszna
 > nemleges, a loop alapból egy körre áll. A feldolgozási sor Obsidianból
 > vezérelhető (`scan --queue` / `run --queue`), és van egy csak olvasó
 > Nuxt-felület az áttekintéshez és az élő követéshez.
@@ -115,6 +115,16 @@ definíció, magyarázat, példa és variáció, egy a fogalmakból összeállí
 recept sémás, a Markdownt renderer írja. A példa, a variáció és a magasabb
 Bloom-szintek szándékosan túlmehetnek az átiraton — egy saját bíró azt
 ellenőrzi, hogy nem mondanak ellent neki.
+
+A fordítás nem külön dokumentumtípus, hanem bármelyik recept kész jegyzetének
+célnyelvű változata. A `translate` konfigkulcs mondja meg a célnyelvet és a
+forrásreceptek listáját; mindegyikből saját recept lesz (`--recipe clean-hu`,
+`summary-hu`…), saját pipával a sorban. A fordítás a vaultban lévő
+forrásjegyzetből készül — egy kézzel javított jegyzet javított változata fordul
+—, és ahhoz mér: egy nulla tokenes vázkapu ellenőrzi, hogy az időbélyegek, a
+fejlécek, a bekezdések, a listák, a táblázat és a kódblokkok megmaradtak. Ha a
+forrás még nem készült el, a fordítás modellhívás nélkül kimarad, és a sor
+megnevezi az okot.
 
 A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
 `_queue.md` jegyzetébe fésüli a felderített videókat, videónként receptenként

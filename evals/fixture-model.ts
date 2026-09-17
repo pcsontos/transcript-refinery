@@ -29,13 +29,13 @@ export interface FixtureScript {
 }
 
 /**
- * Determinisztikus kliens egy fixture-höz. A `draft` szerep a fixture
- * jegyzeteit adja sorban, a `judge` az ítéleteit — így a teljes loop lefut
- * kulcs és hálózat nélkül, valódi pontszámokkal.
+ * Determinisztikus kliens rögzített válaszokkal: a `draft` szerep a jegyzeteket,
+ * a `judge` az ítéleteket adja sorban, az utolsót ismételve.
  */
-export function fixtureClient(fixture: Fixture, script: FixtureScript = {}): ModelClient {
-  const notes = script.notes ?? fixture.notes
-  const verdicts = script.verdicts ?? fixture.verdicts
+export function scriptedClient(
+  notes: readonly string[],
+  verdicts: readonly { score: number; gaps: string[] }[],
+): ModelClient {
   let draft = 0
   let judge = 0
   return modelClientFrom({
@@ -50,4 +50,13 @@ export function fixtureClient(fixture: Fixture, script: FixtureScript = {}): Mod
       return JSON.stringify(verdict ?? { score: 0, gaps: ['no verdict in fixture'] })
     }),
   })
+}
+
+/**
+ * Determinisztikus kliens egy fixture-höz. A `draft` szerep a fixture
+ * jegyzeteit adja sorban, a `judge` az ítéleteit — így a teljes loop lefut
+ * kulcs és hálózat nélkül, valódi pontszámokkal.
+ */
+export function fixtureClient(fixture: Fixture, script: FixtureScript = {}): ModelClient {
+  return scriptedClient(script.notes ?? fixture.notes, script.verdicts ?? fixture.verdicts)
 }

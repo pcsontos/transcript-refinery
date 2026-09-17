@@ -7,7 +7,7 @@ import { TOKENS_PER_WORD, costOf } from './pricing.js'
  * A generált kimenet hossza a bemenet arányában, ha a recept nem mond mást.
  * Egy összefoglaló nagyjából a normalizált átirat tizede.
  */
-const DEFAULT_OUTPUT_RATIO = 0.1
+export const DEFAULT_OUTPUT_RATIO = 0.1
 
 /** A rubrika modell-bíró kritériumainak száma, ha a hívó nem mond mást. */
 const DEFAULT_JUDGES = 2
@@ -82,7 +82,10 @@ export function estimateRunUsd(
 
 export interface BudgetEntry<T> {
   value: T
-  /** A normalizált átirat szószáma — ebből jön a becslés. */
+  /**
+   * A recept bemenetének szószáma, ebből jön a becslés: alapreceptnél a
+   * normalizált átirat, fordításnál a forrásjegyzet becsült hossza.
+   */
   words: number
   /**
    * A bejegyzés receptjének javítási korlátja. Bejegyzésenként, mert egy

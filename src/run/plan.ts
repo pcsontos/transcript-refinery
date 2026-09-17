@@ -1,7 +1,13 @@
 import type { ModelConfig } from '../config.js'
-import { sliceToBudget, type BudgetEntry, type BudgetSlice } from '../model/budget.js'
+import {
+  DEFAULT_OUTPUT_RATIO,
+  sliceToBudget,
+  type BudgetEntry,
+  type BudgetSlice,
+} from '../model/budget.js'
 import { ARTIFACT_KIND, normalizeItem } from '../pipeline.js'
 import type { Recipe } from '../recipe/types.js'
+import type { StateStore } from '../state/db.js'
 import type { SourceItem } from '../types.js'
 
 /** A futás egysége: egy elem és a rajta futó recept — vagy csak az átirat. */
@@ -44,6 +50,56 @@ export function filterItems(items: readonly SourceItem[], filters: ItemFilters):
   return items.filter((item) => matchesFilters(item, filters))
 }
 
+/**
+ * Előbb minden alaprecept egysége, utánuk a fordítások — mindkét csoporton belül
+ * változatlan sorrendben. Így egy fordítás mindig a forrása után fut, és a sor
+ * kézi átrendezése ezt nem fordíthatja meg.
+ */
+export function sourcesFirst(units: readonly WorkUnit[]): WorkUnit[] {
+  return [
+    ...units.filter((unit) => !unit.recipe?.translation),
+    ...units.filter((unit) => unit.recipe?.translation),
+  ]
+}
+
+/**
+ * Egy fordítási egység forrásának hiánya, megnevezve; `null`, ha a forrás kész,
+ * vagy az egység nem fordítás. A szöveg a sorba és a riportba is kikerül.
+ */
+export function sourceGap(
+  unit: WorkUnit,
+  store: Pick<StateStore, 'artifactOf'>,
+): string | null {
+  const source = unit.recipe?.translation?.source.id
+  if (source === undefined) return null
+  const status = store.artifactOf(unit.item.itemId, source)?.status
+  if (status === 'done') return null
+  return status === 'failed'
+    ? `a ${source} recept jegyzete nem készült el`
+    : `előbb a ${source} recept kell`
+}
+
+/** Szerepel-e ugyanebben az indításban a fordítási egység forrása, ugyanarra az elemre. */
+export function sourcePlanned(unit: WorkUnit, units: readonly WorkUnit[]): boolean {
+  const source = unit.recipe?.translation?.source.id
+  return (
+    source !== undefined &&
+    units.some((other) => other.item.itemId === unit.item.itemId && other.recipe?.id === source)
+  )
+}
+
+/**
+ * A recept bemenetének becsült szószáma. Fordításnál a forrásjegyzet hossza: az
+ * átirat a forrásrecept kimeneti arányával. A forrásfájlt nem olvassuk, így
+ * ugyanabban az indításban tervezett forrásra is működik.
+ */
+function inputWords(recipe: Recipe, transcriptWords: number): number {
+  const source = recipe.translation?.source
+  return source === undefined
+    ? transcriptWords
+    : transcriptWords * (source.outputRatio ?? DEFAULT_OUTPUT_RATIO)
+}
+
 export interface UnitBudget {
   /** A közös szeletelés a modellhívást igénylő egységeken. */
   slice: BudgetSlice<WorkUnit>
@@ -78,7 +134,7 @@ export async function estimateUnits(
     if (count === null) continue
     entries.push({
       value: unit,
-      words: count,
+      words: inputWords(unit.recipe, count),
       maxIterations: unit.recipe.maxIterations,
       shape: {
         outputRatio: unit.recipe.outputRatio,

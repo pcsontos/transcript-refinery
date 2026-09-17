@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { DEFERRED_STATUS, applyStatuses, doneStatus, failedStatus, pairKey } from './status.js'
+import {
+  DEFERRED_STATUS,
+  applyStatuses,
+  doneStatus,
+  failedStatus,
+  pairKey,
+  skippedStatus,
+} from './status.js'
 
 describe('doneStatus', () => {
   it('pontszám, négytizedes költség és a notes_dir-hez relatív link', () => {
@@ -85,5 +92,11 @@ describe('applyStatuses', () => {
   it('linkszabályt sértő állapotot nem ír ki', () => {
     const statuses = new Map([[pairKey('abcDEF12345', 'qa'), '✓ [[x]]']])
     expect(() => applyStatuses(SOR, statuses)).toThrow(/vault írási szabályait/)
+  })
+})
+
+describe('skippedStatus', () => {
+  it('a kihagyás okát a ⏸ jel után adja', () => {
+    expect(skippedStatus('előbb a clean recept kell')).toBe('⏸ előbb a clean recept kell')
   })
 })

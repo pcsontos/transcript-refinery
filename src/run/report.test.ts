@@ -182,7 +182,7 @@ describe('renderReport', () => {
   it('queue-futásnál receptenként kiírja a sor állapotát', () => {
     const md = renderReport(
       input({
-        queue: [{ recipe: 'summary', selected: 3, done: 1, failed: 1, pending: 0, deferred: 1 }],
+        queue: [{ recipe: 'summary', selected: 3, done: 1, failed: 1, pending: 0, deferred: 1, skipped: 0 }],
       }),
     )
     expect(md).toContain('## A sor állapota')
@@ -193,7 +193,7 @@ describe('renderReport', () => {
   it('queue-futásnál a következő lépés a sorból számol, nem a korpuszból', () => {
     const md = renderReport(
       input({
-        queue: [{ recipe: 'summary', selected: 2, done: 0, failed: 0, pending: 0, deferred: 2 }],
+        queue: [{ recipe: 'summary', selected: 2, done: 0, failed: 0, pending: 0, deferred: 2, skipped: 0 }],
         nextCommand: 'run --queue',
       }),
     )
@@ -205,7 +205,7 @@ describe('renderReport', () => {
   it('queue-futásnál, ha csak hibás pár maradt, újrapróbálást ajánl', () => {
     const md = renderReport(
       input({
-        queue: [{ recipe: 'qa', selected: 1, done: 0, failed: 1, pending: 0, deferred: 0 }],
+        queue: [{ recipe: 'qa', selected: 1, done: 0, failed: 1, pending: 0, deferred: 0, skipped: 0 }],
         nextCommand: 'run --queue --retry-failed',
       }),
     )
@@ -216,7 +216,7 @@ describe('renderReport', () => {
   it('queue-futásnál minden kész párnál a sort nevezi feldolgozottnak', () => {
     const md = renderReport(
       input({
-        queue: [{ recipe: 'qa', selected: 1, done: 1, failed: 0, pending: 0, deferred: 0 }],
+        queue: [{ recipe: 'qa', selected: 1, done: 1, failed: 0, pending: 0, deferred: 0, skipped: 0 }],
         nextCommand: undefined,
       }),
     )
@@ -229,5 +229,21 @@ describe('renderReport', () => {
     expect(md).toContain('## Figyelmeztetések')
     expect(md).toContain('- ismeretlen recept a sorban: foo (abcDEF12345)')
     expect(renderReport(input())).not.toContain('## Figyelmeztetések')
+  })
+
+  it('kihagyott pár esetén a sortáblázat „kihagyva" oszlopot kap; enélkül a fejléc a mai', () => {
+    const md = renderReport(
+      input({
+        queue: [
+          { recipe: 'clean', selected: 1, done: 1, failed: 0, pending: 0, deferred: 0, skipped: 0 },
+          { recipe: 'clean-hu', selected: 2, done: 0, failed: 0, pending: 0, deferred: 0, skipped: 2 },
+        ],
+      }),
+    )
+    expect(md).toContain('| recept | kipipálva | kész | hibás | hátra | plafon miatt maradt | kihagyva |')
+    expect(md).toContain('|---|---|---|---|---|---|---|')
+    expect(md).toContain('| clean | 1 | 1 | 0 | 0 | 0 | 0 |')
+    expect(md).toContain('| clean-hu | 2 | 0 | 0 | 0 | 0 | 2 |')
+    expect(md).toContain('A sor feldolgozva.')
   })
 })

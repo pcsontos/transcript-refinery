@@ -31,8 +31,9 @@ import {
   doneStatus,
   failedStatus,
   pairKey,
+  skippedStatus,
 } from './queue/status.js'
-import { RECIPES, RECIPE_IDS, getRecipe } from './recipe/registry.js'
+import { recipeFrom, recipesFor } from './recipe/registry.js'
 import type { Recipe } from './recipe/types.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { reserveRunId, runId } from './run/id.js'
@@ -41,6 +42,9 @@ import {
   estimateUnits,
   filterItems,
   matchesFilters,
+  sourceGap,
+  sourcePlanned,
+  sourcesFirst,
   unitKey,
   unitKind,
   type WorkUnit,
@@ -159,13 +163,16 @@ export async function commandScanQueue(
   cfg: Config,
   flags: { dryRun: boolean; commit: boolean },
 ): Promise<number> {
+  // A regiszter a felderítés és a sor írása előtt épül: egy hibás translate
+  // kulcs így nem hagy félig frissített sort maga után.
+  const registry = recipesFor(cfg)
   const commit = flags.commit && !flags.dryRun
   if (commit) await gitPullFfOnly(cfg.vaultPath)
 
   const items = await discoverAll(cfg.sources, cfg.languages)
   const path = queuePath(cfg.notesRoot)
   const current = await readQueueFile(path)
-  const { text, stats } = mergeQueue(current, items, RECIPE_IDS)
+  const { text, stats } = mergeQueue(current, items, Object.keys(registry))
 
   console.log(
     `${String(items.length)} feldolgozható felirat · ${String(stats.addedVideos)} új videó, ` +
@@ -260,7 +267,8 @@ export async function commandRun(
   const commandLine = flags.command ?? 'run'
   const queueMode = flags.queue === true
   const commit = flags.commit && !flags.dryRun
-  const recipe = flags.recipe ? getRecipe(flags.recipe) : null
+  const registry = recipesFor(cfg)
+  const recipe = flags.recipe ? recipeFrom(registry, flags.recipe) : null
 
   // Egy kliens és egy költségőr az egész indításra: a plafon így nem
   // receptenként, hanem együtt vonatkozik minden egységre.
@@ -330,6 +338,12 @@ export async function commandRun(
   /** A plafon miatt nem futott egységek kulcsai: szeletelés vagy futás közbeni megállás. */
   const capped = new Set<string>()
   const warnings: string[] = []
+  /** A forrás hiánya vagy a már célnyelvű forrás miatt kihagyott fordítási egységek, okkal. */
+  const skipped = new Map<string, { unit: WorkUnit; reason: string }>()
+  const skip = (unit: WorkUnit, reason: string): void => {
+    skipped.set(unitKey(unit), { unit, reason })
+    printing({ type: 'item:skipped', itemId: unit.item.itemId, reason })
+  }
 
   let wroteBack = false
   /**
@@ -346,7 +360,11 @@ export async function commandRun(
       const kind = unitKind(unit)
       const record = store.artifactOf(unit.item.itemId, kind)
       const key = pairKey(unit.item.itemId, kind)
-      if (record?.status === 'done') statuses.set(key, doneStatus(record, cfg.notesRoot))
+      // A kihagyás ennek a futásnak a friss ítélete: felülírja a párról korábban
+      // rögzített állapotot.
+      const kihagyva = skipped.get(unitKey(unit))
+      if (kihagyva) statuses.set(key, skippedStatus(kihagyva.reason))
+      else if (record?.status === 'done') statuses.set(key, doneStatus(record, cfg.notesRoot))
       else if (record?.status === 'failed') statuses.set(key, failedStatus(record.error))
       else if (capped.has(unitKey(unit))) statuses.set(key, DEFERRED_STATUS)
     }
@@ -366,7 +384,7 @@ export async function commandRun(
     const row = (recipeId: string): QueueRecipeStatus => {
       let r = rows.get(recipeId)
       if (!r) {
-        r = { recipe: recipeId, selected: 0, done: 0, failed: 0, pending: 0, deferred: 0 }
+        r = { recipe: recipeId, selected: 0, done: 0, failed: 0, pending: 0, deferred: 0, skipped: 0 }
         rows.set(recipeId, r)
       }
       return r
@@ -375,7 +393,8 @@ export async function commandRun(
       const r = row(unitKind(unit))
       r.selected++
       const status = store.artifactOf(unit.item.itemId, unitKind(unit))?.status
-      if (status === 'done') r.done++
+      if (skipped.has(unitKey(unit))) r.skipped++
+      else if (status === 'done') r.done++
       else if (status === 'failed') r.failed++
       else if (capped.has(unitKey(unit))) r.deferred++
       else r.pending++
@@ -385,7 +404,7 @@ export async function commandRun(
       r.selected++
       r.failed++
     }
-    return RECIPE_IDS.flatMap((recipeId) => {
+    return Object.keys(registry).flatMap((recipeId) => {
       const r = rows.get(recipeId)
       return r ? [r] : []
     })
@@ -450,9 +469,13 @@ export async function commandRun(
     // meg a még futót a keményen leállítottól.
     printing({ type: 'run:ended', interrupted })
 
+    for (const { unit, reason } of skipped.values()) {
+      warnings.push(`${unitKind(unit)} — ${unit.item.title}: ${reason}`)
+    }
+
     const summary = summarize(events)
     const kinds = queueMode
-      ? RECIPE_IDS.filter((recipeId) => selected.some((unit) => unitKind(unit) === recipeId))
+      ? Object.keys(registry).filter((recipeId) => selected.some((unit) => unitKind(unit) === recipeId))
       : [artifactKind]
     const corpora = kinds.map((kind) => ({ kind, status: store.corpusStatus(discovered, kind) }))
     const queue = queueStatus()
@@ -510,7 +533,7 @@ export async function commandRun(
       const byId = new Map(discovered.map((item) => [item.itemId, item] as const))
       units = []
       for (const pair of checkedPairs(parseQueue(queueText ?? ''))) {
-        const pairRecipe = RECIPES[pair.recipeId]
+        const pairRecipe = registry[pair.recipeId]
         if (!pairRecipe) {
           warnings.push(`ismeretlen recept a sorban: ${pair.recipeId} (${pair.itemId})`)
           continue
@@ -544,14 +567,27 @@ export async function commandRun(
       if (flags.limit !== undefined) items = items.slice(0, flags.limit)
       units = items.map((item) => ({ item, recipe }))
     }
+    // A fordítás a forrása után fut: a sor kézi átrendezése ezt nem fordíthatja meg.
+    units = sourcesFirst(units)
     selected = units
     printing({ type: 'scan:found', count: units.length })
 
     let planned = units
     if (model) {
-      const pending = flags.force
-        ? units
-        : units.filter((unit) => !store.isDone(unit.item.itemId, unitKind(unit)))
+      const pending = (
+        flags.force
+          ? units
+          : units.filter((unit) => !store.isDone(unit.item.itemId, unitKind(unit)))
+      ).filter((unit) => {
+        // Egy fordítás csak akkor tervezhető, ha a forrása kész, vagy ugyanebben
+        // az indításban készül. A szeletelő az első túllépés után mindent
+        // elhalaszt, a fordítások pedig a forrásaik után állnak: egy elhalasztott
+        // forrás fordítása így maga is elhalasztott lesz.
+        const gap = sourceGap(unit, store)
+        if (gap === null || sourcePlanned(unit, units)) return true
+        skip(unit, gap)
+        return false
+      })
       const { slice, first } = await estimateUnits(pending, model.modelConfig)
       const limitUsd = model.modelConfig.costLimitUsd
       for (const unit of slice.deferred) capped.add(unitKey(unit))
@@ -599,11 +635,18 @@ export async function commandRun(
       // elhalasztottakkal. Így a már kész egység a kihagyás ágára jut, a
       // hibás elem a feldolgozás hibaágára — modellhívás egyikkel sem jár,
       // tehát a plafon szemantikája sértetlen.
-      planned = units.filter((unit) => !capped.has(unitKey(unit)))
+      planned = units.filter((unit) => !capped.has(unitKey(unit)) && !skipped.has(unitKey(unit)))
     }
 
     for (const [index, unit] of planned.entries()) {
-      await processItem(unit.item, {
+      // A forrás ebben a futásban is elbukhatott: a fordítás ilyenkor modellhívás
+      // nélkül kimarad.
+      const gap = sourceGap(unit, store)
+      if (gap !== null) {
+        skip(unit, gap)
+        continue
+      }
+      const outcome = await processItem(unit.item, {
         notesRoot: cfg.notesRoot,
         store,
         sink: printing,
@@ -612,6 +655,11 @@ export async function commandRun(
         recipeDeps: depsFor(unit.recipe),
         commit,
       })
+      // A pipeline maga bocsátja ki az `item:skipped` eseményt; itt csak a sor és
+      // a riport kedvéért jegyezzük fel.
+      if (outcome.skipReason !== undefined) {
+        skipped.set(unitKey(unit), { unit, reason: outcome.skipReason })
+      }
 
       if (model?.guard.exceeded()) {
         printing({

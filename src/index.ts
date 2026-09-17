@@ -9,6 +9,7 @@ export {
   type Config,
   type ModelConfig,
   type SourceDir,
+  type TranslateConfig,
 } from './config.js'
 export { discoverAll, folderSource } from './source/folder.js'
 export { itemIdFor } from './source/identity.js'
@@ -29,8 +30,16 @@ export {
 export { openReadOnlyDatabase, openStateReader, type StateReader } from './state/reader.js'
 export type { ArtifactRow, ItemRow } from './state/queries.js'
 export { normalizeItem, type RecipeDeps } from './pipeline.js'
-export { getRecipe, RECIPES, RECIPE_IDS } from './recipe/registry.js'
-export type { Recipe, RecipeInput } from './recipe/types.js'
+export {
+  getRecipe,
+  recipeFrom,
+  recipesFor,
+  RECIPES,
+  RECIPE_IDS,
+  type Registry,
+} from './recipe/registry.js'
+export { translationOf } from './recipe/translate.js'
+export type { Recipe, RecipeInput, Translation } from './recipe/types.js'
 export { refine, type RefineResult } from './refine/loop.js'
 export { createModelClient, modelClientFrom, type ModelClient } from './model/client.js'
 export {
