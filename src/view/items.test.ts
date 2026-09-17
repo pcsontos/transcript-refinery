@@ -87,6 +87,7 @@ describe('buildItemRows', () => {
       qa: { status: 'failed', score: null, costUsd: null, belowThreshold: false },
       clean: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
       bloom: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
+      notes: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
     })
     expect(row!.updatedAt).toBe('2026-09-11T10:00:00.000Z')
   })

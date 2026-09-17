@@ -5,6 +5,7 @@ const KIND_LABELS: Record<string, string> = {
   qa: 'kérdés-felelet',
   clean: 'tisztított leirat',
   bloom: 'Bloom-kártya',
+  notes: 'strukturált jegyzet',
 }
 
 /** A műtermék-típus magyar neve; ismeretlen típusnál maga az azonosító. */
