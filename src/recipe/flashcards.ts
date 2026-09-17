@@ -4,6 +4,8 @@ import { coverageCriterion, faithfulnessCriterion } from '../rubric/judge.js'
 import { languageCriterion } from '../rubric/language.js'
 import type { Criterion, Score } from '../rubric/types.js'
 import type { SourceItem } from '../types.js'
+import { checkCardBasics, parseCards } from './cards.js'
+import { escapeHeadings, singleLine } from './markdown.js'
 import { languageRule, RULE } from './rules.js'
 import { structuredOutput } from './structured.js'
 import type { Recipe } from './types.js'
@@ -28,113 +30,39 @@ export const FlashcardsSchema = z.object({
 export type Flashcards = z.infer<typeof FlashcardsSchema>
 
 /**
- * Fejléc-alakú sorok a válaszban. A Markdown **három szóköz behúzásig** még
- * fejlécnek olvassa az ATX sort, a `---`/`===` aláhúzás pedig az előtte álló
- * szövegsorból csinál fejlécet (setext) — mindkettő ugyanúgy fantomkártyát
- * eredményez, mint egy behúzatlan `##`.
- */
-const ATX = /^( {0,3})(#+)/
-const SETEXT = /^( {0,3})(-+|=+)[ \t]*$/
-
-/**
- * A válasz fejléc-alakú sorainak elfedése. A `\` escape a sort bekezdéssé
- * teszi, a behúzást viszont meghagyja.
- *
- * A kódblokkok belsejét **nem** kímélve escape-elünk: egy lezáratlan
- * kerítéssel a modell különben kikapcsolhatná a védelmet a válasz hátralévő
- * részére. A rosszabbik eset így egy látható `\` egy ritka kódrészletben, nem
- * pedig egy szétesett pakli.
- */
-function escapeHeadings(answer: string): string {
-  const lines = answer.split('\n')
-  return lines
-    .map((line, i) => {
-      const atx = ATX.exec(line)
-      if (atx) return `${atx[1]!}\\${line.slice(atx[1]!.length)}`
-      // A setext aláhúzás csak akkor fejléc, ha szövegsor áll fölötte.
-      const setext = SETEXT.exec(line)
-      if (setext && i > 0 && lines[i - 1]!.trim() !== '') {
-        return `${setext[1]!}\\${line.slice(setext[1]!.length)}`
-      }
-      return line
-    })
-    .join('\n')
-}
-
-/**
  * Kártyakészlet → az Obsidian Decks plugin fejléc-bekezdés alakja: minden
  * `##` fejléc egy kártya eleje, az alatta lévő bekezdés a hátulja.
  *
  * A renderer **normalizál, nem hibázik**. A kérdésbe került sortörés egyetlen
  * sorrá olvad, a válasz fejléc-alakú sorai escape-et kapnak. Mindkettőt itt
  * kell megoldani, mert a kész szövegben már nem lennének megkülönböztethetők
- * a szabályos kártyahatároktól: a sortörés utáni rész pont úgy néz ki, mint a
- * válasz első sora, a válaszbeli fejléc pedig pont úgy, mint egy új kártya.
- * Ugyanaz a megfontolás, mint a futásriport tábláinak cella-escape-elésénél.
+ * a szabályos kártyahatároktól (`markdown.ts`).
  */
 export function renderCards({ cards }: Flashcards): string {
   return cards
-    .map((card) => {
-      const question = card.question.replace(/\s*\n\s*/g, ' ').trim()
-      return `## ${question}\n\n${escapeHeadings(card.answer)}`
-    })
+    .map((card) => `## ${singleLine(card.question)}\n\n${escapeHeadings(card.answer)}`)
     .join('\n\n')
-}
-
-/**
- * Egy kártya a renderelt szövegből visszaolvasva. A behúzott `##`-t is
- * kártyakezdetnek veszi, mert Obsidian is annak veszi.
- */
-function parseCards(output: string): { question: string; body: string }[] {
-  const cards: { question: string; body: string[] }[] = []
-  for (const line of output.split('\n')) {
-    const heading = /^ {0,3}## (.*)$/.exec(line)
-    if (heading) {
-      cards.push({ question: heading[1]!.trim(), body: [] })
-    } else if (cards.length > 0) {
-      cards[cards.length - 1]!.body.push(line)
-    }
-  }
-  return cards.map((c) => ({ question: c.question, body: c.body.join('\n').trim() }))
 }
 
 /**
  * Determinisztikus kártya-kapu: nulla token, és bukása esetén a bíró-hívások
  * el sem indulnak.
  *
- * Arra való, amit a séma nem tud megfogni, de a renderelt szövegből látszik:
- * két kártya azonos kérdéssel (a modell kedvenc hibája hosszú átiraton) és a
- * válasz nélkül maradt fejléc. A kártyaszám ellenőrzése védelmi réteg a
- * renderer hibája ellen — a sémán már fennakadna.
+ * A közös ellenőrzéseken (`cards.ts`) túl a kártyaszámot nézi — védelmi réteg
+ * a renderer hibája ellen, a sémán már fennakadna.
  *
  * A hiányüzenetek angolul szólnak, mert visszamennek a javító promptba.
  */
 export function checkFlashcards(output: string): Score {
-  const gaps: string[] = []
   const cards = parseCards(output)
+  const gaps: string[] = []
 
   if (cards.length < 3) {
     gaps.push(
       `The note has ${String(cards.length)} card(s). Write at least three cards, each as a "## question" heading followed by its answer.`,
     )
   }
-
-  for (const card of cards.filter((c) => c.body === '')) {
-    gaps.push(`The card "${card.question}" is a heading without an answer below it.`)
-  }
-
-  const seen = new Map<string, string>()
-  for (const card of cards) {
-    const key = card.question.toLocaleLowerCase()
-    const first = seen.get(key)
-    if (first === undefined) {
-      seen.set(key, card.question)
-    } else {
-      gaps.push(
-        `Two cards ask the same question: "${first}". Ask about a different point instead.`,
-      )
-    }
-  }
+  gaps.push(...checkCardBasics(cards))
 
   return { value: gaps.length === 0 ? 1 : 0, gaps }
 }
