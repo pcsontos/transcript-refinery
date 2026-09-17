@@ -8,9 +8,16 @@ const KIND_LABELS: Record<string, string> = {
   notes: 'strukturált jegyzet',
 }
 
-/** A műtermék-típus magyar neve; ismeretlen típusnál maga az azonosító. */
+/**
+ * A műtermék-típus magyar neve. Egy `<forrás>-<nyelv>` alakú fordítás a
+ * forrás címkéjét kapja a célnyelvvel; ismeretlen típusnál maga az azonosító.
+ */
 export function kindLabel(kind: string): string {
-  return KIND_LABELS[kind] ?? kind
+  const own = KIND_LABELS[kind]
+  if (own !== undefined) return own
+  const translation = /^(.+)-([a-z]{2})$/.exec(kind)
+  const source = translation ? KIND_LABELS[translation[1]!] : undefined
+  return source !== undefined ? `${source} (${translation![2]!})` : kind
 }
 
 const RUN_STATUS_LABELS: Record<string, string> = {

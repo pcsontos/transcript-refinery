@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import type { Config } from '../config.js'
-import { RECIPES } from '../recipe/registry.js'
+import { recipesFor, type Registry } from '../recipe/registry.js'
 import { discoverAll } from '../source/folder.js'
 import type { ArtifactRow, ItemRow } from '../state/queries.js'
 import { openStateReader } from '../state/reader.js'
@@ -36,8 +36,8 @@ function cellStatus(status: string | undefined): CellStatus {
   return status === 'done' || status === 'failed' ? status : 'pending'
 }
 
-function thresholdOf(kind: string): number | null {
-  return RECIPES[kind]?.rubric.passThreshold ?? null
+function thresholdOf(registry: Registry, kind: string): number | null {
+  return registry[kind]?.rubric.passThreshold ?? null
 }
 
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
@@ -50,6 +50,7 @@ export function buildItemRows(
   discovered: readonly SourceItem[],
   items: readonly ItemRow[],
   artifacts: readonly ArtifactRow[],
+  registry: Registry,
 ): ItemListRow[] {
   const rowOf = new Map(items.map((row) => [row.itemId, row] as const))
   const artifactsOf = new Map<string, ArtifactRow[]>()
@@ -58,7 +59,7 @@ export function buildItemRows(
     list.push(artifact)
     artifactsOf.set(artifact.itemId, list)
   }
-  const kinds = artifactKinds()
+  const kinds = artifactKinds(registry)
 
   const toRow = (
     itemId: string,
@@ -73,7 +74,7 @@ export function buildItemRows(
       const artifact = own.find((a) => a.kind === kind)
       const status = cellStatus(artifact?.status)
       const score = artifact?.score ?? null
-      const threshold = thresholdOf(kind)
+      const threshold = thresholdOf(registry, kind)
       cells[kind] = {
         status,
         score,
@@ -108,12 +109,13 @@ export function buildItemRows(
 }
 
 export async function readItems(
-  cfg: Pick<Config, 'sources' | 'languages' | 'statePath'>,
+  cfg: Pick<Config, 'sources' | 'languages' | 'statePath' | 'translate' | 'configPath'>,
 ): Promise<ItemListRow[]> {
+  const registry = recipesFor(cfg)
   const discovered = await discoverAll(cfg.sources, cfg.languages)
   const reader = openStateReader(cfg.statePath)
   try {
-    return buildItemRows(discovered, reader?.items() ?? [], reader?.artifacts() ?? [])
+    return buildItemRows(discovered, reader?.items() ?? [], reader?.artifacts() ?? [], registry)
   } finally {
     reader?.close()
   }
@@ -180,9 +182,10 @@ async function readNote(path: string | null): Promise<{ body: string | null; mis
  * Ismeretlen elemre `null`.
  */
 export async function readItemDetail(
-  cfg: Pick<Config, 'sources' | 'languages' | 'statePath'>,
+  cfg: Pick<Config, 'sources' | 'languages' | 'statePath' | 'translate' | 'configPath'>,
   itemId: string,
 ): Promise<ItemDetail | null> {
+  const registry = recipesFor(cfg)
   const discovered = (await discoverAll(cfg.sources, cfg.languages)).find(
     (item) => item.itemId === itemId,
   )
@@ -193,7 +196,7 @@ export async function readItemDetail(
 
     const own = (reader?.artifacts() ?? []).filter((a) => a.itemId === itemId)
     const artifacts: ArtifactDetail[] = []
-    for (const kind of artifactKinds()) {
+    for (const kind of artifactKinds(registry)) {
       const artifact = own.find((a) => a.kind === kind)
       if (!artifact) continue
       const status = cellStatus(artifact.status)
@@ -209,7 +212,7 @@ export async function readItemDetail(
         costUsd: artifact.costUsd,
         model: artifact.model,
         createdAt: artifact.createdAt,
-        threshold: thresholdOf(kind),
+        threshold: thresholdOf(registry, kind),
         gaps: reader?.gapsOf(itemId, kind) ?? null,
         body: note.body,
         missingFile: note.missing,

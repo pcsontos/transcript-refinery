@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { loadConfig, type Config } from '../config.js'
+import { RECIPES } from '../recipe/registry.js'
 import { discoverAll } from '../source/folder.js'
 import { openState } from '../state/db.js'
 import type { ArtifactRow } from '../state/queries.js'
@@ -33,7 +34,7 @@ const artifact = (overrides: Partial<ArtifactRow>): ArtifactRow => ({
 
 describe('artifactKinds', () => {
   it('az átirat után a registry receptjei, registry-sorrendben', () => {
-    expect(artifactKinds()).toEqual([
+    expect(artifactKinds(RECIPES)).toEqual([
       'transcript',
       'summary',
       'flashcards',
@@ -55,7 +56,7 @@ describe('scoreDistribution', () => {
       artifact({ itemId: 'e', score: 0.5, kind: 'qa' }),
     ]
 
-    const dist = scoreDistribution('summary', artifacts)
+    const dist = scoreDistribution('summary', artifacts, RECIPES)
     expect(dist.threshold).toBe(0.8)
     expect(dist.buckets).toEqual([0, 0, 0, 0, 0, 0, 1, 0, 1, 1])
     expect([dist.scored, dist.belowThreshold]).toEqual([3, 1])
@@ -103,7 +104,7 @@ describe('queueOverview', () => {
       artifact({ itemId: 'a', kind: 'summary', status: 'done' }),
       artifact({ itemId: 'b', kind: 'summary', status: 'failed' }),
     ]
-    expect(queueOverview(SOR, artifacts)).toEqual([
+    expect(queueOverview(SOR, artifacts, RECIPES)).toEqual([
       { recipe: 'summary', checked: 3, done: 1, failed: 1, pending: 1 },
       { recipe: 'qa', checked: 1, done: 0, failed: 0, pending: 1 },
     ])
@@ -137,6 +138,7 @@ describe('buildOverview', () => {
         artifact({ itemId: 'b', kind: 'transcript', costUsd: null }),
       ],
       queueText: null,
+      registry: RECIPES,
       runs: [run('2026-09-11T09-00-00', 'running'), run('2026-09-10T08-00-00', 'done')],
     })
 
@@ -240,5 +242,11 @@ describe('readOverview', () => {
     expect(overview.queue).toEqual([{ recipe: 'summary', checked: 1, done: 1, failed: 0, pending: 0 }])
     expect(overview.running.map((r) => r.runId)).toEqual(['2026-09-11T09-00-00'])
     expect(overview.scores[0]).toMatchObject({ recipe: 'summary', scored: 1, belowThreshold: 1 })
+  })
+
+  it('translate kulccsal a fordítás saját típusként jelenik meg a korpuszban és a pontszámoknál', async () => {
+    const overview = await readOverview({ ...cfg, translate: { to: 'hu', recipes: ['clean'] } })
+    expect(overview.corpus.map((c) => c.kind).at(-1)).toBe('clean-hu')
+    expect(overview.scores.map((s) => s.recipe).at(-1)).toBe('clean-hu')
   })
 })

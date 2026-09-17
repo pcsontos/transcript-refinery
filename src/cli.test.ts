@@ -296,6 +296,14 @@ describe('commandRun — a szűrők', () => {
 
     expect(code).toBe(0)
   })
+
+  it('translate kulcs nélkül a fordítórecept ismeretlen', async () => {
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    await expect(
+      commandRun(cfg, raw, { recipe: 'clean-hu', dryRun: false, force: false, commit: false }),
+    ).rejects.toThrow('Ismeretlen recept: clean-hu.')
+  })
 })
 
 describe('commandRun — napló és riport', () => {
@@ -1556,6 +1564,38 @@ describe('commandScanQueue', () => {
     const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
 
     expect(await commandScan(cfg)).toBe(0)
+    expect(existsSync(queuePath(cfg.notesRoot))).toBe(false)
+  })
+
+  it('translate kulccsal videónként felveszi a fordítások pipáit; másodszorra bájtra azonos', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(
+      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean', 'summary'] } },
+      '/p/refinery.config.yaml',
+    )
+    const sor = queuePath(cfg.notesRoot)
+
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    const elso = await readFile(sor, 'utf8')
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+
+    expect(elso).toContain(
+      '- Első videó %%a1%%\n  - [ ] summary\n  - [ ] flashcards\n  - [ ] qa\n  - [ ] clean\n' +
+        '  - [ ] bloom\n  - [ ] notes\n  - [ ] clean-hu\n  - [ ] summary-hu',
+    )
+    expect(await readFile(sor, 'utf8')).toBe(elso)
+  })
+
+  it('fordítás fordítását a konfigban a sor írása előtt elutasítja', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(
+      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean-hu'] } },
+      '/p/refinery.config.yaml',
+    )
+
+    await expect(commandScanQueue(cfg, { dryRun: false, commit: false })).rejects.toThrow(
+      'maga is fordítás',
+    )
     expect(existsSync(queuePath(cfg.notesRoot))).toBe(false)
   })
 })

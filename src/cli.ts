@@ -32,7 +32,7 @@ import {
   failedStatus,
   pairKey,
 } from './queue/status.js'
-import { RECIPES, RECIPE_IDS, getRecipe } from './recipe/registry.js'
+import { recipeFrom, recipesFor } from './recipe/registry.js'
 import type { Recipe } from './recipe/types.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { reserveRunId, runId } from './run/id.js'
@@ -159,13 +159,16 @@ export async function commandScanQueue(
   cfg: Config,
   flags: { dryRun: boolean; commit: boolean },
 ): Promise<number> {
+  // A regiszter a felderítés és a sor írása előtt épül: egy hibás translate
+  // kulcs így nem hagy félig frissített sort maga után.
+  const registry = recipesFor(cfg)
   const commit = flags.commit && !flags.dryRun
   if (commit) await gitPullFfOnly(cfg.vaultPath)
 
   const items = await discoverAll(cfg.sources, cfg.languages)
   const path = queuePath(cfg.notesRoot)
   const current = await readQueueFile(path)
-  const { text, stats } = mergeQueue(current, items, RECIPE_IDS)
+  const { text, stats } = mergeQueue(current, items, Object.keys(registry))
 
   console.log(
     `${String(items.length)} feldolgozható felirat · ${String(stats.addedVideos)} új videó, ` +
@@ -260,7 +263,8 @@ export async function commandRun(
   const commandLine = flags.command ?? 'run'
   const queueMode = flags.queue === true
   const commit = flags.commit && !flags.dryRun
-  const recipe = flags.recipe ? getRecipe(flags.recipe) : null
+  const registry = recipesFor(cfg)
+  const recipe = flags.recipe ? recipeFrom(registry, flags.recipe) : null
 
   // Egy kliens és egy költségőr az egész indításra: a plafon így nem
   // receptenként, hanem együtt vonatkozik minden egységre.
@@ -385,7 +389,7 @@ export async function commandRun(
       r.selected++
       r.failed++
     }
-    return RECIPE_IDS.flatMap((recipeId) => {
+    return Object.keys(registry).flatMap((recipeId) => {
       const r = rows.get(recipeId)
       return r ? [r] : []
     })
@@ -452,7 +456,7 @@ export async function commandRun(
 
     const summary = summarize(events)
     const kinds = queueMode
-      ? RECIPE_IDS.filter((recipeId) => selected.some((unit) => unitKind(unit) === recipeId))
+      ? Object.keys(registry).filter((recipeId) => selected.some((unit) => unitKind(unit) === recipeId))
       : [artifactKind]
     const corpora = kinds.map((kind) => ({ kind, status: store.corpusStatus(discovered, kind) }))
     const queue = queueStatus()
@@ -510,7 +514,7 @@ export async function commandRun(
       const byId = new Map(discovered.map((item) => [item.itemId, item] as const))
       units = []
       for (const pair of checkedPairs(parseQueue(queueText ?? ''))) {
-        const pairRecipe = RECIPES[pair.recipeId]
+        const pairRecipe = registry[pair.recipeId]
         if (!pairRecipe) {
           warnings.push(`ismeretlen recept a sorban: ${pair.recipeId} (${pair.itemId})`)
           continue

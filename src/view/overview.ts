@@ -2,7 +2,7 @@ import type { Config } from '../config.js'
 import { ARTIFACT_KIND } from '../pipeline.js'
 import { queuePath, readQueueFile } from '../queue/file.js'
 import { checkedPairs, parseQueue } from '../queue/parse.js'
-import { RECIPES, RECIPE_IDS } from '../recipe/registry.js'
+import { recipesFor, type Registry } from '../recipe/registry.js'
 import type { KindCorpus } from '../run/report.js'
 import { isPidAlive } from '../run/status.js'
 import { discoverAll } from '../source/folder.js'
@@ -12,9 +12,9 @@ import { openStateReader } from '../state/reader.js'
 import type { SourceItem } from '../types.js'
 import { readRuns, type RunSummaryView } from './runs.js'
 
-/** A műtermék-típusok a felület sorrendjében: az átirat, majd a registry receptjei. */
-export function artifactKinds(): string[] {
-  return [ARTIFACT_KIND, ...RECIPE_IDS]
+/** A műtermék-típusok a felület sorrendjében: az átirat, majd a regiszter receptjei. */
+export function artifactKinds(registry: Registry): string[] {
+  return [ARTIFACT_KIND, ...Object.keys(registry)]
 }
 
 /**
@@ -60,8 +60,9 @@ export interface ScoreDistribution {
 export function scoreDistribution(
   recipe: string,
   artifacts: readonly ArtifactRow[],
+  registry: Registry,
 ): ScoreDistribution {
-  const threshold = RECIPES[recipe]?.rubric.passThreshold ?? 0
+  const threshold = registry[recipe]?.rubric.passThreshold ?? 0
   const buckets = Array.from({ length: 10 }, () => 0)
   let scored = 0
   let belowThreshold = 0
@@ -91,6 +92,7 @@ export interface QueueRecipeOverview {
 export function queueOverview(
   queueText: string,
   artifacts: readonly ArtifactRow[],
+  registry: Registry,
 ): QueueRecipeOverview[] {
   const statusOf = new Map(
     artifacts.map((a) => [JSON.stringify([a.itemId, a.kind]), a.status] as const),
@@ -111,7 +113,7 @@ export function queueOverview(
     else row.pending++
     rows.set(pair.recipeId, row)
   }
-  return RECIPE_IDS.flatMap((recipe) => {
+  return Object.keys(registry).flatMap((recipe) => {
     const row = rows.get(recipe)
     return row ? [row] : []
   })
@@ -140,6 +142,8 @@ export interface OverviewInput {
   artifacts: readonly ArtifactRow[]
   queueText: string | null
   runs: readonly RunSummaryView[]
+  /** A futás regisztere: az alapreceptek és a konfigban kért fordítások. */
+  registry: Registry
 }
 
 export function buildOverview(input: OverviewInput): Overview {
@@ -147,9 +151,14 @@ export function buildOverview(input: OverviewInput): Overview {
     hasState: input.hasState,
     discovered: input.discovered,
     corpus: input.corpus,
-    scores: RECIPE_IDS.map((recipe) => scoreDistribution(recipe, input.artifacts)),
+    scores: Object.keys(input.registry).map((recipe) =>
+      scoreDistribution(recipe, input.artifacts, input.registry),
+    ),
     totalCostUsd: input.artifacts.reduce((sum, a) => sum + (a.costUsd ?? 0), 0),
-    queue: input.queueText === null ? null : queueOverview(input.queueText, input.artifacts),
+    queue:
+      input.queueText === null
+        ? null
+        : queueOverview(input.queueText, input.artifacts, input.registry),
     running: input.runs.filter((run) => run.status === 'running'),
   }
 }
@@ -160,13 +169,17 @@ export function buildOverview(input: OverviewInput): Overview {
  * riportja — a két szám ezért nem térhet el.
  */
 export async function readOverview(
-  cfg: Pick<Config, 'sources' | 'languages' | 'statePath' | 'notesRoot' | 'logsDir'>,
+  cfg: Pick<
+    Config,
+    'sources' | 'languages' | 'statePath' | 'notesRoot' | 'logsDir' | 'translate' | 'configPath'
+  >,
   isAlive: (pid: number) => boolean = isPidAlive,
 ): Promise<Overview> {
+  const registry = recipesFor(cfg)
   const discovered = await discoverAll(cfg.sources, cfg.languages)
   const reader = openStateReader(cfg.statePath)
   try {
-    const corpus = artifactKinds().map((kind) => ({
+    const corpus = artifactKinds(registry).map((kind) => ({
       kind,
       status: reader ? reader.corpusStatus(discovered, kind) : emptyCorpusStatus(discovered),
     }))
@@ -177,6 +190,7 @@ export async function readOverview(
       artifacts: reader ? reader.artifacts() : [],
       queueText: await readQueueFile(queuePath(cfg.notesRoot)),
       runs: await readRuns(cfg, isAlive),
+      registry,
     })
   } finally {
     reader?.close()
