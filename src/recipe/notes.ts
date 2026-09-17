@@ -121,9 +121,9 @@ export const notesRecipe: Recipe = {
   publishable: true,
   role: 'draft',
   maxIterations: 0,
-  // Kezdőérték feltevésből (kb. 1200 szó a medián, 4050 szavas elemen); a
-  // kalibráló futás (6. feladat) írja felül.
-  outputRatio: 0.3,
+  // A medián elemen mért kimeneti arány, felfelé kerekítve
+  // (docs/measurements/2026-09-17-bloom-notes-kalibralas.md).
+  outputRatio: 1.1,
 
   structured: structuredOutput(NotesSchema, renderNotes),
 
