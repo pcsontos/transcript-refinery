@@ -236,7 +236,7 @@ export function translationOf(source: Recipe, target: LanguageTag): Recipe
 | `maxIterations` | `0` |
 | `outputRatio` | `1.5` — becsült kezdőérték, a kalibrálás felülírja |
 | `tags` | `source.tags` — a lefordított kártyák is Decks-paklik |
-| `sourceRecipe` | `source` — új, elhagyható `Recipe` mező |
+| `translation` | `{ source, target }` — új, elhagyható `Recipe` mező; a kihagyáshoz a célnyelv is kell |
 | `structured` | nincs: kártyaforrásnál is prózaként fordít |
 | `postprocess` | nincs |
 
@@ -297,12 +297,18 @@ A `render.ts` `body()` pontos megfordítása: leválasztja a frontmattert, a
 Ha a fejléc-szerkezet nem ismerhető fel, **beszédes hibát dob** — ez
 `item:failed` lesz, nem néma rossz bemenet.
 
+A törzsből kikerülnek az egysoros Obsidian-megjegyzések (`%%…%%`). Ezek nem
+tartalom, és a Decks ismétlési horgonyai (`%%dk:h:…%%`) is ilyenek: egy
+fordításba átmásolt horgony két paklit kötne ugyanahhoz az ismétlési
+állapothoz. Hogy a Decks ezt ténylegesen így kezelné-e, nem ellenőriztük — a
+kockázat elkerülése olcsóbb, mint a próbája.
+
 A törzs a vaultban lévő fájlból jön, tehát egy Obsidianban kézzel javított
 forrásjegyzet javított változata fordul.
 
 ### Hogyan jut el a receptig
 
-A `runRecipe` fordítórecepteknél (`recipe.sourceRecipe` jelen van):
+A `runRecipe` fordítórecepteknél (`recipe.translation` jelen van):
 
 1. az állapottárból kiolvassa a forrás műtermékét
    (`store.artifactOf(itemId, source.id)`);
@@ -330,6 +336,9 @@ se nem hiba, se nem kész, a következő futás újra megvizsgálja.
   nem az `item.language`-ből — a `0009` 5. pontja szerint. `null` esetén nem
   hagy ki.
 - A kihagyás a modellhívás **előtt** történik.
+- A „forrás már a célnyelven" okot a pipeline állapítja meg, mert ő olvassa a
+  forrásjegyzetet; az `ItemOutcome` új `skipReason` mezőben adja vissza, hogy a
+  futás a sorba és a riportba is kiírhassa.
 
 ### Hiányzó forrásfájl
 
@@ -475,7 +484,7 @@ nélküli jegyzet frontmatterje a `generated_at` kivételével bájtra a mai.
 
 A `budget.ts` képlete változatlan. A `plan.ts` fordítási egységnél:
 
-- **bemeneti szószám:** `transcriptWords × (sourceRecipe.outputRatio ?? 0.1)`
+- **bemeneti szószám:** `transcriptWords × (translation.source.outputRatio ?? 0.1)`
   — a forrásfájlt nem olvassa, tehát kész és ugyanabban az indításban tervezett
   forrásra ugyanúgy működik;
 - **`outputRatio`:** a fordítórecepté;
@@ -503,11 +512,13 @@ A `budget.ts` képlete változatlan. A `plan.ts` fordítási egységnél:
 - A mag nem ír konzolra és nem ír fájlt.
 - A hat meglévő recept promptja bájtra változatlan; a `judge.ts` és a
   `refine/loop.ts` nem változik.
-- Commit-sorrend: (1) `checkLanguageIs` és a célnyelv-kapu; (2) vázkapu és a
-  címkézett esetei; (3) `noteBody`; (4) konfigkulcs, `translationOf`,
-  `recipesFor` és a fogyasztók átállítása; (5) függés, kihagyás, sorrend és
-  becslés a futásban; (6) frontmatter, sor-státusz, riport, felületcímke;
-  (7) eval; (8) kalibrálás és a végleges `outputRatio`; (9) dokumentáció.
+- Commit-sorrend: (1) prompt-ujjlenyomat a `bloom`-ra és a `notes`-ra, és a
+  célnyelv-kapu; (2) vázkapu és a címkézett esetei; (3) `noteBody`;
+  (4) konfigkulcs, `translationOf`, `recipesFor`; (5) a regiszter fogyasztói:
+  nézetek, `scan --queue`, `--recipe`, felületcímke; (6) a fordítás bemenete és
+  frontmatterje a pipeline-ban; (7) sorrend, kihagyás, becslés, sor-státusz és
+  riport a futásban; (8) eval; (9) kalibrálás és a végleges `outputRatio`;
+  (10) füstpróba és dokumentáció.
 
 ## Sikerkritériumok
 
