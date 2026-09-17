@@ -13,7 +13,7 @@ export interface Score {
 }
 
 export interface ScoreContext {
-  /** A normalizált átirat: a viszonyítási alap minden kritériumnál. */
+  /** A viszonyítási alap minden kritériumnál: a normalizált átirat, fordításnál a forrásjegyzet törzse. */
   transcript: string
   /** A modell által generált jegyzettörzs. */
   output: string

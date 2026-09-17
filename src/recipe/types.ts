@@ -1,6 +1,7 @@
 import type { ModelClient, ModelResult } from '../model/client.js'
 import type { Rubric } from '../rubric/types.js'
 import type { ModelRole, SourceItem, TimedLine } from '../types.js'
+import type { LanguageTag } from '../lang/identify.js'
 
 /**
  * Sémával kikényszerített kimenet.
@@ -21,9 +22,13 @@ export interface StructuredOutput {
 
 export interface RecipeInput {
   item: SourceItem
-  /** A normalizált átirat teljes szövege. */
+  /**
+   * A recept bemenő és viszonyítási szövege: alaprecepteknél a normalizált
+   * átirat teljes szövege, fordításnál a forrásjegyzet törzse. A rubrika ehhez
+   * mér.
+   */
   transcript: string
-  /** Ugyanaz, soronkénti kezdőidővel. Az időbélyegző receptek alapja. */
+  /** Az átirat soronkénti kezdőidővel — az időbélyegző receptek alapja; fordításnál üres. */
   timed: readonly TimedLine[]
 }
 
@@ -81,5 +86,18 @@ export interface Recipe {
    * hiba — ugyanaz a precedens, mint a séma-hibánál (`structured.ts`).
    */
   postprocess?(output: string, input: RecipeInput): string
+  /**
+   * Ha jelen van, a recept egy másik recept kész jegyzetét fordítja
+   * célnyelvre (`translationOf`). A futás ilyenkor a forrásjegyzet törzsét adja
+   * a `transcript` mezőben, a forrás után futtatja, és hiányzó forrásnál
+   * kihagyja.
+   */
+  translation?: Translation
   rubric: Rubric
+}
+
+/** Egy fordítórecept forrása és célnyelve. */
+export interface Translation {
+  source: Recipe
+  target: LanguageTag
 }

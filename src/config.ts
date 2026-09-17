@@ -3,6 +3,7 @@ import { basename, isAbsolute, join, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 import type { ModelRole } from './types.js'
+import { LANGUAGE_NAMES, type LanguageTag } from './lang/identify.js'
 
 /** A konfigurációs fájl alapértelmezett neve a projekt gyökerében. */
 export const CONFIG_FILENAME = 'refinery.config.yaml'
@@ -36,6 +37,16 @@ const absolutePath = (label: string) =>
     .min(1, `A ${label} kötelező.`)
     .refine(isAbsolute, `A ${label} abszolút útvonal kell legyen.`)
 
+const LANGUAGE_TAGS = Object.keys(LANGUAGE_NAMES) as [LanguageTag, ...LanguageTag[]]
+
+const TranslateSchema = z.object({
+  to: z.enum(LANGUAGE_TAGS, `Ismeretlen célnyelv; ismert nyelvek: ${LANGUAGE_TAGS.join(', ')}.`),
+  recipes: z
+    .array(z.string().min(1))
+    .min(1, 'Legalább egy forrásrecept kell.')
+    .refine((ids) => new Set(ids).size === ids.length, 'Egy forrásrecept csak egyszer szerepelhet.'),
+})
+
 const CoreSchema = z.object({
   vault: z.object({
     path: absolutePath('vault.path'),
@@ -49,6 +60,7 @@ const CoreSchema = z.object({
     .object({ path: z.string().min(1) })
     .default({ path: join('.state', 'refinery.db') }),
   logs: z.object({ dir: z.string().min(1) }).default({ dir: 'logs' }),
+  translate: TranslateSchema.optional(),
 })
 
 /** Egy feliratforrás: a YAML-beli útvonal és a belőle képzett név. */
@@ -56,6 +68,16 @@ export interface SourceDir {
   /** Az útvonal utolsó szegmense; ez lesz a vault-beli almappa neve. */
   name: string
   path: string
+}
+
+/**
+ * A fordítás beállítása. A receptek azonosítóit itt még nem ellenőrizzük: azt a
+ * regiszter teszi (`recipesFor`), hogy a konfig ne függjön a receptektől.
+ */
+export interface TranslateConfig {
+  to: LanguageTag
+  /** A forrásreceptek azonosítói; mindegyikből egy fordítórecept lesz. */
+  recipes: string[]
 }
 
 export interface Config {
@@ -69,6 +91,8 @@ export interface Config {
   statePath: string
   /** A futásnaplók és riportok mappája, abszolút útvonalként. */
   logsDir: string
+  /** A fordítás beállítása; `null`, ha a kulcs hiányzik — ilyenkor nincs fordítórecept. */
+  translate: TranslateConfig | null
 }
 
 /** A zod hibáját a mező útjával és a konfigurációs fájllal együtt dobja tovább. */
@@ -126,6 +150,7 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
     languages: c.languages,
     statePath: resolve(baseDir, c.state.path),
     logsDir: resolve(baseDir, c.logs.dir),
+    translate: c.translate ? { to: c.translate.to, recipes: c.translate.recipes } : null,
   }
 }
 
