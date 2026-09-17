@@ -135,7 +135,7 @@ mérés előbb.
 ## Fázis 6 — Négy új recept
 
 Négy dokumentumtípus: tisztított leirat időbélyegekkel, Bloom-taxonómiás
-tanulókártya, strukturált jegyzet, fordítás fordítási memóriával. A sorrend
+tanulókártya, strukturált jegyzet, fordítás. A sorrend
 nem ízlés kérdése — a tisztított leirat hozza az időzítés megőrzését és a
 receptenkénti kimeneti arányt, és mindkettőre szüksége lesz a következő
 háromnak.
@@ -174,7 +174,27 @@ háromnak.
 - A két kimeneti arány mért érték:
   [a kalibrálás](<./measurements/2026-09-17-bloom-notes-kalibralas.md>).
 
-A fordítás fordítási memóriával külön szelet, saját speckel és tervvel.
+**A fordítás — státusz: kész** (2026-09-17). Spec és terv:
+[`plans/2026-09-17-forditas-spec.md`](<./plans/2026-09-17-forditas-spec.md>),
+[`plans/2026-09-17-forditas.md`](<./plans/2026-09-17-forditas.md>). A fordítási
+memória a mérés alapján kimaradt: a videók között a szöveg 0,16%-a ismétlődik
+([`decisions/0012`](<./decisions/0012-forditas.md>)).
+
+**Kész, ha (fordítás):**
+
+- `translate` kulcs nélkül minden parancs kimenete a mai; a hat meglévő recept
+  promptja bájtra változatlan.
+- A kulccsal a `scan --queue` videónként felveszi a fordítások pipáit, és
+  másodszor futtatva bájtra azonos sort hagy.
+- Egy indítás előbb a forrást, aztán a fordítást készíti el, egyetlen commitban;
+  a `_clean-hu.md` időbélyeg-sorozata azonos a `_clean.md`-ével.
+- Hiányzó forrásnál a fordítás nulla modellhívással kimarad, és a sor és a riport
+  megnevezi az okot.
+- Ha a fordításból kimarad egy bekezdés, a jegyzet nulla bíró-hívással,
+  megnevezett hiánnyal kerül ki.
+- A lefordított Bloom-paklit a Decks paklinak ismeri fel.
+- A kimeneti arány és a hosszú forrás egyhívásos fordítása mért érték:
+  [a kalibrálás](<./measurements/2026-09-17-forditas-kalibralas.md>).
 
 ## v2 és utána
 

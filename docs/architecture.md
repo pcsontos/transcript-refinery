@@ -115,9 +115,12 @@ transzkribálás) az appon kívül van
 - **`Recipe`** — mi lesz egy elemből. Lásd a 8. fejezetet.
 - **`Publisher`** — hova kerül a kimenet. Egy implementáció: a vault.
 
-Nincs plugin-loader, nincs dependency injection konténer, nincs event bus. A
-receptek statikus registryből jönnek: egy indexfájl importálja mindet. Néhány tucat
-elemnél a dinamikus betöltés csak a fordítási idejű típusbiztonságot venné el.
+Nincs plugin-loader, nincs dependency injection konténer, nincs event bus. Az
+alapreceptek statikus registryből jönnek: egy indexfájl importálja mindet. Néhány
+tucat elemnél a dinamikus betöltés csak a fordítási idejű típusbiztonságot venné
+el. A fordítópéldányokat a konfig adja hozzá (`recipesFor`), ugyanabból a
+statikusan importált gyártófüggvényből
+([`decisions/0012`](<./decisions/0012-forditas.md>)).
 
 ## 6. Állapottár
 
@@ -190,7 +193,10 @@ Obsidianban.
 **A jegyzet nyelve megegyezik a forrás nyelvével.** Ez nem stílusdöntés, hanem
 mérési kényszer: a hűség-értékelés alapja a felirat, és ha a jegyzet más nyelven
 van, a mérés kereszt-nyelvivé válik — pont abban lesz zaj, ami a projekt fő
-bizonyítéka. Fordítás később, önálló receptként, nulla architekturális költséggel.
+bizonyítéka. A fordítás ezért nem az átiratból készül, hanem egy kész jegyzetből,
+és ahhoz mér: a forrásjegyzet már átment a saját, azonos nyelvű rubrikáján, a
+fordításé pedig a szerkezetet determinisztikusan, a jelentést egy
+fordításhűség-bíróval veti össze ([`decisions/0012`](<./decisions/0012-forditas.md>)).
 
 ### Git
 
@@ -276,6 +282,11 @@ figyelemre bízva.
 
 **Melyik recept fut:** futás-szintű kapcsoló. A szállított alapértelmezés
 konzervatív. Hat recept létezhet a repóban anélkül, hogy hat lefutna.
+
+**Fordítás:** egy recept egy másik recept kész jegyzetét is fordíthatja
+(`translationOf`). A futás a forrásjegyzet törzsét adja a bemenetbe, a fordítást a
+forrása után futtatja, és hiányzó forrásnál megnevezett okkal kihagyja
+([`decisions/0012`](<./decisions/0012-forditas.md>)).
 
 ### Az evaluator–optimizer loop
 
@@ -464,8 +475,8 @@ csak akkor kötelező, ha `--recipe` fut.
   hogy ez modell-, nem csak gateway-oldali korlát. A munkamenet emiatt
   átmenetileg `claude-sonnet-5`-re váltott a kalibráláshoz és a füstpróbához;
   részletek: [`measurements/2026-09-17-bloom-notes-kalibralas.md`](<./measurements/2026-09-17-bloom-notes-kalibralas.md>).
-  Ha a `draft` modellválasztás sémás receptekhez tartósan eldől, ide egy ADR
-  (`0012`) jön.
+  Ha a `draft` modellválasztás sémás receptekhez tartósan eldől, ide egy új ADR
+  jön.
 
 **Lezárva: az Evalite aktuális API-ja.** A verzió- és API-döntéseket
 2026-09-01-én verifikáltuk, a [Fázis 1 terv](<./plans/2026-09-01-fazis-1-elso-recept.md>)
