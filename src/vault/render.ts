@@ -36,6 +36,8 @@ function baseFields(
   transcript: NormalizedTranscript,
   generatorVersion: string,
   extraTags?: readonly string[],
+  /** A jegyzet nyelve, ha eltér az elemétől — fordításnál a célnyelv. */
+  language?: string,
 ): FrontmatterField[] {
   const captionSource =
     transcript.captionSource === 'creator' ? 'creator_captions' : 'auto_captions'
@@ -45,7 +47,7 @@ function baseFields(
     ['title', item.title],
     ['source', item.source],
     ['source_file', item.sourceFile],
-    ['language', item.language ?? undefined],
+    ['language', language ?? item.language ?? undefined],
     ['video_id', item.metadata.videoId],
     ['channel', item.metadata.channel],
     ['uploaded', item.metadata.uploadedAt],
@@ -89,6 +91,34 @@ export interface RecipeNoteMeta {
   costUsd: number
   /** A recept címkéi; a metaadat-címkék után kerülnek a frontmatterbe. */
   tags?: readonly string[]
+  /** Fordításnál a jegyzet nyelve és a forrás adatai; alapreceptnél hiányzik. */
+  translation?: TranslationNoteMeta
+}
+
+/** Egy fordítás frontmatter-adatai. */
+export interface TranslationNoteMeta {
+  /** A jegyzet nyelve: a célnyelv. */
+  language: string
+  /** A forrásrecept azonosítója. */
+  sourceRecipe: string
+  /** A forrásjegyzet `generated_at` értéke; `null`, ha hiányzik. */
+  sourceGeneratedAt: string | null
+}
+
+/**
+ * A fordítás mezői a mérőszámok után. A `source_generated_at` mutatja meg, ha a
+ * forrás a fordítás után újragenerálódott — automatikus elavulás nincs.
+ */
+function translationFields(
+  item: SourceItem,
+  translation: TranslationNoteMeta | undefined,
+): FrontmatterField[] {
+  if (translation === undefined) return []
+  return [
+    ['source_language', item.language ?? undefined],
+    ['translation_of', translation.sourceRecipe],
+    ['source_generated_at', translation.sourceGeneratedAt ?? undefined],
+  ]
 }
 
 /**
@@ -105,12 +135,13 @@ export function renderRecipeNote(
   generatorVersion: string,
 ): string {
   const frontmatter = renderFrontmatter([
-    ...baseFields(item, transcript, generatorVersion, meta.tags),
+    ...baseFields(item, transcript, generatorVersion, meta.tags, meta.translation?.language),
     ['recipe', meta.recipe],
     ['model', meta.model],
     ['iterations', meta.iterations],
     ['score', meta.score.toFixed(2)],
     ['cost_usd', meta.costUsd.toFixed(4)],
+    ...translationFields(item, meta.translation),
   ])
   return frontmatter + body(item, content.trim())
 }

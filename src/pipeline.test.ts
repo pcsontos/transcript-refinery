@@ -1,16 +1,19 @@
-import { mkdtemp, readFile, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { MockLanguageModelV4 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { collectEvents, type RunEvent } from './events.js'
 import { createCostGuard } from './model/budget.js'
 import { modelClientFrom, type ModelClient } from './model/client.js'
-import { ARTIFACT_KIND, processItem, type PipelineDeps } from './pipeline.js'
+import { ARTIFACT_KIND, normalizeItem, processItem, type PipelineDeps } from './pipeline.js'
+import { translationOf } from './recipe/translate.js'
 import { faithfulnessCriterion } from './rubric/judge.js'
 import type { Recipe } from './recipe/types.js'
 import { openState, type StateStore } from './state/db.js'
 import type { SourceItem } from './types.js'
+import { noteFile } from './vault/paths.js'
+import { renderRecipeNote } from './vault/render.js'
 
 const SRT = `1
 00:00:00,000 --> 00:00:02,000
@@ -564,5 +567,141 @@ describe('processItem — generálási és pontozási események', () => {
       { type: 'item:generating', itemId: 'a1b2c3', recipe: 'proba', generation: 1 },
       { type: 'item:scored', itemId: 'a1b2c3', recipe: 'proba', score: 1, gaps: 0 },
     ])
+  })
+})
+
+const ANGOL_FORRAS = [
+  '## Overview',
+  '',
+  'The speaker explains why a problem should come before a tool.',
+  '',
+  'The second paragraph adds an example from his first company.',
+].join('\n')
+
+const MAGYAR_FORDITAS = [
+  '## Áttekintés',
+  '',
+  'A beszélő elmagyarázza, hogy miért kell a problémának az eszköz előtt lennie.',
+  '',
+  'A második bekezdés egy példát is hoz az első cégéből.',
+].join('\n')
+
+/** Egy kész forrásjegyzet a vaultban és az állapottárban, ahogy egy korábbi futás hagyta. */
+async function forrasJegyzet(store: StateStore, body: string): Promise<string> {
+  const current = item()
+  const path = noteFile(notesRoot, current, '_proba.md')
+  await mkdir(dirname(path), { recursive: true })
+  await writeFile(
+    path,
+    renderRecipeNote(
+      current,
+      await normalizeItem(current),
+      body,
+      { recipe: 'proba', model: 'modell', iterations: 1, score: 1, costUsd: 0.01 },
+      '0.1.0',
+    ),
+    'utf8',
+  )
+  store.recordItem(current)
+  store.recordArtifact(current.itemId, 'proba', 'done', path, null)
+  return path
+}
+
+describe('processItem fordítással', () => {
+  const FORDITO = translationOf(ATMENO_RECEPT, 'hu')
+  const biro = () => fixModell(JSON.stringify({ score: 0.9, gaps: [] }))
+
+  it('a forrásjegyzet törzsét fordítja, és a fordítás a forráshoz mér', async () => {
+    const deps = alapDeps()
+    await forrasJegyzet(deps.store, ANGOL_FORRAS)
+    const draft = fixModell(MAGYAR_FORDITAS)
+
+    const outcome = await processItem(item(), {
+      ...deps,
+      recipeDeps: {
+        recipe: FORDITO,
+        client: modelClientFrom({ draft, judge: biro() }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(outcome.recipePath).toBe(noteFile(notesRoot, item(), '_proba-hu.md'))
+    const irt = await readFile(outcome.recipePath!, 'utf8')
+    expect(irt).toContain('\nlanguage: hu\n')
+    expect(irt).toContain('\nsource_language: en\n')
+    expect(irt).toContain('\ntranslation_of: proba\n')
+    expect(irt).toMatch(/\nsource_generated_at: "\d{4}-\d{2}-\d{2}T[\d:.]+Z"\n/)
+    expect(irt).toContain('## Áttekintés')
+    // A 0,9 csak akkor jöhet ki, ha a vázkapu a forrásjegyzethez mért: a
+    // feliratszöveg egyetlen bekezdés, fejléc nélkül.
+    expect(deps.store.artifactOf(item().itemId, 'proba-hu')!.score).toBe(0.9)
+    expect(JSON.stringify(draft.doGenerateCalls[0]!.prompt)).toContain(
+      'The speaker explains why a problem should come before a tool.',
+    )
+  })
+
+  it('ha a forrásjegyzet már a célnyelven van, modellhívás nélkül kihagyja, okkal', async () => {
+    const deps = alapDeps()
+    await forrasJegyzet(deps.store, MAGYAR_FORDITAS)
+    const draft = fixModell('nem hívjuk')
+    const { sink, events } = collectEvents()
+
+    const outcome = await processItem(item(), {
+      ...deps,
+      sink,
+      recipeDeps: {
+        recipe: FORDITO,
+        client: modelClientFrom({ draft, judge: biro() }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(outcome.skipReason).toBe('a forrás már magyar')
+    expect(draft.doGenerateCalls).toHaveLength(0)
+    expect(deps.store.artifactOf(item().itemId, 'proba-hu')).toBeNull()
+    expect(events).toContainEqual({
+      type: 'item:skipped',
+      itemId: item().itemId,
+      reason: 'a forrás már magyar',
+    })
+  })
+
+  it('ha a forrásjegyzet fájlja hiányzik, a fordítás megnevezett útvonallal bukik', async () => {
+    const deps = alapDeps()
+    await rm(await forrasJegyzet(deps.store, ANGOL_FORRAS))
+
+    await processItem(item(), {
+      ...deps,
+      recipeDeps: {
+        recipe: FORDITO,
+        client: modelClientFrom({ draft: fixModell(MAGYAR_FORDITAS), judge: biro() }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    const record = deps.store.artifactOf(item().itemId, 'proba-hu')!
+    expect(record.status).toBe('failed')
+    expect(record.error).toBe('a forrásjegyzet nem található: youtube/csatorna/Beszéd_proba.md')
+  })
+
+  it('kész forrás nélkül a pipeline sem fordít', async () => {
+    const deps = alapDeps()
+    const draft = fixModell(MAGYAR_FORDITAS)
+
+    await processItem(item(), {
+      ...deps,
+      recipeDeps: {
+        recipe: FORDITO,
+        client: modelClientFrom({ draft, judge: biro() }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(draft.doGenerateCalls).toHaveLength(0)
+    expect(deps.store.artifactOf(item().itemId, 'proba-hu')!.error).toBe('előbb a proba recept kell')
   })
 })
