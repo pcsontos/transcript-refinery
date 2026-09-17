@@ -225,6 +225,21 @@ describe('processItem recepttel', () => {
     expect(irt).toContain('model: draft-modell')
   })
 
+  it('a recept címkéit a jegyzet frontmatterjébe írja', async () => {
+    const outcome = await processItem(item(), {
+      ...alapDeps(),
+      recipeDeps: {
+        recipe: { ...ATMENO_RECEPT, tags: ['decks'] },
+        client: probaKliens('## Generált jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    const irt = await readFile(outcome.recipePath!, 'utf8')
+    expect(irt).toContain('tags: [decks]')
+  })
+
   it('a metrikákat az állapottárba írja', async () => {
     const deps = alapDeps()
     const current = item()

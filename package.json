@@ -26,6 +26,7 @@
     "eval": "evalite run",
     "eval:watch": "evalite watch",
     "measure": "tsx evals/measure/run.ts",
+    "calibrate": "tsx evals/measure/calibrate.ts",
     "release": "bumpp",
     "web": "pnpm build && pnpm --filter transcript-refinery-web build && pnpm --filter transcript-refinery-web start",
     "web:dev": "pnpm build && pnpm --filter transcript-refinery-web dev",

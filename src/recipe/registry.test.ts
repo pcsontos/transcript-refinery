@@ -24,6 +24,6 @@ describe('registry', () => {
   })
 
   it('a receptek azonosítói a regisztráció sorrendjében állnak', () => {
-    expect(RECIPE_IDS).toEqual(['summary', 'flashcards', 'qa', 'clean'])
+    expect(RECIPE_IDS).toEqual(['summary', 'flashcards', 'qa', 'clean', 'bloom', 'notes'])
   })
 })

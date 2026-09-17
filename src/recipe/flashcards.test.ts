@@ -157,6 +157,10 @@ describe('flashcardsRecipe', () => {
     expect(flashcardsRecipe.structured).toBeDefined()
   })
 
+  it('decks címkét kap, hogy a Decks plugin paklinak ismerje fel', () => {
+    expect(flashcardsRecipe.tags).toEqual(['decks'])
+  })
+
   it('rubrikája öt kritériumból áll, az első három blokkoló', () => {
     const nevek = flashcardsRecipe.rubric.criteria.map((c) => c.name)
     expect(nevek).toEqual(['format', 'flashcards-format', 'language', 'faithfulness', 'coverage'])

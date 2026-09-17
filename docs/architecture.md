@@ -454,6 +454,18 @@ csak akkor kötelező, ha `--recipe` fut.
 Őszintén, hogy ne tűnjenek eldöntöttnek:
 
 - **A havi költségkeret konkrét összege** nincs meghatározva.
+- **A `draft` szerep tartós modellje sémás (`structured:`) receptekhez** nincs
+  eldöntve. A `minimax-m3` a 2026-09-17-i Bloom/jegyzet-kalibráláson
+  (`bloom`, `notes`) mind a hat próbán elbukott: szabad Markdown-prózát adott
+  a kért séma-kényszerített JSON helyett. A LiteLLM `/model/info` szerint a
+  modell `supports_response_schema: null`, és a MiniMax API szintjén is
+  megerősítve — [MiniMax-AI/MiniMax-M2.5#4](https://github.com/MiniMax-AI/MiniMax-M2.5/issues/4)
+  szerint az M2.x/M3 család figyelmen kívül hagyja a `response_format`-ot —,
+  hogy ez modell-, nem csak gateway-oldali korlát. A munkamenet emiatt
+  átmenetileg `claude-sonnet-5`-re váltott a kalibráláshoz és a füstpróbához;
+  részletek: [`measurements/2026-09-17-bloom-notes-kalibralas.md`](<./measurements/2026-09-17-bloom-notes-kalibralas.md>).
+  Ha a `draft` modellválasztás sémás receptekhez tartósan eldől, ide egy ADR
+  (`0012`) jön.
 
 **Lezárva: az Evalite aktuális API-ja.** A verzió- és API-döntéseket
 2026-09-01-én verifikáltuk, a [Fázis 1 terv](<./plans/2026-09-01-fazis-1-elso-recept.md>)

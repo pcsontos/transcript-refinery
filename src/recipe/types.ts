@@ -60,6 +60,12 @@ export interface Recipe {
    * többszörösen alábecsülne, és a plafon nem tartaná meg a kötegét.
    */
   outputRatio?: number
+  /**
+   * A jegyzet frontmatterjébe kerülő címkék, a videó metaadat-címkéi után.
+   * A Decks-plugin a `decks` címkéből ismeri fel a paklit; enélkül egy
+   * kártyarecept jegyzete a vaultban nem válik ismételhető paklivá.
+   */
+  tags?: readonly string[]
   prompt(input: RecipeInput): string
   repairPrompt(input: RepairInput): string
   /**

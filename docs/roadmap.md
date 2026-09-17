@@ -157,8 +157,24 @@ háromnak.
   a riport megnevezi az elemet és a bekezdést, a köteg pedig végigmegy.
 - A `summary`, `flashcards` és `qa` promptja bájtra változatlan marad.
 
-A másik három recept — Bloom-taxonómiás tanulókártya, strukturált jegyzet,
-fordítás fordítási memóriával — külön szelet, saját speckel és tervvel.
+**A Bloom-kártyák és a strukturált jegyzet — státusz: kész** (2026-09-17). Spec és terv:
+[`plans/2026-09-16-bloom-es-strukturalt-jegyzet-spec.md`](<./plans/2026-09-16-bloom-es-strukturalt-jegyzet-spec.md>),
+[`plans/2026-09-16-bloom-es-strukturalt-jegyzet.md`](<./plans/2026-09-16-bloom-es-strukturalt-jegyzet.md>).
+
+**Kész, ha (Bloom-kártyák és strukturált jegyzet):**
+
+- A `bloom` recept `_bloom.md`-t ír `decks` címkével, szintsorrendben, mind a
+  hat szinten 3–5 kártyával, és a Decks paklinak ismeri fel.
+- A `notes` recept `_notes.md`-t ír, amelyben minden fogalom alatt ott a példa
+  és a variáció, és a táblázat sorai a fogalmakkal egyeznek.
+- Egy új `flashcards` jegyzet is `decks` címkét kap; a meglévő négy recept
+  promptja bájtra változatlan.
+- Ha egy Bloom-szinten rossz a kártyaszám, a jegyzet nulla bíró-hívással,
+  megnevezett hiánnyal kerül ki.
+- A két kimeneti arány mért érték:
+  [a kalibrálás](<./measurements/2026-09-17-bloom-notes-kalibralas.md>).
+
+A fordítás fordítási memóriával külön szelet, saját speckel és tervvel.
 
 ## v2 és utána
 

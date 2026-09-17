@@ -122,4 +122,26 @@ describe('renderRecipeNote', () => {
     expect(note).not.toContain('video_id')
     expect(note.trimEnd().endsWith('A törzs.')).toBe(true)
   })
+
+  it('a recept címkéit a metaadat-címkék után fűzi, ismétlés nélkül', () => {
+    const note = renderRecipeNote(
+      item({ metadata: { tags: ['ai', 'decks'] } }),
+      transcript,
+      'A törzs.',
+      { ...meta, tags: ['decks', 'bloom'] },
+      '0.1.0',
+    )
+    expect(note).toContain('tags: [ai, decks, bloom]')
+  })
+
+  it('metaadat-címke nélkül csak a recept címkéi kerülnek be', () => {
+    const note = renderRecipeNote(item(), transcript, 'A törzs.', { ...meta, tags: ['decks'] }, '0.1.0')
+    expect(note).toContain('tags: [decks]')
+  })
+
+  it('recept-címke nélkül a tags mező pontosan a mai', () => {
+    const withTags = renderRecipeNote(item({ metadata: { tags: ['ai'] } }), transcript, 'A törzs.', meta, '0.1.0')
+    expect(withTags).toContain('tags: [ai]')
+    expect(renderRecipeNote(item(), transcript, 'A törzs.', meta, '0.1.0')).not.toContain('tags')
+  })
 })
