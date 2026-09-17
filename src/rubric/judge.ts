@@ -77,3 +77,33 @@ export const coverageCriterion = judgeCriterion({
     'a writer could add it without re-reading the transcript.',
   ].join('\n'),
 })
+
+/**
+ * A tanulási receptek hűség-bírója. A szabad zónákat a **renderer által írt**
+ * címkék jelölik ki (pl. `**Example:**`), ezért a bíró szerkezeti jelre
+ * támaszkodik, nem a modell megfogalmazására. A zónán kívül a mai
+ * `faithfulnessCriterion` mércéje érvényes; a zónán belül csak az ellentmondás
+ * és a beszélő szájába adott állítás hiba.
+ */
+export function pedagogicalFaithfulnessCriterion(freeParts: string): Criterion {
+  return judgeCriterion({
+    name: 'pedagogical-faithfulness',
+    instruction: [
+      'You are grading study material written from the transcript below.',
+      '',
+      `Free parts: ${freeParts}.`,
+      'Free parts may add examples, applications or context that the transcript does',
+      'not contain. Do not penalise them for going beyond the transcript. Penalise a',
+      'free part only if it contradicts the transcript, or presents as said by the',
+      'speaker something the speaker did not say.',
+      '',
+      'Everything else must be traceable to the transcript. A claim that is true in',
+      'general but never stated in the transcript is a failure there. Paraphrase is',
+      'fine; invention is not.',
+      '',
+      'Return a score between 0 and 1, where 1 means there is no problem. List each',
+      'problem as its own gap: quote the offending phrase, and say whether it is',
+      'unsupported or contradicts the transcript.',
+    ].join('\n'),
+  })
+}

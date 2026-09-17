@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelClient } from '../model/client.js'
-import { coverageCriterion, faithfulnessCriterion, judgeCriterion } from './judge.js'
+import {
+  coverageCriterion,
+  faithfulnessCriterion,
+  judgeCriterion,
+  pedagogicalFaithfulnessCriterion,
+} from './judge.js'
 
 /** Rögzített ítéletet adó kliens, ami elteszi a kapott promptot. */
 function fixBiro(verdict: { score: number; gaps: string[] }) {
@@ -98,5 +103,25 @@ describe('a két szállított kritérium', () => {
   it('megkülönböztethető nevük van', () => {
     expect(faithfulnessCriterion.name).toBe('faithfulness')
     expect(coverageCriterion.name).toBe('coverage')
+  })
+})
+
+describe('pedagogicalFaithfulnessCriterion', () => {
+  it('nem blokkoló, és saját neve van', () => {
+    const criterion = pedagogicalFaithfulnessCriterion('every example')
+    expect(criterion.blocking).toBeUndefined()
+    expect(criterion.name).toBe('pedagogical-faithfulness')
+  })
+
+  it('a bíró promptja megnevezi a szabad zónát, és ott csak az ellentmondást bünteti', async () => {
+    const { client, promptok } = fixBiro({ score: 1, gaps: [] })
+
+    await pedagogicalFaithfulnessCriterion(
+      'every paragraph that starts with **Example:**',
+    ).score(CTX, client)
+
+    expect(promptok[0]).toContain('every paragraph that starts with **Example:**')
+    expect(promptok[0]).toContain('Do not penalise them for going beyond the transcript.')
+    expect(promptok[0]).toMatch(/contradicts the transcript/)
   })
 })

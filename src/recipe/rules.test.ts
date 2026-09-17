@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SourceItem } from '../types.js'
-import { languageRule, RULE } from './rules.js'
+import { languageRule, pedagogicalRule, RULE } from './rules.js'
 import { summaryRecipe } from './summary.js'
 
 const ITEM: SourceItem = {
@@ -47,5 +47,21 @@ describe('vault-invariáns szabályok', () => {
     const osszes = Object.values(RULE).join('\n')
     expect(osszes).not.toMatch(/tenth of the transcript/i)
     expect(osszes).not.toMatch(/bullet points/i)
+  })
+})
+
+describe('pedagogicalRule', () => {
+  it('megnevezi a szabad zónát', () => {
+    expect(pedagogicalRule('every example')).toContain('every example')
+  })
+
+  it('a szabad zónának is megtiltja az ellentmondást és a beszélő szájába adást', () => {
+    const rule = pedagogicalRule('every example')
+    expect(rule).toMatch(/never contradict the transcript/i)
+    expect(rule).toMatch(/speaker did not say/i)
+  })
+
+  it('nem a RULE.traceable: a külső tudás általános tilalma nincs benne', () => {
+    expect(pedagogicalRule('every example')).not.toContain('Do not add outside')
   })
 })

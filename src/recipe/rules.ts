@@ -38,3 +38,19 @@ export const RULE = {
 export function languageRule(item: SourceItem): string {
   return `- Write in ${languageName(item.language)}. Do not translate the transcript into another language.`
 }
+
+/**
+ * A két tanulási recept (`bloom`, `notes`) hűségszabálya, a `RULE.traceable`
+ * helyett. Ezek a receptek szándékosan túlmehetnek az átiraton — példával,
+ * alkalmazással —, de csak a megnevezett zónákban, és ott sem mondhatnak
+ * ellent neki. A zónát a recept nevezi meg, a saját sémamezőinek nyelvén.
+ */
+export function pedagogicalRule(freeParts: string): string {
+  return [
+    '- Whatever describes what the video says must be traceable to the transcript.',
+    '  Do not speculate about what the speaker meant.',
+    `- These parts may go beyond the transcript to apply, illustrate or add context: ${freeParts}.`,
+    '  They must never contradict the transcript, and must never present as said by',
+    '  the speaker something the speaker did not say.',
+  ].join('\n')
+}
