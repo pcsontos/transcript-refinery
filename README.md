@@ -7,9 +7,10 @@ Obsidian vaultba — mindegy, mi állította elő őket.
 > [`docs/roadmap.md`](<./docs/roadmap.md>)), és folyamatban a Fázis 6 négy új
 > receptje. A teljes korpusz felügyelet nélkül végigfut: a futás JSONL naplót
 > és Markdown riportot hagy maga után, a költségplafon a tiltás helyett
-> szeletel, az átmeneti modellhibát korlátos újrapróbálkozás nyeli el. Négy
-> recept van: összefoglaló, tanulókártya, kérdés-felelet és tisztított
-> leirat (bekezdésenkénti időbélyeggel); a második iteráció mért haszna
+> szeletel, az átmeneti modellhibát korlátos újrapróbálkozás nyeli el. Hat
+> recept van: összefoglaló, tanulókártya, kérdés-felelet, tisztított leirat
+> (bekezdésenkénti időbélyeggel), Bloom-taxonómiás kártyák és strukturált
+> jegyzet; a második iteráció mért haszna
 > nemleges, a loop alapból egy körre áll. A feldolgozási sor Obsidianból
 > vezérelhető (`scan --queue` / `run --queue`), és van egy csak olvasó
 > Nuxt-felület az áttekintéshez és az élő követéshez.
@@ -104,6 +105,16 @@ nélkül; egy determinisztikus lépés utólag horgonyozza a bekezdéseket a
 feliratsorokhoz sorrendtartó illesztéssel, és a bizonytalan illesztés
 kivétellel bukik, nem néma rossz időbélyeggel. Egy nulla tokenes hűségkapu
 állítja meg a modellt, ha tisztítás helyett összefoglalna.
+
+A `--recipe bloom` a Bloom-taxonómia hat szintjére (Remember → Create) tagolt
+kártyapaklit ír, szintenként 3–5 kártyával; a szint és a nehézség a kártya
+hátulján áll, a jegyzet pedig `decks` címkét kap, így a Decks plugin paklinak
+ismeri fel. A `--recipe notes` fogalmakra bontott jegyzetet ír: fogalmanként
+definíció, magyarázat, példa és variáció, egy a fogalmakból összeállított
+összefoglaló táblázat, és ahol a tartalom indokolja, Mermaid-diagram. Mindkét
+recept sémás, a Markdownt renderer írja. A példa, a variáció és a magasabb
+Bloom-szintek szándékosan túlmehetnek az átiraton — egy saját bíró azt
+ellenőrzi, hogy nem mondanak ellent neki.
 
 A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
 `_queue.md` jegyzetébe fésüli a felderített videókat, videónként receptenként
