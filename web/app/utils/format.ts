@@ -4,6 +4,7 @@ const KIND_LABELS: Record<string, string> = {
   flashcards: 'tanulókártya',
   qa: 'kérdés-felelet',
   clean: 'tisztított leirat',
+  bloom: 'Bloom-kártya',
 }
 
 /** A műtermék-típus magyar neve; ismeretlen típusnál maga az azonosító. */
