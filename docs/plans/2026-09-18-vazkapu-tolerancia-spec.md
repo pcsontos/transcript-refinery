@@ -108,6 +108,24 @@ Az alsó korlát mérve:
 Öt elem tehát az a korlát, amely a rövid jegyzeteket védi, és a mért valós
 eseteket még átengedi.
 
+### Az alsó korlát elrejti a forrásfüggő szigort a mai halmazon
+
+Az alsó korlát bevezetése után a mai 14 elemű halmaz **precision 1,000 /
+recall 1,000** a `bloom` szigorával **és** nélküle is: a `bloom` fixture
+forrásában mindössze két fejléc van, ott a tűrés amúgy is nulla. A halmaz tehát
+a mai alakjában nem méri a `headingsAreContent` értékét.
+
+Egy valósághű Bloom-jegyzet viszont hat kártyából áll (a recept szintenként 3–5
+kártyát kér), és ott a mező dönt:
+
+| hatkártyás Bloom-jegyzet, „címkéből fejléc" torzulás (6 → 7 fejléc, a blokkszám változatlan) | eredmény |
+|---|---|
+| tűréssel (`headingsAreContent` nélkül) | **átcsúszik** |
+| szigorral | megfogva, megnevezett hiánnyal |
+
+Ezért a halmaz egy hosszabb Bloom-esettel is bővül — enélkül a mező vakon
+maradna.
+
 ### Amit nem tudunk
 
 - A mérés **nyers kimenetei elvesztek**: az `evals/private/calibration-translate.json`
@@ -245,12 +263,25 @@ alapján:
 
 | új eset | recept | címke | mit kódol |
 |---|---|---|---|
-| `summary-tobblet-fejlec` | summary | **ok** | a fordítás egy bekezdéskezdő címkéből fejlécet csinál (6 → 7): a mérés szerint hibátlan fordítás |
-| `notes-bekezdesbontas` | notes | **ok** | egy hosszú bekezdés kettébomlik (34 → 35), minden tartalom megmarad |
-| `summary-kimaradt-bekezdesek` | summary | **broken** | két bekezdés kimarad egy tíz bekezdéses jegyzetből (Δ=2 > tűrés=1) — a tűrés ne nyeljen el valódi hiányt |
+| `summary-tobblet-fejlec` | summary | **ok** | a fordítás egy bekezdésből fejlécet csinál (6 → 7): a mérés szerint hibátlan fordítás |
+| `notes-bekezdesbontas` | notes | **ok** | egy hosszú bekezdés kettébomlik (9 → 10 blokk), minden tartalom megmarad |
+| `summary-kimaradt-bekezdesek` | summary | **broken** | két bekezdés kimarad egy tizenhárom blokkos jegyzetből (Δ=2 > tűrés=1) — a tűrés ne nyeljen el valódi hiányt |
+| `bloom-cimkebol-fejlec-hosszu` | bloom | **broken** | hatkártyás Bloom-jegyzetben egy `**Miért:**` címkéből fejléc lesz (6 → 7 fejléc, a blokkszám változatlan) — **csak a `headingsAreContent` szigor fogja meg** |
 
-A halmaz így **17 eset** (6 `ok`, 11 `broken`). A `bloom-cimkebol-fejlec`
-`broken` marad: ott a többlet fejléc kártyát hoz létre.
+A mai `summary` és `bloom` fixture-ök ehhez túl rövidek (öt blokk / két
+fejléc), ezért a halmaz két hosszabb forrásjegyzettel is bővül: egy hat
+fejlécű, tizenhárom blokkos `summary` és egy hatkártyás, huszonnégy blokkos
+`bloom` jegyzettel.
+
+A halmaz így **18 eset** (6 `ok`, 12 `broken`). A rövid `bloom-cimkebol-fejlec`
+`broken` marad: ott az alsó korlát miatt a tűrés amúgy sem engedné át.
+
+Egy meglévő eset **várt vázeleme** változik: a `clean-osszevont-bekezdes` ma a
+bekezdés-hiányt várja (`has 4 paragraphs, the source has 5`), de öt blokknál a
+tűrés 1, tehát azt az üzenetet a kapu már nem adja. Az esetet továbbra is
+megfogja az időbélyeg — az összevont bekezdés `[00:34]` időbélyege eltűnik —,
+ezért a várt elem arra az üzenetre vált. A címke (`broken`) és a fixture
+változatlan.
 
 A `skeleton-gate.test.ts` a recepthez tartozó szigorral hívja a kaput
 (`bloom` → `headingsAreContent: true`), a küszöb változatlanul `≥ 0,9`
@@ -278,12 +309,13 @@ nevesített eltérést a #42 második feléhez.
 
 Megfigyelhető viselkedés, nem fájltartalom:
 
-1. `pnpm test` zöld, és a `skeleton-gate.test.ts` kiírása a bővített, 17 elemű
+1. `pnpm test` zöld, és a `skeleton-gate.test.ts` kiírása a bővített, 18 elemű
    halmazon **precision 1,000, recall 1,000**.
 2. Egy `summary` forrású fordítás, amelyben a fejlécszám 6 helyett 7 és minden
    más vázelem egyezik, a kaputól **1**-et kap (ma 0-t).
-3. Ugyanez a kimenet `bloom` forrású fordításként **0**-t kap, és a hiánylista
-   megnevezi a fejlécszám-eltérést.
+3. Ugyanez a torzulás egy hatkártyás `bloom` forrású fordításban **0**-t kap, és
+   a hiánylista megnevezi a fejlécszám-eltérést — ez az a mérés, amely a
+   `headingsAreContent` mező létét igazolja.
 4. Egy tíz bekezdéses `summary` jegyzet fordítása, amelyből két bekezdés
    hiányzik, **0**-t kap — a tűrés (1) nem nyeli el.
 5. Egy fejléc nélküli forrás fordítása, amelyben megjelenik egy `##` fejléc
