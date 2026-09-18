@@ -114,6 +114,52 @@ describe('processItem', () => {
     expect(events.map((e) => e.type)).toContain('item:published')
   })
 
+  it('nyelvkód nélküli fájlnévnél a tartalomból azonosítja a nyelvet', async () => {
+    const { sink } = collectEvents()
+    const outcome = await processItem(item({ language: null }), {
+      notesRoot,
+      store,
+      sink,
+      version: '0.1.0',
+      options: {},
+    })
+
+    expect(outcome.status).toBe('published')
+    expect(await readFile(outcome.path!, 'utf8')).toContain('\nlanguage: hu\n')
+  })
+
+  it('felismerhetetlen nyelvnél megnevezett hibával áll meg, jegyzet nélkül', async () => {
+    await writeFile(
+      join(dir, 'Ismeretlen.srt'),
+      [
+        '1',
+        '00:00:00,000 --> 00:00:02,000',
+        'Xyzzy quux foobar plugh grault.',
+        '',
+        '2',
+        '00:00:02,000 --> 00:00:04,000',
+        'Waldo fred corge thud xyzzy.',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    const { sink } = collectEvents()
+
+    const outcome = await processItem(
+      item({
+        subtitlePath: join(dir, 'Ismeretlen.srt'),
+        sourceFile: 'csatorna/Ismeretlen.srt',
+        baseName: 'Ismeretlen',
+        title: 'Ismeretlen',
+        language: null,
+      }),
+      { notesRoot, store, sink, version: '0.1.0', options: {} },
+    )
+
+    expect(outcome.status).toBe('failed')
+    expect(outcome.error).toContain('nyelvkód')
+  })
+
   it('metaadat nélküli elemet is végigvisz, és a forrás fája alá ír', async () => {
     const { sink, events } = collectEvents()
     const outcome = await processItem(item(), {
