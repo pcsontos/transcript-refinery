@@ -68,6 +68,39 @@ describe('scoreRubric', () => {
     expect(result.value).toBeCloseTo(0.5, 10)
   })
 
+  it('skipJudge mellett a pontozó (modellhívó) kritériumok el sem indulnak', async () => {
+    let futott = false
+    const biro: Criterion = {
+      name: 'biro',
+      score: () => {
+        futott = true
+        return Promise.resolve({ value: 0.2, gaps: ['valami'] })
+      },
+    }
+    const rubric: Rubric = {
+      criteria: [fixKriterium('formatum', 1, [], true), biro],
+      passThreshold: 0.8,
+    }
+
+    const result = await scoreRubric(rubric, CTX, nemHivhatoKliens, { skipJudge: true })
+
+    expect(futott).toBe(false)
+    expect(result.value).toBe(1)
+    expect(result.gaps).toEqual([])
+  })
+
+  it('skipJudge mellett a blokkoló kapuk változatlanul futnak', async () => {
+    const rubric: Rubric = {
+      criteria: [fixKriterium('formatum', 0, ['rossz formátum'], true)],
+      passThreshold: 0.8,
+    }
+
+    const result = await scoreRubric(rubric, CTX, nemHivhatoKliens, { skipJudge: true })
+
+    expect(result.value).toBe(0)
+    expect(result.gaps).toEqual(['rossz formátum'])
+  })
+
   it('összegzi a kritériumok token-felhasználását', async () => {
     const dragaKriterium: Criterion = {
       name: 'draga',

@@ -52,6 +52,7 @@ export async function scoreRubric(
   rubric: Rubric,
   ctx: ScoreContext,
   client: ModelClient,
+  opts: { skipJudge?: boolean } = {},
 ): Promise<RubricResult> {
   const usage: ModelUsage = { inputTokens: 0, outputTokens: 0 }
   const add = (u: ModelUsage | undefined): void => {
@@ -67,6 +68,11 @@ export async function scoreRubric(
       return { value: score.value, gaps: score.gaps, usage }
     }
   }
+
+  // A kapuk determinisztikusak, tehát kikapcsolt bíró mellett is futnak; csak a
+  // modellhívó pontozók maradnak ki. Az eredmény ugyanaz, mint a pontozó
+  // nélküli rubrikánál: a kapuk átengedték, több mondanivaló nincs.
+  if (opts.skipJudge) return { value: 1, gaps: [], usage }
 
   const scored = rubric.criteria.filter((c) => !c.blocking)
   if (scored.length === 0) return { value: 1, gaps: [], usage }

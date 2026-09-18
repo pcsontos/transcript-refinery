@@ -210,6 +210,8 @@ const ModelSchema = z.object({
     base_url: z.url('A model.base_url érvényes URL kell legyen.'),
     draft: z.string().min(1, 'A model.draft kötelező.'),
     judge: z.string().min(1, 'A model.judge kötelező.'),
+    /** Hamisra állítva a bíró pontozói nem futnak; a determinisztikus kapuk igen. */
+    judge_enabled: z.boolean().default(true),
   }),
   pricing: z.object({ draft: PriceSchema, judge: PriceSchema }),
   cost_limit_usd: z.coerce
@@ -227,6 +229,8 @@ export interface ModelConfig {
   baseUrl: string
   apiKey: string
   models: Record<ModelRole, string>
+  /** Fusson-e a bíró. A `--no-judge` kapcsoló felülírja. */
+  judgeEnabled: boolean
   pricing: Record<ModelRole, ModelPricing>
   /** Futásonkénti felső korlát dollárban. */
   costLimitUsd: number
@@ -260,6 +264,7 @@ export function loadModelConfig(
     baseUrl: c.model.base_url,
     apiKey,
     models: { draft: c.model.draft, judge: c.model.judge },
+    judgeEnabled: c.model.judge_enabled,
     pricing: {
       draft: {
         inputPerMillion: c.pricing.draft.input_per_million,

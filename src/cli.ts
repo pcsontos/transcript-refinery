@@ -269,6 +269,8 @@ export async function commandRun(
     commit: boolean
     /** Csak a korábban `failed` állapotú elemeket — queue-módban párokat — futtatja újra. */
     retryFailed?: boolean
+    /** A `--no-judge`; hiányában (`undefined`) a config `judge_enabled` mezője dönt. */
+    noJudge?: boolean
     /** A riport fejlécében megjelenő parancssor; hiányában „run”. */
     command?: string
   },
@@ -291,6 +293,11 @@ export async function commandRun(
       guard: createCostGuard(modelConfig.costLimitUsd),
     }
   }
+  // A CLI elsőbbsége: a megadott kapcsoló felülírja a configot, hiányában a
+  // config dönt. A `--no-judge` csak kikapcsolni tud — visszakapcsolni nem
+  // kell, mert a config alapértelmezése amúgy is a bekapcsolt bíró.
+  const skipJudge = flags.noJudge ?? !(model?.modelConfig.judgeEnabled ?? true)
+
   const depsFor = (unitRecipe: Recipe | null): RecipeDeps | undefined =>
     unitRecipe && model
       ? {
@@ -298,6 +305,7 @@ export async function commandRun(
           client: model.client,
           modelConfig: model.modelConfig,
           guard: model.guard,
+          skipJudge,
         }
       : undefined
 
@@ -739,6 +747,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       'no-commit': { type: 'boolean', default: false },
       'retry-failed': { type: 'boolean', default: false },
       queue: { type: 'boolean', default: false },
+      // Szándékosan `default` nélkül: az `undefined` jelenti azt, hogy a
+      // kapcsolót nem adták meg, és ilyenkor a config dönt.
+      'no-judge': { type: 'boolean' },
     },
     allowPositionals: false,
   })
@@ -767,6 +778,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       force: values.force,
       commit: !values['no-commit'],
       retryFailed: values['retry-failed'],
+      noJudge: values['no-judge'],
       command: argv.join(' '),
     })
   }

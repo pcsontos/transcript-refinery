@@ -67,6 +67,7 @@ const CFG: ModelConfig = {
   baseUrl: 'https://gateway.example/v1',
   apiKey: 'teszt-kulcs',
   models: { draft: 'draft-model', judge: 'judge-model' },
+  judgeEnabled: true,
   pricing: {
     draft: { inputPerMillion: 1, outputPerMillion: 1 },
     judge: { inputPerMillion: 1, outputPerMillion: 1 },
