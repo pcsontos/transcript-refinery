@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelClient } from '../model/client.js'
-import { checkSkeleton, skeletonCriterion, skeletonOf } from './skeleton.js'
+import { checkSkeleton, skeletonCriterionFor, skeletonOf } from './skeleton.js'
 import { scoreRubric, type Criterion } from './types.js'
 
 const nemHivhatoKliens: ModelClient = {
@@ -56,6 +56,33 @@ const FORDITAS = [
   '| A | B |',
   '',
   '[01:02:03] Utolsó bekezdés egy óra után.',
+].join('\n')
+
+/** Hat fejléc, tizenkét blokk: itt már él a tűrés (fejléc 1, bekezdés 1). */
+const HOSSZU_FORRAS = [
+  '## One',
+  '',
+  'First paragraph.',
+  '',
+  '## Two',
+  '',
+  'Second paragraph.',
+  '',
+  '## Three',
+  '',
+  'Third paragraph.',
+  '',
+  '## Four',
+  '',
+  'Fourth paragraph.',
+  '',
+  '## Five',
+  '',
+  'Fifth paragraph.',
+  '',
+  '## Six',
+  '',
+  'Sixth paragraph.',
 ].join('\n')
 
 /** A fordítás egy részének cseréje; a cserélt szövegnek léteznie kell. */
@@ -114,14 +141,25 @@ describe('checkSkeleton', () => {
     ])
   })
 
-  it('az összevont bekezdést megnevezi', () => {
+  it('a tűrésen belüli, egy bekezdésnyi eltérést átengedi', () => {
     expect(
       checkSkeleton(
         valtoztat('első bekezdése.\n\n## Első rész', 'első bekezdése.\n## Első rész'),
         FORRAS,
-      ).gaps,
-    ).toEqual([
-      'The translation has 7 paragraphs, the source has 8. Do not merge, split or drop paragraphs.',
+      ),
+    ).toEqual({ value: 1, gaps: [] })
+  })
+
+  it('a tűrésen kívüli, két bekezdésnyi összevonást megnevezi', () => {
+    const osszevont = valtoztat(
+      'első bekezdése.\n\n## Első rész\n\n[00:19]',
+      'első bekezdése.\n## Első rész\n[00:19]',
+    )
+    // Az összevonás a második időbélyeget is elnyeli: a bekezdés a [00:01]-es
+    // blokk közepére kerül, tehát a kapu két hiányt nevez meg.
+    expect(checkSkeleton(osszevont, FORRAS).gaps).toEqual([
+      'The translation has 2 timestamps, the source has 3; the first difference follows [00:01].',
+      'The translation has 6 paragraphs, the source has 8. Do not merge, split or drop paragraphs.',
     ])
   })
 
@@ -165,13 +203,47 @@ describe('checkSkeleton', () => {
       ['The translation has 1 headings, the source has 0. Keep every heading at its level.'],
     )
   })
+
+  it('a hat fejléces jegyzetben a hetedik fejlécet átengedi', () => {
+    expect(checkSkeleton(`${HOSSZU_FORRAS}\n\n## Seven`, HOSSZU_FORRAS)).toEqual({
+      value: 1,
+      gaps: [],
+    })
+  })
+
+  it('a hetedik fejlécet megnevezi, ha a fejléc tartalom', () => {
+    const score = checkSkeleton(`${HOSSZU_FORRAS}\n\n## Seven`, HOSSZU_FORRAS, {
+      headingsAreContent: true,
+    })
+    expect(score.value).toBe(0)
+    expect(score.gaps).toEqual([
+      'The translation has 7 headings, the source has 6. Keep every heading at its level.',
+    ])
+  })
+
+  it('a két kimaradt bekezdést a tűrés nem nyeli el', () => {
+    const rovidebb = HOSSZU_FORRAS.replace('\n\nFirst paragraph.', '').replace(
+      '\n\nSecond paragraph.',
+      '',
+    )
+    expect(checkSkeleton(rovidebb, HOSSZU_FORRAS).gaps).toEqual([
+      'The translation has 10 paragraphs, the source has 12. Do not merge, split or drop paragraphs.',
+    ])
+  })
+
+  it('öt elem alatt nincs tűrés: a fejléc nélküli forrásban megjelenő fejléc hiba', () => {
+    expect(checkSkeleton('Válasz.\n\n## Nem fejléc', 'Answer.\n\nNot a heading').gaps).toEqual([
+      'The translation has 1 headings, the source has 0. Keep every heading at its level.',
+    ])
+  })
 })
 
-describe('skeletonCriterion', () => {
+describe('skeletonCriterionFor', () => {
   it('blokkoló kapu, skeleton néven, a ScoreContext átiratát veszi forrásnak', async () => {
-    expect(skeletonCriterion.blocking).toBe(true)
-    expect(skeletonCriterion.name).toBe('skeleton')
-    const score = await skeletonCriterion.score(
+    const criterion = skeletonCriterionFor()
+    expect(criterion.blocking).toBe(true)
+    expect(criterion.name).toBe('skeleton')
+    const score = await criterion.score(
       { transcript: FORRAS, output: FORDITAS },
       nemHivhatoKliens,
     )
@@ -189,7 +261,7 @@ describe('skeletonCriterion', () => {
     }
 
     const eredmeny = await scoreRubric(
-      { criteria: [skeletonCriterion, dragaKriterium], passThreshold: 0.8 },
+      { criteria: [skeletonCriterionFor(), dragaKriterium], passThreshold: 0.8 },
       { transcript: FORRAS, output: valtoztat('[00:19]', '[00:20]') },
       nemHivhatoKliens,
     )

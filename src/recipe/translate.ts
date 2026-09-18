@@ -2,7 +2,7 @@ import { identifyLanguage, LANGUAGE_NAMES, type LanguageTag } from '../lang/iden
 import { formatCriterion } from '../rubric/format.js'
 import { judgeCriterion } from '../rubric/judge.js'
 import { targetLanguageCriterion } from '../rubric/language.js'
-import { skeletonCriterion } from '../rubric/skeleton.js'
+import { skeletonCriterionFor } from '../rubric/skeleton.js'
 import type { Criterion } from '../rubric/types.js'
 import { RULE } from './rules.js'
 import type { Recipe } from './types.js'
@@ -132,7 +132,7 @@ export function translationOf(source: Recipe, target: LanguageTag): Recipe {
       criteria: [
         formatCriterion,
         targetLanguageCriterion(target),
-        skeletonCriterion,
+        skeletonCriterionFor(),
         translationFaithfulness(target),
       ],
       // Egyetlen pontozó kritérium van, tehát a küszöb közvetlenül a bíró

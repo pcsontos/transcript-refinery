@@ -189,9 +189,13 @@ export const SKELETON_LABELS: SkeletonLabel[] = [
     id: 'clean-osszevont-bekezdes',
     recipe: 'clean',
     source: CLEAN_SOURCE,
-    translation: broken(CLEAN_HU, 'sorrend.\n\n[00:34] 17', 'sorrend. 17'),
+    translation: broken(
+      CLEAN_HU,
+      '## Első kérdés: mit adj el\n\n[00:19] Az első tehát az, hogy mit adj el. Mindenki ugyanúgy kezd bele egy AI-vállalkozásba, és ez teljesen fordított sorrend.\n\n[00:34] 17 évesen kezdtem cégeket építeni, és majdnem egy évtizedig csak buktam.',
+      '## Első kérdés: mit adj el [00:19] Az első tehát az, hogy mit adj el. Mindenki ugyanúgy kezd bele egy AI-vállalkozásba, és ez teljesen fordított sorrend. [00:34] 17 évesen kezdtem cégeket építeni, és majdnem egy évtizedig csak buktam.',
+    ),
     label: 'broken',
-    expected: /has 4 paragraphs, the source has 5/,
+    expected: /has 3 paragraphs, the source has 5/,
   },
   {
     id: 'clean-atirt-idobelyeg',

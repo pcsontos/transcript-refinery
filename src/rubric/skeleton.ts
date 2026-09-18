@@ -32,6 +32,34 @@ export interface Skeleton {
   links: string[]
 }
 
+/** Szigorítás a váz összevetésén; hiánya a tűréses alapviselkedés. */
+export interface SkeletonStrictness {
+  /**
+   * A fejlécek darabszáma tartalmi invariáns — a Bloom-jegyzetben egy `##`
+   * fejléc egy kártya —, ezért nincs rá tűrés.
+   */
+  headingsAreContent?: boolean
+}
+
+/** A puha vázelemek tűrése: a forrás ekkora hányada, de legalább egy elem. */
+const TOLERANCE_SHARE = 0.05
+
+/** Ennél kevesebb elemnél nincs tűrés: ott egy egységnyi eltérés is nagy arány. */
+const TOLERANCE_MIN_ITEMS = 5
+
+/**
+ * Hány elemnyi eltérést enged a kapu egy puha vázelemen.
+ *
+ * A modell természetes bekezdés- és fejlécbontása a dokumentum hosszával együtt
+ * nő: a kalibrálás mind a négy valós mintáján 1-2 egységnyi volt az eltérés,
+ * miközben a fordítások hibátlanok voltak
+ * (`docs/measurements/2026-09-17-forditas-kalibralas.md`). Rövid jegyzetben
+ * viszont egy egységnyi eltérés is nagy arány — ott a kapu szigorú marad.
+ */
+function tolerance(want: number): number {
+  return want < TOLERANCE_MIN_ITEMS ? 0 : Math.max(1, Math.ceil(want * TOLERANCE_SHARE))
+}
+
 /** Egy táblázatsor oszlopszáma; a sor eleji és végi `|` nem nyit új oszlopot. */
 function columns(row: string): number {
   const cells = row.trim().replace(/\\\|/g, '').split('|')
@@ -127,8 +155,18 @@ function multisetMinus(a: readonly string[], b: readonly string[]): string[] {
  * a legdrágább: hogy a modell **összevon, kihagy vagy összefoglal**. Elemenként
  * az első eltérést nevezi meg. A hiányüzenetek angolul szólnak, mert
  * visszamennek a javító promptba.
+ *
+ * Az időbélyeg, a listaelem, a táblázatsor, a kódkerítés és a linkcél
+ * összevetése bájtra pontos. A bekezdés- és a fejléc-darabszám **tűrő**: a
+ * természetes átfogalmazás ne buktasson el hibátlan fordítást. A tűrésen belül
+ * maradó, valódi hiányokat a fordításhűség-bíró fogja — a kapu olcsó szűrő,
+ * nem az egyetlen védelem.
  */
-export function checkSkeleton(output: string, source: string): Score {
+export function checkSkeleton(
+  output: string,
+  source: string,
+  strictness: SkeletonStrictness = {},
+): Score {
   const want = skeletonOf(source)
   const got = skeletonOf(output)
   const gaps: string[] = []
@@ -149,18 +187,25 @@ export function checkSkeleton(output: string, source: string): Score {
     }
   }
 
-  const heading = firstDifference(want.headings, got.headings)
-  if (heading !== -1) {
-    gaps.push(
-      want.headings.length !== got.headings.length
-        ? `The translation has ${String(got.headings.length)} headings, the source has ` +
-            `${String(want.headings.length)}. Keep every heading at its level.`
-        : `Heading ${String(heading + 1)} is level ${String(want.headings[heading])} in the ` +
-            `source but level ${String(got.headings[heading])} in the translation.`,
-    )
+  if (want.headings.length === got.headings.length) {
+    const heading = firstDifference(want.headings, got.headings)
+    if (heading !== -1) {
+      gaps.push(
+        `Heading ${String(heading + 1)} is level ${String(want.headings[heading])} in the ` +
+          `source but level ${String(got.headings[heading])} in the translation.`,
+      )
+    }
+  } else {
+    const allowed = strictness.headingsAreContent === true ? 0 : tolerance(want.headings.length)
+    if (Math.abs(want.headings.length - got.headings.length) > allowed) {
+      gaps.push(
+        `The translation has ${String(got.headings.length)} headings, the source has ` +
+          `${String(want.headings.length)}. Keep every heading at its level.`,
+      )
+    }
   }
 
-  if (want.blocks !== got.blocks) {
+  if (Math.abs(want.blocks - got.blocks) > tolerance(want.blocks)) {
     gaps.push(
       `The translation has ${String(got.blocks)} paragraphs, the source has ` +
         `${String(want.blocks)}. Do not merge, split or drop paragraphs.`,
@@ -210,10 +255,13 @@ export function checkSkeleton(output: string, source: string): Score {
 /**
  * Kapu-kritérium: bukása esetén a bíró-hívás el sem indul. A forrás a
  * `ScoreContext.transcript` — fordításnál a futás a forrásjegyzet törzsét
- * teszi oda.
+ * teszi oda. A szigorítás a forrásreceptből jön
+ * (`Recipe.headingsAreContent`).
  */
-export const skeletonCriterion: Criterion = {
-  name: 'skeleton',
-  blocking: true,
-  score: (ctx) => Promise.resolve(checkSkeleton(ctx.output, ctx.transcript)),
+export function skeletonCriterionFor(strictness: SkeletonStrictness = {}): Criterion {
+  return {
+    name: 'skeleton',
+    blocking: true,
+    score: (ctx) => Promise.resolve(checkSkeleton(ctx.output, ctx.transcript, strictness)),
+  }
 }
