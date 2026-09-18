@@ -615,6 +615,44 @@ describe('processItem — generálási és pontozási események', () => {
       { type: 'item:scored', itemId: 'a1b2c3', recipe: 'proba', score: 1, gaps: 0 },
     ])
   })
+
+  it('az item:refined körönkénti token-bontást is visz', async () => {
+    const { sink, events } = collectEvents()
+    await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    const refined = events.find(
+      (e): e is Extract<RunEvent, { type: 'item:refined' }> => e.type === 'item:refined',
+    )
+    expect(refined!.rounds).toEqual([
+      {
+        score: 1,
+        gaps: 0,
+        generateTokens: { input: 100, output: 20 },
+        scoreTokens: { input: 0, output: 0 },
+      },
+    ])
+  })
+
+  it('az elbukott elem eseménye a hívási láncot is viszi', async () => {
+    const broken = item({ subtitlePath: join(dir, 'nincs.en.srt') })
+    const { sink, events } = collectEvents()
+
+    await processItem(broken, { notesRoot, store, sink, version: '0.1.0', options: {} })
+
+    const failed = events.find(
+      (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
+    )
+    expect(failed!.stack).toContain('Error')
+  })
 })
 
 const ANGOL_FORRAS = [

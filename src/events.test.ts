@@ -194,7 +194,15 @@ describe('summarize — elemszintű összegzés', () => {
       { type: 'item:normalized', itemId: 'a', wordsRaw: 100, wordsNormalized: 40, captionSource: 'creator' },
       { type: 'item:generating', itemId: 'a', recipe: 'summary', generation: 1 },
       { type: 'item:scored', itemId: 'a', recipe: 'summary', score: 0.9, gaps: 0 },
-      { type: 'item:refined', itemId: 'a', recipe: 'summary', score: 0.9, generations: 1, usd: 0.08 },
+      {
+        type: 'item:refined',
+        itemId: 'a',
+        recipe: 'summary',
+        score: 0.9,
+        generations: 1,
+        usd: 0.08,
+        rounds: [],
+      },
       { type: 'item:published', itemId: 'a', path: '/vault/a.md' },
     ])
     expect(summary).toEqual({

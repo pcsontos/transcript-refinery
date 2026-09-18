@@ -114,6 +114,12 @@ function render(event: RunEvent): string | null {
   switch (event.type) {
     case 'scan:found':
       return `${event.count} feldolgozható videó`
+    case 'item:start':
+      return `▸ ${event.itemId}: ${event.title}`
+    case 'item:generating':
+      return `  … ${event.itemId}: ${event.recipe} generálás #${String(event.generation)}`
+    case 'item:scored':
+      return `  · ${event.itemId}: ${event.recipe} kör ${event.score.toFixed(2)}, ${String(event.gaps)} hiány`
     case 'item:normalized':
       return `  ${event.itemId}: ${event.wordsRaw} → ${event.wordsNormalized} szó (${event.captionSource})`
     case 'item:published':

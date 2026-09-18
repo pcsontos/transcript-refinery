@@ -35,6 +35,7 @@ describe('summarizeRun', () => {
         score: 0.9,
         generations: 1,
         usd: 0.05,
+        rounds: [],
       },
       { at: '2026-09-07T02:14:08.100Z', type: 'item:published', itemId: 'a', path: '/v/a.md' },
       {
