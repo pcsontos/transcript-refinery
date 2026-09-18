@@ -30,6 +30,8 @@ export type RunEvent =
        */
       kind: string
       error: string
+      /** A hiba hívási lánca, ha van — a diagnózishoz; a felület nem mutatja. */
+      stack?: string
     }
   | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
   | {
@@ -73,6 +75,16 @@ export type RunEvent =
       score: number
       generations: number
       usd: number
+      /**
+       * Körönkénti bontás. A `gaps` itt is **szám**, nem szöveg: a naplóba nem
+       * kerülhet vault-tartalom.
+       */
+      rounds: {
+        score: number
+        gaps: number
+        generateTokens: { input: number; output: number }
+        scoreTokens: { input: number; output: number }
+      }[]
     }
   | {
       type: 'run:sliced'

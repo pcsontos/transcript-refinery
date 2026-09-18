@@ -50,8 +50,24 @@ describe('liveRunState', () => {
       { type: 'item:start', itemId: 'a', title: 'Első példavideó' },
       { type: 'item:retry', itemId: 'a', attempt: 1, delayMs: 1000, reason: 'sebességkorlát' },
       { type: 'item:scored', itemId: 'a', recipe: 'summary', score: 0.62, gaps: 2 },
-      { type: 'item:refined', itemId: 'a', recipe: 'summary', score: 0.62, generations: 1, usd: 0.0123 },
-      { type: 'item:refined', itemId: 'b', recipe: 'qa', score: 0.9, generations: 1, usd: 0.01 },
+      {
+        type: 'item:refined',
+        itemId: 'a',
+        recipe: 'summary',
+        score: 0.62,
+        generations: 1,
+        usd: 0.0123,
+        rounds: [],
+      },
+      {
+        type: 'item:refined',
+        itemId: 'b',
+        recipe: 'qa',
+        score: 0.9,
+        generations: 1,
+        usd: 0.01,
+        rounds: [],
+      },
     ]
 
     const state = liveRunState(lines)

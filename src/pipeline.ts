@@ -222,6 +222,18 @@ async function runRecipe(
     score: result.score,
     generations: result.generations,
     usd,
+    rounds: result.rounds.map((round) => ({
+      score: round.score,
+      gaps: round.gaps,
+      generateTokens: {
+        input: round.generateUsage.inputTokens,
+        output: round.generateUsage.outputTokens,
+      },
+      scoreTokens: {
+        input: round.scoreUsage.inputTokens,
+        output: round.scoreUsage.outputTokens,
+      },
+    })),
   })
 
   // A `publishable: false` a publisher által kikényszerített invariáns, nem
@@ -349,6 +361,7 @@ export async function processItem(
         }
       } catch (error) {
         const message = (error as Error).message
+        const stack = (error as Error).stack
         store.recordArtifact(item.itemId, recipeDeps.recipe.id, 'failed', null, message)
         sink({
           type: 'item:failed',
@@ -356,6 +369,7 @@ export async function processItem(
           source: item.source,
           kind: recipeDeps.recipe.id,
           error: message,
+          stack,
         })
         // A recept hibája nem ronthatja el az átirat már sikeres állapotát —
         // az `outcome` a már elért eredményt (vagy a kezdeti 'skipped'-et) tartja meg.
@@ -365,6 +379,7 @@ export async function processItem(
     return outcome
   } catch (error) {
     const message = (error as Error).message
+    const stack = (error as Error).stack
     // MINDKÉT érintett típusra rögzítünk: ha ez a hívás recept-futás volt,
     // a `store.corpusStatus`/`store.listFailed` a recept azonosítója alatt
     // keres (lásd `cli.ts` `artifactKind`), nem `ARTIFACT_KIND` alatt —
@@ -379,6 +394,7 @@ export async function processItem(
         source: item.source,
         kind: ARTIFACT_KIND,
         error: message,
+        stack,
       })
     }
     if (kellRecept && recipeDeps) {
@@ -389,6 +405,7 @@ export async function processItem(
         source: item.source,
         kind: recipeDeps.recipe.id,
         error: message,
+        stack,
       })
     }
     return { status: 'failed', error: message }
