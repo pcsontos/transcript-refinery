@@ -66,6 +66,7 @@ export const cleanRecipe: Recipe = {
   outputRatio: 1.05,
 
   postprocess: (output, input) => anchorParagraphs(output, input.timed),
+  anchored: true,
 
   prompt: ({ item, transcript }) =>
     [

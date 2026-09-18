@@ -102,9 +102,11 @@ A `--recipe clean` a feliratot enyhén szerkesztett, bekezdésekre és `##`
 szakaszcímekre tagolt leiratot ad, minden bekezdés előtt a valós elhangzási
 idővel (`[MM:SS]`, egy órán túl `[H:MM:SS]`). A modell prózát ír, időbélyeg
 nélkül; egy determinisztikus lépés utólag horgonyozza a bekezdéseket a
-feliratsorokhoz sorrendtartó illesztéssel, és a bizonytalan illesztés
-kivétellel bukik, nem néma rossz időbélyeggel. Egy nulla tokenes hűségkapu
-állítja meg a modellt, ha tisztítás helyett összefoglalna.
+feliratsorokhoz sorrendtartó illesztéssel. A bizonytalanul illeszkedő bekezdés
+időbélyeg nélkül kerül a jegyzetbe — a jegyzet maga elkészül, nem a teljes,
+már kifizetett modellkimenet vesztődik el —, és a futás naplója megmondja,
+hány bekezdés maradt így. Egy nulla tokenes hűségkapu állítja meg a modellt,
+ha tisztítás helyett összefoglalna.
 
 A `--recipe bloom` a Bloom-taxonómia hat szintjére (Remember → Create) tagolt
 kártyapaklit ír, szintenként 3–5 kártyával; a szint és a nehézség a kártya

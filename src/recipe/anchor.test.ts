@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { TimedLine } from '../types.js'
-import { anchorParagraphs, formatTimestamp } from './anchor.js'
+import { anchorParagraphs, formatTimestamp, unanchoredParagraphs } from './anchor.js'
 
 /** Nyolc szavas sorok, két másodpercenként — a valós korpusz alakja. */
 const TIMED: TimedLine[] = [
@@ -62,13 +62,41 @@ describe('anchorParagraphs', () => {
     expect(result.startsWith('[00:00] ')).toBe(true)
   })
 
-  it('horgonyozhatatlan bekezdésnél dob, a bekezdés elejét megnevezve', () => {
+  it('horgonyozhatatlan bekezdést időbélyeg nélkül enged át', () => {
     const output = 'Completely unrelated sentence about quantum chromodynamics and nothing else.'
-    expect(() => anchorParagraphs(output, TIMED)).toThrow(/nem horgonyozható/)
+    expect(anchorParagraphs(output, TIMED)).toBe(output)
   })
 
-  it('a túl rövid bekezdésnél dob, mert nem lehet magabiztosan illeszteni', () => {
-    const output = 'Right.'
-    expect(() => anchorParagraphs(output, TIMED)).toThrow(/túl rövid/)
+  it('a túl rövid bekezdés is időbélyeg nélkül megy át', () => {
+    expect(anchorParagraphs('Right.', TIMED)).toBe('Right.')
+  })
+
+  it('egy bukó bekezdés nem viszi el a többi időbélyegét', () => {
+    const output = [
+      'Hey everyone, welcome back to the channel. Today we are going to talk',
+      'about container storage and why it matters for your home lab.',
+      '',
+      'Completely unrelated sentence about quantum chromodynamics and nothing else.',
+      '',
+      'The second thing I want to cover is backups, because nobody thinks about',
+      'them until the disk finally dies on a Sunday night.',
+    ].join('\n')
+
+    const result = anchorParagraphs(output, TIMED)
+
+    expect(result).toContain('[00:00] Hey everyone, welcome back')
+    expect(result).toContain('\nCompletely unrelated sentence about quantum')
+    expect(result).toContain('[01:04] The second thing I want to cover')
+  })
+})
+
+describe('unanchoredParagraphs', () => {
+  it('a fejléceket nem számolja, az időbélyeg nélküli bekezdést igen', () => {
+    const anchored = ['## Storage', '', '[00:00] Első bekezdés.', '', 'Második bekezdés.'].join('\n')
+    expect(unanchoredParagraphs(anchored)).toEqual({ count: 1, total: 2 })
+  })
+
+  it('órás időbélyeget is felismer', () => {
+    expect(unanchoredParagraphs('[1:05:20] Bekezdés.')).toEqual({ count: 0, total: 1 })
   })
 })

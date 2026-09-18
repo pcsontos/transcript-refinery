@@ -7,6 +7,7 @@ import { collectEvents, type RunEvent } from './events.js'
 import { createCostGuard } from './model/budget.js'
 import { modelClientFrom, type ModelClient } from './model/client.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type PipelineDeps } from './pipeline.js'
+import { anchorParagraphs } from './recipe/anchor.js'
 import { translationOf } from './recipe/translate.js'
 import { faithfulnessCriterion } from './rubric/judge.js'
 import type { Recipe } from './recipe/types.js'
@@ -652,6 +653,38 @@ describe('processItem — generálási és pontozási események', () => {
       (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
     )
     expect(failed!.stack).toContain('Error')
+  })
+})
+
+describe('processItem — horgonyzás kihagyása', () => {
+  const HORGONYZOTT_RECEPT: Recipe = {
+    ...ATMENO_RECEPT,
+    id: 'horgonyzott-proba',
+    outputFile: '_horgonyzott.md',
+    anchored: true,
+    postprocess: (output, input) => anchorParagraphs(output, input.timed),
+  }
+
+  it('a horgonyozhatatlan bekezdés nem dobja el a jegyzetet, csak jelez', async () => {
+    const { sink, events } = collectEvents()
+    const outcome = await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: HORGONYZOTT_RECEPT,
+        client: probaKliens(
+          'Completely unrelated sentence about quantum chromodynamics and nothing else.\n',
+        ),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(outcome.status).toBe('published')
+    const skipped = events.find(
+      (e): e is Extract<RunEvent, { type: 'item:anchor-skipped' }> => e.type === 'item:anchor-skipped',
+    )
+    expect(skipped).toMatchObject({ count: 1 })
   })
 })
 

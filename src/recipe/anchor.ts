@@ -26,6 +26,9 @@ const RIVAL_DISTANCE = 8
 
 const HEADING = /^ {0,3}#{1,6} /
 
+/** A horgonyzott bekezdés időbélyeggel kezdődik; a fejléc soha. */
+const TIMESTAMP = /^\[\d{1,2}:\d{2}(?::\d{2})?\] /
+
 /** Egy szó és a sor, ahonnan származik. */
 interface Word {
   text: string
@@ -147,9 +150,11 @@ function anchorOne(
 /**
  * A modell prózája → ugyanaz, bekezdésenként időbélyeggel.
  *
- * A fejlécek változatlanul mennek át. A bizonytalan illesztés **dob**: egy
- * rossz időbélyeg némán hibás jegyzetet adna, ami rosszabb, mint a hangos
- * bukás. A hívó (`pipeline.runRecipe`) ebből `item:failed`-et csinál.
+ * A fejlécek változatlanul mennek át. A bizonytalanul illeszkedő bekezdés is
+ * időbélyeg nélkül megy át — **nem dob**: egy rossz időbélyeg némán hibás
+ * jegyzetet adna, de az egész jegyzet elvesztése rosszabb, mint egyetlen
+ * bekezdés időbélyege. A hívó (`pipeline.runRecipe`) az `unanchoredParagraphs`
+ * segítségével naplózza, hány bekezdés maradt így.
  */
 export function anchorParagraphs(output: string, timed: readonly TimedLine[]): string {
   const words = wordStream(timed)
@@ -168,10 +173,39 @@ export function anchorParagraphs(output: string, timed: readonly TimedLine[]): s
       if (paragraph === '') continue
     }
 
-    const anchored = anchorOne(paragraph, words, timed, cursor)
-    out.push(anchored.text)
-    cursor = anchored.cursor
+    try {
+      const anchored = anchorOne(paragraph, words, timed, cursor)
+      out.push(anchored.text)
+      cursor = anchored.cursor
+    } catch (error) {
+      if (!(error instanceof AnchorError)) throw error
+      // A bizonytalan bekezdés időbélyeg nélkül megy át, a kurzor pedig a
+      // helyén marad: bukott illesztésnél nincs hiteles új pozíció, az ablak
+      // (500 szó) viszont innen a következő bekezdést még eléri. Egy rossz
+      // illesztés így egyetlen időbélyeget visz, nem az egész jegyzetet — az
+      // pedig eddig a kifizetett modellhívás eredményét dobta el.
+      out.push(paragraph)
+    }
   }
 
   return out.join('\n\n')
+}
+
+/**
+ * Hány prózabekezdés maradt időbélyeg nélkül a horgonyzott kimenetben, és
+ * hányból. A fejlécek nem számítanak: azok eleve időbélyeg nélkül mennek át.
+ *
+ * A naplózás ebből tudja, mennyit veszített a jegyzet — a kihagyás okát
+ * szándékosan nem visszük tovább, mert az a bekezdés szövegét tartalmazná.
+ */
+export function unanchoredParagraphs(anchored: string): { count: number; total: number } {
+  let count = 0
+  let total = 0
+  for (const block of anchored.split(/\n{2,}/)) {
+    const trimmed = block.trim()
+    if (trimmed === '' || HEADING.test(trimmed)) continue
+    total++
+    if (!TIMESTAMP.test(trimmed)) count++
+  }
+  return { count, total }
 }
