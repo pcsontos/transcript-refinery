@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SKELETON_LABELS } from '../../evals/fixtures/skeleton.js'
+import { SKELETON_LABELS, SKELETON_SOURCE_RECIPES } from '../../evals/fixtures/skeleton.js'
 import { checkSkeleton } from './skeleton.js'
 
 /** A pozitív osztály a `broken`: ezt kell a kapunak megfognia. */
@@ -7,8 +7,9 @@ function measure() {
   let tp = 0
   let fp = 0
   let fn = 0
-  for (const { source, translation, label } of SKELETON_LABELS) {
-    const caught = checkSkeleton(translation, source).value === 0
+  for (const { source, translation, label, recipe } of SKELETON_LABELS) {
+    const { headingsAreContent } = SKELETON_SOURCE_RECIPES[recipe]
+    const caught = checkSkeleton(translation, source, { headingsAreContent }).value === 0
     if (caught && label === 'broken') tp++
     if (caught && label === 'ok') fp++
     if (!caught && label === 'broken') fn++
@@ -35,7 +36,8 @@ describe('a vázkapu mérése a címkézett halmazon', () => {
 
   it('minden törött esetet a várt vázelem fog meg', () => {
     for (const c of SKELETON_LABELS.filter((l) => l.label === 'broken')) {
-      const { gaps } = checkSkeleton(c.translation, c.source)
+      const { headingsAreContent } = SKELETON_SOURCE_RECIPES[c.recipe]
+      const { gaps } = checkSkeleton(c.translation, c.source, { headingsAreContent })
       expect(
         gaps.some((gap) => c.expected!.test(gap)),
         `${c.id}: ${JSON.stringify(gaps)}`,
