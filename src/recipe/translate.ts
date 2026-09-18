@@ -132,7 +132,7 @@ export function translationOf(source: Recipe, target: LanguageTag): Recipe {
       criteria: [
         formatCriterion,
         targetLanguageCriterion(target),
-        skeletonCriterionFor(),
+        skeletonCriterionFor({ headingsAreContent: source.headingsAreContent }),
         translationFaithfulness(target),
       ],
       // Egyetlen pontozó kritérium van, tehát a küszöb közvetlenül a bíró
