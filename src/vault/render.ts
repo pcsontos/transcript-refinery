@@ -13,22 +13,29 @@ import { renderFrontmatter, type FrontmatterField } from './frontmatter.js'
  * A származás rögzítése nem díszítés: enélkül a későbbi mérés nem tudná,
  * milyen minőségű bemeneten dolgozott.
  */
+/** Obsidian-kompatibilis címke: a szóköz aláhúzásra vált. */
+const sanitizeTag = (tag: string): string => tag.trim().replace(/\s+/g, '_')
+
 /**
- * A metaadat-címkék érintetlenül, a mai sorrendben; utánuk a recept címkéi,
- * csak ha még nincsenek a listában. Recept-címke nélkül a metaadat listáját
- * adja vissza változatlanul — így a címke nélküli receptek frontmatterje
- * bájtra ugyanaz marad.
+ * A metaadat címkéi a mai sorrendben, utánuk a recept címkéi, csak ha még
+ * nincsenek a listában.
+ *
+ * Minden címke átmegy a `sanitizeTag`-en — **a recept címkéitől függetlenül**:
+ * az Obsidian a szóközt tartalmazó címkét hibásnak jelzi, a forrás-metaadat
+ * címkéit pedig nem mi írjuk. A duplikátum-szűrés a megtisztított alakon
+ * történik, tehát a `machine learning` és a `machine_learning` egy címke.
  */
 function mergeTags(
   metadata: readonly string[] | undefined,
   extra: readonly string[] | undefined,
 ): readonly string[] | undefined {
-  if (extra === undefined || extra.length === 0) return metadata
-  const merged = [...(metadata ?? [])]
-  for (const tag of extra) {
-    if (!merged.includes(tag)) merged.push(tag)
+  if (metadata === undefined && (extra === undefined || extra.length === 0)) return undefined
+  const merged: string[] = []
+  for (const tag of [...(metadata ?? []), ...(extra ?? [])]) {
+    const clean = sanitizeTag(tag)
+    if (clean !== '' && !merged.includes(clean)) merged.push(clean)
   }
-  return merged
+  return merged.length > 0 ? merged : undefined
 }
 
 function baseFields(

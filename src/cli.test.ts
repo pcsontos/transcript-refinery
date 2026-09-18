@@ -1176,7 +1176,7 @@ describe('commandRun --queue', () => {
     expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
     const [, commitolt, uzenet] = vi.mocked(gitCommitPaths).mock.calls[0]!
     expect([...commitolt].sort()).toEqual([...vart, sor].sort())
-    expect(uzenet).toBe('docs(videos): 5 jegyzet a feldolgozási sorból')
+    expect(uzenet).toBe('docs(transcript-refinery): 5 jegyzet a feldolgozási sorból')
 
     const elotte = kezi.split('\n')
     const utana = (await readFile(sor, 'utf8')).split('\n')
@@ -1774,7 +1774,7 @@ describe('commandScanQueue', () => {
     expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledWith(
       cfg.vaultPath,
       [sor],
-      'docs(videos): feldolgozási sor frissítése',
+      'docs(transcript-refinery): feldolgozási sor frissítése',
     )
   })
 
@@ -1861,7 +1861,7 @@ describe('commandRun — a commit tartalma', () => {
     expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledWith(
       cfg.vaultPath,
       [noteFile(cfg.notesRoot, item!, '_transcript.md'), noteFile(cfg.notesRoot, item!, '_summary.md')],
-      'docs(videos): átirat 2 videóhoz',
+      'docs(transcript-refinery): átirat 2 videóhoz',
     )
   })
 })

@@ -223,7 +223,7 @@ describe('végponttól végpontig', () => {
     await write(join(subsA, 'A.en.srt'), SRT)
     const { written } = await processAll([subsA])
 
-    await gitCommitPaths(vault, written, 'docs(videos): átirat 1 felirathoz')
+    await gitCommitPaths(vault, written, 'docs(transcript-refinery): átirat 1 felirathoz')
 
     expect(await isDirty(vault)).toBe(false)
     const log = await run('git', ['log', '--oneline'], { cwd: vault })
@@ -356,8 +356,8 @@ describe('végponttól végpontig — a feldolgozási sor valódi gittel', () =>
 
       const log = await run('git', ['log', '--format=%s'], { cwd: repo })
       expect(log.stdout.trim().split('\n')).toEqual([
-        'docs(videos): 2 jegyzet a feldolgozási sorból',
-        'docs(videos): feldolgozási sor frissítése',
+        'docs(transcript-refinery): 2 jegyzet a feldolgozási sorból',
+        'docs(transcript-refinery): feldolgozási sor frissítése',
         'kezdet',
       ])
 

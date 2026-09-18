@@ -96,6 +96,15 @@ describe('renderTranscriptNote', () => {
     expect(note).toContain('# Transformers')
     expect(note).toContain('Első mondat. Második mondat.')
   })
+
+  it('a címke szóközét aláhúzásra cseréli, mert az Obsidian a szóközöst hibának jelzi', () => {
+    const note = renderTranscriptNote(
+      item({ metadata: { tags: ['machine learning', 'ai'] } }),
+      transcript,
+      '0.1.0',
+    )
+    expect(note).toContain('tags: [machine_learning, ai]')
+  })
 })
 
 describe('renderRecipeNote', () => {
@@ -143,6 +152,17 @@ describe('renderRecipeNote', () => {
     const withTags = renderRecipeNote(item({ metadata: { tags: ['ai'] } }), transcript, 'A törzs.', meta, '0.1.0')
     expect(withTags).toContain('tags: [ai]')
     expect(renderRecipeNote(item(), transcript, 'A törzs.', meta, '0.1.0')).not.toContain('tags')
+  })
+
+  it('a tisztítás után azonos címke nem kerül be kétszer', () => {
+    const note = renderRecipeNote(
+      item({ metadata: { tags: ['machine learning'] } }),
+      transcript,
+      'A törzs.',
+      { ...meta, tags: ['machine_learning'] },
+      '0.1.0',
+    )
+    expect(note).toContain('tags: [machine_learning]')
   })
 
   it('fordításnál a jegyzet nyelvét és a forrás adatait írja, a mérőszámok után', () => {
