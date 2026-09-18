@@ -77,6 +77,11 @@ export interface Recipe {
    * fejlécek számában.
    */
   headingsAreContent?: boolean
+  /**
+   * Ha igaz, a recept kimenete bekezdésenkénti időbélyeget kap. A csővezeték
+   * ebből tudja, hogy az időbélyeg nélküli bekezdés hiány, nem a recept alakja.
+   */
+  anchored?: boolean
   prompt(input: RecipeInput): string
   repairPrompt(input: RepairInput): string
   /**

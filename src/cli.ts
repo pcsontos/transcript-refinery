@@ -138,6 +138,8 @@ function render(event: RunEvent): string | null {
       return `  A plafon alá ${String(event.planned)} elem fér; ${String(event.deferred)} a következő futásra marad.`
     case 'item:refined':
       return `  ~ ${event.itemId}: ${event.recipe} pontszám ${event.score.toFixed(2)}, ${String(event.generations)} generálás, ${event.usd.toFixed(4)} $`
+    case 'item:anchor-skipped':
+      return `  ! ${event.itemId}: ${String(event.count)}/${String(event.total)} bekezdés időbélyeg nélkül`
     case 'item:retry':
       return `  ↻ ${event.itemId}: ${event.reason} — újrapróba ${String(event.attempt)}., ${String(event.delayMs / 1000)} mp múlva`
     default:

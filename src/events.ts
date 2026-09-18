@@ -96,6 +96,15 @@ export type RunEvent =
       limitUsd: number
     }
   | {
+      type: 'item:anchor-skipped'
+      itemId: string
+      recipe: string
+      /** Hány prózabekezdés maradt időbélyeg nélkül. */
+      count: number
+      /** Hány prózabekezdés van összesen — enélkül a szám nem mond arányt. */
+      total: number
+    }
+  | {
       type: 'item:retry'
       itemId: string
       /** Hányadik kísérlet bukott el; egytől számozva. */

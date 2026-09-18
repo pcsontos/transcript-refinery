@@ -9,6 +9,7 @@ import { costOf } from './model/pricing.js'
 import { retrying } from './model/retry.js'
 import { classifyCaptions, punctuationDensity } from './normalize/classify.js'
 import { countWords, dedupeTimedLines } from './normalize/dedupe.js'
+import { unanchoredParagraphs } from './recipe/anchor.js'
 import { alreadyInTarget } from './recipe/translate.js'
 import type { Recipe, RecipeInput, Translation } from './recipe/types.js'
 import { refine } from './refine/loop.js'
@@ -235,6 +236,15 @@ async function runRecipe(
       },
     })),
   })
+
+  // Csak az időbélyeges receptnél értelmes: egy `summary` jegyzetben minden
+  // bekezdés időbélyeg nélküli, az nem hiány.
+  if (recipe.anchored) {
+    const { count, total } = unanchoredParagraphs(result.output)
+    if (count > 0) {
+      deps.sink({ type: 'item:anchor-skipped', itemId: item.itemId, recipe: recipe.id, count, total })
+    }
+  }
 
   // A `publishable: false` a publisher által kikényszerített invariáns, nem
   // konvenció: bizonyos típusok soha nem kerülhetnek publikálási útra.

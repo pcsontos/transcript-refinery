@@ -1462,7 +1462,8 @@ const MAGYAR_FORDITAS =
 /**
  * A fordítási tesztek hamis kliense: a prompt dönti el, mit ad. A fordító prompt
  * a forrásjegyzetet is tartalmazza, ezért azt kell először vizsgálni. A
- * „Hibás videó" tisztítása horgonyozhatatlan, tehát a `clean` elbukik rajta.
+ * „Hibás videó" `clean` generálása modellhibával áll el, tehát a `clean` elbukik
+ * rajta.
  */
 function forditoKliens(hivasok: { generate: number; translate: number }): ModelClient {
   return {
@@ -1474,7 +1475,7 @@ function forditoKliens(hivasok: { generate: number; translate: number }): ModelC
         hivasok.translate++
         value = MAGYAR_FORDITAS
       } else if (prompt.includes('Title: Hibás videó')) {
-        value = 'Oh yeah.\n'
+        throw new Error('a modell nem válaszolt')
       } else if (prompt.includes('The speaker explains')) {
         value = ANGOL_TISZTITOTT
       } else {
