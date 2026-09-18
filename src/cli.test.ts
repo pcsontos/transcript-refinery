@@ -1738,6 +1738,47 @@ describe('commandCheckPricing', () => {
 
     hiba.mockRestore()
   })
+
+  it('--fix-nél visszaírja az élő árat, és 0-val tér vissza', async () => {
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    stubLiteLLM([
+      { model_name: 'claude-sonnet-5', input: 0.000003, output: 0.000015 },
+      { model_name: 'grok-4-fast-reasoning', input: 0.00000125, output: 0.0000025 },
+    ])
+    const fixDir = await mkdtemp(join(tmpdir(), 'refinery-fix-'))
+    const configPath = join(fixDir, 'refinery.config.yaml')
+    await writeFile(
+      configPath,
+      [
+        '# Ár-megjegyzés.',
+        'pricing:',
+        '  draft: { input_per_million: 2.00, output_per_million: 10.00 }',
+        '  judge: { input_per_million: 1.25, output_per_million: 2.50 }',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const code = await commandCheckPricing(MODEL_CONFIG, { fix: true, configPath })
+
+    expect(code).toBe(0)
+    const text = await readFile(configPath, 'utf8')
+    expect(text).toContain('# Ár-megjegyzés.')
+    expect(text).toContain('draft: { input_per_million: 3, output_per_million: 15 }')
+    await rm(fixDir, { recursive: true, force: true })
+    naplo.mockRestore()
+  })
+
+  it('--fix nélkül nem nyúl a confighoz', async () => {
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    stubLiteLLM([
+      { model_name: 'claude-sonnet-5', input: 0.000003, output: 0.000015 },
+      { model_name: 'grok-4-fast-reasoning', input: 0.00000125, output: 0.0000025 },
+    ])
+
+    expect(await commandCheckPricing(MODEL_CONFIG)).toBe(1)
+    naplo.mockRestore()
+  })
 })
 
 describe('commandScanQueue', () => {

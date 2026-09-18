@@ -1,3 +1,4 @@
+import { isMap, isScalar, parseDocument } from 'yaml'
 import type { ModelPricing } from '../config.js'
 import type { ModelRole } from '../types.js'
 
@@ -89,4 +90,39 @@ export function comparePricing(
     }
   }
   return { mismatches, unknown }
+}
+
+/**
+ * Két tizedes: a config ebben az alakban tartja az árakat, a LiteLLM
+ * token-alapú árából visszaszorozva pedig lebegőpontos zaj keletkezhet.
+ */
+const round2 = (value: number): number => Math.round(value * 100) / 100
+
+/**
+ * A configban rögzített árat a LiteLLM élő értékeire írja át.
+ *
+ * **A forrás YAML-on szerkeszt**, nem az elemzett objektumból épít új
+ * szöveget: a `pricing:` blokk fölötti magyarázó megjegyzés és a flow-alak
+ * (`{ … }`) enélkül elveszne. A meglévő csomópont értékeit állítjuk, magát a
+ * csomópontot nem cseréljük — ez őrzi meg az alakját.
+ */
+export function applyPricingFix(
+  configText: string,
+  mismatches: readonly PricingMismatch[],
+): string {
+  const doc = parseDocument(configText)
+  for (const mismatch of mismatches) {
+    const node = doc.getIn(['pricing', mismatch.role])
+    if (!isMap(node)) continue
+    node.set('input_per_million', round2(mismatch.live.inputPerMillion))
+    node.set('output_per_million', round2(mismatch.live.outputPerMillion))
+    // A forrás tizedesjegyeinek száma (pl. "2.00") a Scalar
+    // `minFractionDigits`-jén él tovább a `set()` után is; enélkül egy egész
+    // új ár is felesleges tizedesekkel íródna ki (pl. "3.00" a "3" helyett).
+    for (const key of ['input_per_million', 'output_per_million']) {
+      const scalar = node.get(key, true)
+      if (isScalar(scalar)) scalar.minFractionDigits = undefined
+    }
+  }
+  return String(doc)
 }
