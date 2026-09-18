@@ -10,6 +10,7 @@ import {
   loadDotEnv,
   loadModelConfig,
   readConfigFile,
+  readConfigText,
   validateConfig,
   type Config,
   type ModelConfig,
@@ -17,7 +18,7 @@ import {
 import { collectEvents, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
 import { createModelClient, type ModelClient } from './model/client.js'
-import { comparePricing, fetchLivePricing } from './model/pricing-check.js'
+import { applyPricingFix, comparePricing, fetchLivePricing } from './model/pricing-check.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { ARTIFACT_KIND, processItem, type RecipeDeps } from './pipeline.js'
@@ -221,7 +222,10 @@ export async function commandScanQueue(
  * bármi jelezné — ez a parancs ezt kapja el, mielőtt egy valódi futás rossz
  * becsléssel indulna.
  */
-export async function commandCheckPricing(modelConfig: ModelConfig): Promise<number> {
+export async function commandCheckPricing(
+  modelConfig: ModelConfig,
+  opts: { fix?: boolean; configPath?: string } = {},
+): Promise<number> {
   let live: Awaited<ReturnType<typeof fetchLivePricing>>
   try {
     live = await fetchLivePricing(modelConfig.baseUrl, modelConfig.apiKey)
@@ -241,7 +245,18 @@ export async function commandCheckPricing(modelConfig: ModelConfig): Promise<num
   }
   if (mismatches.length === 0 && unknown.length === 0) {
     console.log('Az árazás egyezik a LiteLLM élő adataival.')
+    return 0
   }
+
+  if (mismatches.length > 0 && opts.fix && opts.configPath) {
+    const fixed = applyPricingFix(await readConfigText(opts.configPath), mismatches)
+    await writeFileAtomic(opts.configPath, fixed)
+    console.log(
+      `Javítva a configban: ${mismatches.map((m) => m.role).join(', ')} — ${opts.configPath}`,
+    )
+    return 0
+  }
+
   return mismatches.length > 0 ? 1 : 0
 }
 
@@ -758,6 +773,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       // Szándékosan `default` nélkül: az `undefined` jelenti azt, hogy a
       // kapcsolót nem adták meg, és ilyenkor a config dönt.
       'no-judge': { type: 'boolean' },
+      fix: { type: 'boolean', default: false },
     },
     allowPositionals: false,
   })
@@ -773,7 +789,10 @@ export async function main(argv: readonly string[]): Promise<number> {
       : commandScan(cfg)
   }
   if (command === 'check-pricing') {
-    return commandCheckPricing(loadModelConfig(raw, process.env, cfg.configPath))
+    return commandCheckPricing(loadModelConfig(raw, process.env, cfg.configPath), {
+      fix: values.fix,
+      configPath,
+    })
   }
   if (command === 'run') {
     return commandRun(cfg, raw, {

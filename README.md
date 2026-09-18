@@ -255,6 +255,13 @@ node dist/cli.js scan --queue
 node dist/cli.js check-pricing
 ```
 
+A `--fix` a talált eltéréseket vissza is írja a konfigurációba, a fájl
+megjegyzéseinek megtartásával:
+
+```bash
+node dist/cli.js check-pricing --fix
+```
+
 ### Webes felület (Web UI)
 
 A Nuxt-alapú, csak olvasási felület áttekintést ad a korpuszról és élőben közvetíti a futásokat:

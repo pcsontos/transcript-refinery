@@ -132,6 +132,15 @@ export async function readConfigFile(path: string): Promise<unknown> {
 }
 
 /**
+ * A konfigurációs fájl nyers szövege, elemzés nélkül. A `--fix`-nek ez kell:
+ * a `readConfigFile` a szöveget eldobja, a megjegyzések megőrzéséhez viszont a
+ * forrásra van szükség.
+ */
+export async function readConfigText(path: string): Promise<string> {
+  return readFile(path, 'utf8')
+}
+
+/**
  * YAML → konfiguráció. Fájlrendszertől független, hogy tesztelhető legyen.
  *
  * A relatív `state.path` és `logs.dir` a `baseDir`-hez oldódik fel. A CLI nem
