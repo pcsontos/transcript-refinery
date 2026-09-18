@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { relative } from 'node:path'
 import type { ModelConfig } from './config.js'
 import type { EventSink } from './events.js'
+import { identifyLanguage } from './lang/identify.js'
 import type { CostGuard } from './model/budget.js'
 import type { ModelClient } from './model/client.js'
 import { costOf } from './model/pricing.js'
@@ -78,6 +79,20 @@ export async function normalizeItem(
   }
   const lines = timed.map((line) => line.text)
   const normalizedText = lines.join(' ')
+
+  // A fájlnév nyelvkódja az elsődleges forrás; ha nincs, a tartalom dönt.
+  // Csendes angol alapértelmezés helyett megnevezett hiba: egy holland vagy
+  // német feliratot angolnak véve a nyelvi kapu rossz alaphoz mérne.
+  if (item.language === null) {
+    const detected = identifyLanguage(normalizedText)
+    if (detected === null) {
+      throw new Error(
+        'a feliratfájl nevében nincs nyelvkód, és a tartalom nyelve sem ' +
+          `ismerhető fel biztosan: ${item.sourceFile}`,
+      )
+    }
+    item.language = detected
+  }
 
   return {
     lines,
