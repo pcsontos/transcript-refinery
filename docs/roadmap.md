@@ -190,8 +190,8 @@ memória a mérés alapján kimaradt: a videók között a szöveg 0,16%-a ismé
   a `_clean-hu.md` időbélyeg-sorozata azonos a `_clean.md`-ével.
 - Hiányzó forrásnál a fordítás nulla modellhívással kimarad, és a sor és a riport
   megnevezi az okot.
-- Ha a fordításból kimarad egy bekezdés, a jegyzet nulla bíró-hívással,
-  megnevezett hiánnyal kerül ki.
+- Ha a fordításból kimarad egy időbélyeges bekezdés, a jegyzet nulla
+  bíró-hívással, megnevezett hiánnyal kerül ki.
 - A lefordított Bloom-paklit a Decks paklinak ismeri fel.
 - A kimeneti arány és a hosszú forrás egyhívásos fordítása mért érték:
   [a kalibrálás](<./measurements/2026-09-17-forditas-kalibralas.md>).
