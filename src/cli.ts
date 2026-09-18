@@ -103,6 +103,13 @@ Kapcsolók:
   A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
 
+/**
+ * Az app saját, vaultba írt commitjainak scope-ja. Az app neve, nem a
+ * feldolgozott tartalomé: a `videos` egy korábbi, videó-központú fázisból
+ * maradt itt.
+ */
+const COMMIT_SCOPE = 'transcript-refinery'
+
 function render(event: RunEvent): string | null {
   switch (event.type) {
     case 'scan:found':
@@ -190,7 +197,10 @@ export async function commandScanQueue(
 
   await writeFileAtomic(path, text)
   console.log(`Sor: ${path}`)
-  if (commit && (await gitCommitPaths(cfg.vaultPath, [path], 'docs(videos): feldolgozási sor frissítése'))) {
+  if (
+    commit &&
+    (await gitCommitPaths(cfg.vaultPath, [path], `docs(${COMMIT_SCOPE}): feldolgozási sor frissítése`))
+  ) {
     const push = await gitPush(cfg.vaultPath)
     if (!push.pushed) console.log('A push nem sikerült, a commit lokálisan maradt.')
   }
@@ -452,8 +462,8 @@ export async function commandRun(
         const paths = queueChanged ? [...notePaths, sorPath] : notePaths
         if (paths.length > 0) {
           const message = queueMode
-            ? `docs(videos): ${String(notePaths.length)} jegyzet a feldolgozási sorból`
-            : `docs(videos): átirat ${String(notePaths.length)} videóhoz`
+            ? `docs(${COMMIT_SCOPE}): ${String(notePaths.length)} jegyzet a feldolgozási sorból`
+            : `docs(${COMMIT_SCOPE}): átirat ${String(notePaths.length)} videóhoz`
           if (await gitCommitPaths(cfg.vaultPath, paths, message)) {
             const push = await gitPush(cfg.vaultPath)
             if (!push.pushed) console.log('A push nem sikerült, a commit lokálisan maradt.')
