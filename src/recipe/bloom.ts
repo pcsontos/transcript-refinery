@@ -177,6 +177,9 @@ export const bloomRecipe: Recipe = {
   // (docs/measurements/2026-09-17-bloom-notes-kalibralas.md).
   outputRatio: 0.81,
   tags: ['decks'],
+  // Egy `##` fejléc egy kártya: a fordítás nem veszíthet és nem nyerhet
+  // fejlécet.
+  headingsAreContent: true,
 
   structured: structuredOutput(BloomSchema, renderBloom),
 

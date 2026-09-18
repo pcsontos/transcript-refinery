@@ -71,6 +71,12 @@ export interface Recipe {
    * kártyarecept jegyzete a vaultban nem válik ismételhető paklivá.
    */
   tags?: readonly string[]
+  /**
+   * Ha igaz, a fejlécek darabszáma tartalmi invariáns: a Bloom-jegyzetben egy
+   * `##` fejléc egy kártya. A fordítás vázkapuja ilyenkor nem tűr eltérést a
+   * fejlécek számában.
+   */
+  headingsAreContent?: boolean
   prompt(input: RecipeInput): string
   repairPrompt(input: RepairInput): string
   /**

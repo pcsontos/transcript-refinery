@@ -122,9 +122,11 @@ forrásreceptek listáját; mindegyikből saját recept lesz (`--recipe clean-hu
 `summary-hu`…), saját pipával a sorban. A fordítás a vaultban lévő
 forrásjegyzetből készül — egy kézzel javított jegyzet javított változata fordul
 —, és ahhoz mér: egy nulla tokenes vázkapu ellenőrzi, hogy az időbélyegek, a
-fejlécek, a bekezdések, a listák, a táblázat és a kódblokkok megmaradtak. Ha a
-forrás még nem készült el, a fordítás modellhívás nélkül kimarad, és a sor
-megnevezi az okot.
+fejlécek, a bekezdések, a listák, a táblázat és a kódblokkok megmaradtak. A
+bekezdések és a fejlécek számában kis eltérést tűr — a természetes
+átfogalmazás ne buktasson el hibátlan fordítást —, a Bloom-kártyák fejléceiben
+viszont nem, mert ott egy fejléc egy kártya. Ha a forrás még nem készült el, a
+fordítás modellhívás nélkül kimarad, és a sor megnevezi az okot.
 
 A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
 `_queue.md` jegyzetébe fésüli a felderített videókat, videónként receptenként

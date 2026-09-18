@@ -1,23 +1,11 @@
 import { evalite } from 'evalite'
-import { bloomRecipe } from '../src/recipe/bloom.js'
-import { cleanRecipe } from '../src/recipe/clean.js'
-import { notesRecipe } from '../src/recipe/notes.js'
-import { summaryRecipe } from '../src/recipe/summary.js'
 import { translationOf } from '../src/recipe/translate.js'
-import type { Recipe } from '../src/recipe/types.js'
 import { refine } from '../src/refine/loop.js'
 import { checkLanguageIs } from '../src/rubric/language.js'
 import { checkSkeleton } from '../src/rubric/skeleton.js'
 import type { SourceItem } from '../src/types.js'
 import { scriptedClient } from './fixture-model.js'
-import { SKELETON_LABELS, type SkeletonRecipe } from './fixtures/skeleton.js'
-
-const SOURCES: Record<SkeletonRecipe, Recipe> = {
-  clean: cleanRecipe,
-  summary: summaryRecipe,
-  notes: notesRecipe,
-  bloom: bloomRecipe,
-}
+import { SKELETON_LABELS, SKELETON_SOURCE_RECIPES } from './fixtures/skeleton.js'
 
 const ITEM: SourceItem = {
   itemId: 'forditas-fixture',
@@ -38,7 +26,7 @@ evalite('fordítás — a négy forrásrecept jegyzete fixture-modellen', {
 
   task: async (c) => {
     const result = await refine(
-      translationOf(SOURCES[c.recipe], 'hu'),
+      translationOf(SKELETON_SOURCE_RECIPES[c.recipe], 'hu'),
       { item: ITEM, transcript: c.source, timed: [] },
       // A rubrikában EGY modell-bíró van, tehát generálásonként egy ítélet kell.
       scriptedClient([c.translation], [{ score: 0.95, gaps: [] }]),
@@ -50,7 +38,10 @@ evalite('fordítás — a négy forrásrecept jegyzete fixture-modellen', {
     {
       name: 'vazkapu',
       description: 'Determinisztikus: a fordítás váza a forrásé.',
-      scorer: ({ output }) => checkSkeleton(output.output, output.source).value,
+      scorer: ({ output }) =>
+        checkSkeleton(output.output, output.source, {
+          headingsAreContent: SKELETON_SOURCE_RECIPES[output.recipe].headingsAreContent,
+        }).value,
     },
     {
       name: 'celnyelv',

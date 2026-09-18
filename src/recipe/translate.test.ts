@@ -47,6 +47,11 @@ function biroKliens(score: number, promptok: string[]): ModelClient {
   }
 }
 
+const nemHivhatoKliens: ModelClient = {
+  generate: () => Promise.reject(new Error('a kliens nem hívható itt')),
+  generateObject: () => Promise.reject(new Error('a kliens nem hívható itt')),
+}
+
 describe('translationOf', () => {
   it('a forrásból képzett azonosítót, fájlnevet és öröklött mezőket ad', () => {
     const recipe = translationOf(bloomRecipe, 'hu')
@@ -102,6 +107,31 @@ describe('translationOf', () => {
     ])
     expect(rubric.criteria.map((c) => c.blocking === true)).toEqual([true, true, true, false])
     expect(rubric.passThreshold).toBe(0.8)
+  })
+
+  it('a bloom forrású fordítás vázkapuja a fejlécszámra szigorú', async () => {
+    const { rubric } = translationOf(bloomRecipe, 'hu')
+    const kapu = rubric.criteria.find((c) => c.name === 'skeleton')!
+    const forras =
+      '## Egy\n\nElső.\n\n## Kettő\n\nMásodik.\n\n## Három\n\nHarmadik.\n\n## Négy\n\nNegyedik.\n\n## Öt\n\nÖtödik.'
+
+    const score = await kapu.score({ transcript: forras, output: `${forras}\n\n## Hat` }, nemHivhatoKliens)
+
+    expect(score.value).toBe(0)
+    expect(score.gaps).toEqual([
+      'The translation has 6 headings, the source has 5. Keep every heading at its level.',
+    ])
+  })
+
+  it('a clean forrású fordítás vázkapuja ugyanezt a fejlécet átengedi', async () => {
+    const { rubric } = translationOf(cleanRecipe, 'hu')
+    const kapu = rubric.criteria.find((c) => c.name === 'skeleton')!
+    const forras =
+      '## Egy\n\nElső.\n\n## Kettő\n\nMásodik.\n\n## Három\n\nHarmadik.\n\n## Négy\n\nNegyedik.\n\n## Öt\n\nÖtödik.'
+
+    const score = await kapu.score({ transcript: forras, output: `${forras}\n\n## Hat` }, nemHivhatoKliens)
+
+    expect(score.value).toBe(1)
   })
 
   it('a helyes fordítás minden kapun átmegy, és a bíró a forrást és a fordítást látja', async () => {
