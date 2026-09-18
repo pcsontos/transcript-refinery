@@ -241,6 +241,11 @@ interface LongRecord {
   outputRatio: number | null
   /** A vázkapu ítélete a hosszú fordításon; hiba esetén `null`. */
   skeleton: number | null
+  /**
+   * A vázkapu megnevezett hiányai. A #42 nyitva hagyott kérdéséhez — miért
+   * bukik a hosszú fordítás — a 0/1 ítélet kevés volt.
+   */
+  gaps: string[]
   error: string | null
 }
 let longRecord: LongRecord | null = null
@@ -254,6 +259,9 @@ if (long !== null && !guard.exceeded()) {
       recipe.role,
       recipe.prompt({ item: long.item, transcript: long.body, timed: [] }),
     )
+    const skeleton = checkSkeleton(result.value, long.body, {
+      headingsAreContent: cleanRecipe.headingsAreContent,
+    })
     longRecord = {
       itemId: long.item.itemId,
       title: long.item.title,
@@ -261,7 +269,8 @@ if (long !== null && !guard.exceeded()) {
       seconds: seconds(),
       outputTokens: result.usage.outputTokens,
       outputRatio: result.usage.outputTokens / (long.words * TOKENS_PER_WORD),
-      skeleton: checkSkeleton(result.value, long.body).value,
+      skeleton: skeleton.value,
+      gaps: skeleton.gaps,
       error: null,
     }
   } catch (error) {
@@ -273,13 +282,15 @@ if (long !== null && !guard.exceeded()) {
       outputTokens: null,
       outputRatio: null,
       skeleton: null,
+      gaps: [],
       error: error instanceof Error ? error.message : String(error),
     }
   }
   console.log(
     longRecord.error === null
       ? `hosszú forrás ${String(long.words)} szó: ${longRecord.seconds.toFixed(0)} mp, ` +
-          `${String(longRecord.outputTokens)} kimeneti token, vázkapu ${String(longRecord.skeleton)}`
+          `${String(longRecord.outputTokens)} kimeneti token, vázkapu ${String(longRecord.skeleton)}` +
+          (longRecord.gaps.length > 0 ? `\n  hiányok: ${longRecord.gaps.join(' | ')}` : '')
       : `hosszú forrás ${String(long.words)} szó: HIBA ${longRecord.seconds.toFixed(0)} mp után — ${longRecord.error}`,
   )
 }
