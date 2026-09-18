@@ -242,6 +242,8 @@ node dist/cli.js scan --queue
   - `--retry-failed`: csak a korábban hibára futott elemek újrafuttatása
   - `--force`: a már elkészült jegyzetek felülírása
   - `--no-commit`: nem commitol és nem pushol automatikusan a vault Git repójába
+  - `--no-judge`: a bíró pontozói nem futnak (a determinisztikus kapuk igen);
+    felülírja a `model.judge_enabled` beállítást
 
 #### Árazás ellenőrzése (`check-pricing`)
 

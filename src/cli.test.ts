@@ -1682,6 +1682,7 @@ describe('commandCheckPricing', () => {
       ModelRole,
       string
     >,
+    judgeEnabled: true,
     pricing: {
       draft: { inputPerMillion: 2, outputPerMillion: 10 },
       judge: { inputPerMillion: 1.25, outputPerMillion: 2.5 },

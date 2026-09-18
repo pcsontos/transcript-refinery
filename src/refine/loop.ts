@@ -15,6 +15,11 @@ export interface RefineOptions {
   onGenerate?: (generation: number) => void
   /** Minden pontozás után: a pontszám és a megnevezett hiányok száma. */
   onScore?: (score: number, gaps: number) => void
+  /**
+   * Igaz esetén a rubrika modellhívó pontozói kimaradnak; a determinisztikus
+   * kapuk futnak. A pontszám ilyenkor 1, tehát javító kör sem indul.
+   */
+  skipJudge?: boolean
 }
 
 /**
@@ -91,6 +96,7 @@ export async function refine(
     recipe.rubric,
     { transcript: input.transcript, output: first.value },
     client,
+    { skipJudge: opts.skipJudge },
   )
   add(firstScore.usage)
   opts.onScore?.(firstScore.value, firstScore.gaps.length)
@@ -120,6 +126,7 @@ export async function refine(
       recipe.rubric,
       { transcript: input.transcript, output: next.value },
       client,
+      { skipJudge: opts.skipJudge },
     )
     add(scored.usage)
     opts.onScore?.(scored.value, scored.gaps.length)

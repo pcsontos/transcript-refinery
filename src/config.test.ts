@@ -164,6 +164,15 @@ describe('loadModelConfig', () => {
       loadModelConfig({ ...RAW, cost_limit_usd: 0 }, { LITELLM_API_KEY: 'k' }, '/p/c.yaml'),
     ).toThrow(/plafon|pozitív/)
   })
+
+  it('a judge_enabled alapértelmezése igaz', () => {
+    expect(loadModelConfig(RAW, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml').judgeEnabled).toBe(true)
+  })
+
+  it('a judge_enabled kikapcsolható a YAML-ból', () => {
+    const raw = { ...RAW, model: { ...RAW.model, judge_enabled: false } }
+    expect(loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml').judgeEnabled).toBe(false)
+  })
 })
 
 describe('validateConfig', () => {

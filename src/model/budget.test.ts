@@ -6,6 +6,7 @@ const CFG: ModelConfig = {
   baseUrl: 'http://localhost:4000/v1',
   apiKey: 'sk-proba',
   models: { draft: 'draft-modell', judge: 'judge-modell' },
+  judgeEnabled: true,
   pricing: {
     draft: { inputPerMillion: 3, outputPerMillion: 15 },
     judge: { inputPerMillion: 0.2, outputPerMillion: 0.5 },

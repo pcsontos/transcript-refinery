@@ -211,6 +211,25 @@ describe('refine', () => {
 
     expect(latottAtiratok).toEqual([INPUT.transcript, INPUT.transcript])
   })
+
+  it('skipJudge mellett egy generálás fut, pontozás nélkül', async () => {
+    const { client, generalt } = scriptedClient([{ text: 'kimenet', score: 0.1 }])
+    let futott = false
+    const biro: Criterion = {
+      name: 'biro',
+      score: () => {
+        futott = true
+        return Promise.resolve({ value: 0.1, gaps: ['hiány'] })
+      },
+    }
+
+    const result = await refine(recept([biro]), INPUT, client, { skipJudge: true })
+
+    expect(futott).toBe(false)
+    expect(generalt).toEqual(['kimenet'])
+    expect(result.generations).toBe(1)
+    expect(result.score).toBe(1)
+  })
 })
 
 /**

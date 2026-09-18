@@ -28,6 +28,8 @@ export interface RecipeDeps {
   guard: CostGuard
   /** Az újrapróbálkozás várakozása; a tesztek azonnalira cserélik. */
   sleep?: (ms: number) => Promise<void>
+  /** Igaz esetén a bíró pontozói kimaradnak; a determinisztikus kapuk futnak. */
+  skipJudge?: boolean
 }
 
 export interface PipelineDeps {
@@ -198,6 +200,7 @@ async function runRecipe(
       deps.sink({ type: 'item:generating', itemId: item.itemId, recipe: recipe.id, generation }),
     onScore: (score, gaps) =>
       deps.sink({ type: 'item:scored', itemId: item.itemId, recipe: recipe.id, score, gaps }),
+    skipJudge: recipeDeps.skipJudge,
   })
 
   // Körönként és szerepenként könyvelünk: a generálás a recept szerepén, a
