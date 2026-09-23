@@ -1,7 +1,9 @@
+import type { FinishReason } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createModelClient, modelClientFrom } from './client.js'
+import { retrying } from './retry.js'
 import type { ModelConfig } from '../config.js'
 
 /** Fixture-modell: rögzített szöveget ad vissza, rögzített használattal. */
@@ -60,6 +62,129 @@ describe('modelClientFrom', () => {
 
     expect(result.value).toEqual({ score: 0.8, gaps: ['hiányzik a második pont'] })
     expect(result.usage.inputTokens).toBe(100)
+  })
+})
+/**
+ * Fixture-modell adott befejezési okkal. A kapu ezt az okot nézi, nem a
+ * szöveget — ezért a szöveg minden ilyen tesztben ép marad.
+ */
+function vegModell(ok: FinishReason, text: string) {
+  return new MockLanguageModelV4({
+    // eslint-disable-next-line @typescript-eslint/require-await
+    doGenerate: async () => ({
+      content: [{ type: 'text' as const, text }],
+      finishReason: { unified: ok, raw: undefined },
+      usage: {
+        inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 20, text: 20, reasoning: undefined },
+      },
+      warnings: [],
+    }),
+  })
+}
+
+describe('a nem teljes válasz kapuja', () => {
+  it('a csonka szöveget hibaként dobja, nem adja vissza', async () => {
+    const client = modelClientFrom({
+      draft: vegModell('length', 'Az első mondat után elvág'),
+      judge: fixModell('nem hívjuk'),
+    })
+
+    await expect(client.generate('draft', 'Tisztítsd.')).rejects.toThrow(/csonka/)
+  })
+
+  it('a csonka válasz hibája megnevezi a szerepet és mindkét kiutat', async () => {
+    const client = modelClientFrom({
+      draft: vegModell('length', 'elvágva'),
+      judge: fixModell('nem hívjuk'),
+    })
+
+    const hiba = await client.generate('draft', 'Tisztítsd.').catch((e: Error) => e)
+
+    expect(hiba).toBeInstanceOf(Error)
+    const uzenet = (hiba as Error).message
+    expect(uzenet).toContain('draft')
+    expect(uzenet).toContain('max_tokens')
+    expect(uzenet).toMatch(/darabol/)
+  })
+
+  it('az objektumútvonalon akkor is dob, ha a csonka válasz véletlenül értelmes JSON', async () => {
+    const client = modelClientFrom({
+      // Érvényes JSON: ha ez átmenne, a kapu helyett a séma-ellenőrzés
+      // döntene — az pedig épp a néma féleredményt engedné a vaultba.
+      draft: vegModell('length', '{"score":0.8,"gaps":[]}'),
+      judge: fixModell('nem hívjuk'),
+    })
+
+    const schema = z.object({ score: z.number(), gaps: z.array(z.string()) })
+
+    await expect(client.generateObject('draft', 'Pontozz.', schema)).rejects.toThrow(
+      /csonka/,
+    )
+  })
+
+  it('a tartalomszűrő megállította választ is elutasítja', async () => {
+    const client = modelClientFrom({
+      draft: vegModell('content-filter', 'félbehagyott'),
+      judge: fixModell('nem hívjuk'),
+    })
+
+    await expect(client.generate('draft', 'Tisztítsd.')).rejects.toThrow(/tartalomszűrő/)
+  })
+
+  it('a hibával leállt választ is elutasítja', async () => {
+    const client = modelClientFrom({
+      draft: vegModell('error', 'félbehagyott'),
+      judge: fixModell('nem hívjuk'),
+    })
+
+    await expect(client.generate('draft', 'Tisztítsd.')).rejects.toThrow(/draft/)
+  })
+
+  it('a judge eszközhívásra végződő válaszát átengedi', async () => {
+    const client = modelClientFrom({
+      draft: fixModell('nem hívjuk'),
+      judge: vegModell('tool-calls', 'ítélet'),
+    })
+
+    expect((await client.generate('judge', 'Pontozz.')).value).toBe('ítélet')
+  })
+
+  it('ismeretlen okra (`other`) nem kapuz — az a gateway gyűjtőkategóriája', async () => {
+    const client = modelClientFrom({
+      draft: vegModell('other', 'teljes válasz'),
+      judge: fixModell('nem hívjuk'),
+    })
+
+    expect((await client.generate('draft', 'Tisztítsd.')).value).toBe('teljes válasz')
+  })
+
+  it('a csonkolást nem próbálja újra — ugyanaz a prompt ugyanúgy levágódna', async () => {
+    let hivasok = 0
+    const client = retrying(
+      modelClientFrom({
+        draft: new MockLanguageModelV4({
+          // eslint-disable-next-line @typescript-eslint/require-await
+          doGenerate: async () => {
+            hivasok++
+            return {
+              content: [{ type: 'text' as const, text: 'elvágva' }],
+              finishReason: { unified: 'length' as const, raw: undefined },
+              usage: {
+                inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined },
+                outputTokens: { total: 20, text: 20, reasoning: undefined },
+              },
+              warnings: [],
+            }
+          },
+        }),
+        judge: fixModell('nem hívjuk'),
+      }),
+      { attempts: 3, sleep: () => Promise.resolve() },
+    )
+
+    await expect(client.generate('draft', 'Tisztítsd.')).rejects.toThrow(/csonka/)
+    expect(hivasok).toBe(1)
   })
 })
 
