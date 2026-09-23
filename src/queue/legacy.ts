@@ -21,12 +21,16 @@ interface RecipeEntry {
 }
 type Entry = RecipeEntry | { kind: 'other'; line: string }
 
-/** Régi formátumú-e a sor: van régi videósora, vagy csak számozatlan fejlécei vannak. */
+/**
+ * Régi formátumú-e a sor: van régi videósora, vagy csak számozatlan fejlécei
+ * vannak. A számozott fejléc az új formátum biztos jele és elsőbbséget élvez:
+ * mellette egy kósza, régi mintájú saját sor (`- megjegyzés %%todo%%`) nem
+ * indíthat átalakítást, mert az a pipált fordításokat recepttá lapítaná.
+ */
 export function isLegacyQueue(text: string): boolean {
   const lines = text.split('\n')
-  if (lines.some((line) => OLD_VIDEO.test(line))) return true
-  const numbered = lines.some((line) => NEW_HEADING.test(line) || NEW_VIDEO.test(line))
-  return !numbered && lines.some((line) => OLD_HEADING.test(line))
+  if (lines.some((line) => NEW_HEADING.test(line) || NEW_VIDEO.test(line))) return false
+  return lines.some((line) => OLD_VIDEO.test(line) || OLD_HEADING.test(line))
 }
 
 /** Egy régi videóblokk sorai az új formátumban. */

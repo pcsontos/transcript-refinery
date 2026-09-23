@@ -86,3 +86,25 @@ describe('migrateLegacy', () => {
     expect(migrateLegacy(egyszer, LAYOUT).text).toBe(egyszer)
   })
 })
+
+describe('új formátum kósza régi mintájú sorral', () => {
+  const UJ_KOSZA = [
+    '## 1. forras/a',
+    '### 1. Első példavideó %%a%%',
+    '- [ ] summary',
+    '  - [x] hu',
+    '- megjegyzés %%todo%%',
+    '### 2. Második példavideó %%b%%',
+    '- [ ] summary',
+    '  - [x] hu — ✓ 0.90',
+    '',
+  ].join('\n')
+
+  it('a számozott fejléc elsőbbséget élvez: az oszlop 0-s horgonyos saját sor nem indít átalakítást', () => {
+    expect(isLegacyQueue(UJ_KOSZA)).toBe(false)
+  })
+
+  it('a pipált fordítás nem lapul recepttá, a szöveg bájtra azonos', () => {
+    expect(migrateLegacy(UJ_KOSZA, LAYOUT)).toEqual({ text: UJ_KOSZA, migrated: false })
+  })
+})
