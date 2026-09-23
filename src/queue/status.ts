@@ -1,6 +1,7 @@
 import { relative, sep } from 'node:path'
 import type { ArtifactRecord } from '../state/db.js'
 import { lintVaultMarkdown } from '../vault/lint.js'
+import { translationId } from './layout.js'
 import { withSuffix } from './line.js'
 import { parseQueue } from './parse.js'
 
@@ -62,24 +63,33 @@ export function failedStatus(error: string | null): string {
 
 /**
  * A párok utótagjának cseréje **azonosító és receptId szerint**, nem sorszám
- * szerint. Csak a `statuses`-ben szereplő párokhoz nyúl, és csak az azonosító
- * első előfordulásánál; minden más sor bájtra változatlan.
+ * szerint. A fordítás párja `<recept>-<nyelv>`, és a behúzott al-sorra íródik.
+ * Csak a `statuses`-ben szereplő párokhoz nyúl, és csak az azonosító első
+ * előfordulásánál; minden más sor bájtra változatlan.
  */
 export function applyStatuses(text: string, statuses: ReadonlyMap<string, string>): string {
   const doc = parseQueue(text)
   const lines = [...doc.lines]
+  const apply = (line: number, head: string, key: string): void => {
+    const status = statuses.get(key)
+    if (status === undefined) return
+    const errors = lintVaultMarkdown(status)
+    if (errors.length > 0) {
+      throw new Error(`a visszaírt állapot megsérti a vault írási szabályait: ${errors.join('; ')}`)
+    }
+    lines[line] = withSuffix(head, status)
+  }
   for (const video of doc.videos) {
     if (video.duplicate) continue
     for (const recipe of video.recipes) {
-      const status = statuses.get(pairKey(video.itemId, recipe.recipeId))
-      if (status === undefined) continue
-      const errors = lintVaultMarkdown(status)
-      if (errors.length > 0) {
-        throw new Error(
-          `a visszaírt állapot megsérti a vault írási szabályait: ${errors.join('; ')}`,
+      apply(recipe.line, recipe.head, pairKey(video.itemId, recipe.recipeId))
+      for (const translation of recipe.translations) {
+        apply(
+          translation.line,
+          translation.head,
+          pairKey(video.itemId, translationId(recipe.recipeId, translation.lang)),
         )
       }
-      lines[recipe.line] = withSuffix(recipe.head, status)
     }
   }
   return lines.join('\n')

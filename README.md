@@ -131,12 +131,27 @@ viszont nem, mert ott egy fejléc egy kártya. Ha a forrás még nem készült e
 fordítás modellhívás nélkül kimarad, és a sor megnevezi az okot.
 
 A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
-`_queue.md` jegyzetébe fésüli a felderített videókat, videónként receptenként
-egy üres pipával; a `run --queue` a kipipált (videó, recept) párokat dolgozza
-fel — egyetlen közös becsléssel és költségplafonnal —, és az eredményt
-pontszámmal, költséggel és a jegyzet linkjével ugyanazokba a sorokba írja
-vissza. A pipákhoz és a saját sorokhoz nem nyúl, a jegyzetet atomian írja, és
-ha nincs mit feldolgozni, nulla modellhívással, commit nélkül fut le.
+`_queue.md` jegyzetébe fésüli a felderített videókat: forrásmappánként egy
+számozott `##` fejléc, alatta videónként egy számozott `###` fejléc, és
+receptenként egy üres pipa. A fordítás a forrásreceptje alá kerül, behúzott
+nyelvi al-sorként — a célnyelvű videó alá nem, mert ott nincs mit fordítani
+(ha ott mégis áll fordítássor, a scan törli, a pipáltat is):
+
+```markdown
+## 1. transcripts/youtube/Csatorna
+### 1. Egy videó címe %%dQw4w9WgXcQ%%
+- [x] summary — ✓ 0.97 · $0.0471 · [jegyzet](<…>)
+  - [ ] hu
+- [ ] flashcards
+```
+
+A `run --queue` a kipipált (videó, recept) párokat dolgozza fel —
+egyetlen közös becsléssel és költségplafonnal —, és az eredményt pontszámmal,
+költséggel és a jegyzet linkjével ugyanazokba a sorokba írja vissza. A
+pipákhoz és a saját sorokhoz nem nyúl, a sorszámokat minden scan újraírja, a
+jegyzetet atomian írja, és ha nincs mit feldolgozni, nulla modellhívással,
+commit nélkül fut le. A korábbi, lapos formátumú sort az első `scan --queue`
+egyszer átalakítja, a pipákkal együtt.
 
 A felület (`mise exec -- pnpm web`, `http://127.0.0.1:4310`) csak olvas. Az
 áttekintő a korpusz állapotát, a pontszámok eloszlását receptenként és a

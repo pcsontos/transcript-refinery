@@ -342,7 +342,7 @@ describe('végponttól végpontig — a feldolgozási sor valódi gittel', () =>
       // Az első videó summary-sora: a felderítés rendezett, az `Elso` áll elöl.
       await writeFile(
         sor,
-        (await readFile(sor, 'utf8')).replace('  - [ ] summary', '  - [x] summary'),
+        (await readFile(sor, 'utf8')).replace('- [ ] summary', '- [x] summary'),
         'utf8',
       )
 

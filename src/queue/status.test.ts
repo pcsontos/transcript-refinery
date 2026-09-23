@@ -41,15 +41,16 @@ describe('failedStatus', () => {
 })
 
 const SOR = [
-  '## feliratok/csatorna-a',
-  '- Első példavideó %%abcDEF12345%%',
-  '  - [x] summary — ✗ régi hiba',
-  '  - [x] qa',
+  '## 1. feliratok/csatorna-a',
+  '### 1. Első példavideó %%abcDEF12345%%',
+  '- [x] summary — ✗ régi hiba',
+  '  - [x] hu',
+  '- [x] qa',
   'Saját megjegyzés.',
-  '- Második példavideó %%0123456789abcdef%%',
-  '  - [x] summary',
-  '- Első példavideó újra %%abcDEF12345%%',
-  '  - [x] summary',
+  '### 2. Második példavideó %%0123456789abcdef%%',
+  '- [x] summary',
+  '### 3. Első példavideó újra %%abcDEF12345%%',
+  '- [x] summary',
   '',
 ].join('\n')
 
@@ -62,15 +63,16 @@ describe('applyStatuses', () => {
 
     expect(applyStatuses(SOR, statuses)).toBe(
       [
-        '## feliratok/csatorna-a',
-        '- Első példavideó %%abcDEF12345%%',
-        '  - [x] summary — ✓ 1.00 · $0.0100',
-        '  - [x] qa',
+        '## 1. feliratok/csatorna-a',
+        '### 1. Első példavideó %%abcDEF12345%%',
+        '- [x] summary — ✓ 1.00 · $0.0100',
+        '  - [x] hu',
+        '- [x] qa',
         'Saját megjegyzés.',
-        '- Második példavideó %%0123456789abcdef%%',
-        `  - [x] summary — ${DEFERRED_STATUS}`,
-        '- Első példavideó újra %%abcDEF12345%%',
-        '  - [x] summary',
+        '### 2. Második példavideó %%0123456789abcdef%%',
+        `- [x] summary — ${DEFERRED_STATUS}`,
+        '### 3. Első példavideó újra %%abcDEF12345%%',
+        '- [x] summary',
         '',
       ].join('\n'),
     )
@@ -81,8 +83,17 @@ describe('applyStatuses', () => {
 
     const out = applyStatuses(SOR, statuses).split('\n')
 
-    expect(out[2]).toBe('  - [x] summary — ✗ régi hiba')
-    expect(out[6]).toBe('  - [x] summary — ✓ 0.90 · $0.0200')
+    expect(out[2]).toBe('- [x] summary — ✗ régi hiba')
+    expect(out[7]).toBe('- [x] summary — ✓ 0.90 · $0.0200')
+  })
+
+  it('a fordítás állapota a behúzott al-sorra kerül, a szülő recept érintetlen', () => {
+    const statuses = new Map([[pairKey('abcDEF12345', 'summary-hu'), '✓ 0.88 · $0.0030']])
+
+    const out = applyStatuses(SOR, statuses).split('\n')
+
+    expect(out[2]).toBe('- [x] summary — ✗ régi hiba')
+    expect(out[3]).toBe('  - [x] hu — ✓ 0.88 · $0.0030')
   })
 
   it('üres állapotlistára a szöveg bájtra azonos', () => {

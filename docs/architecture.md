@@ -183,8 +183,10 @@ Két szabály, mindkettő tesztelhető:
 
 **Egyetlen kivétel a feldolgozási sor** (`_queue.md`): ezt a pipeline helyben
 frissíti, mert a kipipált párok eredménye oda íródik vissza. Két szabály védi.
-Csak a saját részeit írja — új videóblokk, a videósor jelölése, a receptsor
-állapota —, a pipákhoz és a saját sorokhoz soha nem nyúl. És **atomian** ír,
+Csak a saját részeit írja — új videóblokk, a fejlécek sorszáma, a videófejléc
+jelölése, a recept- és fordítássor állapota, és a célnyelvű videó
+fordítássorainak törlése —, a pipákhoz és a saját sorokhoz (a törölt
+fordítássor kivételével) soha nem nyúl. És **atomian** ír,
 ideiglenes fájlon át, átnevezéssel, mert a jegyzet közben nyitva lehet
 Obsidianban.
 
@@ -366,8 +368,9 @@ feliratforrásokból.
   feliratfájl, értelmezési hiba) → rögzít és lép tovább.
 - **Szűrők:** csatorna, darabszám, dátum — és elsődlegesen az állapottár, ami a
   már feldolgozott elemeket kihagyja.
-- **A lista a vault feldolgozási sora** (`<notes_dir>/_queue.md`): videónként
-  receptenként egy pipálható sor. A `scan --queue` fésüli bele a felderített
+- **A lista a vault feldolgozási sora** (`<notes_dir>/_queue.md`): számozott csoport- és
+  videófejlécek, alattuk receptenként egy pipálható sor, a fordítás behúzva a
+  forrásreceptje alatt. A `scan --queue` fésüli bele a felderített
   elemeket, a `run --queue` a kipipált (videó, recept) párokat dolgozza fel,
   és az eredményt ugyanazokba a sorokba írja vissza. A receptválasztás így
   videónként is lehetséges ([`decisions/0010`](<./decisions/0010-videonkenti-receptvalasztas.md>));
