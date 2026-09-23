@@ -86,16 +86,16 @@ describe('emptyCorpusStatus', () => {
 
 describe('queueOverview', () => {
   const SOR = [
-    '## youtube',
-    '- Első példavideó %%a%%',
-    '  - [x] summary',
-    '  - [ ] flashcards',
-    '  - [x] qa',
-    '- Második példavideó %%b%%',
-    '  - [x] summary',
-    '- Harmadik példavideó %%c%%',
-    '  - [x] summary',
-    '  - [x] ismeretlen',
+    '## 1. youtube',
+    '### 1. Első példavideó %%a%%',
+    '- [x] summary',
+    '- [ ] flashcards',
+    '- [x] qa',
+    '### 2. Második példavideó %%b%%',
+    '- [x] summary',
+    '### 3. Harmadik példavideó %%c%%',
+    '- [x] summary',
+    '- [x] ismeretlen',
     '',
   ].join('\n')
 
@@ -230,7 +230,7 @@ describe('readOverview', () => {
     store.close()
 
     await mkdir(cfg.notesRoot, { recursive: true })
-    await writeFile(join(cfg.notesRoot, '_queue.md'), '- Első példavideó %%szint0001%%\n  - [x] summary\n')
+    await writeFile(join(cfg.notesRoot, '_queue.md'), '### 1. Első példavideó %%szint0001%%\n- [x] summary\n')
     await mkdir(cfg.logsDir, { recursive: true })
     await writeFile(
       join(cfg.logsDir, '2026-09-11T09-00-00.jsonl'),

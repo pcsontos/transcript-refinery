@@ -23,8 +23,11 @@ import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { ARTIFACT_KIND, processItem, type RecipeDeps } from './pipeline.js'
 import { queuePath, readQueueFile } from './queue/file.js'
+import { queueLayout } from './queue/layout.js'
+import { migrateLegacy } from './queue/legacy.js'
 import { mergeQueue } from './queue/merge.js'
 import { checkedPairs, parseQueue, type QueuePair } from './queue/parse.js'
+import { renumberQueue } from './queue/renumber.js'
 import {
   DEFERRED_STATUS,
   NOT_FOUND_STATUS,
@@ -190,16 +193,30 @@ export async function commandScanQueue(
   const commit = flags.commit && !flags.dryRun
   if (commit) await gitPullFfOnly(cfg.vaultPath)
 
+  const layout = queueLayout(registry)
   const items = await discoverAll(cfg.sources, cfg.languages)
   const path = queuePath(cfg.notesRoot)
   const current = await readQueueFile(path)
-  const { text, stats } = mergeQueue(current, items, Object.keys(registry))
+  // A régi formátumot egyszer átalakítjuk; utána a merge és az újraszámozás
+  // már az újat látja.
+  const legacy = current === null ? null : migrateLegacy(current, layout)
+  const merged = mergeQueue(legacy?.text ?? null, items, layout)
+  const text = renumberQueue(merged.text)
+  const { stats } = merged
 
   console.log(
     `${String(items.length)} feldolgozható felirat · ${String(stats.addedVideos)} új videó, ` +
       `${String(stats.addedRecipeLines)} új receptsor meglévő videó alatt, ` +
       `${String(stats.changedMarks)} jelölés-változás`,
   )
+  if (legacy?.migrated) {
+    console.log('A sor átalakítva az új formátumra: számozott fejlécek, behúzott fordítások.')
+  }
+  if (stats.removedTranslationLines > 0) {
+    console.log(
+      `${String(stats.removedTranslationLines)} fordítássor törölve célnyelvű videó alól.`,
+    )
+  }
   if (flags.dryRun) {
     console.log('Próbafutás: a sor nem íródott.')
     return 0

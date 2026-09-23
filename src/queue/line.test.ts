@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import type { SourceItem } from '../types.js'
 import { lintVaultMarkdown } from '../vault/lint.js'
-import { classifyLine, cleanTitle, groupKey, recipeLine, videoLine, withSuffix } from './line.js'
+import {
+  classifyLine,
+  cleanTitle,
+  groupKey,
+  headingLine,
+  recipeLine,
+  translationLine,
+  videoLine,
+  withSuffix,
+} from './line.js'
 
 function elem(overrides: Partial<SourceItem> = {}): SourceItem {
   return {
@@ -18,44 +27,70 @@ function elem(overrides: Partial<SourceItem> = {}): SourceItem {
 }
 
 describe('classifyLine', () => {
-  it('felismeri a csoportfejlécet', () => {
-    expect(classifyLine('## feliratok/csatorna-a')).toEqual({
+  it('a számozott csoportfejlécből a sorszám nélküli kulcsot veszi', () => {
+    expect(classifyLine('## 1. feliratok/csatorna-a')).toEqual({
       kind: 'heading',
       key: 'feliratok/csatorna-a',
     })
+    expect(classifyLine('## 12. x')).toEqual({ kind: 'heading', key: 'x' })
   })
 
-  it('a videósorból kiveszi az azonosítót, a horgonyig tartó fejet és az utótagot', () => {
-    expect(classifyLine('- Első — második rész %%abcDEF12345%% — ⚠ duplikátum')).toEqual({
+  it('a videófejlécből az azonosítót, a sorszámmal együtti fejet és az utótagot veszi', () => {
+    expect(classifyLine('### 3. Első — második rész %%abcDEF12345%% — ⚠ duplikátum')).toEqual({
       kind: 'video',
       itemId: 'abcDEF12345',
-      head: '- Első — második rész %%abcDEF12345%%',
+      head: '### 3. Első — második rész %%abcDEF12345%%',
       suffix: ' — ⚠ duplikátum',
     })
   })
 
-  it('a receptsort szóközös és tabos behúzással, kis és nagy x-szel is felismeri', () => {
-    expect(classifyLine('  - [x] summary — ✓ 0.97')).toEqual({
+  it('sorszámmal kezdődő cím is videó', () => {
+    expect(classifyLine('### 2. 1. rész: bevezető %%x1%%')).toMatchObject({
+      kind: 'video',
+      itemId: 'x1',
+      head: '### 2. 1. rész: bevezető %%x1%%',
+    })
+  })
+
+  it('a behúzás nélküli receptsort kis és nagy x-szel is felismeri', () => {
+    expect(classifyLine('- [x] summary — ✓ 0.97')).toEqual({
       kind: 'recipe',
       recipeId: 'summary',
       checked: true,
-      head: '  - [x] summary',
+      head: '- [x] summary',
       suffix: ' — ✓ 0.97',
     })
-    expect(classifyLine('\t- [X] qa')).toMatchObject({
-      kind: 'recipe',
-      recipeId: 'qa',
-      checked: true,
-      suffix: '',
-    })
-    expect(classifyLine('  - [ ] flashcards')).toMatchObject({ kind: 'recipe', checked: false })
+    expect(classifyLine('- [X] qa')).toMatchObject({ kind: 'recipe', recipeId: 'qa', checked: true })
+    expect(classifyLine('- [ ] flashcards')).toMatchObject({ kind: 'recipe', checked: false })
   })
 
-  it('a behúzás nélküli pipás sor, a szabad szöveg és a főcím saját sor', () => {
-    expect(classifyLine('- [x] summary')).toEqual({ kind: 'other' })
-    expect(classifyLine('Saját megjegyzés.')).toEqual({ kind: 'other' })
-    expect(classifyLine('')).toEqual({ kind: 'other' })
-    expect(classifyLine('# Feldolgozási sor')).toEqual({ kind: 'other' })
+  it('a pontosan két szóközzel behúzott kétbetűs nyelvkód fordítássor', () => {
+    expect(classifyLine('  - [x] hu — ✓ 0.90')).toEqual({
+      kind: 'translation',
+      lang: 'hu',
+      checked: true,
+      head: '  - [x] hu',
+      suffix: ' — ✓ 0.90',
+    })
+    expect(classifyLine('  - [ ] en')).toMatchObject({ kind: 'translation', lang: 'en', checked: false })
+  })
+
+  it('ami csak hasonlít, az saját sor', () => {
+    for (const line of [
+      '## feliratok/csatorna-a',
+      '- Első %%abc%%',
+      '  - [x] summary',
+      '\t- [x] qa',
+      '    - [ ] hu',
+      '  - [ ] hun',
+      '  - [ ] HU',
+      '### 1. Horgony nélkül',
+      'Saját megjegyzés.',
+      '',
+      '# Feldolgozási sor',
+    ]) {
+      expect(classifyLine(line)).toEqual({ kind: 'other' })
+    }
   })
 })
 
@@ -84,19 +119,29 @@ describe('groupKey', () => {
   })
 })
 
-describe('videoLine, recipeLine, withSuffix', () => {
-  it('a videósor a tisztított címet és az azonosítót viszi, és visszaolvasható', () => {
+describe('sorgenerálók és withSuffix', () => {
+  it('a videósor 0-s sorszámmal, a tisztított címmel és az azonosítóval készül, és visszaolvasható', () => {
     const line = videoLine(elem({ title: 'Első\npéldavideó' }))
-    expect(line).toBe('- Első példavideó %%abcDEF12345%%')
+    expect(line).toBe('### 0. Első példavideó %%abcDEF12345%%')
     expect(classifyLine(line)).toMatchObject({ kind: 'video', itemId: 'abcDEF12345', suffix: '' })
   })
 
-  it('a receptsor üres pipával készül', () => {
-    expect(recipeLine('summary')).toBe('  - [ ] summary')
+  it('a csoportfejléc 0-s sorszámmal készül, és visszaolvasható', () => {
+    expect(headingLine('feliratok/csatorna-a')).toBe('## 0. feliratok/csatorna-a')
+    expect(classifyLine(headingLine('feliratok/csatorna-a'))).toEqual({
+      kind: 'heading',
+      key: 'feliratok/csatorna-a',
+    })
+  })
+
+  it('a recept- és a fordítássor üres pipával készül', () => {
+    expect(recipeLine('summary')).toBe('- [ ] summary')
+    expect(translationLine('hu')).toBe('  - [ ] hu')
+    expect(classifyLine(translationLine('hu'))).toMatchObject({ kind: 'translation', lang: 'hu' })
   })
 
   it('az utótag a fej után, elválasztóval kerül; null esetén csak a fej marad', () => {
-    expect(withSuffix('  - [x] summary', '✓ 0.97')).toBe('  - [x] summary — ✓ 0.97')
-    expect(withSuffix('  - [x] summary', null)).toBe('  - [x] summary')
+    expect(withSuffix('- [x] summary', '✓ 0.97')).toBe('- [x] summary — ✓ 0.97')
+    expect(withSuffix('- [x] summary', null)).toBe('- [x] summary')
   })
 })
