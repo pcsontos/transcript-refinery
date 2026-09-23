@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { commandCheckPricing, commandRun, commandScan, commandScanQueue } from './cli.js'
+import { commandCheckPricing, commandRun, commandScan, commandScanQueue, main, USAGE } from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
 import type { RunEvent } from './events.js'
 import { estimateItemUsd } from './model/budget.js'
@@ -1998,5 +1998,36 @@ describe('commandRun — indulás és lezárás a naplóban', () => {
     const types = (await naploEsemenyek(cfg.logsDir)).map((e) => e.type)
     expect(types.indexOf('run:aborted')).toBeGreaterThan(-1)
     expect(types.indexOf('run:ended')).toBeGreaterThan(types.indexOf('run:aborted'))
+  })
+})
+
+describe('main és súgó', () => {
+  it('a USAGE tartalmazza az összes új kapcsolót (--no-judge, --fix, --help)', () => {
+    expect(USAGE).toContain('--no-judge')
+    expect(USAGE).toContain('--fix')
+    expect(USAGE).toContain('--help, -h')
+  })
+
+  it('a main([]) 1-gyel tér vissza és kiírja a súgót', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const code = await main([])
+      expect(code).toBe(1)
+      expect(logSpy).toHaveBeenCalledWith(USAGE)
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('a main(["--help"]) és main(["-h"]) 0-val tér vissza', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      expect(await main(['--help'])).toBe(0)
+      expect(await main(['-h'])).toBe(0)
+      expect(await main(['run', '--help'])).toBe(0)
+      expect(await main(['check-pricing', '-h'])).toBe(0)
+    } finally {
+      logSpy.mockRestore()
+    }
   })
 })

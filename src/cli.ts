@@ -80,7 +80,7 @@ function describeFinishError(error: unknown): string {
     : `A riport nem készült el: ${message}`
 }
 
-const USAGE = `refinery <parancs> [kapcsolók]
+export const USAGE = `refinery <parancs> [kapcsolók]
 
 Parancsok:
   scan            Felderíti a feldolgozható videókat, és nem ír semmit.
@@ -100,6 +100,11 @@ Kapcsolók:
   --retry-failed    csak a korábban hibára futott elemek
   --queue           scan: a vault _queue.md sorába fésül; run: a sor
                     kipipált (videó, recept) párjait dolgozza fel
+  --no-judge        a bíró pontozói nem futnak (a determinisztikus kapuk
+                    igen); felülírja a model.judge_enabled beállítást
+  --fix             check-pricing: a talált árazási eltéréseket visszaírja
+                    a konfigurációs fájlba
+  --help, -h        megjeleníti ezt a súgót
 
   A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
@@ -752,9 +757,10 @@ export async function commandRun(
 
 export async function main(argv: readonly string[]): Promise<number> {
   const command = argv[0]
-  if (!command || command === '--help' || command === '-h') {
+  const wantsHelp = argv.includes('--help') || argv.includes('-h')
+  if (!command || wantsHelp) {
     console.log(USAGE)
-    return command ? 0 : 1
+    return wantsHelp ? 0 : 1
   }
 
   const { values } = parseArgs({
@@ -774,6 +780,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       // kapcsolót nem adták meg, és ilyenkor a config dönt.
       'no-judge': { type: 'boolean' },
       fix: { type: 'boolean', default: false },
+      help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: false,
   })

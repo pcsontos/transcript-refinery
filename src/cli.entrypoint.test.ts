@@ -21,6 +21,16 @@ describe('cli belépési pont', () => {
     // tehát a teszt hermetikus: friss klónon, config nélkül is lefut.
     const { stdout } = await run(TSX, ['src/cli.ts', '--help'])
     expect(stdout).toContain('refinery <parancs>')
+    expect(stdout).toContain('--no-judge')
+    expect(stdout).toContain('--fix')
+    expect(stdout).toContain('--help, -h')
+  })
+
+  it('alparancs után megadott --help kapcsolóval is a teljes súgót adja', async () => {
+    const { stdout } = await run(TSX, ['src/cli.ts', 'run', '--help'])
+    expect(stdout).toContain('refinery <parancs>')
+    expect(stdout).toContain('--no-judge')
+    expect(stdout).toContain('--fix')
   })
 
   describe('szimlinken át meghívva', () => {
