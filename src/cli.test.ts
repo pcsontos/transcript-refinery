@@ -54,6 +54,7 @@ async function makeVideo(
   title: string,
   channel: string,
   srt: string = SRT,
+  lang: string | null = 'en',
 ) {
   const dir = join(downloads, 'youtube', channel)
   await mkdir(dir, { recursive: true })
@@ -68,7 +69,33 @@ async function makeVideo(
     }),
     'utf8',
   )
-  await writeFile(join(dir, `${title}.en.srt`), srt, 'utf8')
+  await writeFile(join(dir, lang === null ? `${title}.srt` : `${title}.${lang}.srt`), srt, 'utf8')
+}
+
+/** Hosszabb magyar felirat: a nyelvfelismerés ebből biztosan magyart mond. */
+const MAGYAR_SRT = `1
+00:00:00,000 --> 00:00:04,000
+Ez a videó arról szól, hogy a figyelem és a türelem hogyan segít a tanulásban.
+
+2
+00:00:04,000 --> 00:00:08,000
+A tanító azt mondja, hogy nem kell sietni, mert a megértés idővel jön el.
+`
+
+/** Felirat, amelynek a nyelve a tartalomból sem ismerhető fel. */
+const ISMERETLEN_SRT = `1
+00:00:00,000 --> 00:00:02,000
+Xyzzy quux foobar plugh grault. Waldo fred garply.
+`
+
+/** Egy videó blokkja a sorban: a fejlécétől a következő fejlécig vagy üres sorig. */
+function videoBlokk(sor: string, id: string): string[] {
+  const lines = sor.split('\n')
+  const start = lines.findIndex((line) => line.includes(`%%${id}%%`))
+  const end = lines.findIndex(
+    (line, i) => i > start && (line.startsWith('#') || line.trim() === ''),
+  )
+  return lines.slice(start, end === -1 ? undefined : end)
 }
 
 /**
@@ -1317,6 +1344,30 @@ describe('commandRun --queue', () => {
     hiba.mockRestore()
   })
 
+  it('régi formátumú sorra indulás előtt hibával megáll, és a scan --queue-t javasolja', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const sor = queuePath(cfg.notesRoot)
+    await mkdir(cfg.notesRoot, { recursive: true })
+    await writeFile(sor, '## downloads/youtube/Csatorna A\n- Első videó %%a1%%\n  - [x] summary\n', 'utf8')
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const hivasok = { generate: 0 }
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens(hivasok) },
+    )
+
+    expect(code).toBe(1)
+    expect(hivasok.generate).toBe(0)
+    expect(hiba.mock.calls.flat().join('\n')).toContain('refinery scan --queue')
+    expect(existsSync(cfg.logsDir)).toBe(false)
+    hiba.mockRestore()
+  })
+
   it('--dry-run mellett nem ír vissza a sorba', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     const raw = rawWithVault(5)
@@ -1941,6 +1992,34 @@ describe('commandScanQueue', () => {
     )
     expect(naplo.mock.calls.flat().join('\n')).toContain('átalakítva az új formátumra')
     naplo.mockRestore()
+  })
+
+  it('nyelvkód nélküli magyar feliratnál a tartalom dönt: a videó alá nem kerül hu sor', async () => {
+    await makeVideo(downloads, 'h1', 'Magyar videó', 'Csatorna A', MAGYAR_SRT, null)
+    await makeVideo(downloads, 'e1', 'Angol videó', 'Csatorna A', ANGOL_SRT)
+    const cfg = loadConfig(
+      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['summary'] } },
+      '/p/refinery.config.yaml',
+    )
+
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+
+    const sor = await readFile(queuePath(cfg.notesRoot), 'utf8')
+    expect(videoBlokk(sor, 'h1')).not.toContain('  - [ ] hu')
+    expect(videoBlokk(sor, 'e1')).toContain('  - [ ] hu')
+  })
+
+  it('ha a tartalom nyelve sem ismerhető fel, a scan nem áll meg, és a hu sor megmarad', async () => {
+    await makeVideo(downloads, 'x1', 'Ismeretlen videó', 'Csatorna A', ISMERETLEN_SRT, null)
+    const cfg = loadConfig(
+      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['summary'] } },
+      '/p/refinery.config.yaml',
+    )
+
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false })).toBe(0)
+
+    const sor = await readFile(queuePath(cfg.notesRoot), 'utf8')
+    expect(videoBlokk(sor, 'x1')).toContain('  - [ ] hu')
   })
 })
 

@@ -21,10 +21,10 @@ import { createModelClient, type ModelClient } from './model/client.js'
 import { applyPricingFix, comparePricing, fetchLivePricing } from './model/pricing-check.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
-import { ARTIFACT_KIND, processItem, type RecipeDeps } from './pipeline.js'
+import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
 import { queuePath, readQueueFile } from './queue/file.js'
 import { queueLayout } from './queue/layout.js'
-import { migrateLegacy } from './queue/legacy.js'
+import { isLegacyQueue, migrateLegacy } from './queue/legacy.js'
 import { mergeQueue } from './queue/merge.js'
 import { checkedPairs, parseQueue, type QueuePair } from './queue/parse.js'
 import { renumberQueue } from './queue/renumber.js'
@@ -178,6 +178,27 @@ export async function commandScan(cfg: Config): Promise<number> {
 }
 
 /**
+ * Nyelvkód nélküli feliratnál a tartalom dönt a nyelvről, ugyanúgy, mint a
+ * futásban (`normalizeItem`). Az eredeti elemet nem módosítja. Ha a nyelv a
+ * tartalomból sem ismerhető fel, vagy a felirat nem olvasható, `null` marad:
+ * a scan ettől nem áll meg, a fordítássor pedig megmarad.
+ */
+async function withContentLanguage(items: readonly SourceItem[]): Promise<SourceItem[]> {
+  return Promise.all(
+    items.map(async (item) => {
+      if (item.language !== null) return item
+      const copy = { ...item }
+      try {
+        await normalizeItem(copy)
+      } catch {
+        // A nyelv null marad.
+      }
+      return copy
+    }),
+  )
+}
+
+/**
  * A felderített elemek összefésülése a vault feldolgozási sorába. Modellt nem
  * hív, ezért `LITELLM_API_KEY` sem kell hozzá. A sort csak akkor írja, ha a
  * tartalma ténylegesen változik — így az ismételt futás nem hagy commitot
@@ -194,7 +215,7 @@ export async function commandScanQueue(
   if (commit) await gitPullFfOnly(cfg.vaultPath)
 
   const layout = queueLayout(registry)
-  const items = await discoverAll(cfg.sources, cfg.languages)
+  const items = await withContentLanguage(await discoverAll(cfg.sources, cfg.languages))
   const path = queuePath(cfg.notesRoot)
   const current = await readQueueFile(path)
   // A régi formátumot egyszer átalakítjuk; utána a merge és az újraszámozás
@@ -365,6 +386,13 @@ export async function commandRun(
   const queueText = queueMode ? await readQueueFile(sorPath) : null
   if (queueMode && queueText === null) {
     console.error(`Nincs feldolgozási sor: ${sorPath}\nElőbb: refinery scan --queue`)
+    return 1
+  }
+  if (queueMode && queueText !== null && isLegacyQueue(queueText)) {
+    console.error(
+      `A feldolgozási sor még a régi formátumú: ${sorPath}\n` +
+        'Előbb: refinery scan --queue — ez átalakítja, a pipákkal együtt.',
+    )
     return 1
   }
 
