@@ -50,9 +50,16 @@ export interface ReportInput {
   nextCommand?: string
 }
 
-/** `2026-09-07 02:14` — a riport fejlécének olvasható időpontja. */
+const pad = (value: number): string => String(value).padStart(2, '0')
+
+/**
+ * `2026-09-07 02:14` — a riport fejlécének olvasható időpontja, a gép **helyi**
+ * idejében. A riport embernek szól: az UTC-bélyeg a fali órához képest eltolva
+ * jelent meg, és a futás utólagos azonosítását nehezítette.
+ */
 function stamp(date: Date): string {
-  return date.toISOString().slice(0, 16).replace('T', ' ')
+  const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+  return `${day} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 /** Egy sorba fésült szöveg: az újsorok és a kocsivissza helyén szóköz áll. */
@@ -67,7 +74,11 @@ function escapeTableCell(value: string): string {
 
 /**
  * A futás riportja Markdownban. Tiszta függvény: nem ír fájlt és nem olvas
- * órát — így a tesztje a szövegről szól, nem a környezetről.
+ * órát — így a tesztje a szövegről szól, nem a környezetről. A kapott
+ * időpontokat viszont helyi időben írja ki, tehát a fejléc szövege a futtató
+ * gép időzónájától függ. Ezt ma semmi nem rögzíti: se `TZ`-kényszer nincs a
+ * vitest configjában, se olyan teszt, ami a kiírt időpontot állítaná — a
+ * `stamp` elcsúszása tehát nem bukna le.
  */
 export function renderReport(input: ReportInput): string {
   const { summary, corpora, queue } = input
