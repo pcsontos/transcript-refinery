@@ -247,3 +247,47 @@ describe('renderReport', () => {
     expect(md).toContain('A sor feldolgozva.')
   })
 })
+
+/**
+ * A fejléc időpontja az egyetlen hely, ahol a riport a futtató gép zónájától
+ * függ. A tesztek ezért rögzített `Europe/Budapest` alatt futnak
+ * (`vitest.config.ts`) — nem UTC alatt, mert nulla eltolásnál a helyi idő és
+ * az UTC kimenete egybeesne, és egy `toISOString()`-re való visszaesés
+ * észrevétlen maradna.
+ */
+describe('a fejléc időpontja', () => {
+  it('helyi időt ír, nem UTC-t', () => {
+    const md = renderReport(input())
+
+    // A fixture 02:14:03Z és 06:41:00Z; nyári időszámításban (+2) Budapesten
+    // ez 04:14 és 08:41.
+    expect(md).toContain('# Futás — 2026-09-07 04:14 → 2026-09-07 08:41')
+    // A visszaesés jele: `toISOString()` mellett itt az UTC-óra állna.
+    expect(md).not.toContain('2026-09-07 02:14 ')
+  })
+
+  it('a napot is a helyi zóna szerint fordítja, nem az UTC szerint', () => {
+    const md = renderReport(
+      input({
+        startedAt: new Date('2026-01-15T23:30:00Z'),
+        finishedAt: new Date('2026-01-15T23:45:00Z'),
+      }),
+    )
+
+    // Télen (+1) a 23:30Z már a KÖVETKEZŐ nap 00:30 Budapesten. Egy UTC-alapú
+    // formázás itt rossz napot írna, nem csak rossz órát — ez az eset egyszerre
+    // fedi a dátumhatárt és a nyári/téli eltolás váltását.
+    expect(md).toContain('# Futás — 2026-01-16 00:30 → 2026-01-16 00:45')
+  })
+
+  it('az egyjegyű hónapot, napot, órát és percet nullával tölti ki', () => {
+    const md = renderReport(
+      input({
+        startedAt: new Date('2026-03-02T06:05:00Z'),
+        finishedAt: new Date('2026-03-02T07:09:00Z'),
+      }),
+    )
+
+    expect(md).toContain('# Futás — 2026-03-02 07:05 → 2026-03-02 08:09')
+  })
+})
