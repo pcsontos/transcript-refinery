@@ -71,3 +71,31 @@ describe('checkedPairs', () => {
     ])
   })
 })
+
+describe('saját, számozatlan fejléc', () => {
+  const SAJAT = [
+    '# Feldolgozási sor',
+    '',
+    '## 1. feliratok/csatorna-a',
+    '### 1. Első példavideó %%abcDEF12345%%',
+    '- [ ] summary',
+    '',
+    '## Jegyzetek',
+    '- [x] teendő valami',
+    '  - [x] hu',
+    '### Megjegyzés',
+    '- [x] még egy teendő',
+    '',
+  ].join('\n')
+
+  it('nem csoport, és megszakítja a láncot: alatta semmi nem kötődik a videóhoz', () => {
+    const doc = parseQueue(SAJAT)
+    expect(doc.headings).toEqual([{ line: 2, key: 'feliratok/csatorna-a' }])
+    expect(doc.videos[0]!.recipes.map((r) => r.recipeId)).toEqual(['summary'])
+    expect(checkedPairs(doc)).toEqual([])
+  })
+
+  it('a határokat a soruk indexével adja', () => {
+    expect(parseQueue(SAJAT).boundaries).toEqual([0, 6, 9])
+  })
+})

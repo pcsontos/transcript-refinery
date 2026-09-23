@@ -40,9 +40,15 @@ function assertLint(fragment: string): void {
   }
 }
 
-/** A fejléc szakaszának utolsó nem üres sora, a következő csoportfejléc előtt. */
+/**
+ * A fejléc szakaszának utolsó nem üres sora, a következő csoportfejléc vagy
+ * saját fejléc előtt: a felhasználó saját szakaszába nem szúrunk be.
+ */
 function sectionEnd(doc: QueueDoc, lines: readonly string[], headingIndex: number): number {
-  const next = doc.headings.find((heading) => heading.line > headingIndex)?.line ?? lines.length
+  const next = Math.min(
+    doc.headings.find((heading) => heading.line > headingIndex)?.line ?? lines.length,
+    doc.boundaries.find((line) => line > headingIndex) ?? lines.length,
+  )
   let end = headingIndex
   for (let i = headingIndex + 1; i < next; i++) {
     if (lines[i]!.trim() !== '') end = i

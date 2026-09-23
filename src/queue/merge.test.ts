@@ -280,3 +280,41 @@ describe('mergeQueue — fordítások', () => {
     expect(stats).toEqual({ ...NULLA, changedMarks: 1 })
   })
 })
+
+describe('mergeQueue — saját fejléc a csoport után', () => {
+  it('a csoport szakasza a saját fejlécnél zárul: az új videó és a hiányzó recept a fejléc elé kerül', () => {
+    const kezi = [
+      '## 1. feliratok/csatorna-a',
+      '### 1. Első példavideó %%abcDEF12345%%',
+      '- [ ] summary',
+      '',
+      '## Jegyzetek',
+      '- [x] teendő valami',
+      'szabad szöveg',
+      '',
+    ].join('\n')
+
+    const { text, stats } = mergeQueue(kezi, [A1, A2], ALAP)
+
+    expect(text).toBe(
+      [
+        '## 1. feliratok/csatorna-a',
+        '### 1. Első példavideó %%abcDEF12345%%',
+        '- [ ] summary',
+        '- [ ] flashcards',
+        '- [ ] qa',
+        '### 0. Második példavideó %%0123456789abcdef%%',
+        '- [ ] summary',
+        '- [ ] flashcards',
+        '- [ ] qa',
+        '',
+        '## Jegyzetek',
+        '- [x] teendő valami',
+        'szabad szöveg',
+        '',
+      ].join('\n'),
+    )
+    expect(stats).toEqual({ ...NULLA, addedVideos: 1, addedRecipeLines: 2 })
+    expect(mergeQueue(renumberQueue(text), [A1, A2], ALAP).text).toBe(renumberQueue(text))
+  })
+})

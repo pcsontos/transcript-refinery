@@ -1,6 +1,9 @@
 import { translationId } from './layout.js'
 import { classifyLine } from './line.js'
 
+/** Bármely markdown-fejléc; ami nem csoport és nem videó, az a felhasználóé. */
+const OWN_HEADING = /^#{1,6} /
+
 export interface QueueTranslation {
   /** A sor indexe a jegyzetben, nullától. */
   line: number
@@ -41,6 +44,11 @@ export interface QueueDoc {
   lines: string[]
   headings: QueueHeading[]
   videos: QueueVideo[]
+  /**
+   * A saját, számozatlan fejlécek (`# `…`###### `) sorindexe. Nem csoportok és
+   * nem számozódnak, de megszakítják a láncot: ami alattuk áll, a felhasználóé.
+   */
+  boundaries: number[]
 }
 
 export interface QueuePair {
@@ -51,13 +59,15 @@ export interface QueuePair {
 /**
  * A jegyzet szerkezete. Sorvégként `\n`-t feltételez — a vault macOS-en,
  * Obsidianból szerkesztődik. A receptsor a legközelebbi megelőző videóhoz, a
- * fordítássor a legközelebbi megelőző recepthez tartozik; a csoportfejléc
- * mindkét láncot megszakítja. Ami így nem köthető, saját sornak számít.
+ * fordítássor a legközelebbi megelőző recepthez tartozik; a csoportfejléc és a
+ * saját, számozatlan fejléc mindkét láncot megszakítja. Ami így nem köthető,
+ * saját sornak számít.
  */
 export function parseQueue(text: string): QueueDoc {
   const lines = text.split('\n')
   const headings: QueueHeading[] = []
   const videos: QueueVideo[] = []
+  const boundaries: number[] = []
   const seen = new Set<string>()
   let current: QueueVideo | undefined
   let recipe: QueueRecipe | undefined
@@ -105,11 +115,16 @@ export function parseQueue(text: string): QueueDoc {
         })
         break
       default:
+        if (OWN_HEADING.test(raw)) {
+          boundaries.push(line)
+          current = undefined
+          recipe = undefined
+        }
         break
     }
   })
 
-  return { lines, headings, videos }
+  return { lines, headings, videos, boundaries }
 }
 
 /**
