@@ -247,6 +247,16 @@ node dist/cli.js scan --queue
   - `--no-judge`: a bíró pontozói nem futnak (a determinisztikus kapuk igen);
     felülírja a `model.judge_enabled` beállítást
 
+- **A futás nyoma:** minden futás egy JSONL naplót és egy azonos nevű Markdown
+  riportot hagy a `logs.dir` alatt, hogy a kettő párban maradjon.
+
+  A két időformátum szándékosan eltér. A **fájlnév és a futásazonosító UTC**
+  (`2026-09-07T02-14-03`): így a mappa listázása időrendbe rendez, és a nyomok
+  zónától függetlenül összevethetők. A **riport fejléce viszont helyi idő**
+  (`# Futás — 2026-09-07 04:14 → …`), mert azt ember olvassa: az UTC-bélyeg a
+  fali órához képest eltolva jelent meg, és a futás utólagos azonosítását
+  nehezítette.
+
 #### Árazás ellenőrzése (`check-pricing`)
 
 Összeveti a konfigurációban beállított árakat a LiteLLM élő díjszabásával:
@@ -284,6 +294,14 @@ pnpm eval        # Determinisztikus Evalite mérések szintetikus adaton (offlin
 pnpm typecheck   # Típusellenőrzés
 pnpm lint        # Linter futtatása
 ```
+
+A tesztek **rögzített időzónában** futnak: a `vitest.config.ts` a `TZ`-t
+`Europe/Budapest`-re állítja, és ez a shell `TZ`-jét is felülírja. Ez nem
+kozmetika — a riport fejléce helyi időt ír, tehát rögzítés nélkül a tesztje a
+futtató gépen múlna. A zóna szándékosan **nem** UTC: nulla eltolásnál a helyi
+idő és az UTC kimenete egybeesne, és egy UTC-re való visszaesés észrevétlen
+maradna. Ha a rögzítést kiveszed, a `report.test.ts` fejléc-tesztjei minden
+más zónában elbuknak — ez a szándék, nem hiba.
 
 ### A minta-korpusz behozatala más gépről
 
