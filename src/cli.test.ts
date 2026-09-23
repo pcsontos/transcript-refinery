@@ -2021,6 +2021,41 @@ describe('commandScanQueue', () => {
     const sor = await readFile(queuePath(cfg.notesRoot), 'utf8')
     expect(videoBlokk(sor, 'x1')).toContain('  - [ ] hu')
   })
+
+  it('célnyelvű videó alól a pipált fordítássort is törli, és a konzolon jelzi a számát', async () => {
+    await makeVideo(downloads, 'h1', 'Magyar videó', 'Csatorna A', MAGYAR_SRT, null)
+    const cfg = loadConfig(
+      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['summary'] } },
+      '/p/refinery.config.yaml',
+    )
+    const sor = queuePath(cfg.notesRoot)
+    await mkdir(cfg.notesRoot, { recursive: true })
+    await writeFile(
+      sor,
+      [
+        '# Feldolgozási sor',
+        '',
+        '## 1. downloads/youtube/Csatorna A',
+        '### 1. Magyar videó %%h1%%',
+        '- [ ] summary',
+        '  - [x] hu — ✓ 0.90 · $0.0100',
+        '- [ ] flashcards',
+        '- [ ] qa',
+        '- [ ] clean',
+        '- [ ] bloom',
+        '- [ ] notes',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+
+    expect(await readFile(sor, 'utf8')).not.toContain('  - [')
+    expect(naplo.mock.calls.flat().join('\n')).toContain('1 fordítássor törölve célnyelvű videó alól')
+    naplo.mockRestore()
+  })
 })
 
 describe('commandRun — a commit tartalma', () => {
