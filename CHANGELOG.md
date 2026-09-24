@@ -3,6 +3,34 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.2.0] — 2026-09-24
+
+A feldolgozási sor (`_queue.md`) mostantól azt is mutatja, ami már kész: a
+`scan --queue` bepipálja azokat a párokat, amelyeknek a jegyzete már a
+vaultban van, és a futás nem fizet újra egy meglévő jegyzetért.
+
+### ✅ Kész párok a sorban
+
+- **Automatikus pipa:** a scan bepipálja a már kész (videó, recept) párokat,
+  akkor is, ha a jegyzet a soron kívül, `run --recipe`-pel készült. Ha van
+  róla futási eredmény, a pontszám, a költség és a link kerül a sorra; ha
+  csak a jegyzetfájl van meg, `✓ már a vaultban` utótag.
+- **Semmi nem vész el:** a meglévő `✓` utótagot a scan érintetlenül hagyja,
+  pipát soha nem vesz le, és a saját sorokhoz továbbra sem nyúl.
+
+### 💰 Nincs fizetés meglévő jegyzetért
+
+- A futás a modellhívás **előtt** megnézi, létezik-e már a jegyzet. Ha
+  igen, késznek veszi, és nem indít fizetős hívást — akkor sem, ha a
+  jegyzetet kézzel tetted a vaultba.
+
+### ⚠️ Figyelj a `--force`-ra
+
+- `run --queue --force` a sor **minden** kipipált párját újrafuttatja,
+  valódi költséggel — mostantól a scan által késznek jelölteket és a kézzel
+  odatett jegyzeteket is. A `--recipe`, `--source`, `--channel` és
+  `--limit` kapcsolóval szűkíthető.
+
 ## [1.1.0] — 2026-09-23
 
 A feldolgozási sor (`_queue.md`) Obsidianban számozott, összecsukható
@@ -116,5 +144,6 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.2.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.2.0
 [1.1.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.1.0
 [1.0.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.0.0
