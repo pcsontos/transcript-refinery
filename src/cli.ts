@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -22,6 +22,7 @@ import { applyPricingFix, comparePricing, fetchLivePricing } from './model/prici
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
+import { doneLookup, markDone } from './queue/done.js'
 import { queuePath, readQueueFile } from './queue/file.js'
 import { queueLayout } from './queue/layout.js'
 import { isLegacyQueue, migrateLegacy } from './queue/legacy.js'
@@ -222,7 +223,25 @@ export async function commandScanQueue(
   // már az újat látja.
   const legacy = current === null ? null : migrateLegacy(current, layout)
   const merged = mergeQueue(legacy?.text ?? null, items, layout)
-  const text = renumberQueue(merged.text)
+  // Az állapottárat csak olvassuk, és csak ha már van: a scan nem hoz létre
+  // állapottárat. Nélküle a „kész" forrása a lemezen lévő jegyzet.
+  const store = existsSync(cfg.statePath) ? openState(cfg.statePath) : null
+  let done: ReturnType<typeof markDone>
+  try {
+    done = markDone(
+      merged.text,
+      doneLookup({
+        items: new Map(items.map((item) => [item.itemId, item] as const)),
+        registry,
+        notesRoot: cfg.notesRoot,
+        artifactOf: (itemId, kind) => store?.artifactOf(itemId, kind) ?? null,
+        exists: existsSync,
+      }),
+    )
+  } finally {
+    store?.close()
+  }
+  const text = renumberQueue(done.text)
   const { stats } = merged
 
   console.log(
@@ -236,6 +255,11 @@ export async function commandScanQueue(
   if (stats.removedTranslationLines > 0) {
     console.log(
       `${String(stats.removedTranslationLines)} fordítássor törölve célnyelvű videó alól.`,
+    )
+  }
+  if (done.marked > 0) {
+    console.log(
+      `${String(done.marked)} sor késznek jelölve (állapottár vagy meglévő jegyzet alapján).`,
     )
   }
   if (flags.dryRun) {

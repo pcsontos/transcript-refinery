@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { commandCheckPricing, commandRun, commandScan, commandScanQueue, main, USAGE } from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
@@ -2207,5 +2207,110 @@ describe('main és súgó', () => {
     } finally {
       logSpy.mockRestore()
     }
+  })
+})
+
+describe('commandScanQueue — a kész párok bepipálása', () => {
+  beforeEach(() => {
+    vi.mocked(gitCommitPaths).mockClear()
+  })
+
+  /** Az egyetlen felderített elem. */
+  async function elsoElem() {
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    return item!
+  }
+
+  it('az állapottár done rekordja [x]-et és a futás utótagját adja; a második scan nem változtat', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+    const item = await elsoElem()
+    const jegyzet = noteFile(cfg.notesRoot, item, '_summary.md')
+    const pre = openState(cfg.statePath)
+    pre.recordItem(item)
+    pre.recordArtifact('a1', 'summary', 'done', jegyzet, null, {
+      iterations: 1,
+      score: 0.97,
+      costUsd: 0.0471,
+      model: 'proba-draft',
+    })
+    pre.close()
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    const elso = await readFile(queuePath(cfg.notesRoot), 'utf8')
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+
+    const link = relative(cfg.notesRoot, jegyzet)
+    expect(videoBlokk(elso, 'a1')).toEqual([
+      '### 1. Első videó %%a1%%',
+      `- [x] summary — ✓ 0.97 · $0.0471 · [jegyzet](<${link}>)`,
+      '- [ ] flashcards',
+      '- [ ] qa',
+      '- [ ] clean',
+      '- [ ] bloom',
+      '- [ ] notes',
+    ])
+    expect(await readFile(queuePath(cfg.notesRoot), 'utf8')).toBe(elso)
+    expect(naplo.mock.calls.flat().join('\n')).toContain(
+      '1 sor késznek jelölve (állapottár vagy meglévő jegyzet alapján).',
+    )
+    naplo.mockRestore()
+  })
+
+  it('rekord nélküli meglévő jegyzet: a scan bepipálja, a futás nem hív rá modellt, a fájl marad', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const jegyzet = noteFile(cfg.notesRoot, await elsoElem(), '_summary.md')
+    await mkdir(dirname(jegyzet), { recursive: true })
+    await writeFile(jegyzet, '# Kézzel írt jegyzet\n', 'utf8')
+    const sor = queuePath(cfg.notesRoot)
+
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    const scanUtan = await readFile(sor, 'utf8')
+    expect(videoBlokk(scanUtan, 'a1')).toContain(
+      `- [x] summary — ✓ már a vaultban · [jegyzet](<${relative(cfg.notesRoot, jegyzet)}>)`,
+    )
+
+    const hivasok = { generate: 0 }
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens(hivasok) },
+    )
+
+    expect(code).toBe(0)
+    expect(hivasok.generate).toBe(0)
+    expect(await readFile(jegyzet, 'utf8')).toBe('# Kézzel írt jegyzet\n')
+    expect(await readFile(sor, 'utf8')).toBe(scanUtan)
+    const store = openState(cfg.statePath)
+    expect(store.artifactOf('a1', 'summary')).toMatchObject({ status: 'done', path: jegyzet })
+    store.close()
+  })
+
+  it('állapottár nélkül nem hoz létre állapottárat', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+
+    expect(existsSync(cfg.statePath)).toBe(false)
+  })
+
+  it('--dry-run mellett kiírja a számot, de a sort nem írja', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+    const jegyzet = noteFile(cfg.notesRoot, await elsoElem(), '_qa.md')
+    await mkdir(dirname(jegyzet), { recursive: true })
+    await writeFile(jegyzet, '# Kézzel írt jegyzet\n', 'utf8')
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await commandScanQueue(cfg, { dryRun: true, commit: false })
+
+    expect(existsSync(queuePath(cfg.notesRoot))).toBe(false)
+    expect(naplo.mock.calls.flat().join('\n')).toContain('1 sor késznek jelölve')
+    naplo.mockRestore()
   })
 })
