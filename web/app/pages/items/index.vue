@@ -22,10 +22,18 @@ const channels = computed(() => [
   ...new Set(rows.value.flatMap((row) => (row.channel ? [row.channel] : []))),
 ])
 
-const source = ref(ALL)
-const channel = ref(ALL)
-const kind = ref('summary')
-const status = ref(ALL)
+// Az induló szűrők az URL-ből (a riport katalógusa így linkel ide); csak a
+// létező értéket veszi át, egyébként az alapértelmezés marad.
+const query = useRoute().query
+const fromQuery = (key: string, allowed: readonly string[], fallback: string): string => {
+  const value = query[key]
+  return typeof value === 'string' && allowed.includes(value) ? value : fallback
+}
+
+const source = ref(fromQuery('source', sources.value, ALL))
+const channel = ref(fromQuery('channel', channels.value, ALL))
+const kind = ref(fromQuery('kind', kinds.value, 'summary'))
+const status = ref(fromQuery('status', STATUS_LABELS, ALL))
 const sort = ref(SORTS[0] ?? '')
 const onlyBelow = ref(false)
 

@@ -8,6 +8,7 @@ import type {
   ItemDetail,
   ItemListRow,
   Overview,
+  Reports,
   RunDetail,
   RunSummaryView,
 } from 'transcript-refinery'
@@ -183,6 +184,32 @@ describe('API', async () => {
     }
     expect(data.line.itemId).toBe('szint0002')
     expect(data.state.current?.title).toBe('Második példavideó')
+  })
+
+  it('a riport a szintetikus állapotot adja: KPI-k, lefedettség paranccsal, költséggel járó futás', async () => {
+    const reports = await $fetch<Reports>('/api/reports')
+    expect(reports.hasState).toBe(true)
+    expect(reports.kpis).toMatchObject({ videos: 2, channels: 1, words: 10, transcribed: 1 })
+    expect(reports.kpis.spentUsd).toBeCloseTo(0.0123, 10)
+    expect(reports.kpis.vaultCostUsd).toBeCloseTo(0.0123, 10)
+    expect(reports.runs.map((run) => run.runId)).toEqual([FINISHED_RUN])
+    const channel = reports.channels[0]
+    expect(channel?.channel).toBe('Szintetikus Csatorna')
+    expect(channel?.coverage.summary).toEqual({
+      done: 1,
+      failed: 0,
+      total: 2,
+      command: "refinery run --recipe summary --channel 'Szintetikus Csatorna'",
+    })
+    expect(channel?.coverage.qa?.failed).toBe(1)
+    expect(channel?.quality).toEqual({ scored: 1, below: 1, meanScore: 0.62 })
+  })
+
+  it('az elemlista az URL-ből kapja az induló szűrőt', async () => {
+    const html = await $fetch<string>('/items?channel=Szintetikus%20Csatorna&kind=summary&status=k%C3%A9sz')
+    expect(html).toContain('1 / 2 elem')
+    const all = await $fetch<string>('/items?status=ismeretlen')
+    expect(all).toContain('2 / 2 elem')
   })
 
   it('az oldalak a szerveren renderelve a szintetikus adatot mutatják', async () => {
