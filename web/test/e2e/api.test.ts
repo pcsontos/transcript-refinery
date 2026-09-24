@@ -212,6 +212,16 @@ describe('API', async () => {
     expect(all).toContain('2 / 2 elem')
   })
 
+  it('a riportoldal a szerveren renderelve a KPI-kat, a katalógust és a parancsot mutatja', async () => {
+    const html = await $fetch<string>('/reports')
+    expect(html).toContain('Tényleges költés')
+    expect(html).toContain('A vault-tartalom költsége')
+    expect(html).toContain('Csatorna-katalógus')
+    expect(html).toContain('1/2 · 1 hátra')
+    expect(html).toContain('refinery run --recipe summary --channel &#39;Szintetikus Csatorna&#39;')
+    expect(html).toContain('Grafikon betöltése…')
+  })
+
   it('az oldalak a szerveren renderelve a szintetikus adatot mutatják', async () => {
     const overview = await $fetch<string>('/')
     expect(overview).toContain('A korpusz állapota')
