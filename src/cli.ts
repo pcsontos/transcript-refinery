@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -22,6 +22,7 @@ import { applyPricingFix, comparePricing, fetchLivePricing } from './model/prici
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
+import { doneLookup, markDone } from './queue/done.js'
 import { queuePath, readQueueFile } from './queue/file.js'
 import { queueLayout } from './queue/layout.js'
 import { isLegacyQueue, migrateLegacy } from './queue/legacy.js'
@@ -61,6 +62,7 @@ import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
+import { noteFile } from './vault/paths.js'
 
 const VERSION = '0.1.0'
 
@@ -98,7 +100,9 @@ Kapcsolók:
   --recipe <id>     receptet is futtat (pl. summary); enélkül csak átirat
   --dry-run         nem ír fájlt és nem rögzít állapotot; recepttel a
                     modellhívások VALÓS költséggel megtörténnek
-  --force           létező fájlt is felülír
+  --force           létező fájlt is felülír; --queue mellett a sor minden
+                    kipipált párját, a késznek jelölteket is újrafuttatja
+                    (szűkítés: --recipe, --source, --channel, --limit)
   --no-commit       nem commitol és nem pushol a vault repójába
   --retry-failed    csak a korábban hibára futott elemek
   --queue           scan: a vault _queue.md sorába fésül; run: a sor
@@ -222,7 +226,25 @@ export async function commandScanQueue(
   // már az újat látja.
   const legacy = current === null ? null : migrateLegacy(current, layout)
   const merged = mergeQueue(legacy?.text ?? null, items, layout)
-  const text = renumberQueue(merged.text)
+  // Az állapottárat csak olvassuk, és csak ha már van: a scan nem hoz létre
+  // állapottárat. Nélküle a „kész" forrása a lemezen lévő jegyzet.
+  const store = existsSync(cfg.statePath) ? openState(cfg.statePath) : null
+  let done: ReturnType<typeof markDone>
+  try {
+    done = markDone(
+      merged.text,
+      doneLookup({
+        items: new Map(items.map((item) => [item.itemId, item] as const)),
+        registry,
+        notesRoot: cfg.notesRoot,
+        artifactOf: (itemId, kind) => store?.artifactOf(itemId, kind) ?? null,
+        exists: existsSync,
+      }),
+    )
+  } finally {
+    store?.close()
+  }
+  const text = renumberQueue(done.text)
   const { stats } = merged
 
   console.log(
@@ -236,6 +258,11 @@ export async function commandScanQueue(
   if (stats.removedTranslationLines > 0) {
     console.log(
       `${String(stats.removedTranslationLines)} fordítássor törölve célnyelvű videó alól.`,
+    )
+  }
+  if (done.marked > 0) {
+    console.log(
+      `${String(done.marked)} sor késznek jelölve (állapottár vagy meglévő jegyzet alapján).`,
     )
   }
   if (flags.dryRun) {
@@ -435,6 +462,16 @@ export async function commandRun(
     skipped.set(unitKey(unit), { unit, reason })
     printing({ type: 'item:skipped', itemId: unit.item.itemId, reason })
   }
+  /**
+   * A pár már kész: van `done` rekordja, vagy a célfájlja megvan, és nincs
+   * `--force`. Ilyenkor a forrás hiánya nem számít — a pipeline modellhívás
+   * nélkül késznek veszi —, és a `⏸` nem írhatja felül a sor `✓` utótagját.
+   */
+  const alreadyDone = (unit: WorkUnit): boolean =>
+    !flags.force &&
+    (store.isDone(unit.item.itemId, unitKind(unit)) ||
+      (unit.recipe?.publishable === true &&
+        existsSync(noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile))))
 
   let wroteBack = false
   /**
@@ -674,7 +711,7 @@ export async function commandRun(
         // az indításban készül. A szeletelő az első túllépés után mindent
         // elhalaszt, a fordítások pedig a forrásaik után állnak: egy elhalasztott
         // forrás fordítása így maga is elhalasztott lesz.
-        const gap = sourceGap(unit, store)
+        const gap = alreadyDone(unit) ? null : sourceGap(unit, store)
         if (gap === null || sourcePlanned(unit, units)) return true
         skip(unit, gap)
         return false
@@ -732,7 +769,7 @@ export async function commandRun(
     for (const [index, unit] of planned.entries()) {
       // A forrás ebben a futásban is elbukhatott: a fordítás ilyenkor modellhívás
       // nélkül kimarad.
-      const gap = sourceGap(unit, store)
+      const gap = alreadyDone(unit) ? null : sourceGap(unit, store)
       if (gap !== null) {
         skip(unit, gap)
         continue

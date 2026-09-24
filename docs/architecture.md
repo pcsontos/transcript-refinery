@@ -180,13 +180,17 @@ Két szabály, mindkettő tesztelhető:
 
 Írás csak akkor, ha a célfájl nem létezik. Felülírás kizárólag explicit
 `--force`-szal. A vaultban évek kézi munkája van; a pipeline nem írhatja felül.
+A létezést a futás már a modellhívás **előtt** megnézi: a meglévő jegyzet
+`done`-ként rögzül, és nem kerül pénzbe. A hívás utáni write-once ellenőrzés
+biztonsági hálóként megmarad.
 
 **Egyetlen kivétel a feldolgozási sor** (`_queue.md`): ezt a pipeline helyben
 frissíti, mert a kipipált párok eredménye oda íródik vissza. Két szabály védi.
 Csak a saját részeit írja — új videóblokk, a fejlécek sorszáma, a videófejléc
-jelölése, a recept- és fordítássor állapota, és a célnyelvű videó
-fordítássorainak törlése —, a pipákhoz és a saját sorokhoz (a törölt
-fordítássor kivételével) soha nem nyúl. És **atomian** ír,
+jelölése, a recept- és fordítássor állapota, a kész pár pipája, és a
+célnyelvű videó fordítássorainak törlése —, a saját sorokhoz soha nem nyúl,
+pipát pedig csak bekapcsol: kész párnál, és soha nem veszi le (a törölt
+fordítássor kivételével). És **atomian** ír,
 ideiglenes fájlon át, átnevezéssel, mert a jegyzet közben nyitva lehet
 Obsidianban.
 
@@ -371,8 +375,11 @@ feliratforrásokból.
 - **A lista a vault feldolgozási sora** (`<notes_dir>/_queue.md`): számozott csoport- és
   videófejlécek, alattuk receptenként egy pipálható sor, a fordítás behúzva a
   forrásreceptje alatt. A `scan --queue` fésüli bele a felderített
-  elemeket, a `run --queue` a kipipált (videó, recept) párokat dolgozza fel,
-  és az eredményt ugyanazokba a sorokba írja vissza. A receptválasztás így
+  elemeket, és bepipálja a már kész párokat (`migrateLegacy` → `mergeQueue` →
+  `markDone` → `renumberQueue`); a „kész" forrása az állapottár `done`
+  rekordja, vagy ha az nincs, a lemezen lévő jegyzet. A `run --queue` a
+  kipipált (videó, recept) párokat dolgozza fel, és az eredményt ugyanazokba
+  a sorokba írja vissza. A receptválasztás így
   videónként is lehetséges ([`decisions/0010`](<./decisions/0010-videonkenti-receptvalasztas.md>));
   a `--recipe` kapcsolóval indított futás futás-szintű marad.
 
