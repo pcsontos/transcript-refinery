@@ -269,7 +269,11 @@ node dist/cli.js scan --queue
     `--source`, `--channel` és `--limit` szűkíti
   - `--no-commit`: nem commitol és nem pushol automatikusan a vault Git repójába
   - `--no-judge`: a bíró pontozói nem futnak (a determinisztikus kapuk igen);
-    felülírja a `model.judge_enabled` beállítást
+    felülírja a `model.judge_enabled` beállítást. Ha alapból bíró nélkül
+    futnál, a configban állítsd `model.judge_enabled: false`-ra (alapértéke
+    `true`). Visszafelé nincs kapcsoló: `false` mellett egy futásra
+    parancssorból nem kapcsolható vissza a bíró, ahhoz a configot kell
+    átírni
 
 - **A futás nyoma:** minden futás egy JSONL naplót és egy azonos nevű Markdown
   riportot hagy a `logs.dir` alatt, hogy a kettő párban maradjon.
