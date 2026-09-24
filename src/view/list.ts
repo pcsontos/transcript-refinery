@@ -1,4 +1,4 @@
-import type { CellStatus, ItemCell, ItemListRow } from './items.js'
+import { byText, type CellStatus, type ItemCell, type ItemListRow } from './items.js'
 
 /** A `--status` elfogadott értékei. */
 export const LIST_STATUSES: readonly CellStatus[] = ['done', 'failed', 'pending']
@@ -131,6 +131,8 @@ function codeLegend(kinds: readonly string[]): string | null {
 }
 
 const CHANNEL_WIDTH = 16
+/** Az összesítőben több hely jut a névnek: ott ez az egyetlen szöveges oszlop. */
+const SUMMARY_CHANNEL_WIDTH = 24
 /** A cím szélessége, ha nincs terminál (csővezeték, fájl). */
 export const PIPE_TITLE_WIDTH = 40
 const MIN_TITLE_WIDTH = 20
@@ -220,5 +222,92 @@ export function renderItemTable(
   } else if (rows.some((row) => !row.discovered)) {
     lines.push('† a felirat eltűnt')
   }
+  return lines.join('\n')
+}
+
+export interface ChannelSummary {
+  /** `null`: a csatorna nélküli elemek csoportja. */
+  channel: string | null
+  videos: number
+  /** Típusonként a kész (`done`, a küszöb alattiakkal együtt) elemek száma. */
+  done: Record<string, number>
+  /** A csoport összköltsége; `null`, ha egyik cellának sincs költsége. */
+  costUsd: number | null
+}
+
+const addCost = (a: number | null, b: number | null): number | null =>
+  a === null ? b : b === null ? a : a + b
+
+/**
+ * Csatornánkénti összesítés a már szűrt sorokból: név szerint (`byText`), a
+ * csatorna nélküli csoport a végén.
+ */
+export function summarizeChannels(
+  rows: readonly ItemListRow[],
+  kinds: readonly string[],
+): ChannelSummary[] {
+  const groups = new Map<string | null, ChannelSummary>()
+  for (const row of rows) {
+    let group = groups.get(row.channel)
+    if (!group) {
+      group = {
+        channel: row.channel,
+        videos: 0,
+        done: Object.fromEntries(kinds.map((k) => [k, 0])),
+        costUsd: null,
+      }
+      groups.set(row.channel, group)
+    }
+    group.videos++
+    for (const kind of kinds) {
+      if (row.cells[kind]?.status === 'done') group.done[kind]!++
+    }
+    group.costUsd = addCost(group.costUsd, rowCost(row))
+  }
+  return [...groups.values()].sort((a, b) =>
+    a.channel === null ? 1 : b.channel === null ? -1 : byText(a.channel, b.channel),
+  )
+}
+
+/** A csatorna-összesítő: első sor, táblázat `Összesen` sorral, kódmagyarázat. */
+export function renderChannelTable(
+  summaries: readonly ChannelSummary[],
+  kinds: readonly string[],
+  filterNote: string,
+): string {
+  const total: ChannelSummary = {
+    channel: 'Összesen',
+    videos: summaries.reduce((sum, s) => sum + s.videos, 0),
+    done: Object.fromEntries(
+      kinds.map((k) => [k, summaries.reduce((sum, s) => sum + (s.done[k] ?? 0), 0)]),
+    ),
+    costUsd: summaries.reduce<number | null>((sum, s) => addCost(sum, s.costUsd), null),
+  }
+  const all = [...summaries, total]
+  const codes = kindCodes(kinds)
+  const columns: Column[] = [
+    {
+      header: 'Csatorna',
+      cells: all.map((s) => truncate(s.channel ?? '(nincs csatorna)', SUMMARY_CHANNEL_WIDTH)),
+      align: 'left',
+    },
+    { header: 'Videó', cells: all.map((s) => String(s.videos)), align: 'right' },
+    ...kinds.map(
+      (kind): Column => ({
+        header: codes[kind]!,
+        cells: all.map((s) => `${String(s.done[kind] ?? 0)}/${String(s.videos)}`),
+        align: 'right',
+      }),
+    ),
+    {
+      header: '$',
+      cells: all.map((s) => (s.costUsd === null ? '—' : usd(s.costUsd))),
+      align: 'right',
+    },
+  ]
+  const head = `${String(summaries.length)} csatorna${filterNote ? ` (${filterNote})` : ''}`
+  const lines = [head, '', ...layout(columns)]
+  const legend = codeLegend(kinds)
+  if (legend !== null) lines.push('', legend)
   return lines.join('\n')
 }

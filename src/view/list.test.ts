@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { ItemCell, ItemListRow } from './items.js'
-import { describeFilters, filterRows, kindCodes, renderItemTable } from './list.js'
+import {
+  describeFilters,
+  filterRows,
+  kindCodes,
+  renderChannelTable,
+  renderItemTable,
+  summarizeChannels,
+} from './list.js'
 
 const KINDS = ['transcript', 'summary', 'clean', 'clean-hu']
 
@@ -211,5 +218,54 @@ describe('renderItemTable', () => {
       filterNote: '',
     })
     expect(gone.split('\n').at(-1)).toBe('† a felirat eltűnt')
+  })
+})
+
+describe('summarizeChannels és renderChannelTable', () => {
+  const rows = [
+    row('a', { channel: 'Zeta' }, { summary: { status: 'done', costUsd: 0.1 } }),
+    row('b', { channel: null }),
+    row('c', { channel: 'Alfa' }, {
+      summary: { status: 'done', belowThreshold: true, costUsd: 0.05 },
+      clean: { status: 'failed' },
+    }),
+    row('d', { channel: 'Zeta' }, { transcript: { status: 'done' } }),
+  ]
+
+  it('csoportosít, név szerint rendez, a csatorna nélküli csoport a végén', () => {
+    const summaries = summarizeChannels(rows, KINDS)
+    expect(summaries.map((s) => [s.channel, s.videos, s.done.summary, s.done.transcript])).toEqual([
+      ['Alfa', 1, 1, 0],
+      ['Zeta', 2, 1, 1],
+      [null, 1, 0, 0],
+    ])
+    expect(summaries[0]!.costUsd).toBeCloseTo(0.05)
+    expect(summaries[2]!.costUsd).toBeNull()
+  })
+
+  it('a csatornanév 24 karakterre vágódik', () => {
+    const text = renderChannelTable(
+      summarizeChannels([row('a', { channel: 'Egy Kertész Kertje Pilisszentkereszten' })], KINDS),
+      KINDS,
+      '',
+    )
+    expect(text.split('\n')[3]).toMatch(/^Egy Kertész Kertje Pili… +1 /)
+  })
+
+  it('a táblázat típusonként kész/összes, Összesen sorral', () => {
+    const text = renderChannelTable(summarizeChannels(rows, KINDS), KINDS, '')
+    expect(text).toBe(
+      [
+        '3 csatorna',
+        '',
+        'Csatorna         Videó tra sum cle cle-hu      $',
+        'Alfa                 1 0/1 1/1 0/1    0/1 0.0500',
+        'Zeta                 2 1/2 1/2 0/2    0/2 0.1000',
+        '(nincs csatorna)     1 0/1 0/1 0/1    0/1      —',
+        'Összesen             4 1/4 2/4 0/4    0/4 0.1500',
+        '',
+        'tra = transcript, sum = summary, cle = clean, cle-hu = clean-hu',
+      ].join('\n'),
+    )
   })
 })
