@@ -47,18 +47,23 @@ export function describeFilters(filters: ListFilters): string {
 }
 
 /**
+ * A fordítási típus alapja (`summary-hu` → `summary`): a `-<nyelv>` utótagú
+ * típus, amelynek az alapja is a típusok között van. Más típusra `null`.
+ */
+export function translationBase(kind: string, kinds: readonly string[]): string | null {
+  const translation = /^(.+)-([a-z]{2})$/.exec(kind)
+  return translation && kinds.includes(translation[1]!) ? translation[1]! : null
+}
+
+/**
  * Rövid oszlopkód típusonként: az alaprecept első 3 karaktere, a fordítás
  * `<alapkód>-<nyelv>`. Ha két típus kódja egyezne, mindkettő a teljes azonosítót
  * kapja — a fejléc sosem lehet kétértelmű.
  */
 export function kindCodes(kinds: readonly string[]): Record<string, string> {
-  const known = new Set(kinds)
   const candidates = kinds.map((kind) => {
-    const translation = /^(.+)-([a-z]{2})$/.exec(kind)
-    if (translation && known.has(translation[1]!)) {
-      return `${translation[1]!.slice(0, 3)}-${translation[2]!}`
-    }
-    return kind.slice(0, 3)
+    const base = translationBase(kind, kinds)
+    return base === null ? kind.slice(0, 3) : `${base.slice(0, 3)}${kind.slice(base.length)}`
   })
   const codes: Record<string, string> = {}
   kinds.forEach((kind, i) => {
@@ -117,7 +122,7 @@ function statusText(cell: ItemCell | undefined): string {
 }
 
 /** Az elem összköltsége; `null`, ha egyik cellájának sincs költsége. */
-function rowCost(row: ItemListRow): number | null {
+export function rowCost(row: ItemListRow): number | null {
   const costs = Object.values(row.cells)
     .map((cell) => cell.costUsd)
     .filter((cost): cost is number => cost !== null)
