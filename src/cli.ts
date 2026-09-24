@@ -63,6 +63,16 @@ import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 import { noteFile } from './vault/paths.js'
+import { readItems, type CellStatus } from './view/items.js'
+import {
+  LIST_STATUSES,
+  describeFilters,
+  filterRows,
+  renderChannelTable,
+  renderItemTable,
+  summarizeChannels,
+} from './view/list.js'
+import { artifactKinds } from './view/overview.js'
 
 const VERSION = '0.1.0'
 
@@ -91,6 +101,7 @@ Parancsok:
   scan            Felderíti a feldolgozható videókat, és nem ír semmit.
   run             Átiratot készít és a vaultba írja.
   check-pricing   Összeveti a config árazását a LiteLLM élő áraival.
+  list            Kilistázza az elemeket típusonkénti állapottal; nem ír semmit.
 
 Kapcsolók:
   --config <út>     konfigurációs fájl (alapértelmezés: refinery.config.yaml)
@@ -109,6 +120,9 @@ Kapcsolók:
                     kipipált (videó, recept) párjait dolgozza fel
   --no-judge        a bíró pontozói nem futnak (a determinisztikus kapuk
                     igen); felülírja a model.judge_enabled beállítást
+  --status <érték>  list: done, failed vagy pending; --recipe nélkül
+                    bármely típusra illik
+  --channels        list: csatornánkénti összesítő
   --fix             check-pricing: a talált árazási eltéréseket visszaírja
                     a konfigurációs fájlba
   --help, -h        megjeleníti ezt a súgót
@@ -283,6 +297,68 @@ export async function commandScanQueue(
     const push = await gitPush(cfg.vaultPath)
     if (!push.pushed) console.log('A push nem sikerült, a commit lokálisan maradt.')
   }
+  return 0
+}
+
+export interface ListOptions {
+  source?: string
+  channel?: string
+  recipe?: string
+  status?: string
+  channels: boolean
+  limit?: number
+  /** A terminál szélessége; `undefined`, ha a kimenet nem terminálba megy. */
+  lineWidth?: number
+}
+
+/**
+ * Az elemek listája receptenkénti állapottal, vagy (`--channels`) csatornánkénti
+ * összesítő. Csak olvas: az állapottárat írásvédett kapcsolaton nyitja, és ha
+ * nincs, nem hozza létre.
+ */
+export async function commandList(cfg: Config, opts: ListOptions): Promise<number> {
+  const kinds = artifactKinds(recipesFor(cfg))
+  if (opts.status !== undefined && !LIST_STATUSES.includes(opts.status as CellStatus)) {
+    console.error('A --status értéke done, failed vagy pending lehet.')
+    return 1
+  }
+  if (opts.recipe !== undefined && !kinds.includes(opts.recipe)) {
+    console.error(`Ismeretlen típus: ${opts.recipe}. Ismert típusok: ${kinds.join(', ')}`)
+    return 1
+  }
+  if (opts.recipe !== undefined && opts.channels) {
+    console.error('A --channels minden típust mutat; a --recipe mellette nem használható.')
+    return 1
+  }
+  if (opts.limit !== undefined && !(Number.isInteger(opts.limit) && opts.limit > 0)) {
+    console.error('A --limit pozitív egész szám.')
+    return 1
+  }
+
+  const filters = {
+    source: opts.source,
+    channel: opts.channel,
+    recipe: opts.recipe,
+    status: opts.status as CellStatus | undefined,
+    // Az összesítő a teljes szűrt halmazt számolja: ott a limit nem érvényes.
+    limit: opts.channels ? undefined : opts.limit,
+  }
+  const rows = filterRows(await readItems(cfg), filters)
+  if (rows.length === 0) {
+    console.log('Nincs a szűrőnek megfelelő elem.')
+    return 0
+  }
+  const note = describeFilters(filters)
+  console.log(
+    opts.channels
+      ? renderChannelTable(summarizeChannels(rows, kinds), kinds, note)
+      : renderItemTable(rows, kinds, {
+          recipe: opts.recipe,
+          showChannel: !opts.channel,
+          lineWidth: opts.lineWidth,
+          filterNote: note,
+        }),
+  )
   return 0
 }
 
@@ -862,6 +938,8 @@ export async function main(argv: readonly string[]): Promise<number> {
       // kapcsolót nem adták meg, és ilyenkor a config dönt.
       'no-judge': { type: 'boolean' },
       fix: { type: 'boolean', default: false },
+      status: { type: 'string' },
+      channels: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: false,
@@ -881,6 +959,17 @@ export async function main(argv: readonly string[]): Promise<number> {
     return commandCheckPricing(loadModelConfig(raw, process.env, cfg.configPath), {
       fix: values.fix,
       configPath,
+    })
+  }
+  if (command === 'list') {
+    return commandList(cfg, {
+      source: values.source,
+      channel: values.channel,
+      recipe: values.recipe,
+      status: values.status,
+      channels: values.channels,
+      limit: values.limit === undefined ? undefined : Number(values.limit),
+      lineWidth: process.stdout.isTTY ? process.stdout.columns : undefined,
     })
   }
   if (command === 'run') {

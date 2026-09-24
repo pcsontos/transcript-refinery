@@ -1,9 +1,17 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { commandCheckPricing, commandRun, commandScan, commandScanQueue, main, USAGE } from './cli.js'
+import {
+  commandCheckPricing,
+  commandList,
+  commandRun,
+  commandScan,
+  commandScanQueue,
+  main,
+  USAGE,
+} from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
 import type { RunEvent } from './events.js'
 import { estimateItemUsd } from './model/budget.js'
@@ -14,7 +22,7 @@ import { renumberQueue } from './queue/renumber.js'
 import { getRecipe } from './recipe/registry.js'
 import { runId } from './run/id.js'
 import { skeletonOf } from './rubric/skeleton.js'
-import { folderSource } from './source/folder.js'
+import { discoverAll, folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
 import type { ModelRole } from './types.js'
 import { gitCommitPaths } from './vault/git.js'
@@ -2382,5 +2390,145 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
 
     expect(hivasok.generate).toBe(0)
     expect(await readFile(sor, 'utf8')).toBe(scanUtan)
+  })
+})
+
+describe('commandList', () => {
+  let logs: string[]
+  let errors: string[]
+
+  beforeEach(() => {
+    logs = []
+    errors = []
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      logs.push(args.join(' '))
+    })
+    vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      errors.push(args.join(' '))
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  /** Két videó; az elsőn kész summary, a másodikon hibás clean. */
+  async function ketVideoAllapottal() {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'b1', 'Második videó', 'Csatorna B')
+    const cfg = loadConfig(rawConfig(5), '/p/refinery.config.yaml')
+    const items = await discoverAll(cfg.sources, cfg.languages)
+    const idOf = (title: string) => items.find((i) => i.title === title)!.itemId
+    const store = openState(cfg.statePath)
+    try {
+      for (const item of items) store.recordItem(item)
+      store.recordArtifact(idOf('Első videó'), 'summary', 'done', '/v/a.md', null, {
+        iterations: 1,
+        score: 0.9,
+        costUsd: 0.08,
+        model: 'proba-draft',
+      })
+      store.recordArtifact(idOf('Második videó'), 'clean', 'failed', null, 'szimulált hiba')
+    } finally {
+      store.close()
+    }
+    return cfg
+  }
+
+  it('állapottár nélkül minden cella hátra, és nem jön létre állapotfájl', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawConfig(5), '/p/refinery.config.yaml')
+
+    expect(await commandList(cfg, { channels: false })).toBe(0)
+
+    expect(existsSync(cfg.statePath)).toBe(false)
+    const lines = logs.join('\n').split('\n')
+    expect(lines[0]).toBe('1 elem')
+    expect(lines[3]).toMatch(/^1 Első videó +Csatorna A /)
+    expect(lines[3]).not.toMatch(/[✓↓✗]/)
+  })
+
+  it('a --recipe --status pending pontosan azokat adja, amelyeken a típus még nem futott', async () => {
+    const cfg = await ketVideoAllapottal()
+
+    expect(await commandList(cfg, { channels: false, recipe: 'summary', status: 'pending' })).toBe(0)
+
+    const out = logs.join('\n')
+    expect(out).toContain('1 elem (típus: summary, állapot: pending)')
+    expect(out).toContain('Második videó')
+    expect(out).not.toContain('Első videó')
+  })
+
+  it('a --status failed --recipe nélkül bármely típus hibájára illik', async () => {
+    const cfg = await ketVideoAllapottal()
+
+    expect(await commandList(cfg, { channels: false, status: 'failed' })).toBe(0)
+
+    const out = logs.join('\n')
+    expect(out).toContain('Második videó')
+    expect(out).not.toContain('Első videó')
+  })
+
+  it('a --channel kis- és nagybetű nélkül szűr, és elrejti a csatornaoszlopot', async () => {
+    const cfg = await ketVideoAllapottal()
+
+    expect(await commandList(cfg, { channels: false, channel: 'csatorna a' })).toBe(0)
+
+    const lines = logs.join('\n').split('\n')
+    expect(lines[0]).toBe('1 elem (csatorna: csatorna a)')
+    expect(lines[2]).not.toContain('Csatorna')
+    expect(lines[3]).toMatch(/^1 Első videó +· +✓ /)
+  })
+
+  it('a --channels csatornánként összesít, Összesen sorral', async () => {
+    const cfg = await ketVideoAllapottal()
+
+    expect(await commandList(cfg, { channels: true })).toBe(0)
+
+    const lines = logs.join('\n').split('\n')
+    expect(lines[0]).toBe('2 csatorna')
+    expect(lines[3]).toMatch(/^Csatorna A +1 0\/1 1\/1 /)
+    expect(lines[5]).toMatch(/^Összesen +2 0\/2 1\/2 .* 0\.0800$/)
+  })
+
+  it('a futás után az állapotfájl bájtra és időbélyegre változatlan', async () => {
+    const cfg = await ketVideoAllapottal()
+    const elotte = await readFile(cfg.statePath)
+    const { mtimeMs } = await stat(cfg.statePath)
+
+    expect(await commandList(cfg, { channels: false })).toBe(0)
+    expect(await commandList(cfg, { channels: true })).toBe(0)
+
+    expect((await readFile(cfg.statePath)).equals(elotte)).toBe(true)
+    expect((await stat(cfg.statePath)).mtimeMs).toBe(mtimeMs)
+  })
+
+  it('üres eredménynél megnevezi, és 0-val tér vissza', async () => {
+    const cfg = await ketVideoAllapottal()
+
+    expect(await commandList(cfg, { channels: false, channel: 'Nincsilyen' })).toBe(0)
+    expect(logs).toEqual(['Nincs a szűrőnek megfelelő elem.'])
+  })
+
+  it.each([
+    [{ recipe: 'nincsilyen' }, /^Ismeretlen típus: nincsilyen\. Ismert típusok: transcript, summary, /],
+    [{ status: 'kesz' }, /^A --status értéke done, failed vagy pending lehet\.$/],
+    [{ recipe: 'summary', channels: true }, /^A --channels minden típust mutat/],
+    [{ limit: 0 }, /^A --limit pozitív egész szám\.$/],
+    [{ limit: Number.NaN }, /^A --limit pozitív egész szám\.$/],
+  ])('hibás kapcsoló (%o) → 1-es kód, megnevezett üzenet', async (opts, message) => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(rawConfig(5), '/p/refinery.config.yaml')
+
+    expect(await commandList(cfg, { channels: false, ...opts })).toBe(1)
+    expect(errors).toHaveLength(1)
+    expect(errors[0]).toMatch(message)
+    expect(logs).toEqual([])
+  })
+
+  it('a USAGE felsorolja a list parancsot és az új kapcsolókat', () => {
+    expect(USAGE).toContain('  list ')
+    expect(USAGE).toContain('--status <érték>')
+    expect(USAGE).toContain('--channels')
   })
 })
