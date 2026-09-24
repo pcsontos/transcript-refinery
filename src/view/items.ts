@@ -40,7 +40,7 @@ function thresholdOf(registry: Registry, kind: string): number | null {
   return registry[kind]?.rubric.passThreshold ?? null
 }
 
-const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+export const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
 
 /**
  * Az elemlista: a felderített elemek felderítési sorrendben, utánuk azok, amelyek
