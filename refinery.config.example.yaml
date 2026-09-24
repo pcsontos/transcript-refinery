@@ -53,6 +53,10 @@ model:
   base_url: http://localhost:4000/v1
   draft: claude-sonnet-5
   judge: grok-4-fast-reasoning
+  # A bíró pontozói fussanak-e alapból (a determinisztikus kapuk mindig
+  # futnak). false esetén egy futásra sem kapcsolható vissza parancssorból;
+  # a --no-judge csak kikapcsolni tud.
+  # judge_enabled: true
 
 # USD egymillió tokenre, szerepenként be- és kimenetre. Azért konfigurációból
 # és nem beégetett ártáblázatból, mert az avul. Ellenőrizd a LiteLLM
