@@ -19,7 +19,7 @@ import type { NormalizedTranscript, SourceItem } from './types.js'
 import { lintVaultMarkdown } from './vault/lint.js'
 import { noteBody, type NoteBody } from './vault/note-body.js'
 import { noteFile } from './vault/paths.js'
-import { publishNote, type PublishOptions } from './vault/publish.js'
+import { exists, publishNote, type PublishOptions } from './vault/publish.js'
 import { renderRecipeNote, renderTranscriptNote } from './vault/render.js'
 
 export interface RecipeDeps {
@@ -169,6 +169,19 @@ async function runRecipe(
   recipeDeps: RecipeDeps,
 ): Promise<ItemOutcome> {
   const { recipe, modelConfig, guard } = recipeDeps
+
+  // A write-once elv a modellhívás ELŐTT: a már meglévő jegyzetért nem
+  // fizetünk. A `force` felülírja a fájlt, ezért ott a hívás is kell.
+  if (recipe.publishable && !deps.options.force) {
+    const target = noteFile(deps.notesRoot, item, recipe.outputFile)
+    if (await exists(target)) {
+      if (!deps.options.dryRun) {
+        deps.store.recordArtifact(item.itemId, recipe.id, 'done', target, null, undefined, deps.commit)
+      }
+      deps.sink({ type: 'item:skipped', itemId: item.itemId, reason: 'a fájl már létezik' })
+      return { status: 'skipped', recipePath: target }
+    }
+  }
 
   // Fordításnál a bemenet és a viszonyítási alap a forrásjegyzet törzse, nem az
   // átirat: így a rubrika a forráshoz mér, és a `refine` loop érintetlen.

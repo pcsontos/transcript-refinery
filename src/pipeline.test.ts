@@ -823,3 +823,105 @@ describe('processItem fordítással', () => {
     expect(deps.store.artifactOf(item().itemId, 'proba-hu')!.error).toBe('előbb a proba recept kell')
   })
 })
+
+describe('processItem — a már meglévő jegyzet a modellhívás előtt', () => {
+  /** Egy kézzel odatett jegyzet a recept célútján, állapottár-rekord nélkül. */
+  async function meglevoJegyzet(outputFile: string): Promise<string> {
+    const path = noteFile(notesRoot, item(), outputFile)
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, '# Kézzel írt jegyzet\n', 'utf8')
+    return path
+  }
+
+  it('létező célfájlnál nem hív modellt, done-ként rögzíti, és a fájl bájtra marad', async () => {
+    const deps = alapDeps()
+    const path = await meglevoJegyzet('_proba.md')
+    const draft = fixModell('## Új jegyzet\n')
+    const { sink, events } = collectEvents()
+
+    const outcome = await processItem(item(), {
+      ...deps,
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: modelClientFrom({ draft, judge: fixModell('nem hívjuk') }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(draft.doGenerateCalls).toHaveLength(0)
+    expect(await readFile(path, 'utf8')).toBe('# Kézzel írt jegyzet\n')
+    expect(deps.store.artifactOf(item().itemId, 'proba')).toMatchObject({
+      status: 'done',
+      path,
+      score: null,
+      costUsd: null,
+    })
+    expect(events).toContainEqual({
+      type: 'item:skipped',
+      itemId: item().itemId,
+      reason: 'a fájl már létezik',
+    })
+    expect(outcome.skipReason).toBeUndefined()
+  })
+
+  it('force mellett hív modellt, és felülírja a fájlt', async () => {
+    const deps = alapDeps()
+    const path = await meglevoJegyzet('_proba.md')
+    const draft = fixModell('## Új jegyzet\n')
+
+    await processItem(item(), {
+      ...deps,
+      options: { force: true },
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: modelClientFrom({ draft, judge: fixModell('nem hívjuk') }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(draft.doGenerateCalls).toHaveLength(1)
+    expect(await readFile(path, 'utf8')).toContain('## Új jegyzet')
+  })
+
+  it('dry-run mellett sem hív modellt, de nem rögzít', async () => {
+    const deps = alapDeps()
+    await meglevoJegyzet('_proba.md')
+    const draft = fixModell('## Új jegyzet\n')
+
+    await processItem(item(), {
+      ...deps,
+      options: { dryRun: true },
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: modelClientFrom({ draft, judge: fixModell('nem hívjuk') }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(draft.doGenerateCalls).toHaveLength(0)
+    expect(deps.store.artifactOf(item().itemId, 'proba')).toBeNull()
+  })
+
+  it('fordításnál a forrásjegyzetet sem keresi: kész forrás nélkül is done', async () => {
+    const deps = alapDeps()
+    await meglevoJegyzet('_proba-hu.md')
+    const draft = fixModell(MAGYAR_FORDITAS)
+
+    await processItem(item(), {
+      ...deps,
+      recipeDeps: {
+        recipe: translationOf(ATMENO_RECEPT, 'hu'),
+        client: modelClientFrom({ draft, judge: fixModell('nem hívjuk') }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(draft.doGenerateCalls).toHaveLength(0)
+    expect(deps.store.artifactOf(item().itemId, 'proba-hu')!.status).toBe('done')
+  })
+})

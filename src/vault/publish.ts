@@ -13,7 +13,8 @@ export interface PublishResult {
   path: string
 }
 
-async function exists(path: string): Promise<boolean> {
+/** Létezik-e a fájl. A futás a modellhívás előtt ezzel nézi meg a célfájlt. */
+export async function exists(path: string): Promise<boolean> {
   try {
     await access(path, constants.F_OK)
     return true
