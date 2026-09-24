@@ -281,6 +281,29 @@ node dist/cli.js scan --queue
   fali órához képest eltolva jelent meg, és a futás utólagos azonosítását
   nehezítette.
 
+#### Katalógus (`list`)
+
+Terminálos áttekintés a felderített elemekről, típusonkénti állapottal —
+csak olvas, modellt nem hív, `LITELLM_API_KEY` nélkül is fut. A jelek:
+`✓` kész, `↓` kész, de a recept küszöbe alatt, `✗` hibás, `·` hátra.
+
+```bash
+# egy csatorna videói, típusonként egy oszloppal
+node dist/cli.js list --channel "Sajjaad Khader"
+
+# csatornánként: videószám, típusonként kész/összes, összköltség
+node dist/cli.js list --channels
+
+# amin a clean még nem futott — ezeket érdemes kipipálni a sorban
+node dist/cli.js list --recipe clean --status pending
+```
+
+A `--status` (`done`, `failed`, `pending`) `--recipe` nélkül bármely típusra
+illik: a `list --status failed` minden elemet mutat, amin legalább egy
+típus hibára futott. A `--source`, a `--channel` és a `--limit` ugyanúgy
+szűr, mint a `run`-nál. A számok ugyanabból az olvasó rétegből jönnek, mint
+a webes felületéi.
+
 #### Árazás ellenőrzése (`check-pricing`)
 
 Összeveti a konfigurációban beállított árakat a LiteLLM élő díjszabásával:

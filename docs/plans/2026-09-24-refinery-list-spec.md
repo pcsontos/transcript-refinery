@@ -131,7 +131,7 @@ export function kindCodes(kinds: readonly string[]): Record<string, string>
 export function renderItemTable(
   rows: readonly ItemListRow[],
   kinds: readonly string[],
-  opts: { recipe?: string; showChannel: boolean; titleWidth: number; filterNote: string },
+  opts: { recipe?: string; showChannel: boolean; lineWidth?: number; filterNote: string },
 ): string
 ```
 
@@ -139,7 +139,7 @@ export function renderItemTable(
   pl. `3 elem (csatorna: Sajjaad Khader)`.
 - **Oszlopok, balról jobbra:**
   - `#`: egytől számozva, jobbra igazítva;
-  - `Cím`: `titleWidth` karakterre vágva, a vágott cím végén `…`; az eltűnt
+  - `Cím`: a címszélességre (lásd lent) vágva, a vágott cím végén `…`; az eltűnt
     feliratú elem (`discovered: false`) címe elé `† ` kerül;
   - `Csatorna`: csak ha `showChannel` igaz (vagyis nincs `--channel`),
     legfeljebb 16 karakter, a vágott név végén `…`, `null` csatornánál `—`;
@@ -168,19 +168,26 @@ export interface ChannelSummary {
   videos: number
   /** Típusonként a kész (`done`, a küszöb alattiakkal együtt) elemek száma. */
   done: Record<string, number>
-  costUsd: number
+  /** A csoport összköltsége; `null`, ha egyik cellának sincs költsége. */
+  costUsd: number | null
 }
 
 export function summarizeChannels(rows: readonly ItemListRow[], kinds: readonly string[]): ChannelSummary[]
-export function renderChannelTable(summaries: readonly ChannelSummary[], kinds: readonly string[]): string
+export function renderChannelTable(
+  summaries: readonly ChannelSummary[],
+  kinds: readonly string[],
+  filterNote: string,
+): string
 ```
 
 - A `summarizeChannels` a már szűrt sorokat csoportosítja csatorna szerint.
   A `--limit` itt nem érvényes: a `commandList` `--channels` mellett a limit
   nélkül szűr.
+- **Első sor:** `<N> csatorna`; ha van szűrő, utána zárójelben a
+  szűrőmegjegyzés, mint az elemlistánál.
 - A sorrend: a csatornák név szerint (`byText`, mint a `buildItemRows`-ban),
   a `null` csatorna `(nincs csatorna)` néven a végén.
-- **Oszlopok:** `Csatorna`, `Videó`, típusonként `<kész>/<videó>` a kódjával,
+- **Oszlopok:** `Csatorna` (legfeljebb 24 karakter, a vágott név végén `…`), `Videó`, típusonként `<kész>/<videó>` a kódjával,
   `$` (összköltség 4 tizedessel; `—`, ha a csoportban egyik cellának sincs költsége).
 - Az utolsó sor `Összesen`: a videók, a típusonkénti kész számok és a
   költség összege.
@@ -188,7 +195,8 @@ export function renderChannelTable(summaries: readonly ChannelSummary[], kinds: 
 
 ### A címszélesség
 
-A `commandList` számolja ki:
+A `commandList` a `lineWidth`-et adja át (TTY-n `process.stdout.columns`,
+egyébként `undefined`), és a `renderItemTable` számolja ki belőle a címszélességet:
 
 - TTY-n (`process.stdout.isTTY`): `process.stdout.columns` mínusz a többi
   oszlop szélessége, legalább 20;
