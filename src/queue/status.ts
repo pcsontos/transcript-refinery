@@ -24,19 +24,26 @@ export function pairKey(itemId: string, recipeId: string): string {
   return JSON.stringify([itemId, recipeId])
 }
 
+/** A modell nélkül késznek talált pár jelölése: a jegyzet már a vaultban volt. */
+export const IN_VAULT_STATUS = '✓ már a vaultban'
+
 /**
  * Kész pár utótagja: pontszám, költség és a jegyzet relatív linkje. A költség
  * négy tizedes, mint az `item:refined` kiírásában — egy pár nagyságrendjében a
- * két tizedes minden összeget `0.00`-nak mutatna.
+ * két tizedes minden összeget `0.00`-nak mutatna. Se pontszám, se költség: a
+ * pár modell nélkül lett kész, mert a jegyzet már megvolt.
  */
 export function doneStatus(
   record: Pick<ArtifactRecord, 'score' | 'costUsd' | 'path'>,
   notesRoot: string,
 ): string {
-  const parts = [
-    `✓ ${record.score === null ? '–' : record.score.toFixed(2)}`,
-    `$${(record.costUsd ?? 0).toFixed(4)}`,
-  ]
+  const parts =
+    record.score === null && record.costUsd === null
+      ? [IN_VAULT_STATUS]
+      : [
+          `✓ ${record.score === null ? '–' : record.score.toFixed(2)}`,
+          `$${(record.costUsd ?? 0).toFixed(4)}`,
+        ]
   if (record.path !== null) {
     const link = relative(notesRoot, record.path).split(sep).join('/')
     parts.push(`[jegyzet](<${link}>)`)

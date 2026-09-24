@@ -21,6 +21,27 @@ describe('doneStatus', () => {
   it('útvonal nélküli receptnél a link elmarad', () => {
     expect(doneStatus({ score: 1, costUsd: 0.1, path: null }, '/v/root')).toBe('✓ 1.00 · $0.1000')
   })
+
+  it('pontszám és költség nélkül: a jegyzet már a vaultban volt, linkkel', () => {
+    expect(
+      doneStatus({ score: null, costUsd: null, path: '/v/root/f/Elso_summary.md' }, '/v/root'),
+    ).toBe('✓ már a vaultban · [jegyzet](<f/Elso_summary.md>)')
+  })
+
+  it('pontszám és költség nélkül, útvonal nélkül: csak a jelölés', () => {
+    expect(doneStatus({ score: null, costUsd: null, path: null }, '/v/root')).toBe(
+      '✓ már a vaultban',
+    )
+  })
+
+  it('csak az egyik hiányzik: a régi formátum marad', () => {
+    expect(doneStatus({ score: null, costUsd: 0.01, path: null }, '/v/root')).toBe(
+      '✓ – · $0.0100',
+    )
+    expect(doneStatus({ score: 0.9, costUsd: null, path: null }, '/v/root')).toBe(
+      '✓ 0.90 · $0.0000',
+    )
+  })
 })
 
 describe('failedStatus', () => {
