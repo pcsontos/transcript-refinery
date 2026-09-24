@@ -263,7 +263,10 @@ node dist/cli.js scan --queue
   - `--source <név>`: szűrés adott forrásmappára
   - `--channel <név>`: szűrés csatornanévre
   - `--retry-failed`: csak a korábban hibára futott elemek újrafuttatása
-  - `--force`: a már elkészült jegyzetek felülírása
+  - `--force`: a már elkészült jegyzetek felülírása. `--queue` mellett a sor
+    **minden** kipipált párját újrafuttatja, a `scan` által késznek jelölteket
+    (és a kézzel odatett jegyzeteket) is, valódi költséggel; a `--recipe`,
+    `--source`, `--channel` és `--limit` szűkíti
   - `--no-commit`: nem commitol és nem pushol automatikusan a vault Git repójába
   - `--no-judge`: a bíró pontozói nem futnak (a determinisztikus kapuk igen);
     felülírja a `model.judge_enabled` beállítást

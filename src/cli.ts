@@ -100,7 +100,9 @@ Kapcsolók:
   --recipe <id>     receptet is futtat (pl. summary); enélkül csak átirat
   --dry-run         nem ír fájlt és nem rögzít állapotot; recepttel a
                     modellhívások VALÓS költséggel megtörténnek
-  --force           létező fájlt is felülír
+  --force           létező fájlt is felülír; --queue mellett a sor minden
+                    kipipált párját, a késznek jelölteket is újrafuttatja
+                    (szűkítés: --recipe, --source, --channel, --limit)
   --no-commit       nem commitol és nem pushol a vault repójába
   --retry-failed    csak a korábban hibára futott elemek
   --queue           scan: a vault _queue.md sorába fésül; run: a sor
