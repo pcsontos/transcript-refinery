@@ -2313,4 +2313,74 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     expect(naplo.mock.calls.flat().join('\n')).toContain('1 sor késznek jelölve')
     naplo.mockRestore()
   })
+
+  it('csak fájllal kész fordításpár, forrásrekord nélkül: scan → run → scan nem írja át egymás utótagját', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean'] } }
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const jegyzet = noteFile(cfg.notesRoot, await elsoElem(), '_clean-hu.md')
+    await mkdir(dirname(jegyzet), { recursive: true })
+    await writeFile(jegyzet, '# Kézzel írt fordítás\n', 'utf8')
+    const sor = queuePath(cfg.notesRoot)
+
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    const scanUtan = await readFile(sor, 'utf8')
+    expect(videoBlokk(scanUtan, 'a1')).toContain(
+      `  - [x] hu — ✓ már a vaultban · [jegyzet](<${relative(cfg.notesRoot, jegyzet)}>)`,
+    )
+
+    const hivasok = { generate: 0 }
+    await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens(hivasok) },
+    )
+    const runUtan = await readFile(sor, 'utf8')
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+
+    expect(hivasok.generate).toBe(0)
+    expect(runUtan).toBe(scanUtan)
+    expect(await readFile(sor, 'utf8')).toBe(scanUtan)
+    const store = openState(cfg.statePath)
+    expect(store.artifactOf('a1', 'clean-hu')).toMatchObject({ status: 'done', path: jegyzet })
+    store.close()
+  })
+
+  it('done rekordú fordításpár hibás forrás mellett: a futás nem írja át ⏸-ra a ✓ utótagot', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean'] } }
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const item = await elsoElem()
+    // A jegyzetfájl szándékosan hiányzik: a pár késznek a rekord miatt kész.
+    const jegyzet = noteFile(cfg.notesRoot, item, '_clean-hu.md')
+    const pre = openState(cfg.statePath)
+    pre.recordItem(item)
+    pre.recordArtifact('a1', 'clean', 'failed', null, 'időtúllépés')
+    pre.recordArtifact('a1', 'clean-hu', 'done', jegyzet, null, {
+      iterations: 1,
+      score: 0.9,
+      costUsd: 0.01,
+      model: 'proba-draft',
+    })
+    pre.close()
+    const sor = queuePath(cfg.notesRoot)
+
+    await commandScanQueue(cfg, { dryRun: false, commit: false })
+    const scanUtan = await readFile(sor, 'utf8')
+    expect(videoBlokk(scanUtan, 'a1')).toContain(
+      `  - [x] hu — ✓ 0.90 · $0.0100 · [jegyzet](<${relative(cfg.notesRoot, jegyzet)}>)`,
+    )
+
+    const hivasok = { generate: 0 }
+    await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => sorKliens(hivasok) },
+    )
+
+    expect(hivasok.generate).toBe(0)
+    expect(await readFile(sor, 'utf8')).toBe(scanUtan)
+  })
 })

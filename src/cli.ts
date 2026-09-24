@@ -62,6 +62,7 @@ import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
+import { noteFile } from './vault/paths.js'
 
 const VERSION = '0.1.0'
 
@@ -459,6 +460,16 @@ export async function commandRun(
     skipped.set(unitKey(unit), { unit, reason })
     printing({ type: 'item:skipped', itemId: unit.item.itemId, reason })
   }
+  /**
+   * A pár már kész: van `done` rekordja, vagy a célfájlja megvan, és nincs
+   * `--force`. Ilyenkor a forrás hiánya nem számít — a pipeline modellhívás
+   * nélkül késznek veszi —, és a `⏸` nem írhatja felül a sor `✓` utótagját.
+   */
+  const alreadyDone = (unit: WorkUnit): boolean =>
+    !flags.force &&
+    (store.isDone(unit.item.itemId, unitKind(unit)) ||
+      (unit.recipe?.publishable === true &&
+        existsSync(noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile))))
 
   let wroteBack = false
   /**
@@ -698,7 +709,7 @@ export async function commandRun(
         // az indításban készül. A szeletelő az első túllépés után mindent
         // elhalaszt, a fordítások pedig a forrásaik után állnak: egy elhalasztott
         // forrás fordítása így maga is elhalasztott lesz.
-        const gap = sourceGap(unit, store)
+        const gap = alreadyDone(unit) ? null : sourceGap(unit, store)
         if (gap === null || sourcePlanned(unit, units)) return true
         skip(unit, gap)
         return false
@@ -756,7 +767,7 @@ export async function commandRun(
     for (const [index, unit] of planned.entries()) {
       // A forrás ebben a futásban is elbukhatott: a fordítás ilyenkor modellhívás
       // nélkül kimarad.
-      const gap = sourceGap(unit, store)
+      const gap = alreadyDone(unit) ? null : sourceGap(unit, store)
       if (gap !== null) {
         skip(unit, gap)
         continue
