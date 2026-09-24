@@ -148,10 +148,16 @@ nyelvi al-sorként — a célnyelvű videó alá nem, mert ott nincs mit fordít
 A `run --queue` a kipipált (videó, recept) párokat dolgozza fel —
 egyetlen közös becsléssel és költségplafonnal —, és az eredményt pontszámmal,
 költséggel és a jegyzet linkjével ugyanazokba a sorokba írja vissza. A
-pipákhoz és a saját sorokhoz nem nyúl, a sorszámokat minden scan újraírja, a
-jegyzetet atomian írja, és ha nincs mit feldolgozni, nulla modellhívással,
-commit nélkül fut le. A korábbi, lapos formátumú sort az első `scan --queue`
-egyszer átalakítja, a pipákkal együtt.
+sorszámokat minden scan újraírja, a jegyzetet atomian írja, és ha nincs mit
+feldolgozni, nulla modellhívással, commit nélkül fut le. A korábbi, lapos
+formátumú sort az első `scan --queue` egyszer átalakítja, a pipákkal együtt.
+
+A scan a már kész párokat is bepipálja, akkor is, ha a jegyzet a soron kívül
+(`run --recipe`) készült: az állapottár szerinti eredménnyel, vagy ha csak a
+jegyzetfájl van meg, `✓ már a vaultban` utótaggal. A meglévő `✓` utótaghoz
+nem nyúl, pipát nem vesz le, és a saját sorokat érintetlenül hagyja. A futás a
+modellhívás előtt megnézi, létezik-e már a jegyzet; ha igen, késznek veszi, és
+nem fizet érte (`--force` nélkül).
 
 A felület (`mise exec -- pnpm web`, `http://127.0.0.1:4310`) csak olvas. Az
 áttekintő a korpusz állapotát, a pontszámok eloszlását receptenként és a
