@@ -924,4 +924,24 @@ describe('processItem — a már meglévő jegyzet a modellhívás előtt', () =
     expect(draft.doGenerateCalls).toHaveLength(0)
     expect(deps.store.artifactOf(item().itemId, 'proba-hu')!.status).toBe('done')
   })
+
+  it('commit-módban a kézzel odatett jegyzetet nem jelöli commitra: a pipeline nem írta', async () => {
+    const deps = alapDeps()
+    const path = await meglevoJegyzet('_proba.md')
+
+    await processItem(item(), {
+      ...deps,
+      commit: true,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: modelClientFrom({ draft: fixModell('nem hívjuk'), judge: fixModell('nem hívjuk') }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(deps.store.artifactOf(item().itemId, 'proba')).toMatchObject({ status: 'done', path })
+    // Csak az átirat került a commitra várók közé, amit a pipeline maga írt.
+    expect(deps.store.listPendingCommits()).toEqual([noteFile(notesRoot, item(), '_transcript.md')])
+  })
 })

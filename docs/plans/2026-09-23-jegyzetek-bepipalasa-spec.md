@@ -144,8 +144,10 @@ beolvasása és a modellhívás előtt):
 
 - ha a recept `publishable`, nincs `force`, és a
   `noteFile(notesRoot, item, recipe.outputFile)` létezik:
-  - `dryRun` nélkül `recordArtifact(itemId, recipe.id, 'done', target, null,
-    undefined, deps.commit)` — ugyanúgy, mint a mai write-once ág;
+  - `dryRun` nélkül `recordArtifact(itemId, recipe.id, 'done', target, null)`
+    — **commitra várónak nem jelöli**, a mai write-once ággal ellentétben: a
+    fájlt nem a pipeline írta, tehát nincs mit commitolnia. Egy kézzel odatett,
+    akár félkész jegyzet így nem kerül a pipeline commitjába és pushába;
   - `item:skipped` esemény, oka `a fájl már létezik`;
   - `{ status: 'skipped', recipePath: target }`.
 

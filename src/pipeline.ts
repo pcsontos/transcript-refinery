@@ -171,12 +171,13 @@ async function runRecipe(
   const { recipe, modelConfig, guard } = recipeDeps
 
   // A write-once elv a modellhívás ELŐTT: a már meglévő jegyzetért nem
-  // fizetünk. A `force` felülírja a fájlt, ezért ott a hívás is kell.
+  // fizetünk. A `force` felülírja a fájlt, ezért ott a hívás is kell. A fájlt
+  // nem a pipeline írta, ezért nem kerül a commitra várók közé.
   if (recipe.publishable && !deps.options.force) {
     const target = noteFile(deps.notesRoot, item, recipe.outputFile)
     if (await exists(target)) {
       if (!deps.options.dryRun) {
-        deps.store.recordArtifact(item.itemId, recipe.id, 'done', target, null, undefined, deps.commit)
+        deps.store.recordArtifact(item.itemId, recipe.id, 'done', target, null)
       }
       deps.sink({ type: 'item:skipped', itemId: item.itemId, reason: 'a fájl már létezik' })
       return { status: 'skipped', recipePath: target }
