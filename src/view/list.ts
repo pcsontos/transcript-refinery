@@ -1,4 +1,4 @@
-import type { CellStatus, ItemListRow } from './items.js'
+import type { CellStatus, ItemCell, ItemListRow } from './items.js'
 
 /** A `--status` elfogadott értékei. */
 export const LIST_STATUSES: readonly CellStatus[] = ['done', 'failed', 'pending']
@@ -66,4 +66,159 @@ export function kindCodes(kinds: readonly string[]): Record<string, string> {
     codes[kind] = candidates.filter((c) => c === code).length > 1 ? kind : code
   })
   return codes
+}
+
+/** Látható szélesség: kódpontok száma. A széles (CJK, emoji) karaktert nem kezeli. */
+const widthOf = (text: string): number => [...text].length
+
+function truncate(text: string, max: number): string {
+  return widthOf(text) <= max ? text : `${[...text].slice(0, max - 1).join('')}…`
+}
+
+type Align = 'left' | 'right'
+
+interface Column {
+  header: string
+  cells: string[]
+  align: Align
+}
+
+function pad(text: string, width: number, align: Align): string {
+  const fill = ' '.repeat(Math.max(0, width - widthOf(text)))
+  return align === 'left' ? text + fill : fill + text
+}
+
+/** Oszlopok egy szóközzel elválasztva; a sorvégi szóközöket levágja. */
+function layout(columns: readonly Column[]): string[] {
+  const widths = columns.map((c) => Math.max(widthOf(c.header), ...c.cells.map(widthOf)))
+  const rowCount = columns[0]?.cells.length ?? 0
+  const line = (pick: (c: Column) => string): string =>
+    columns
+      .map((c, i) => pad(pick(c), widths[i]!, c.align))
+      .join(' ')
+      .trimEnd()
+  const lines = [line((c) => c.header)]
+  for (let r = 0; r < rowCount; r++) lines.push(line((c) => c.cells[r]!))
+  return lines
+}
+
+const usd = (value: number): string => value.toFixed(4)
+
+function mark(cell: ItemCell | undefined): string {
+  if (cell?.status === 'failed') return '✗'
+  if (cell?.status === 'done') return cell.belowThreshold ? '↓' : '✓'
+  return '·'
+}
+
+function statusText(cell: ItemCell | undefined): string {
+  if (cell?.status === 'failed') return 'hibás'
+  if (cell?.status === 'done') return cell.belowThreshold ? 'kész ↓' : 'kész'
+  return 'hátra'
+}
+
+/** Az elem összköltsége; `null`, ha egyik cellájának sincs költsége. */
+function rowCost(row: ItemListRow): number | null {
+  const costs = Object.values(row.cells)
+    .map((cell) => cell.costUsd)
+    .filter((cost): cost is number => cost !== null)
+  return costs.length === 0 ? null : costs.reduce((a, b) => a + b, 0)
+}
+
+function codeLegend(kinds: readonly string[]): string | null {
+  const codes = kindCodes(kinds)
+  const pairs = kinds.filter((k) => codes[k] !== k).map((k) => `${codes[k]!} = ${k}`)
+  return pairs.length === 0 ? null : pairs.join(', ')
+}
+
+const CHANNEL_WIDTH = 16
+/** A cím szélessége, ha nincs terminál (csővezeték, fájl). */
+export const PIPE_TITLE_WIDTH = 40
+const MIN_TITLE_WIDTH = 20
+const LEGEND = '✓ kész  ↓ küszöb alatt  ✗ hibás  · hátra  † a felirat eltűnt'
+
+export interface ItemTableOptions {
+  /** Ha meg van adva, a jeloszlopok helyett ennek a típusnak a részletei. */
+  recipe?: string
+  showChannel: boolean
+  /** A terminál szélessége; `undefined`, ha nincs terminál. */
+  lineWidth?: number
+  /** A `describeFilters` kimenete. */
+  filterNote: string
+}
+
+/** Az elemlista: első sor, táblázat, jelmagyarázat. Legalább egy sort vár. */
+export function renderItemTable(
+  rows: readonly ItemListRow[],
+  kinds: readonly string[],
+  opts: ItemTableOptions,
+): string {
+  const columns: Column[] = [
+    { header: '#', cells: rows.map((_, i) => String(i + 1)), align: 'right' },
+  ]
+  if (opts.showChannel) {
+    columns.push({
+      header: 'Csatorna',
+      cells: rows.map((row) => (row.channel === null ? '—' : truncate(row.channel, CHANNEL_WIDTH))),
+      align: 'left',
+    })
+  }
+  if (opts.recipe !== undefined) {
+    const recipe = opts.recipe
+    columns.push(
+      { header: recipe, cells: rows.map((row) => statusText(row.cells[recipe])), align: 'left' },
+      {
+        header: 'Pont',
+        cells: rows.map((row) => row.cells[recipe]?.score?.toFixed(2) ?? '—'),
+        align: 'right',
+      },
+      {
+        header: '$',
+        cells: rows.map((row) => {
+          const cost = row.cells[recipe]?.costUsd ?? null
+          return cost === null ? '—' : usd(cost)
+        }),
+        align: 'right',
+      },
+    )
+  } else {
+    const codes = kindCodes(kinds)
+    for (const kind of kinds) {
+      columns.push({ header: codes[kind]!, cells: rows.map((row) => mark(row.cells[kind])), align: 'left' })
+    }
+    columns.push({
+      header: '$',
+      cells: rows.map((row) => {
+        const cost = rowCost(row)
+        return cost === null ? '—' : usd(cost)
+      }),
+      align: 'right',
+    })
+  }
+
+  // A cím a második oszlop; a szélessége a többi oszlop után megmaradó hely,
+  // egy karakter tartalékkal, hogy a sor a terminál szélén se törjön.
+  const others = columns.reduce(
+    (sum, c) => sum + Math.max(widthOf(c.header), ...c.cells.map(widthOf)) + 1,
+    0,
+  )
+  const titleWidth =
+    opts.lineWidth === undefined
+      ? PIPE_TITLE_WIDTH
+      : Math.max(MIN_TITLE_WIDTH, opts.lineWidth - others - 1)
+  columns.splice(1, 0, {
+    header: 'Cím',
+    cells: rows.map((row) => truncate(row.discovered ? row.title : `† ${row.title}`, titleWidth)),
+    align: 'left',
+  })
+
+  const head = `${String(rows.length)} elem${opts.filterNote ? ` (${opts.filterNote})` : ''}`
+  const lines = [head, '', ...layout(columns), '']
+  if (opts.recipe === undefined) {
+    lines.push(LEGEND)
+    const legend = codeLegend(kinds)
+    if (legend !== null) lines.push(legend)
+  } else if (rows.some((row) => !row.discovered)) {
+    lines.push('† a felirat eltűnt')
+  }
+  return lines.join('\n')
 }
