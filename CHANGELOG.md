@@ -3,6 +3,34 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.3.0] — 2026-09-24
+
+Új `refinery list` parancs: SQLite-lekérdezés nélkül, a terminálban látod,
+melyik videón mi készült el, csatornánként mennyi a lefedettség, és min nem
+futott még egy recept. Csak olvas, modellt nem hív, `LITELLM_API_KEY` nélkül
+is fut.
+
+### 📋 Katalógus a terminálban
+
+- **Elemlista:** videónként egy sor, típusonként egy jeloszloppal — `✓`
+  kész, `↓` kész, de a recept küszöbe alatt, `✗` hibás, `·` hátra —, és az
+  elem összköltségével.
+- **Egy recept részletei:** `list --recipe clean` a jelek helyett az
+  állapotot, a pontszámot és a költséget mutatja.
+- **Csatorna-összesítő:** `list --channels` csatornánként a videók számát és
+  típusonként a `kész/összes` arányt adja, a végén `Összesen` sorral.
+
+### 🔎 Megtalálod, ami hiányzik
+
+- `list --recipe clean --status pending`: amin a clean még nem futott —
+  ezeket érdemes kipipálni a sorban.
+- `list --status failed`: minden videó, amin legalább egy típus hibára
+  futott.
+- A `--source`, a `--channel` és a `--limit` ugyanúgy szűr, mint a
+  `run`-nál; a csatornanév kis- és nagybetűtől függetlenül egyezik.
+- A számok ugyanabból az olvasó rétegből jönnek, mint a webes felületéi,
+  így a két nézet ugyanarra az állapotra ugyanazt mutatja.
+
 ## [1.2.0] — 2026-09-24
 
 A feldolgozási sor (`_queue.md`) mostantól azt is mutatja, ami már kész: a
@@ -144,6 +172,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.3.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.3.0
 [1.2.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.2.0
 [1.1.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.1.0
 [1.0.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.0.0
