@@ -12,10 +12,14 @@ const x = (_: ChannelReport, i: number): number => i
 const y = computed(() => props.series.map((s) => (d: ChannelReport) => d.costBySeries[s] ?? 0))
 const color = (_: ChannelReport, i: number): string => seriesColor(props.series[i] ?? '')
 
-const tickFormat = (i: number): string => {
-  const name = rows.value[Math.round(i)]?.channel ?? ''
-  return name.length > 24 ? `${name.slice(0, 23)}…` : name
-}
+const tickFormat = (i: number): string =>
+  barTickLabel(
+    rows.value.map(({ channel }) => {
+      const name = channel ?? ''
+      return name.length > 24 ? `${name.slice(0, 23)}…` : name
+    }),
+    i,
+  )
 
 /**
  * A halmozott sáv szelete becsomagolva kapja az adatot: a sor a `datum`, a

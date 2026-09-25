@@ -42,3 +42,12 @@ export function formatWords(value: number): string {
 export function formatRatio(part: number, whole: number): string {
   return whole === 0 ? '–' : `${Math.round((part / whole) * 100)}%`
 }
+
+/**
+ * Oszlopgrafikon tengelyfelirata. A d3 kevés oszlopnál tört osztásjelet is ad
+ * (két oszlopnál `0.5`); arra üres a felirat, különben a szomszéd oszlop neve
+ * kerülne két oszlop közé.
+ */
+export function barTickLabel(labels: readonly string[], tick: number): string {
+  return Number.isInteger(tick) ? (labels[tick] ?? '') : ''
+}

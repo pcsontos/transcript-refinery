@@ -10,10 +10,11 @@ const y = [(d: RunCostPoint) => d.spentUsd, (d: RunCostPoint) => d.estimateUsd ?
 const color = (_: RunCostPoint, i: number): string =>
   i === 0 ? 'var(--viz-1)' : 'var(--viz-estimate)'
 
-const tickFormat = (i: number): string => {
-  const run = props.runs[Math.round(i)]
-  return run?.startedAt ? run.startedAt.slice(5, 10) : ''
-}
+const tickFormat = (i: number): string =>
+  barTickLabel(
+    props.runs.map((run) => run.startedAt?.slice(5, 10) ?? ''),
+    i,
+  )
 
 function tooltip(d: RunCostPoint): string {
   const ratio =
