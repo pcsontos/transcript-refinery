@@ -107,10 +107,10 @@ describe('kindCodes', () => {
       summary: 'sum',
       flashcards: 'fla',
       qa: 'qa',
-      'clean-moderate': 'cle',
+      'clean-moderate': 'cle-mod',
       bloom: 'blo',
       notes: 'not',
-      'clean-moderate-hu': 'cle-hu',
+      'clean-moderate-hu': 'cle-mod-hu',
       'summary-hu': 'sum-hu',
       'notes-hu': 'not-hu',
       'bloom-hu': 'blo-hu',
@@ -121,12 +121,25 @@ describe('kindCodes', () => {
     expect(kindCodes(['summary', 'summit', 'clean-moderate'])).toEqual({
       summary: 'summary',
       summit: 'summit',
-      'clean-moderate': 'cle',
+      'clean-moderate': 'cle-mod',
     })
   })
 
   it('a -xx utótag csak akkor fordítás, ha az alapja is szerepel', () => {
-    expect(kindCodes(['cross-en'])).toEqual({ 'cross-en': 'cro' })
+    // Alap nélkül nem fordítás, hanem közönséges kötőjeles típus: szegmensenként rövidül.
+    expect(kindCodes(['cross-en'])).toEqual({ 'cross-en': 'cro-en' })
+  })
+})
+
+describe('kindCodes — kötőjeles alapreceptek', () => {
+  it('a szintek kódja szegmensenként három karakter, a fordításé ehhez fűzi a nyelvet', () => {
+    expect(kindCodes(['summary', 'clean-mild', 'clean-moderate', 'clean-deep', 'clean-moderate-hu'])).toEqual({
+      summary: 'sum',
+      'clean-mild': 'cle-mil',
+      'clean-moderate': 'cle-mod',
+      'clean-deep': 'cle-dee',
+      'clean-moderate-hu': 'cle-mod-hu',
+    })
   })
 })
 
@@ -149,12 +162,12 @@ describe('renderItemTable', () => {
       [
         '2 elem (csatorna: Csatorna A)',
         '',
-        '# Cím     tra sum cle cle-hu      $',
-        '1 Videó a ✓   ✓   ↓   ✗      0.2700',
-        '2 Videó b ·   ·   ·   ·           —',
+        '# Cím     tra sum cle-mod cle-mod-hu      $',
+        '1 Videó a ✓   ✓   ↓       ✗          0.2700',
+        '2 Videó b ·   ·   ·       ·               —',
         '',
         '✓ kész  ↓ küszöb alatt  ✗ hibás  · hátra  † a felirat eltűnt',
-        'tra = transcript, sum = summary, cle = clean-moderate, cle-hu = clean-moderate-hu',
+        'tra = transcript, sum = summary, cle-mod = clean-moderate, cle-mod-hu = clean-moderate-hu',
       ].join('\n'),
     )
   })
@@ -170,9 +183,9 @@ describe('renderItemTable', () => {
     )
     const lines = text.split('\n')
     expect(lines[0]).toBe('2 elem')
-    expect(lines[2]).toBe('# Cím       Csatorna         tra sum cle cle-hu $')
-    expect(lines[3]).toBe('1 Videó a   Egy nagyon hoss… ·   ·   ·   ·      —')
-    expect(lines[4]).toBe('2 † Videó b —                ·   ·   ·   ·      —')
+    expect(lines[2]).toBe('# Cím       Csatorna         tra sum cle-mod cle-mod-hu $')
+    expect(lines[3]).toBe('1 Videó a   Egy nagyon hoss… ·   ·   ·       ·          —')
+    expect(lines[4]).toBe('2 † Videó b —                ·   ·   ·       ·          —')
   })
 
   it('a cím terminál nélkül 40, terminállal a maradék helyre vágódik, legalább 20-ra', () => {
@@ -183,9 +196,9 @@ describe('renderItemTable', () => {
         .split(' ')[1]!
     expect(titleOf()).toHaveLength(40)
     expect(titleOf()).toMatch(/…$/)
-    // A többi oszlop: '#'(1) + tra, sum, cle (3-3) + cle-hu (6) + '$'(1),
-    // mindegyik után egy szóköz: 2 + 4·3 + 7 + 2 = 23; plusz egy tartalék.
-    expect(titleOf(100)).toHaveLength(76)
+    // A többi oszlop: '#'(1) + tra, sum (3-3) + cle-mod (7) + cle-mod-hu (10) + '$'(1),
+    // mindegyik után egy szóköz: 2 + 4·2 + 8 + 11 + 2 = 31; plusz egy tartalék.
+    expect(titleOf(100)).toHaveLength(68)
     expect(titleOf(30)).toHaveLength(20)
   })
 
@@ -258,13 +271,13 @@ describe('summarizeChannels és renderChannelTable', () => {
       [
         '3 csatorna',
         '',
-        'Csatorna         Videó tra sum cle cle-hu      $',
-        'Alfa                 1 0/1 1/1 0/1    0/1 0.0500',
-        'Zeta                 2 1/2 1/2 0/2    0/2 0.1000',
-        '(nincs csatorna)     1 0/1 0/1 0/1    0/1      —',
-        'Összesen             4 1/4 2/4 0/4    0/4 0.1500',
+        'Csatorna         Videó tra sum cle-mod cle-mod-hu      $',
+        'Alfa                 1 0/1 1/1     0/1        0/1 0.0500',
+        'Zeta                 2 1/2 1/2     0/2        0/2 0.1000',
+        '(nincs csatorna)     1 0/1 0/1     0/1        0/1      —',
+        'Összesen             4 1/4 2/4     0/4        0/4 0.1500',
         '',
-        'tra = transcript, sum = summary, cle = clean-moderate, cle-hu = clean-moderate-hu',
+        'tra = transcript, sum = summary, cle-mod = clean-moderate, cle-mod-hu = clean-moderate-hu',
       ].join('\n'),
     )
   })

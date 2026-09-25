@@ -4,7 +4,10 @@
  */
 export const TRANSLATION_SERIES = 'fordítás'
 
-/** Sorozatonként rögzített szín: az alaprecept sorrendje a regiszteré. */
+/**
+ * Sorozatonként rögzített szín: az alaprecept sorrendje a regiszteré; a
+ * `clean` a három szint közös sorozata.
+ */
 const SERIES_COLORS: Record<string, string> = {
   summary: 'var(--viz-1)',
   flashcards: 'var(--viz-2)',

@@ -11,6 +11,7 @@ import type { ItemCell, ItemListRow } from './items.js'
 import { summarizeChannels } from './list.js'
 import {
   buildReports,
+  CLEAN_SERIES,
   readReports,
   runCommandFor,
   shellQuote,
@@ -143,13 +144,26 @@ describe('buildReports — típusok és sorozatok', () => {
       'summary',
       'flashcards',
       'qa',
-      'clean-mild',
-      'clean-moderate',
-      'clean-deep',
+      CLEAN_SERIES,
       'bloom',
       'notes',
       TRANSLATION_SERIES,
     ])
+  })
+
+  it('a három clean-szint költsége egy sorozatba összegződik', () => {
+    const reports = buildReports(
+      input({
+        rows: [
+          row('a', 'Egy', {
+            'clean-mild': { status: 'done', costUsd: 0.1 },
+            'clean-deep': { status: 'done', costUsd: 0.2 },
+          }),
+        ],
+      }),
+    )
+    const channel = reports.channels.find((c) => c.channel === 'Egy')!
+    expect(channel.costBySeries[CLEAN_SERIES]).toBeCloseTo(0.3, 10)
   })
 
   it('fordítás nélküli regiszternél nincs fordítás-sorozat', () => {
