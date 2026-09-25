@@ -98,15 +98,22 @@ sorformátumot kér a modelltől, hanem sémás objektumot, és a vault alakját
 kapu előbb fut, mint a bírók — ismétlődő kérdésnél vagy válasz nélküli
 fejlécnél a drága pontozás el sem indul.
 
-A `--recipe clean` a feliratot enyhén szerkesztett, bekezdésekre és `##`
-szakaszcímekre tagolt leiratot ad, minden bekezdés előtt a valós elhangzási
-idővel (`[MM:SS]`, egy órán túl `[H:MM:SS]`). A modell prózát ír, időbélyeg
-nélkül; egy determinisztikus lépés utólag horgonyozza a bekezdéseket a
-feliratsorokhoz sorrendtartó illesztéssel. A bizonytalanul illeszkedő bekezdés
-időbélyeg nélkül kerül a jegyzetbe — a jegyzet maga elkészül, nem a teljes,
-már kifizetett modellkimenet vesztődik el —, és a futás naplója megmondja,
-hány bekezdés maradt így. Egy nulla tokenes hűségkapu állítja meg a modellt,
-ha tisztítás helyett összefoglalna.
+A tisztított leirat három szinten készül; a töltelékszavakat mindhárom
+eltávolítja:
+
+| recept | mit csinál | időbélyeg |
+|---|---|---|
+| `clean-mild` | írásjel, nagybetű, félrehallás; nincs fejléc, nincs átfogalmazás | bekezdésenként |
+| `clean-moderate` | bekezdések és `##` fejlécek a témaváltásnál; nincs átfogalmazás | bekezdésenként |
+| `clean-deep` | írott formára szerkeszt: ismétlések nélkül, átfogalmazva, tartalmat nem hagy ki | nincs |
+
+Az időbélyeg a valós elhangzási idő (`[MM:SS]`, egy órán túl `[H:MM:SS]`). A
+modell prózát ír, időbélyeg nélkül; egy determinisztikus lépés utólag
+horgonyozza a bekezdéseket a feliratsorokhoz sorrendtartó illesztéssel. A
+bizonytalanul illeszkedő bekezdés időbélyeg nélkül kerül a jegyzetbe — a
+jegyzet maga elkészül, nem a teljes, már kifizetett modellkimenet vesztődik
+el —, és a futás naplója megmondja, hány bekezdés maradt így. Egy nulla
+tokenes hűségkapu állítja meg a modellt, ha tisztítás helyett összefoglalna.
 
 A `--recipe bloom` a Bloom-taxonómia hat szintjére (Remember → Create) tagolt
 kártyapaklit ír, szintenként 3–5 kártyával; a szint és a nehézség a kártya
@@ -120,7 +127,7 @@ ellenőrzi, hogy nem mondanak ellent neki.
 
 A fordítás nem külön dokumentumtípus, hanem bármelyik recept kész jegyzetének
 célnyelvű változata. A `translate` konfigkulcs mondja meg a célnyelvet és a
-forrásreceptek listáját; mindegyikből saját recept lesz (`--recipe clean-hu`,
+forrásreceptek listáját; mindegyikből saját recept lesz (`--recipe clean-moderate-hu`,
 `summary-hu`…), saját pipával a sorban. A fordítás a vaultban lévő
 forrásjegyzetből készül — egy kézzel javított jegyzet javított változata fordul
 —, és ahhoz mér: egy nulla tokenes vázkapu ellenőrzi, hogy az időbélyegek, a
@@ -326,8 +333,8 @@ node dist/cli.js list --channel "Sajjaad Khader"
 # csatornánként: videószám, típusonként kész/összes, összköltség
 node dist/cli.js list --channels
 
-# amin a clean még nem futott — ezeket érdemes kipipálni a sorban
-node dist/cli.js list --recipe clean --status pending
+# amin a clean-moderate még nem futott — ezeket érdemes kipipálni a sorban
+node dist/cli.js list --recipe clean-moderate --status pending
 ```
 
 A `--status` (`done`, `failed`, `pending`) `--recipe` nélkül bármely típusra

@@ -3,7 +3,7 @@ import type { ModelClient } from '../model/client.js'
 import { scoreRubric } from '../rubric/types.js'
 import type { ModelRole, SourceItem } from '../types.js'
 import { bloomRecipe } from './bloom.js'
-import { cleanRecipe } from './clean.js'
+import { cleanRecipeFor } from './clean.js'
 import { alreadyInTarget, translationOf } from './translate.js'
 
 const ITEM: SourceItem = {
@@ -69,7 +69,7 @@ describe('translationOf', () => {
   })
 
   it('a prompt kimondja a célnyelvet, és a forrásjegyzetet adja át', () => {
-    const prompt = translationOf(cleanRecipe, 'hu').prompt({ item: ITEM, transcript: FORRAS, timed: [] })
+    const prompt = translationOf(cleanRecipeFor('moderate'), 'hu').prompt({ item: ITEM, transcript: FORRAS, timed: [] })
     expect(prompt.startsWith('Translate the note below into Hungarian.\n')).toBe(true)
     expect(prompt).toContain('- Keep every timestamp such as [03:12] exactly as it is, at the start of the')
     expect(prompt).toContain('- Technical terms that Hungarian professionals usually say in English may stay')
@@ -80,12 +80,12 @@ describe('translationOf', () => {
   })
 
   it('a célnyelv neve paraméter', () => {
-    const prompt = translationOf(cleanRecipe, 'de').prompt({ item: ITEM, transcript: FORRAS, timed: [] })
+    const prompt = translationOf(cleanRecipeFor('moderate'), 'de').prompt({ item: ITEM, transcript: FORRAS, timed: [] })
     expect(prompt.startsWith('Translate the note below into German.\n')).toBe(true)
   })
 
   it('a javító prompt a hiányokat, a jelenlegi fordítást és a forrást is viszi', () => {
-    const prompt = translationOf(cleanRecipe, 'hu').repairPrompt({
+    const prompt = translationOf(cleanRecipeFor('moderate'), 'hu').repairPrompt({
       item: ITEM,
       transcript: FORRAS,
       timed: [],
@@ -98,7 +98,7 @@ describe('translationOf', () => {
   })
 
   it('a rubrika három kapu és egy bíró', () => {
-    const { rubric } = translationOf(cleanRecipe, 'hu')
+    const { rubric } = translationOf(cleanRecipeFor('moderate'), 'hu')
     expect(rubric.criteria.map((c) => c.name)).toEqual([
       'format',
       'target-language',
@@ -123,8 +123,8 @@ describe('translationOf', () => {
     ])
   })
 
-  it('a clean forrású fordítás vázkapuja ugyanezt a fejlécet átengedi', async () => {
-    const { rubric } = translationOf(cleanRecipe, 'hu')
+  it('a clean-moderate forrású fordítás vázkapuja ugyanezt a fejlécet átengedi', async () => {
+    const { rubric } = translationOf(cleanRecipeFor('moderate'), 'hu')
     const kapu = rubric.criteria.find((c) => c.name === 'skeleton')!
     const forras =
       '## Egy\n\nElső.\n\n## Kettő\n\nMásodik.\n\n## Három\n\nHarmadik.\n\n## Négy\n\nNegyedik.\n\n## Öt\n\nÖtödik.'
@@ -134,10 +134,19 @@ describe('translationOf', () => {
     expect(score.value).toBe(1)
   })
 
+  it('a nem horgonyzott forrás (clean-deep) fordításának vázkapuja időbélyeg nélkül átenged', async () => {
+    const { rubric } = translationOf(cleanRecipeFor('deep'), 'hu')
+    const forras = '## Tárolás\n\nA kötetek túlélik a konténert.'
+    const forditas = '## Tárolás\n\nA kötetek túlélik a konténert.'
+    const skeletonGate = rubric.criteria.find((c) => c.name === 'skeleton')!
+    const score = await skeletonGate.score({ output: forditas, transcript: forras }, nemHivhatoKliens)
+    expect(score.value).toBe(1)
+  })
+
   it('a helyes fordítás minden kapun átmegy, és a bíró a forrást és a fordítást látja', async () => {
     const promptok: string[] = []
     const result = await scoreRubric(
-      translationOf(cleanRecipe, 'hu').rubric,
+      translationOf(cleanRecipeFor('moderate'), 'hu').rubric,
       { transcript: FORRAS, output: FORDITAS },
       biroKliens(0.9, promptok),
     )
@@ -151,7 +160,7 @@ describe('translationOf', () => {
   it('a fordítatlan kimenet nulla bíró-hívással bukik', async () => {
     const promptok: string[] = []
     const result = await scoreRubric(
-      translationOf(cleanRecipe, 'hu').rubric,
+      translationOf(cleanRecipeFor('moderate'), 'hu').rubric,
       { transcript: FORRAS, output: FORRAS },
       biroKliens(0.9, promptok),
     )

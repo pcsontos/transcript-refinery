@@ -4,7 +4,7 @@ import { queueLayout } from './layout.js'
 import { isLegacyQueue, migrateLegacy } from './legacy.js'
 
 const LAYOUT = queueLayout(
-  recipesFor({ translate: { to: 'hu', recipes: ['clean', 'summary'] }, configPath: '/p/c.yaml' }),
+  recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] }, configPath: '/p/c.yaml' }),
 )
 
 const REGI = [
@@ -14,10 +14,10 @@ const REGI = [
   '## forras/a',
   '- Első példavideó %%a%%',
   '  - [ ] summary',
-  '  - [x] clean — ✓ 0.95 · $0.5328 · [jegyzet](<forras/a/Elso_clean.md>)',
+  '  - [x] clean-moderate — ✓ 0.95 · $0.5328 · [jegyzet](<forras/a/Elso_clean-moderate.md>)',
   '\t- [X] qa',
   'Saját megjegyzés.',
-  '  - [ ] clean-hu',
+  '  - [ ] clean-moderate-hu',
   '  - [x] summary-hu — ✓ 0.90 · $0.0100',
   '  - [ ] notes-hu',
   '',
@@ -36,7 +36,7 @@ const UJ = [
   '### 0. Első példavideó %%a%%',
   '- [ ] summary',
   '  - [x] hu — ✓ 0.90 · $0.0100',
-  '- [x] clean — ✓ 0.95 · $0.5328 · [jegyzet](<forras/a/Elso_clean.md>)',
+  '- [x] clean-moderate — ✓ 0.95 · $0.5328 · [jegyzet](<forras/a/Elso_clean-moderate.md>)',
   '  - [ ] hu',
   '- [X] qa',
   'Saját megjegyzés.',

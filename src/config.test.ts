@@ -94,14 +94,14 @@ describe('loadConfig', () => {
 
   it('a translate kulcsot célnyelvvel és forrásreceptekkel olvassa be', () => {
     expect(
-      loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean', 'summary'] } }, '/p/c.yaml')
+      loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] } }, '/p/c.yaml')
         .translate,
-    ).toEqual({ to: 'hu', recipes: ['clean', 'summary'] })
+    ).toEqual({ to: 'hu', recipes: ['clean-moderate', 'summary'] })
   })
 
   it('ismeretlen célnyelvre felsorolja az ismert nyelveket', () => {
     expect(() =>
-      loadConfig({ ...MIN, translate: { to: 'xx', recipes: ['clean'] } }, '/p/c.yaml'),
+      loadConfig({ ...MIN, translate: { to: 'xx', recipes: ['clean-moderate'] } }, '/p/c.yaml'),
     ).toThrow('translate.to: Ismeretlen célnyelv; ismert nyelvek: en, hu, nl, de, es, fr, it. (/p/c.yaml)')
   })
 
@@ -113,7 +113,7 @@ describe('loadConfig', () => {
 
   it('ismétlődő forrásreceptre beszédes hibát dob', () => {
     expect(() =>
-      loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean', 'clean'] } }, '/p/c.yaml'),
+      loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean-moderate', 'clean-moderate'] } }, '/p/c.yaml'),
     ).toThrow('translate.recipes: Egy forrásrecept csak egyszer szerepelhet. (/p/c.yaml)')
   })
 })

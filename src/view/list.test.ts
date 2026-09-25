@@ -9,7 +9,7 @@ import {
   summarizeChannels,
 } from './list.js'
 
-const KINDS = ['transcript', 'summary', 'clean', 'clean-hu']
+const KINDS = ['transcript', 'summary', 'clean-moderate', 'clean-moderate-hu']
 
 const cell = (overrides: Partial<ItemCell> = {}): ItemCell => ({
   status: 'pending',
@@ -39,7 +39,7 @@ const row = (
 describe('filterRows', () => {
   const rows = [
     row('a', { channel: 'Csatorna A', source: 'youtube' }, { summary: { status: 'done' } }),
-    row('b', { channel: 'Csatorna B', source: 'youtube' }, { clean: { status: 'failed' } }),
+    row('b', { channel: 'Csatorna B', source: 'youtube' }, { 'clean-moderate': { status: 'failed' } }),
     row('c', { channel: null, source: 'meetings' }),
     row('d', { channel: 'csatorna a', source: 'youtube' }, {
       summary: { status: 'done', belowThreshold: true },
@@ -81,8 +81,8 @@ describe('describeFilters', () => {
   it('szűrő nélkül üres, egyébként a megadott szűrőket sorolja', () => {
     expect(describeFilters({})).toBe('')
     expect(
-      describeFilters({ source: 'youtube', channel: 'X', recipe: 'clean', status: 'pending', limit: 5 }),
-    ).toBe('forrás: youtube, csatorna: X, típus: clean, állapot: pending, legfeljebb 5')
+      describeFilters({ source: 'youtube', channel: 'X', recipe: 'clean-moderate', status: 'pending', limit: 5 }),
+    ).toBe('forrás: youtube, csatorna: X, típus: clean-moderate, állapot: pending, legfeljebb 5')
   })
 })
 
@@ -94,10 +94,10 @@ describe('kindCodes', () => {
         'summary',
         'flashcards',
         'qa',
-        'clean',
+        'clean-moderate',
         'bloom',
         'notes',
-        'clean-hu',
+        'clean-moderate-hu',
         'summary-hu',
         'notes-hu',
         'bloom-hu',
@@ -107,10 +107,10 @@ describe('kindCodes', () => {
       summary: 'sum',
       flashcards: 'fla',
       qa: 'qa',
-      clean: 'cle',
+      'clean-moderate': 'cle',
       bloom: 'blo',
       notes: 'not',
-      'clean-hu': 'cle-hu',
+      'clean-moderate-hu': 'cle-hu',
       'summary-hu': 'sum-hu',
       'notes-hu': 'not-hu',
       'bloom-hu': 'blo-hu',
@@ -118,10 +118,10 @@ describe('kindCodes', () => {
   })
 
   it('ütközésnél mindkét típus a teljes azonosítót kapja', () => {
-    expect(kindCodes(['summary', 'summit', 'clean'])).toEqual({
+    expect(kindCodes(['summary', 'summit', 'clean-moderate'])).toEqual({
       summary: 'summary',
       summit: 'summit',
-      clean: 'cle',
+      'clean-moderate': 'cle',
     })
   })
 
@@ -137,8 +137,8 @@ describe('renderItemTable', () => {
         row('a', {}, {
           transcript: { status: 'done' },
           summary: { status: 'done', score: 0.9, costUsd: 0.07 },
-          clean: { status: 'done', belowThreshold: true, costUsd: 0.2 },
-          'clean-hu': { status: 'failed' },
+          'clean-moderate': { status: 'done', belowThreshold: true, costUsd: 0.2 },
+          'clean-moderate-hu': { status: 'failed' },
         }),
         row('b'),
       ],
@@ -154,7 +154,7 @@ describe('renderItemTable', () => {
         '2 Videó b ·   ·   ·   ·           —',
         '',
         '✓ kész  ↓ küszöb alatt  ✗ hibás  · hátra  † a felirat eltűnt',
-        'tra = transcript, sum = summary, cle = clean, cle-hu = clean-hu',
+        'tra = transcript, sum = summary, cle = clean-moderate, cle-hu = clean-moderate-hu',
       ].join('\n'),
     )
   })
@@ -192,28 +192,28 @@ describe('renderItemTable', () => {
   it('recept nézet: állapot szövegesen, pontszám, költség; † magyarázat csak ha kell', () => {
     const text = renderItemTable(
       [
-        row('a', {}, { clean: { status: 'done', score: 0.95, costUsd: 0.19 } }),
-        row('b', {}, { clean: { status: 'done', score: 0.71, costUsd: 0.18, belowThreshold: true } }),
-        row('c', {}, { clean: { status: 'failed' } }),
+        row('a', {}, { 'clean-moderate': { status: 'done', score: 0.95, costUsd: 0.19 } }),
+        row('b', {}, { 'clean-moderate': { status: 'done', score: 0.71, costUsd: 0.18, belowThreshold: true } }),
+        row('c', {}, { 'clean-moderate': { status: 'failed' } }),
         row('d'),
       ],
       KINDS,
-      { recipe: 'clean', showChannel: false, filterNote: 'típus: clean' },
+      { recipe: 'clean-moderate', showChannel: false, filterNote: 'típus: clean-moderate' },
     )
     expect(text).toBe(
       [
-        '4 elem (típus: clean)',
+        '4 elem (típus: clean-moderate)',
         '',
-        '# Cím     clean  Pont      $',
-        '1 Videó a kész   0.95 0.1900',
-        '2 Videó b kész ↓ 0.71 0.1800',
-        '3 Videó c hibás     —      —',
-        '4 Videó d hátra     —      —',
+        '# Cím     clean-moderate Pont      $',
+        '1 Videó a kész           0.95 0.1900',
+        '2 Videó b kész ↓         0.71 0.1800',
+        '3 Videó c hibás             —      —',
+        '4 Videó d hátra             —      —',
         '',
       ].join('\n'),
     )
     const gone = renderItemTable([row('a', { discovered: false })], KINDS, {
-      recipe: 'clean',
+      recipe: 'clean-moderate',
       showChannel: false,
       filterNote: '',
     })
@@ -227,7 +227,7 @@ describe('summarizeChannels és renderChannelTable', () => {
     row('b', { channel: null }),
     row('c', { channel: 'Alfa' }, {
       summary: { status: 'done', belowThreshold: true, costUsd: 0.05 },
-      clean: { status: 'failed' },
+      'clean-moderate': { status: 'failed' },
     }),
     row('d', { channel: 'Zeta' }, { transcript: { status: 'done' } }),
   ]
@@ -264,7 +264,7 @@ describe('summarizeChannels és renderChannelTable', () => {
         '(nincs csatorna)     1 0/1 0/1 0/1    0/1      —',
         'Összesen             4 1/4 2/4 0/4    0/4 0.1500',
         '',
-        'tra = transcript, sum = summary, cle = clean, cle-hu = clean-hu',
+        'tra = transcript, sum = summary, cle = clean-moderate, cle-hu = clean-moderate-hu',
       ].join('\n'),
     )
   })

@@ -48,7 +48,7 @@ describe('a vázkapu mérése a címkézett halmazon', () => {
   it('a halmaz mindkét osztályt és mind a négy forrásreceptet tartalmazza', () => {
     expect(new Set(SKELETON_LABELS.map((l) => l.label))).toEqual(new Set(['ok', 'broken']))
     expect(new Set(SKELETON_LABELS.map((l) => l.recipe))).toEqual(
-      new Set(['clean', 'summary', 'notes', 'bloom']),
+      new Set(['clean-moderate', 'summary', 'notes', 'bloom']),
     )
   })
 })

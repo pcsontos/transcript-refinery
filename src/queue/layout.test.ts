@@ -3,14 +3,14 @@ import { recipesFor } from '../recipe/registry.js'
 import { primaryLanguage, queueLayout, splitTranslationId, translationId } from './layout.js'
 
 const FORDITASSAL = queueLayout(
-  recipesFor({ translate: { to: 'hu', recipes: ['clean', 'summary'] }, configPath: '/p/c.yaml' }),
+  recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] }, configPath: '/p/c.yaml' }),
 )
 
 describe('queueLayout', () => {
   it('az alapreceptek a regiszter sorrendjében, a fordítások forrás → célnyelv párként', () => {
-    expect(FORDITASSAL.recipes).toEqual(['summary', 'flashcards', 'qa', 'clean', 'bloom', 'notes'])
+    expect(FORDITASSAL.recipes).toEqual(['summary', 'flashcards', 'qa', 'clean-mild', 'clean-moderate', 'clean-deep', 'bloom', 'notes'])
     expect([...FORDITASSAL.translations]).toEqual([
-      ['clean', 'hu'],
+      ['clean-moderate', 'hu'],
       ['summary', 'hu'],
     ])
   })
@@ -18,7 +18,7 @@ describe('queueLayout', () => {
   it('translate kulcs nélkül nincs fordítás', () => {
     const alap = queueLayout(recipesFor({ translate: null, configPath: '/p/c.yaml' }))
     expect(alap.translations.size).toBe(0)
-    expect(alap.recipes).toHaveLength(6)
+    expect(alap.recipes).toHaveLength(8)
   })
 })
 

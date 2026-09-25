@@ -1,6 +1,6 @@
 import { evalite } from 'evalite'
 import { dedupeTimedLines } from '../src/normalize/dedupe.js'
-import { cleanRecipe } from '../src/recipe/clean.js'
+import { cleanRecipeFor } from '../src/recipe/clean.js'
 import { refine } from '../src/refine/loop.js'
 import { checkFidelity } from '../src/rubric/fidelity.js'
 import { parseSubtitle } from '../src/subtitle/parse.js'
@@ -27,7 +27,7 @@ function itemOf(fixture: Fixture): SourceItem {
   }
 }
 
-evalite('clean recept — teljes loop fixture-modellen', {
+evalite('clean-moderate recept — teljes loop fixture-modellen', {
   data: () =>
     [...PUBLIC_FIXTURES, ...loadPrivateFixtures()].map((fixture) => ({
       input: fixture,
@@ -55,9 +55,9 @@ evalite('clean recept — teljes loop fixture-modellen', {
       .join('\n\n')
 
     const result = await refine(
-      cleanRecipe,
+      cleanRecipeFor('moderate'),
       { item: itemOf(fixture), transcript, timed },
-      // A `clean` rubrikájában EGY modell-bíró van, tehát generálásonként egy
+      // A `clean-moderate` rubrikájában EGY modell-bíró van, tehát generálásonként egy
       // ítélet kell — szemben a `summary` kettejével (hűség, lefedettség).
       fixtureClient(fixture, { notes: [draft], verdicts: [{ score: 0.95, gaps: [] }] }),
     )

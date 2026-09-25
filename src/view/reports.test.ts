@@ -20,7 +20,7 @@ import {
 import type { RunSummaryView } from './runs.js'
 
 const REGISTRY = recipesFor({
-  translate: { to: 'hu', recipes: ['summary', 'clean'] },
+  translate: { to: 'hu', recipes: ['summary', 'clean-moderate'] },
   configPath: '/p/c.yaml',
 })
 
@@ -131,17 +131,21 @@ describe('buildReports — típusok és sorozatok', () => {
       'summary',
       'flashcards',
       'qa',
-      'clean',
+      'clean-mild',
+      'clean-moderate',
+      'clean-deep',
       'bloom',
       'notes',
       'summary-hu',
-      'clean-hu',
+      'clean-moderate-hu',
     ])
     expect(reports.series).toEqual([
       'summary',
       'flashcards',
       'qa',
-      'clean',
+      'clean-mild',
+      'clean-moderate',
+      'clean-deep',
       'bloom',
       'notes',
       TRANSLATION_SERIES,
@@ -217,7 +221,7 @@ describe('buildReports — csatornák', () => {
           row('a', 'Egy', {
             summary: { status: 'done', costUsd: 0.1 },
             'summary-hu': { status: 'done', costUsd: 0.02 },
-            'clean-hu': { status: 'done', costUsd: 0.03 },
+            'clean-moderate-hu': { status: 'done', costUsd: 0.03 },
           }),
         ],
       }),
@@ -226,7 +230,7 @@ describe('buildReports — csatornák', () => {
     expect(channel.costBySeries.summary).toBeCloseTo(0.1, 10)
     expect(channel.costBySeries[TRANSLATION_SERIES]).toBeCloseTo(0.05, 10)
     expect(channel.translationCost['summary-hu']).toBeCloseTo(0.02, 10)
-    expect(channel.translationCost['clean-hu']).toBeCloseTo(0.03, 10)
+    expect(channel.translationCost['clean-moderate-hu']).toBeCloseTo(0.03, 10)
     expect(channel.costUsd).toBeCloseTo(0.15, 10)
   })
 
@@ -271,7 +275,7 @@ describe('buildReports — csatornák', () => {
         rows: [
           row('a', 'Egy', {
             summary: { status: 'done', score: 0.9 },
-            clean: { status: 'done', score: 0.6, belowThreshold: true },
+            'clean-moderate': { status: 'done', score: 0.6, belowThreshold: true },
             qa: { status: 'failed', score: 0.1 },
           }),
         ],
@@ -287,7 +291,7 @@ describe('buildReports — csatornák', () => {
 
   it('a lefedettség kész száma és a videószám egyezik a refinery list összesítőjével', () => {
     const rows = [
-      row('a', 'Egy', { summary: { status: 'done' }, 'clean-hu': { status: 'done' } }),
+      row('a', 'Egy', { summary: { status: 'done' }, 'clean-moderate-hu': { status: 'done' } }),
       row('b', 'Egy', { summary: { status: 'failed' } }),
       row('c', 'Kettő', { qa: { status: 'done', belowThreshold: true, score: 0.5 } }),
       row('d', null, { notes: { status: 'done' } }),

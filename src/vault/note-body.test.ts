@@ -24,7 +24,7 @@ const transcript: NormalizedTranscript = {
   punctuationDensity: 4.2,
 }
 
-const META = { recipe: 'clean', model: 'modell', iterations: 1, score: 1, costUsd: 0.01 }
+const META = { recipe: 'clean-moderate', model: 'modell', iterations: 1, score: 1, costUsd: 0.01 }
 
 const TORZS = [
   '# Introduction',

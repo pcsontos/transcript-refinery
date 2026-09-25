@@ -129,6 +129,6 @@ describe('applyStatuses', () => {
 
 describe('skippedStatus', () => {
   it('a kihagyás okát a ⏸ jel után adja', () => {
-    expect(skippedStatus('előbb a clean recept kell')).toBe('⏸ előbb a clean recept kell')
+    expect(skippedStatus('előbb a clean-moderate recept kell')).toBe('⏸ előbb a clean-moderate recept kell')
   })
 })

@@ -23,7 +23,8 @@ const sha256 = (text: string): string => createHash('sha256').update(text).diges
  * és `clean` értéke a Bloom- és jegyzetszelet előtti `main`-ről (2026-09-16), a
  * `bloom` és a `notes` értéke a fordítás-szelet előttiről (2026-09-17).
  * Regressziós horgony: egyetlen később változtatás sem módosíthat egy bájtot
- * sem a promptokon.
+ * sem a promptokon. A `clean`-szintek értéke a v1.5 kör bevezetésekor
+ * (2026-09-25) rögzült; a régi `clean` prompt megszűnt.
  */
 const EXPECTED: Record<string, { prompt: string; repair: string }> = {
   summary: {
@@ -38,9 +39,17 @@ const EXPECTED: Record<string, { prompt: string; repair: string }> = {
     prompt: 'a3be6367760592a0fbb6d5ab48e12913c76902b0fa46459b02b0756e41a435cf',
     repair: '90cd8cf2f8b000addca27c4ff52ea2c2f7dbb1f2aa6afa92a02aa685515e5d54',
   },
-  clean: {
-    prompt: '95458655342096b5a39ea368a523273a5e41e148211ffb595098e35f56f5a302',
-    repair: '5b34753065aa9cf6ebe557133be2357edb37b214d02a6db3c2def8a45264d00a',
+  'clean-mild': {
+    prompt: 'cdc2888d7e56d1ae76675425c9d22c4755f560e344a25f5a89e671d05ec8f218',
+    repair: 'afd0af567cae45e48898853bc22ae04be49b5caee2dcd42d39353dc58296f515',
+  },
+  'clean-moderate': {
+    prompt: 'b78ff6831c1ba498df9f70e6f03166097c1b373c176cde21e1488a28859b316c',
+    repair: '9061cafc2f9b709aef06acf98d253e5c9b0ee6a6b32fe38bdb5b743d55901a19',
+  },
+  'clean-deep': {
+    prompt: '0ffbd3e714c5b75a969a12cd9ecff13a784b63965ee72af1e905b808abd259d9',
+    repair: '26567348ec6e7c649bc719cfb307b57a863fe58e864adc1d00ae83c345984435',
   },
   bloom: {
     prompt: '9c9196b97fe0ee7b0ccada981a86750087e439c7a17c3321378a5ba3d572f6cc',
@@ -63,7 +72,7 @@ describe('a meglévő receptek promptjai', () => {
     })
   }
 
-  it('mind a hat alaprecept horgonyozva van, regiszter-sorrendben', () => {
+  it('minden alaprecept horgonyozva van, regiszter-sorrendben', () => {
     expect(Object.keys(EXPECTED)).toEqual(RECIPE_IDS)
   })
 })
