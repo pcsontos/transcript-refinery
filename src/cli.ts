@@ -18,14 +18,12 @@ import { createModelClient, type ModelClient } from './model/client.js'
 import { applyPricingFix, comparePricing, fetchLivePricing } from './model/pricing-check.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
-import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
-import { doneLookup, markDone } from './queue/done.js'
+import { COMMIT_SCOPE, VERSION } from './meta.js'
+import { ARTIFACT_KIND, processItem, type RecipeDeps } from './pipeline.js'
 import { queuePath, readQueueFile } from './queue/file.js'
-import { queueLayout } from './queue/layout.js'
-import { isLegacyQueue, migrateLegacy } from './queue/legacy.js'
-import { mergeQueue } from './queue/merge.js'
+import { isLegacyQueue } from './queue/legacy.js'
 import { checkedPairs, parseQueue, type QueuePair } from './queue/parse.js'
-import { renumberQueue } from './queue/renumber.js'
+import { refreshQueue, withContentLanguage } from './queue/refresh.js'
 import {
   DEFERRED_STATUS,
   NOT_FOUND_STATUS,
@@ -70,8 +68,6 @@ import {
   summarizeChannels,
 } from './view/list.js'
 import { artifactKinds } from './view/overview.js'
-
-const VERSION = '0.1.0'
 
 /**
  * A `finish` commitból eredő hibáját jelöli, megkülönböztetve a riportírás
@@ -126,13 +122,6 @@ Kapcsolók:
 
   A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
-
-/**
- * Az app saját, vaultba írt commitjainak scope-ja. Az app neve, nem a
- * feldolgozott tartalomé: a `videos` egy korábbi, videó-központú fázisból
- * maradt itt.
- */
-const COMMIT_SCOPE = 'transcript-refinery'
 
 function render(event: RunEvent): string | null {
   switch (event.type) {
@@ -193,27 +182,6 @@ export async function commandScan(cfg: Config): Promise<number> {
 }
 
 /**
- * Nyelvkód nélküli feliratnál a tartalom dönt a nyelvről, ugyanúgy, mint a
- * futásban (`normalizeItem`). Az eredeti elemet nem módosítja. Ha a nyelv a
- * tartalomból sem ismerhető fel, vagy a felirat nem olvasható, `null` marad:
- * a scan ettől nem áll meg, a fordítássor pedig megmarad.
- */
-async function withContentLanguage(items: readonly SourceItem[]): Promise<SourceItem[]> {
-  return Promise.all(
-    items.map(async (item) => {
-      if (item.language !== null) return item
-      const copy = { ...item }
-      try {
-        await normalizeItem(copy)
-      } catch {
-        // A nyelv null marad.
-      }
-      return copy
-    }),
-  )
-}
-
-/**
  * A felderített elemek összefésülése a vault feldolgozási sorába. Modellt nem
  * hív, ezért `LITELLM_API_KEY` sem kell hozzá. A sort csak akkor írja, ha a
  * tartalma ténylegesen változik — így az ismételt futás nem hagy commitot
@@ -229,41 +197,15 @@ export async function commandScanQueue(
   const commit = flags.commit && !flags.dryRun
   if (commit) await gitPullFfOnly(cfg.vaultPath)
 
-  const layout = queueLayout(registry)
   const items = await withContentLanguage(await discoverAll(cfg.sources, cfg.languages))
-  const path = queuePath(cfg.notesRoot)
-  const current = await readQueueFile(path)
-  // A régi formátumot egyszer átalakítjuk; utána a merge és az újraszámozás
-  // már az újat látja.
-  const legacy = current === null ? null : migrateLegacy(current, layout)
-  const merged = mergeQueue(legacy?.text ?? null, items, layout)
-  // Az állapottárat csak olvassuk, és csak ha már van: a scan nem hoz létre
-  // állapottárat. Nélküle a „kész" forrása a lemezen lévő jegyzet.
-  const store = existsSync(cfg.statePath) ? openState(cfg.statePath) : null
-  let done: ReturnType<typeof markDone>
-  try {
-    done = markDone(
-      merged.text,
-      doneLookup({
-        items: new Map(items.map((item) => [item.itemId, item] as const)),
-        registry,
-        notesRoot: cfg.notesRoot,
-        artifactOf: (itemId, kind) => store?.artifactOf(itemId, kind) ?? null,
-        exists: existsSync,
-      }),
-    )
-  } finally {
-    store?.close()
-  }
-  const text = renumberQueue(done.text)
-  const { stats } = merged
+  const { path, current, text, stats, migrated, marked } = await refreshQueue(cfg, registry, items)
 
   console.log(
     `${String(items.length)} feldolgozható felirat · ${String(stats.addedVideos)} új videó, ` +
       `${String(stats.addedRecipeLines)} új receptsor meglévő videó alatt, ` +
       `${String(stats.changedMarks)} jelölés-változás`,
   )
-  if (legacy?.migrated) {
+  if (migrated) {
     console.log('A sor átalakítva az új formátumra: számozott fejlécek, behúzott fordítások.')
   }
   if (stats.removedTranslationLines > 0) {
@@ -271,9 +213,9 @@ export async function commandScanQueue(
       `${String(stats.removedTranslationLines)} fordítássor törölve célnyelvű videó alól.`,
     )
   }
-  if (done.marked > 0) {
+  if (marked > 0) {
     console.log(
-      `${String(done.marked)} sor késznek jelölve (állapottár vagy meglévő jegyzet alapján).`,
+      `${String(marked)} sor késznek jelölve (állapottár vagy meglévő jegyzet alapján).`,
     )
   }
   if (flags.dryRun) {
