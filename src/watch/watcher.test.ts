@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -47,11 +47,19 @@ describe('watchSubtitles', () => {
     expect(seen).toEqual([join(dir, 'Csatorna', 'Videó.en.srt')])
   })
 
-  it('az indításkor már ott lévő feliratot nem jelzi (azt a felzárkózó kör fedi)', async () => {
-    await writeFile(join(dir, 'Régi.en.srt'), 'x', 'utf8')
+  it('a meglévő felirat változását jelzi, akkor is, ha az új mtime régebbi az indulásnál', async () => {
+    // Pl. `yt-dlp --mtime`, `cp -p`, `rsync -t`: a fájl tartalma új, a dátuma régi.
+    const path = join(dir, 'Régi.en.srt')
+    const old = new Date(2020, 0, 1)
+    await writeFile(path, 'x', 'utf8')
+    await utimes(path, old, old)
     const seen: string[] = []
     watcher = await watchSubtitles([dir], (p) => seen.push(p), () => {}, { stabilityMs: 200 })
-    await new Promise((r) => setTimeout(r, 600))
-    expect(seen).toEqual([])
+    await new Promise((r) => setTimeout(r, 300))
+    seen.length = 0 // macOS-en az indulás előtti írásra utólag jöhet egy esemény
+    await writeFile(path, 'új, hosszabb tartalom', 'utf8')
+    await utimes(path, old, old)
+    await until(() => seen.length > 0, 3000)
+    expect(seen).toContain(path)
   })
 })

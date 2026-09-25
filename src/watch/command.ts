@@ -50,35 +50,44 @@ export async function commandWatch(
     await watchRound({ cfg, registry, sources, commit: flags.commit, changed, out: stamp })
   }
 
-  stamp(`figyelés: ${sources.map((s) => s.path).join(', ')} (${String(sources.length)} mappa)`)
-  try {
-    await round(null)
-  } catch (error) {
-    reportError(error as Error)
+  // A leállítási kérést elsőként figyeljük: a felzárkózó kör alatti Ctrl+C is
+  // megvárja a kört, és utána 0-val lép ki.
+  let stopRequested = false
+  let resolveStop = (): void => {}
+  const stopped = new Promise<void>((resolve) => (resolveStop = resolve))
+  let uninstall = (): void => {}
+  const requestStop = (): void => {
+    if (stopRequested) return
+    stopRequested = true
+    uninstall()
+    resolveStop()
   }
+  uninstall = installSigint(requestStop, runtime.signals)
+  void runtime.stop?.then(requestStop)
 
+  stamp(`figyelés: ${sources.map((s) => s.path).join(', ')} (${String(sources.length)} mappa)`)
   const scheduler = createScheduler({ quietMs: runtime.quietMs ?? 5000, run: round, onError: reportError })
+  // A figyelés a felzárkózó kör ELŐTT indul, így a kör alatt érkező felirat sem
+  // vész el: a `notify` a felzárkózó kör utáni körbe gyűjti.
   const watcher = await watchSubtitles(
     sources.map((s) => s.path),
     (path) => scheduler.notify(path),
     reportError,
     { stabilityMs: runtime.stabilityMs ?? 2000 },
   )
-  stamp('kész, várom az új feliratokat (Ctrl+C: leállítás)')
-
-  await new Promise<void>((resolve) => {
-    const uninstall = installSigint(() => {
-      uninstall()
-      resolve()
-    }, runtime.signals)
-    void runtime.stop?.then(() => {
-      uninstall()
-      resolve()
-    })
-  })
-
-  await watcher.close()
-  await scheduler.drain()
+  try {
+    if (!stopRequested) await scheduler.runNow(null)
+    if (!stopRequested) {
+      stamp('kész, várom az új feliratokat (Ctrl+C: leállítás)')
+      await stopped
+    }
+  } finally {
+    try {
+      await watcher.close()
+    } finally {
+      await scheduler.drain()
+    }
+  }
   stamp('leállítva')
   return 0
 }

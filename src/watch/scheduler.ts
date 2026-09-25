@@ -1,6 +1,12 @@
 export interface Scheduler {
   /** Egy változott feliratfájl; a csend lejártakor a kör megkapja. */
   notify(path: string): void
+  /**
+   * Azonnal indít egy kört (a felzárkózó kör: `null`). Ha kör fut, előbb azt
+   * megvárja; amíg ez fut, a `notify` a következő körbe gyűjt. A kör hibáját az
+   * `onError` kapja, a visszaadott ígéret nem bukik el.
+   */
+  runNow(paths: ReadonlySet<string> | null): Promise<void>
   /** Leállításkor: a futó kör befejeződik, a még nem indult eldobódik. */
   drain(): Promise<void>
 }
@@ -13,7 +19,7 @@ export interface Scheduler {
  */
 export function createScheduler(opts: {
   quietMs: number
-  run: (paths: ReadonlySet<string>) => Promise<void>
+  run: (paths: ReadonlySet<string> | null) => Promise<void>
   onError: (error: Error) => void
 }): Scheduler {
   let pending = new Set<string>()
@@ -27,18 +33,24 @@ export function createScheduler(opts: {
     timer = setTimeout(fire, opts.quietMs)
   }
 
-  const fire = (): void => {
-    timer = undefined
-    if (running !== null || pending.size === 0) return
-    const batch = pending
-    pending = new Set()
-    running = opts
+  const start = (batch: ReadonlySet<string> | null): Promise<void> => {
+    const current = opts
       .run(batch)
       .catch((error: unknown) => opts.onError(error instanceof Error ? error : new Error(String(error))))
       .finally(() => {
         running = null
         if (pending.size > 0) arm()
       })
+    running = current
+    return current
+  }
+
+  const fire = (): void => {
+    timer = undefined
+    if (running !== null || pending.size === 0) return
+    const batch = pending
+    pending = new Set()
+    void start(batch)
   }
 
   return {
@@ -46,6 +58,11 @@ export function createScheduler(opts: {
       if (stopped) return
       pending.add(path)
       if (running === null) arm()
+    },
+    async runNow(paths) {
+      while (running !== null) await running
+      if (stopped) return
+      await start(paths)
     },
     async drain() {
       stopped = true
