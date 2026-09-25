@@ -90,7 +90,12 @@ export async function watchRound(opts: RoundOptions): Promise<RoundResult> {
     if (commit) {
       const notePaths = store.listPendingCommits()
       const paths = queueChanged ? [...notePaths, queue.path] : notePaths
-      const message = `docs(${COMMIT_SCOPE}): watch — átirat ${String(notePaths.length)} videóhoz`
+      // Új átirat nélkül csak a sor változott: az „átirat 0 videóhoz" félrevezető
+      // bejegyzés lenne a vault történetében.
+      const message =
+        notePaths.length === 0
+          ? `docs(${COMMIT_SCOPE}): watch — feldolgozási sor frissítése`
+          : `docs(${COMMIT_SCOPE}): watch — átirat ${String(notePaths.length)} videóhoz`
       if (paths.length > 0 && (await gitCommitPaths(cfg.vaultPath, paths, message))) {
         hash = await gitHeadShort(cfg.vaultPath)
         const push = await gitPush(cfg.vaultPath)

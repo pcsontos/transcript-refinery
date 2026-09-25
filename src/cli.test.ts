@@ -26,6 +26,7 @@ import { discoverAll, folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
 import type { ModelRole } from './types.js'
 import { gitCommitPaths } from './vault/git.js'
+import { commandWatch } from './watch/command.js'
 import { lintVaultMarkdown } from './vault/lint.js'
 import { noteBody } from './vault/note-body.js'
 import { noteFile } from './vault/paths.js'
@@ -186,6 +187,12 @@ const rawWithVault = (costLimitUsd: number) => ({
   ...rawConfig(costLimitUsd),
   vault: { path: vault },
 })
+
+// A `main` watch-ágát a paraméterátadás szintjén ellenőrizzük: a figyelő
+// valódi indítása (fájlfigyelés, Ctrl+C) a `watch/*.test.ts` dolga.
+vi.mock('./watch/command.js', () => ({
+  commandWatch: vi.fn(() => Promise.resolve(0)),
+}))
 
 let savedApiKey: string | undefined
 let work: string
@@ -2220,6 +2227,35 @@ describe('main és súgó', () => {
     } finally {
       logSpy.mockRestore()
     }
+  })
+
+  it('a watch a nem támogatott kapcsolót megnevezve elutasítja, és el sem indul', async () => {
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+    await mkdir(join(vault, '.git'))
+    vi.mocked(commandWatch).mockClear()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await main(['watch', '--dry-run', '--config', configPath])).toBe(1)
+      expect(await main(['watch', '--recipe', 'summary', '--config', configPath])).toBe(1)
+      expect(vi.mocked(commandWatch)).not.toHaveBeenCalled()
+      const uzenetek = errorSpy.mock.calls.map((call) => String(call[0]))
+      expect(uzenetek[0]).toContain('--dry-run')
+      expect(uzenetek[0]).toContain('--config, --source, --no-commit')
+      expect(uzenetek[1]).toContain('--recipe')
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('a watch a támogatott kapcsolókat továbbadja', async () => {
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+    await mkdir(join(vault, '.git'))
+    vi.mocked(commandWatch).mockClear()
+    expect(await main(['watch', '--source', 'downloads', '--no-commit', '--config', configPath])).toBe(0)
+    expect(vi.mocked(commandWatch)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(commandWatch).mock.calls[0]![1]).toEqual({ source: 'downloads', commit: false })
   })
 })
 

@@ -89,6 +89,18 @@ function describeFinishError(error: unknown): string {
     : `A riport nem készült el: ${message}`
 }
 
+/** A watch által ismert kapcsolók; a `help` a súgóág miatt ide sosem ér el. */
+const WATCH_OPTIONS = new Set(['config', 'source', 'no-commit', 'help'])
+
+/** Az első megadott, de a watch által nem ismert kapcsoló neve, ha van. */
+function unsupportedWatchOption(values: Record<string, unknown>): string | undefined {
+  // A logikai kapcsolók alapértéke `false` (a `no-judge`-é `undefined`), tehát
+  // csak a `false`-tól és `undefined`-tól eltérő érték jelenti, hogy megadták.
+  return Object.entries(values).find(
+    ([name, value]) => !WATCH_OPTIONS.has(name) && value !== undefined && value !== false,
+  )?.[0]
+}
+
 export const USAGE = `refinery <parancs> [kapcsolók]
 
 Parancsok:
@@ -98,6 +110,7 @@ Parancsok:
   list            Kilistázza az elemeket típusonkénti állapottal; nem ír semmit.
   watch           Figyeli a forrásmappákat: az új feliratból átirat és
                   _queue.md-sor lesz; modellt nem hív. Ctrl+C: leállítás.
+                  Csak a --config, --source és --no-commit kapcsolót ismeri.
 
 Kapcsolók:
   --config <út>     konfigurációs fájl (alapértelmezés: refinery.config.yaml)
@@ -886,6 +899,19 @@ export async function main(argv: readonly string[]): Promise<number> {
     },
     allowPositionals: false,
   })
+
+  // A watch csak a saját kapcsolóit ismeri. A többit nem hagyhatjuk csendben
+  // figyelmen kívül: egy `watch --dry-run` különben átiratot írna, és
+  // commitolna is — ezért bármi indulása előtt megállunk.
+  if (command === 'watch') {
+    const unsupported = unsupportedWatchOption(values)
+    if (unsupported !== undefined) {
+      console.error(
+        `A watch nem ismeri a --${unsupported} kapcsolót; támogatott: --config, --source, --no-commit.`,
+      )
+      return 1
+    }
+  }
 
   const { raw, cfg } = await loadCliConfig(values.config)
   await validateConfig(cfg)

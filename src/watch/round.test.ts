@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { loadConfig, type Config } from '../config.js'
+import { COMMIT_SCOPE } from '../meta.js'
 import { queuePath } from '../queue/file.js'
 import { RECIPES } from '../recipe/registry.js'
 import { watchRound } from './round.js'
@@ -120,6 +121,22 @@ describe('watchRound — commit', () => {
     expect(lines.some((l) => l === `commit: ${result.commit!} (push ok)`)).toBe(true)
     const { stdout } = await git('git', ['-C', vault, 'show', '--name-only', '--format=%s', 'HEAD'])
     expect(stdout).toContain('_transcript.md')
+    expect(stdout).toContain('_queue.md')
+    expect(stdout.split('\n')[0]).toBe(`docs(${COMMIT_SCOPE}): watch — átirat 1 videóhoz`)
+  })
+
+  it('ha csak a sor változott, a commit üzenete nem „átirat 0 videóhoz"', async () => {
+    await felirat('Csatorna', 'Egy videó')
+    // Commit nélkül: az átirat kész, de függő commitként sem marad meg.
+    await round(null, false)
+    await rm(queuePath(cfg.notesRoot))
+    const result = await round(null, true)
+
+    expect(result.transcripts).toBe(0)
+    expect(result.commit).toMatch(/^[0-9a-f]{7,}$/)
+    const { stdout } = await git('git', ['-C', vault, 'show', '--name-only', '--format=%s', 'HEAD'])
+    expect(stdout.split('\n')[0]).toBe(`docs(${COMMIT_SCOPE}): watch — feldolgozási sor frissítése`)
+    expect(stdout).not.toContain('_transcript.md')
     expect(stdout).toContain('_queue.md')
   })
 })
