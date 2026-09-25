@@ -235,15 +235,15 @@ describe('renderReport', () => {
     const md = renderReport(
       input({
         queue: [
-          { recipe: 'clean', selected: 1, done: 1, failed: 0, pending: 0, deferred: 0, skipped: 0 },
-          { recipe: 'clean-hu', selected: 2, done: 0, failed: 0, pending: 0, deferred: 0, skipped: 2 },
+          { recipe: 'clean-moderate', selected: 1, done: 1, failed: 0, pending: 0, deferred: 0, skipped: 0 },
+          { recipe: 'clean-moderate-hu', selected: 2, done: 0, failed: 0, pending: 0, deferred: 0, skipped: 2 },
         ],
       }),
     )
     expect(md).toContain('| recept | kipipálva | kész | hibás | hátra | plafon miatt maradt | kihagyva |')
     expect(md).toContain('|---|---|---|---|---|---|---|')
-    expect(md).toContain('| clean | 1 | 1 | 0 | 0 | 0 | 0 |')
-    expect(md).toContain('| clean-hu | 2 | 0 | 0 | 0 | 0 | 2 |')
+    expect(md).toContain('| clean-moderate | 1 | 1 | 0 | 0 | 0 | 0 |')
+    expect(md).toContain('| clean-moderate-hu | 2 | 0 | 0 | 0 | 0 | 2 |')
     expect(md).toContain('A sor feldolgozva.')
   })
 })

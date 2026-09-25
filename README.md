@@ -98,15 +98,22 @@ sorformátumot kér a modelltől, hanem sémás objektumot, és a vault alakját
 kapu előbb fut, mint a bírók — ismétlődő kérdésnél vagy válasz nélküli
 fejlécnél a drága pontozás el sem indul.
 
-A `--recipe clean` a feliratot enyhén szerkesztett, bekezdésekre és `##`
-szakaszcímekre tagolt leiratot ad, minden bekezdés előtt a valós elhangzási
-idővel (`[MM:SS]`, egy órán túl `[H:MM:SS]`). A modell prózát ír, időbélyeg
-nélkül; egy determinisztikus lépés utólag horgonyozza a bekezdéseket a
-feliratsorokhoz sorrendtartó illesztéssel. A bizonytalanul illeszkedő bekezdés
-időbélyeg nélkül kerül a jegyzetbe — a jegyzet maga elkészül, nem a teljes,
-már kifizetett modellkimenet vesztődik el —, és a futás naplója megmondja,
-hány bekezdés maradt így. Egy nulla tokenes hűségkapu állítja meg a modellt,
-ha tisztítás helyett összefoglalna.
+A tisztított leirat három szinten készül; a töltelékszavakat mindhárom
+eltávolítja:
+
+| recept | mit csinál | időbélyeg |
+|---|---|---|
+| `clean-mild` | írásjel, nagybetű, félrehallás; nincs fejléc, nincs átfogalmazás | bekezdésenként |
+| `clean-moderate` | bekezdések és `##` fejlécek a témaváltásnál; nincs átfogalmazás | bekezdésenként |
+| `clean-deep` | írott formára szerkeszt: ismétlések nélkül, átfogalmazva, tartalmat nem hagy ki | nincs |
+
+Az időbélyeg a valós elhangzási idő (`[MM:SS]`, egy órán túl `[H:MM:SS]`). A
+modell prózát ír, időbélyeg nélkül; egy determinisztikus lépés utólag
+horgonyozza a bekezdéseket a feliratsorokhoz sorrendtartó illesztéssel. A
+bizonytalanul illeszkedő bekezdés időbélyeg nélkül kerül a jegyzetbe — a
+jegyzet maga elkészül, nem a teljes, már kifizetett modellkimenet vesztődik
+el —, és a futás naplója megmondja, hány bekezdés maradt így. Egy nulla
+tokenes hűségkapu állítja meg a modellt, ha tisztítás helyett összefoglalna.
 
 A `--recipe bloom` a Bloom-taxonómia hat szintjére (Remember → Create) tagolt
 kártyapaklit ír, szintenként 3–5 kártyával; a szint és a nehézség a kártya
@@ -120,7 +127,7 @@ ellenőrzi, hogy nem mondanak ellent neki.
 
 A fordítás nem külön dokumentumtípus, hanem bármelyik recept kész jegyzetének
 célnyelvű változata. A `translate` konfigkulcs mondja meg a célnyelvet és a
-forrásreceptek listáját; mindegyikből saját recept lesz (`--recipe clean-hu`,
+forrásreceptek listáját; mindegyikből saját recept lesz (`--recipe clean-moderate-hu`,
 `summary-hu`…), saját pipával a sorban. A fordítás a vaultban lévő
 forrásjegyzetből készül — egy kézzel javított jegyzet javított változata fordul
 —, és ahhoz mér: egy nulla tokenes vázkapu ellenőrzi, hogy az időbélyegek, a
@@ -226,6 +233,30 @@ enélkül a pnpm egy workspace-gyökér csomag saját bin-jét nem kötné be a
 `node_modules/.bin`-be. Az `npx` ugyanezt a helyi `node_modules/.bin/refinery`-t
 találja meg; a registryhez nem is fordul, mert a csomag `"private": true`.
 
+#### Használat a terminálból, bárhonnan
+
+A `refinery` parancs a gépen bárhonnan futtatható, ha egyszer globálisan
+bekötöd (a repó gyökeréből):
+
+```bash
+pnpm build && npm link
+```
+
+A pnpm 12-ben a `pnpm link --global` már nem létezik, a `pnpm add -g link:.`
+pedig bin nélkül köti be a csomagot — ezért itt az `npm link` a működő út.
+A link a `dist/`-re mutat: kódváltozás után elég újra `pnpm build`. A
+parancs alapból a **munkakönyvtár** `refinery.config.yaml`-ját keresi, ezért
+más mappából a `--config` kell — a legkényelmesebb egy alias a shell
+konfigurációjában:
+
+```bash
+alias refinery='refinery --config /abszolút/út/transcript-refinery/refinery.config.yaml'
+```
+
+A configban megadott relatív útvonalak (`state.path`, `logs.dir`) és a
+`.env` a **config fájl mappájához** képest értendők, nem a munkakönyvtárhoz:
+bárhonnan indítva ugyanazt az állapottárat és kulcsot használja.
+
 #### Felderítés (`scan`)
 
 Kilistázza a konfigurált forrásokból elérhető feliratokat, azok szószámát és becsült minőségét (fájlírás nélkül):
@@ -302,8 +333,8 @@ node dist/cli.js list --channel "Sajjaad Khader"
 # csatornánként: videószám, típusonként kész/összes, összköltség
 node dist/cli.js list --channels
 
-# amin a clean még nem futott — ezeket érdemes kipipálni a sorban
-node dist/cli.js list --recipe clean --status pending
+# amin a clean-moderate még nem futott — ezeket érdemes kipipálni a sorban
+node dist/cli.js list --recipe clean-moderate --status pending
 ```
 
 A `--status` (`done`, `failed`, `pending`) `--recipe` nélkül bármely típusra
@@ -311,6 +342,38 @@ illik: a `list --status failed` minden elemet mutat, amin legalább egy
 típus hibára futott. A `--source`, a `--channel` és a `--limit` ugyanúgy
 szűr, mint a `run`-nál. A számok ugyanabból az olvasó rétegből jönnek, mint
 a webes felületéi.
+
+#### Figyelés (`watch`)
+
+Előtérben futó figyelő: amint a letöltő új `.srt` vagy `.vtt` feliratot tesz a
+configban megadott `sources` mappák valamelyikébe, abból átirat lesz, és az
+elem bekerül a vault `_queue.md` sorába. **Modellt nem
+hív, tehát nem költ** — a recepteket továbbra is te pipálod ki a sorban, és a
+`run --queue` futtatja őket.
+
+```bash
+refinery watch                 # minden forrásmappa
+refinery watch --source youtube
+refinery watch --no-commit     # a vaultba ír, de nem commitol
+```
+
+Más kapcsolót (pl. `--dry-run`, `--recipe`) nem ismer: ilyenkor hibával,
+indulás nélkül kilép.
+
+Indításkor egy felzárkózó kör pótolja, ami a leállás alatt érkezett. Minden
+eseményről egy sor megy ki:
+
+```
+14:32:05  új átirat: AI Engineer / Full Walkthrough … (en)
+14:32:06  _queue.md frissítve: +1 elem
+14:32:07  commit: a1b2c3d (push ok)
+```
+
+A letöltés közbeni fájlt megvárja (a fájl mérete ~2 mp-ig nem változik), és a
+gyorsan egymás után érkező feliratokat egy körben dolgozza fel. Egy hibás
+felirat nem állítja le: a hibát kiírja, és csak akkor próbálja újra, ha a fájl
+megváltozik, vagy a watch újraindításakor. Ctrl+C-re a futó kör befejeződik;
+a második Ctrl+C azonnal kilép.
 
 #### Árazás ellenőrzése (`check-pricing`)
 

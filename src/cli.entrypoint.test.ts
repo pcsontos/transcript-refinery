@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, rm, symlink } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
@@ -53,5 +54,48 @@ describe('cli belépési pont', () => {
       const { stdout } = await run(TSX, [link, '--help'])
       expect(stdout).toContain('refinery <parancs>')
     })
+  })
+})
+
+describe('más munkakönyvtárból, --config-gal indítva', () => {
+  let work: string | undefined
+
+  afterEach(async () => {
+    if (work) await rm(work, { recursive: true, force: true })
+    work = undefined
+  })
+
+  it('az állapottár és a napló a config mellé kerül, a munkakönyvtárban nem jön létre .state', async () => {
+    work = await mkdtemp(join(tmpdir(), 'refinery-cwd-'))
+    const projekt = join(work, 'projekt')
+    const mashol = join(work, 'mashol')
+    const vault = join(work, 'vault')
+    const letoltes = join(work, 'letoltes', 'Csatorna')
+    await mkdir(projekt, { recursive: true })
+    await mkdir(mashol, { recursive: true })
+    await mkdir(letoltes, { recursive: true })
+    await mkdir(vault, { recursive: true })
+    await run('git', ['init', '-q'], { cwd: vault })
+    await writeFile(
+      join(letoltes, 'Egy videó.en.srt'),
+      '1\n00:00:00,000 --> 00:00:02,000\nThis is a test sentence for the probe.\n',
+      'utf8',
+    )
+    await writeFile(
+      join(projekt, 'refinery.config.yaml'),
+      `vault:\n  path: ${vault}\nsources:\n  - ${join(work, 'letoltes')}\n`,
+      'utf8',
+    )
+
+    await run(
+      resolve(TSX),
+      [resolve('src/cli.ts'), 'run', '--dry-run', '--config', join(projekt, 'refinery.config.yaml')],
+      { cwd: mashol },
+    )
+
+    expect(existsSync(join(projekt, '.state', 'refinery.db'))).toBe(true)
+    expect(existsSync(join(projekt, 'logs'))).toBe(true)
+    expect(existsSync(join(mashol, '.state'))).toBe(false)
+    expect(existsSync(join(mashol, 'logs'))).toBe(false)
   })
 })

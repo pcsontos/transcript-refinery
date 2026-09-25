@@ -88,7 +88,9 @@ describe('buildItemRows', () => {
       summary: { status: 'done', score: 0.62, costUsd: 0.01, belowThreshold: true },
       flashcards: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
       qa: { status: 'failed', score: null, costUsd: null, belowThreshold: false },
-      clean: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
+      'clean-mild': { status: 'pending', score: null, costUsd: null, belowThreshold: false },
+      'clean-moderate': { status: 'pending', score: null, costUsd: null, belowThreshold: false },
+      'clean-deep': { status: 'pending', score: null, costUsd: null, belowThreshold: false },
       bloom: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
       notes: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
     })
@@ -99,10 +101,10 @@ describe('buildItemRows', () => {
     const [row] = buildItemRows(
       [sourceItem('a', 'Első példavideó')],
       [],
-      [artifact({ kind: 'clean-hu', score: 0.5 })],
-      recipesFor({ configPath: '/p/c.yaml', translate: { to: 'hu', recipes: ['clean'] } }),
+      [artifact({ kind: 'clean-moderate-hu', score: 0.5 })],
+      recipesFor({ configPath: '/p/c.yaml', translate: { to: 'hu', recipes: ['clean-moderate'] } }),
     )
-    expect(row!.cells['clean-hu']).toEqual({
+    expect(row!.cells['clean-moderate-hu']).toEqual({
       status: 'done',
       score: 0.5,
       costUsd: null,

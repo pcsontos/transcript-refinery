@@ -172,10 +172,10 @@ function tarolo(statusok: Record<string, string>): Pick<StateStore, 'artifactOf'
 
 describe('sourcesFirst', () => {
   it('az alapreceptek után a fordítások jönnek, mindkét csoporton belül változatlan sorrendben', () => {
-    const cleanHu = translationOf(getRecipe('clean'), 'hu')
+    const cleanHu = translationOf(getRecipe('clean-moderate'), 'hu')
     const units: WorkUnit[] = [
       { item: elem({ itemId: 'a' }), recipe: cleanHu },
-      { item: elem({ itemId: 'a' }), recipe: getRecipe('clean') },
+      { item: elem({ itemId: 'a' }), recipe: getRecipe('clean-moderate') },
       { item: elem({ itemId: 'b' }), recipe: cleanHu },
       { item: elem({ itemId: 'b' }), recipe: null },
     ]
@@ -184,41 +184,41 @@ describe('sourcesFirst', () => {
 })
 
 describe('sourceGap', () => {
-  const cleanHu = translationOf(getRecipe('clean'), 'hu')
+  const cleanHu = translationOf(getRecipe('clean-moderate'), 'hu')
 
   it('nem fordításra és kész forrásra null', () => {
-    expect(sourceGap({ item: elem(), recipe: getRecipe('clean') }, tarolo({}))).toBeNull()
+    expect(sourceGap({ item: elem(), recipe: getRecipe('clean-moderate') }, tarolo({}))).toBeNull()
     expect(
-      sourceGap({ item: elem(), recipe: cleanHu }, tarolo({ 'abcDEF12345/clean': 'done' })),
+      sourceGap({ item: elem(), recipe: cleanHu }, tarolo({ 'abcDEF12345/clean-moderate': 'done' })),
     ).toBeNull()
   })
 
   it('rögzítetlen forrásra az „előbb kell" okot adja', () => {
     expect(sourceGap({ item: elem(), recipe: cleanHu }, tarolo({}))).toBe(
-      'előbb a clean recept kell',
+      'előbb a clean-moderate recept kell',
     )
   })
 
   it('hibás forrásra a „nem készült el" okot adja', () => {
     expect(
-      sourceGap({ item: elem(), recipe: cleanHu }, tarolo({ 'abcDEF12345/clean': 'failed' })),
-    ).toBe('a clean recept jegyzete nem készült el')
+      sourceGap({ item: elem(), recipe: cleanHu }, tarolo({ 'abcDEF12345/clean-moderate': 'failed' })),
+    ).toBe('a clean-moderate recept jegyzete nem készült el')
   })
 })
 
 describe('sourcePlanned', () => {
   it('csak ugyanannak az elemnek a forrásegységét fogadja el', () => {
-    const cleanHu = translationOf(getRecipe('clean'), 'hu')
+    const cleanHu = translationOf(getRecipe('clean-moderate'), 'hu')
     const forditas: WorkUnit = { item: elem({ itemId: 'a' }), recipe: cleanHu }
-    expect(sourcePlanned(forditas, [forditas, { item: elem({ itemId: 'a' }), recipe: getRecipe('clean') }])).toBe(true)
-    expect(sourcePlanned(forditas, [forditas, { item: elem({ itemId: 'b' }), recipe: getRecipe('clean') }])).toBe(false)
-    expect(sourcePlanned({ item: elem(), recipe: getRecipe('clean') }, [])).toBe(false)
+    expect(sourcePlanned(forditas, [forditas, { item: elem({ itemId: 'a' }), recipe: getRecipe('clean-moderate') }])).toBe(true)
+    expect(sourcePlanned(forditas, [forditas, { item: elem({ itemId: 'b' }), recipe: getRecipe('clean-moderate') }])).toBe(false)
+    expect(sourcePlanned({ item: elem(), recipe: getRecipe('clean-moderate') }, [])).toBe(false)
   })
 })
 
 describe('estimateUnits fordítással', () => {
   it('a fordítás bemenete az átirat a forrásrecept kimeneti arányával, egy bíróval', async () => {
-    const clean = getRecipe('clean')
+    const clean = getRecipe('clean-moderate')
     const cleanHu = translationOf(clean, 'hu')
     const words = (await normalizeItem(elem())).wordsNormalized
 

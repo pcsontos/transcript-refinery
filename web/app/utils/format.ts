@@ -4,6 +4,9 @@ const KIND_LABELS: Record<string, string> = {
   flashcards: 'tanulókártya',
   qa: 'kérdés-felelet',
   clean: 'tisztított leirat',
+  'clean-mild': 'tisztított leirat — enyhe',
+  'clean-moderate': 'tisztított leirat — közepes',
+  'clean-deep': 'tisztított leirat — erős',
   bloom: 'Bloom-kártya',
   notes: 'strukturált jegyzet',
 }

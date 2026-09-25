@@ -172,10 +172,10 @@ describe('renderRecipeNote', () => {
       'A törzs.',
       {
         ...meta,
-        recipe: 'clean-hu',
+        recipe: 'clean-moderate-hu',
         translation: {
           language: 'hu',
-          sourceRecipe: 'clean',
+          sourceRecipe: 'clean-moderate',
           sourceGeneratedAt: '2026-09-16T14:11:51.001Z',
         },
       },
@@ -183,7 +183,7 @@ describe('renderRecipeNote', () => {
     )
     expect(note).toContain('\nlanguage: hu\n')
     expect(note).toContain(
-      '\ncost_usd: 0.0812\nsource_language: en\ntranslation_of: clean\n' +
+      '\ncost_usd: 0.0812\nsource_language: en\ntranslation_of: clean-moderate\n' +
         'source_generated_at: "2026-09-16T14:11:51.001Z"\n---',
     )
   })
@@ -193,10 +193,10 @@ describe('renderRecipeNote', () => {
       item({ language: null }),
       transcript,
       'A törzs.',
-      { ...meta, translation: { language: 'hu', sourceRecipe: 'clean', sourceGeneratedAt: null } },
+      { ...meta, translation: { language: 'hu', sourceRecipe: 'clean-moderate', sourceGeneratedAt: null } },
       '0.1.0',
     )
-    expect(note).toContain('\ntranslation_of: clean\n---')
+    expect(note).toContain('\ntranslation_of: clean-moderate\n---')
     expect(note).not.toContain('source_language')
     expect(note).not.toContain('source_generated_at')
   })

@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   DEFAULT_NOTES_DIR,
+  loadCliConfig,
   loadConfig,
   loadModelConfig,
   readConfigFile,
@@ -93,14 +94,14 @@ describe('loadConfig', () => {
 
   it('a translate kulcsot célnyelvvel és forrásreceptekkel olvassa be', () => {
     expect(
-      loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean', 'summary'] } }, '/p/c.yaml')
+      loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] } }, '/p/c.yaml')
         .translate,
-    ).toEqual({ to: 'hu', recipes: ['clean', 'summary'] })
+    ).toEqual({ to: 'hu', recipes: ['clean-moderate', 'summary'] })
   })
 
   it('ismeretlen célnyelvre felsorolja az ismert nyelveket', () => {
     expect(() =>
-      loadConfig({ ...MIN, translate: { to: 'xx', recipes: ['clean'] } }, '/p/c.yaml'),
+      loadConfig({ ...MIN, translate: { to: 'xx', recipes: ['clean-moderate'] } }, '/p/c.yaml'),
     ).toThrow('translate.to: Ismeretlen célnyelv; ismert nyelvek: en, hu, nl, de, es, fr, it. (/p/c.yaml)')
   })
 
@@ -112,7 +113,7 @@ describe('loadConfig', () => {
 
   it('ismétlődő forrásreceptre beszédes hibát dob', () => {
     expect(() =>
-      loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean', 'clean'] } }, '/p/c.yaml'),
+      loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean-moderate', 'clean-moderate'] } }, '/p/c.yaml'),
     ).toThrow('translate.recipes: Egy forrásrecept csak egyszer szerepelhet. (/p/c.yaml)')
   })
 })
@@ -242,5 +243,55 @@ describe('loadConfig — alapmappa', () => {
     )
     expect(cfg.statePath).toBe('/abs/state.db')
     expect(cfg.logsDir).toBe('/abs/logs')
+  })
+})
+
+describe('loadCliConfig', () => {
+  const YAML = 'vault:\n  path: /v\nsources:\n  - /s/youtube\n'
+
+  it('a relatív állapot- és naplóútvonalat a config mappájához oldja fel, nem a munkakönyvtárhoz', async () => {
+    const configDir = join(dir, 'projekt')
+    await mkdir(configDir, { recursive: true })
+    await writeFile(join(configDir, 'refinery.config.yaml'), YAML, 'utf8')
+
+    const { cfg } = await loadCliConfig(join(configDir, 'refinery.config.yaml'), join(dir, 'mashol'))
+
+    expect(cfg.statePath).toBe(join(configDir, '.state', 'refinery.db'))
+    expect(cfg.logsDir).toBe(join(configDir, 'logs'))
+  })
+
+  it('--config nélkül a munkakönyvtár refinery.config.yaml-ját olvassa', async () => {
+    await writeFile(join(dir, 'refinery.config.yaml'), YAML, 'utf8')
+    const { cfg } = await loadCliConfig(undefined, dir)
+    expect(cfg.configPath).toBe(join(dir, 'refinery.config.yaml'))
+  })
+
+  it('a config melletti .env-et tölti be', async () => {
+    delete process.env.REFINERY_PROBA_KULCS
+    await writeFile(join(dir, 'refinery.config.yaml'), YAML, 'utf8')
+    await writeFile(join(dir, '.env'), 'REFINERY_PROBA_KULCS=fajlbol\n', 'utf8')
+    try {
+      await loadCliConfig(join(dir, 'refinery.config.yaml'), tmpdir())
+      expect(process.env.REFINERY_PROBA_KULCS).toBe('fajlbol')
+    } finally {
+      delete process.env.REFINERY_PROBA_KULCS
+    }
+  })
+
+  it('a környezetben már beállított változót a .env nem írja felül', async () => {
+    process.env.REFINERY_PROBA_KULCS = 'kornyezetbol'
+    await writeFile(join(dir, 'refinery.config.yaml'), YAML, 'utf8')
+    await writeFile(join(dir, '.env'), 'REFINERY_PROBA_KULCS=fajlbol\n', 'utf8')
+    try {
+      await loadCliConfig(join(dir, 'refinery.config.yaml'), tmpdir())
+      expect(process.env.REFINERY_PROBA_KULCS).toBe('kornyezetbol')
+    } finally {
+      delete process.env.REFINERY_PROBA_KULCS
+    }
+  })
+
+  it('.env nélkül sem hibázik', async () => {
+    await writeFile(join(dir, 'refinery.config.yaml'), YAML, 'utf8')
+    await expect(loadCliConfig(join(dir, 'refinery.config.yaml'), tmpdir())).resolves.toBeDefined()
   })
 })

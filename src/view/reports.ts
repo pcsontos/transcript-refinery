@@ -14,6 +14,14 @@ import { readRuns, type RunSummaryView } from './runs.js'
 /** A halmozott költségsáv közös sorozata a fordítási típusoknak. */
 export const TRANSLATION_SERIES = 'fordítás'
 
+/**
+ * A tisztított leirat szintjeinek közös sorozata. Külön sorozatként a
+ * grafikon 8 alaprecept + fordítás színt kérne, a paletta plafonja 8.
+ */
+export const CLEAN_SERIES = 'clean'
+
+const CLEAN_LEVEL_KINDS: ReadonlySet<string> = new Set(['clean-mild', 'clean-moderate', 'clean-deep'])
+
 /** A toplisták hossza. */
 export const TOP_LIMIT = 10
 
@@ -49,7 +57,7 @@ export interface ChannelReport {
   captions: { creator: number; auto: number }
   /** A vault-tartalom költsége; `null`, ha egyik cellának sincs költsége. */
   costUsd: number | null
-  /** Sorozatonként (alapreceptek + `TRANSLATION_SERIES`) a költség. */
+  /** Sorozatonként (alapreceptek, a `CLEAN_SERIES` és a `TRANSLATION_SERIES`) a költség. */
   costBySeries: Record<string, number>
   /** Fordítási típusonként a költség, a tooltiphez. */
   translationCost: Record<string, number>
@@ -130,7 +138,11 @@ function top(ranks: ItemRank[]): ItemRank[] {
 export function buildReports(input: ReportsInput): Reports {
   const kinds = artifactKinds(input.registry).filter((kind) => kind !== ARTIFACT_KIND)
   const seriesOf = (kind: string): string =>
-    translationBase(kind, kinds) === null ? kind : TRANSLATION_SERIES
+    translationBase(kind, kinds) !== null
+      ? TRANSLATION_SERIES
+      : CLEAN_LEVEL_KINDS.has(kind)
+        ? CLEAN_SERIES
+        : kind
   const series = [...new Set(kinds.map(seriesOf))]
   const translations = kinds.filter((kind) => seriesOf(kind) === TRANSLATION_SERIES)
 

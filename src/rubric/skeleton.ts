@@ -3,7 +3,7 @@ import type { Criterion, Score } from './types.js'
 /** Nyitó vagy záró kódkerítés; a második csoport a típusjelölő. */
 const FENCE = /^ {0,3}(`{3,}|~{3,})\s*(\S*)/
 
-/** A `clean` recept bekezdés eleji időbélyege: `[MM:SS]` vagy `[H:MM:SS]`. */
+/** A horgonyzott `clean`-szintek bekezdés eleji időbélyege: `[MM:SS]` vagy `[H:MM:SS]`. */
 const TIMESTAMP = /^\[(?:\d+:)?\d{2}:\d{2}\]/
 
 /** ATX-fejléc; a `#decks` hashtag és az escape-elt `\##` nem az. */

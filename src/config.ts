@@ -1,5 +1,5 @@
 import { readFile, stat } from 'node:fs/promises'
-import { basename, isAbsolute, join, resolve } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 import type { ModelRole } from './types.js'
@@ -29,6 +29,28 @@ export function loadDotEnv(path = join(process.cwd(), '.env')): void {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
+}
+
+/**
+ * A CLI konfigurációja. A fájl helye a `--config` értéke, vagy a
+ * munkakönyvtárbeli alapnév; a relatív `state.path`, `logs.dir` és a `.env`
+ * viszont a **config fájl mappájához** oldódik fel (#72). Így a parancs
+ * bárhonnan indítva ugyanazt az állapottárat látja — máshonnan indítva nem hoz
+ * létre egy új, üres állapottárat, amely a kész elemeket újra kifizettetné.
+ *
+ * A `.env` a config beolvasása előtt töltődik be; a környezetben már beállított
+ * változót nem írja felül (a `process.loadEnvFile` viselkedése, Node 26.2-n
+ * ellenőrizve).
+ */
+export async function loadCliConfig(
+  configArg: string | undefined,
+  cwd: string = process.cwd(),
+): Promise<{ raw: unknown; cfg: Config }> {
+  const configPath = resolve(cwd, configArg ?? CONFIG_FILENAME)
+  const baseDir = dirname(configPath)
+  loadDotEnv(join(baseDir, '.env'))
+  const raw = await readConfigFile(configPath)
+  return { raw, cfg: loadConfig(raw, configPath, baseDir) }
 }
 
 const absolutePath = (label: string) =>
@@ -143,9 +165,9 @@ export async function readConfigText(path: string): Promise<string> {
 /**
  * YAML → konfiguráció. Fájlrendszertől független, hogy tesztelhető legyen.
  *
- * A relatív `state.path` és `logs.dir` a `baseDir`-hez oldódik fel. A CLI nem
- * adja át — nála ez a munkakönyvtár, ahogy eddig —, a webes felület viszont a
- * repó gyökerét adja, mert a szervere más munkakönyvtárból is indulhat.
+ * A relatív `state.path` és `logs.dir` a `baseDir`-hez oldódik fel. A CLI a
+ * config fájl mappáját adja (`loadCliConfig`), a webes felület a repó gyökerét;
+ * alapértelmezésként — a mérőscriptek kedvéért — a munkakönyvtár.
  */
 export function loadConfig(raw: unknown, configPath: string, baseDir = process.cwd()): Config {
   const parsed = CoreSchema.safeParse(raw)

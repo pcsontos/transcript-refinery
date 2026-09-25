@@ -55,15 +55,22 @@ export function translationBase(kind: string, kinds: readonly string[]): string 
   return translation && kinds.includes(translation[1]!) ? translation[1]! : null
 }
 
+/** Egy alaprecept kódja: kötőjelenként az első három karakter (`clean-moderate` → `cle-mod`). */
+const baseCode = (kind: string): string =>
+  kind
+    .split('-')
+    .map((part) => part.slice(0, 3))
+    .join('-')
+
 /**
- * Rövid oszlopkód típusonként: az alaprecept első 3 karaktere, a fordítás
- * `<alapkód>-<nyelv>`. Ha két típus kódja egyezne, mindkettő a teljes azonosítót
- * kapja — a fejléc sosem lehet kétértelmű.
+ * Rövid oszlopkód típusonként: az alaprecept kötőjellel tagolt részeinek első
+ * 3-3 karaktere, a fordítás `<alapkód>-<nyelv>`. Ha két típus kódja egyezne,
+ * mindkettő a teljes azonosítót kapja — a fejléc sosem lehet kétértelmű.
  */
 export function kindCodes(kinds: readonly string[]): Record<string, string> {
   const candidates = kinds.map((kind) => {
     const base = translationBase(kind, kinds)
-    return base === null ? kind.slice(0, 3) : `${base.slice(0, 3)}${kind.slice(base.length)}`
+    return base === null ? baseCode(kind) : `${baseCode(base)}${kind.slice(base.length)}`
   })
   const codes: Record<string, string> = {}
   kinds.forEach((kind, i) => {

@@ -34,12 +34,12 @@ describe('markDone', () => {
         '### 1. Első %%a1%%',
         '- [x] summary — ✗ időtúllépés',
         '- [x] qa — ⏳ a plafon miatt a következő futásra maradt',
-        '- [x] clean — ⏸ előbb a summary recept kell',
+        '- [x] clean-moderate — ⏸ előbb a summary recept kell',
       ),
       kesz({
         [K('a1', 'summary')]: '✓ 0.90 · $0.0100',
         [K('a1', 'qa')]: '✓ 0.80 · $0.0200',
-        [K('a1', 'clean')]: '✓ már a vaultban',
+        [K('a1', 'clean-moderate')]: '✓ már a vaultban',
       }),
     )
     expect(text).toBe(
@@ -48,7 +48,7 @@ describe('markDone', () => {
         '### 1. Első %%a1%%',
         '- [x] summary — ✓ 0.90 · $0.0100',
         '- [x] qa — ✓ 0.80 · $0.0200',
-        '- [x] clean — ✓ már a vaultban',
+        '- [x] clean-moderate — ✓ már a vaultban',
       ),
     )
     expect(marked).toBe(3)
@@ -82,10 +82,10 @@ describe('markDone', () => {
 
   it('a fordítássor a saját kulcsával jelölődik; a nem kész szülő érintetlen', () => {
     const { text } = markDone(
-      sor('## 1. f', '### 1. Első %%a1%%', '- [ ] clean', '  - [ ] hu'),
-      kesz({ [K('a1', 'clean-hu')]: '✓ már a vaultban' }),
+      sor('## 1. f', '### 1. Első %%a1%%', '- [ ] clean-moderate', '  - [ ] hu'),
+      kesz({ [K('a1', 'clean-moderate-hu')]: '✓ már a vaultban' }),
     )
-    expect(text).toBe(sor('## 1. f', '### 1. Első %%a1%%', '- [ ] clean', '  - [x] hu — ✓ már a vaultban'))
+    expect(text).toBe(sor('## 1. f', '### 1. Első %%a1%%', '- [ ] clean-moderate', '  - [x] hu — ✓ már a vaultban'))
   })
 
   it('a duplikátum videóblokkhoz nem nyúl', () => {
@@ -129,9 +129,9 @@ describe('markDone', () => {
   })
 
   it('kétszer alkalmazva ugyanazt adja', () => {
-    const lookup = kesz({ [K('a1', 'summary')]: '✓ 0.97 · $0.0471', [K('a1', 'clean-hu')]: '✓ már a vaultban' })
+    const lookup = kesz({ [K('a1', 'summary')]: '✓ 0.97 · $0.0471', [K('a1', 'clean-moderate-hu')]: '✓ már a vaultban' })
     const elso = markDone(
-      sor('## 1. f', '### 1. Első %%a1%%', '- [ ] summary', '- [ ] clean', '  - [ ] hu'),
+      sor('## 1. f', '### 1. Első %%a1%%', '- [ ] summary', '- [ ] clean-moderate', '  - [ ] hu'),
       lookup,
     ).text
     expect(markDone(elso, lookup)).toEqual({ text: elso, marked: 0 })
@@ -146,7 +146,7 @@ describe('markDone', () => {
 
 describe('doneLookup', () => {
   const notesRoot = '/v/root'
-  const registry = recipesFor({ translate: { to: 'hu', recipes: ['clean'] }, configPath: '/p/c.yaml' })
+  const registry = recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate'] }, configPath: '/p/c.yaml' })
   const elem: SourceItem = {
     itemId: 'a1',
     source: 'transcripts',
@@ -216,10 +216,10 @@ describe('doneLookup', () => {
       registry,
       notesRoot,
       artifactOf: () => null,
-      exists: (path) => path === noteFile(notesRoot, elem, '_clean-hu.md'),
+      exists: (path) => path === noteFile(notesRoot, elem, '_clean-moderate-hu.md'),
     })
-    expect(lookup('a1', 'clean-hu')).toBe(
-      '✓ már a vaultban · [jegyzet](<transcripts/youtube/Csatorna/Elso_clean-hu.md>)',
+    expect(lookup('a1', 'clean-moderate-hu')).toBe(
+      '✓ már a vaultban · [jegyzet](<transcripts/youtube/Csatorna/Elso_clean-moderate-hu.md>)',
     )
   })
 })

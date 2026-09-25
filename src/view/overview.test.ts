@@ -39,7 +39,9 @@ describe('artifactKinds', () => {
       'summary',
       'flashcards',
       'qa',
-      'clean',
+      'clean-mild',
+      'clean-moderate',
+      'clean-deep',
       'bloom',
       'notes',
     ])
@@ -149,7 +151,9 @@ describe('buildOverview', () => {
       'summary',
       'flashcards',
       'qa',
-      'clean',
+      'clean-mild',
+      'clean-moderate',
+      'clean-deep',
       'bloom',
       'notes',
     ])
@@ -207,7 +211,9 @@ describe('readOverview', () => {
       ['summary', 2],
       ['flashcards', 2],
       ['qa', 2],
-      ['clean', 2],
+      ['clean-mild', 2],
+      ['clean-moderate', 2],
+      ['clean-deep', 2],
       ['bloom', 2],
       ['notes', 2],
     ])
@@ -245,8 +251,8 @@ describe('readOverview', () => {
   })
 
   it('translate kulccsal a fordítás saját típusként jelenik meg a korpuszban és a pontszámoknál', async () => {
-    const overview = await readOverview({ ...cfg, translate: { to: 'hu', recipes: ['clean'] } })
-    expect(overview.corpus.map((c) => c.kind).at(-1)).toBe('clean-hu')
-    expect(overview.scores.map((s) => s.recipe).at(-1)).toBe('clean-hu')
+    const overview = await readOverview({ ...cfg, translate: { to: 'hu', recipes: ['clean-moderate'] } })
+    expect(overview.corpus.map((c) => c.kind).at(-1)).toBe('clean-moderate-hu')
+    expect(overview.scores.map((s) => s.recipe).at(-1)).toBe('clean-moderate-hu')
   })
 })

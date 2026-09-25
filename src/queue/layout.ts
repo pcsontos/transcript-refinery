@@ -5,7 +5,7 @@ import type { Registry } from '../recipe/registry.js'
 export interface QueueLayout {
   /** Az alaprecept-azonosítók, a regiszter sorrendjében. */
   recipes: readonly string[]
-  /** Forrásrecept → célnyelv, pl. `clean` → `hu`. */
+  /** Forrásrecept → célnyelv, pl. `clean-moderate` → `hu`. */
   translations: ReadonlyMap<string, LanguageTag>
 }
 

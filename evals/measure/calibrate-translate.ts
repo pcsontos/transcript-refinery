@@ -10,7 +10,7 @@ import { retrying } from '../../src/model/retry.js'
 import { countWords } from '../../src/normalize/dedupe.js'
 import { normalizeItem } from '../../src/pipeline.js'
 import { formatTimestamp } from '../../src/recipe/anchor.js'
-import { cleanRecipe } from '../../src/recipe/clean.js'
+import { cleanRecipeFor } from '../../src/recipe/clean.js'
 import { notesRecipe } from '../../src/recipe/notes.js'
 import { summaryRecipe } from '../../src/recipe/summary.js'
 import { alreadyInTarget, translationOf } from '../../src/recipe/translate.js'
@@ -29,7 +29,7 @@ import { rateLimited } from './rate-limit.js'
  * végén"). Két kérdésre felel:
  *
  * 1. Mennyi a fordítás kimeneti aránya a forrásjegyzethez mérve? A vaultban
- *    kész `clean`, `summary` és `notes` jegyzeteken, receptenként legfeljebb
+ *    kész `clean-moderate`, `summary` és `notes` jegyzeteken, receptenként legfeljebb
  *    hárommal, egy generálással és teljes rubrikával.
  * 2. Lefordítható-e egy hosszú forrás egyetlen hívásban? Egy kb. 16 ezer
  *    szavas valódi átiratból bekezdésekre tördelt szintetikus forrás, egy
@@ -37,7 +37,7 @@ import { rateLimited } from './rate-limit.js'
  *    nem elnyelni.
  */
 const TARGET = 'hu'
-const SOURCES: Recipe[] = [cleanRecipe, summaryRecipe, notesRecipe]
+const SOURCES: Recipe[] = [cleanRecipeFor('moderate'), summaryRecipe, notesRecipe]
 const PER_SOURCE = 3
 const LONG_WORDS = 16_000
 const RAW_PATH = join('evals', 'private', 'calibration-translate.json')
@@ -104,7 +104,7 @@ for (const source of SOURCES) {
 reader.close()
 
 // 2. A hosszú, szintetikus forrás: a LONG_WORDS-höz legközelebbi átirat, nyolc
-//    feliratsoronként egy időbélyeges bekezdés — a `clean` kimenetének alakja.
+//    feliratsoronként egy időbélyeges bekezdés — a `clean-moderate` kimenetének alakja.
 let long: { item: SourceItem; body: string; words: number; distance: number } | null = null
 for (const item of discovered.values()) {
   let normalized: Awaited<ReturnType<typeof normalizeItem>>
@@ -142,7 +142,7 @@ const longUsd =
   long === null
     ? 0
     : estimateItemUsd(long.words, 0, modelConfig, {
-        outputRatio: translationFor(cleanRecipe).outputRatio,
+        outputRatio: translationFor(cleanRecipeFor('moderate')).outputRatio,
         judges: 0,
       })
 const totalUsd = sampleUsd + longUsd
@@ -250,7 +250,7 @@ interface LongRecord {
 }
 let longRecord: LongRecord | null = null
 if (long !== null && !guard.exceeded()) {
-  const recipe = translationFor(cleanRecipe)
+  const recipe = translationFor(cleanRecipeFor('moderate'))
   const started = Date.now()
   const seconds = (): number => (Date.now() - started) / 1000
   try {
@@ -260,7 +260,7 @@ if (long !== null && !guard.exceeded()) {
       recipe.prompt({ item: long.item, transcript: long.body, timed: [] }),
     )
     const skeleton = checkSkeleton(result.value, long.body, {
-      headingsAreContent: cleanRecipe.headingsAreContent,
+      headingsAreContent: cleanRecipeFor('moderate').headingsAreContent,
     })
     longRecord = {
       itemId: long.item.itemId,
@@ -317,7 +317,7 @@ if (longRecord !== null && longRecord.outputRatio !== null) ratios.push(longReco
 console.log(
   ratios.length > 0
     ? `Javasolt outputRatio: ${(Math.ceil(Math.max(...ratios) * 100) / 100).toFixed(2)} ` +
-        `(most ${String(translationFor(cleanRecipe).outputRatio)}) — a legnagyobb mért arány, felfelé kerekítve.`
+        `(most ${String(translationFor(cleanRecipeFor('moderate')).outputRatio)}) — a legnagyobb mért arány, felfelé kerekítve.`
     : 'Nincs mért arány — nincs javaslat.',
 )
 console.log(`Költés: $${guard.spentUsd().toFixed(2)} · nyers adat: ${RAW_PATH}`)

@@ -25,27 +25,29 @@ sources:
 languages: [hu, en]
 
 state:
-  # A feldolgozottság nyilvántartása. Relatív útvonal a projekt gyökeréhez
-  # képest értendő. Eldobható: újrafuttatáskor felépül. FIGYELEM: egy korábbi
-  # (Fázis 1-es, videó-alapú sémájú) verzióból maradt állapotfájlt viszont
-  # TÖRÖLNI kell — az app felismeri és beszédes hibával megáll, de nem
-  # migrálja automatikusan.
+  # A feldolgozottság nyilvántartása. Relatív útvonal a config fájl
+  # mappájához képest értendő. Eldobható: újrafuttatáskor felépül.
+  # FIGYELEM: egy korábbi (Fázis 1-es, videó-alapú sémájú) verzióból
+  # maradt állapotfájlt viszont TÖRÖLNI kell — az app felismeri és
+  # beszédes hibával megáll, de nem migrálja automatikusan.
   path: .state/refinery.db
 
 logs:
-  # A futásnaplók és riportok mappája. Relatív útvonal a projekt gyökeréhez
-  # képest. Futásonként két fájl keletkezik: egy JSONL eseménynapló és egy
-  # Markdown riport. Rotáció nincs — a régiek törlése a te dolgod.
+  # A futásnaplók és riportok mappája. Relatív útvonal a config fájl
+  # mappájához képest. Futásonként két fájl keletkezik: egy JSONL
+  # eseménynapló és egy Markdown riport. Rotáció nincs — a régiek törlése a
+  # te dolgod.
   dir: logs
 
 # Fordítás (elhagyható). Bármelyik recept kész jegyzetéből célnyelvű változat
-# készül, forrásreceptenként egy saját recepttel: `clean` → `clean-hu`. A
-# fordítás a vaultban lévő forrásjegyzetből dolgozik, tehát a forrásreceptnek
-# előbb el kell készülnie; enélkül a fordítás megnevezett okkal kimarad.
+# készül, forrásreceptenként egy saját recepttel: `clean-moderate` →
+# `clean-moderate-hu`. A fordítás a vaultban lévő forrásjegyzetből dolgozik,
+# tehát a forrásreceptnek előbb el kell készülnie; enélkül a fordítás
+# megnevezett okkal kimarad.
 # Célnyelv: en, hu, nl, de, es, fr vagy it.
 # translate:
 #   to: hu
-#   recipes: [clean, summary, notes]
+#   recipes: [clean-moderate, summary, notes]
 
 # Szerep → modell. A receptek szerepet kérnek, nem modellnevet; a konkrét
 # választás mérési eredmény lesz, nem vélemény (decisions/0004).

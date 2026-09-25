@@ -1,6 +1,6 @@
 import type { Config } from '../config.js'
 import { bloomRecipe } from './bloom.js'
-import { cleanRecipe } from './clean.js'
+import { CLEAN_RECIPES } from './clean.js'
 import { flashcardsRecipe } from './flashcards.js'
 import { notesRecipe } from './notes.js'
 import { qaRecipe } from './qa.js'
@@ -17,13 +17,14 @@ export type Registry = Readonly<Record<string, Recipe>>
  * fordítási idejű típusbiztonságot venné el (`architecture.md` §5).
  *
  * Új prózarecept felvétele ezért **pontosan két sor**: egy import és egy
- * bejegyzés. A motorhoz nem kell nyúlni.
+ * bejegyzés. A motorhoz nem kell nyúlni. A tisztított leirat három szintje egy
+ * gyártófüggvényből jön (`CLEAN_RECIPES`).
  */
 export const RECIPES: Registry = {
   [summaryRecipe.id]: summaryRecipe,
   [flashcardsRecipe.id]: flashcardsRecipe,
   [qaRecipe.id]: qaRecipe,
-  [cleanRecipe.id]: cleanRecipe,
+  ...Object.fromEntries(CLEAN_RECIPES.map((recipe) => [recipe.id, recipe])),
   [bloomRecipe.id]: bloomRecipe,
   [notesRecipe.id]: notesRecipe,
 }

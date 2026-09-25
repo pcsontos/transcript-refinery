@@ -26,6 +26,7 @@ import { discoverAll, folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
 import type { ModelRole } from './types.js'
 import { gitCommitPaths } from './vault/git.js'
+import { commandWatch } from './watch/command.js'
 import { lintVaultMarkdown } from './vault/lint.js'
 import { noteBody } from './vault/note-body.js'
 import { noteFile } from './vault/paths.js'
@@ -187,6 +188,12 @@ const rawWithVault = (costLimitUsd: number) => ({
   vault: { path: vault },
 })
 
+// A `main` watch-ágát a paraméterátadás szintjén ellenőrizzük: a figyelő
+// valódi indítása (fájlfigyelés, Ctrl+C) a `watch/*.test.ts` dolga.
+vi.mock('./watch/command.js', () => ({
+  commandWatch: vi.fn(() => Promise.resolve(0)),
+}))
+
 let savedApiKey: string | undefined
 let work: string
 let downloads: string
@@ -345,8 +352,8 @@ describe('commandRun — a szűrők', () => {
     const raw = rawWithVault(5)
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
     await expect(
-      commandRun(cfg, raw, { recipe: 'clean-hu', dryRun: false, force: false, commit: false }),
-    ).rejects.toThrow('Ismeretlen recept: clean-hu.')
+      commandRun(cfg, raw, { recipe: 'clean-moderate-hu', dryRun: false, force: false, commit: false }),
+    ).rejects.toThrow('Ismeretlen recept: clean-moderate-hu.')
   })
 })
 
@@ -1534,7 +1541,7 @@ const MAGYAR_FORDITAS =
 /**
  * A fordítási tesztek hamis kliense: a prompt dönti el, mit ad. A fordító prompt
  * a forrásjegyzetet is tartalmazza, ezért azt kell először vizsgálni. A
- * „Hibás videó" `clean` generálása modellhibával áll el, tehát a `clean` elbukik
+ * „Hibás videó" `clean-moderate` generálása modellhibával áll el, tehát a `clean-moderate` elbukik
  * rajta.
  */
 function forditoKliens(hivasok: { generate: number; translate: number }): ModelClient {
@@ -1565,7 +1572,7 @@ function forditoKliens(hivasok: { generate: number; translate: number }): ModelC
 describe('commandRun — fordítás', () => {
   const forditas = (costLimitUsd: number) => ({
     ...rawWithVault(costLimitUsd),
-    translate: { to: 'hu', recipes: ['clean'] },
+    translate: { to: 'hu', recipes: ['clean-moderate'] },
   })
 
   beforeEach(() => {
@@ -1581,8 +1588,8 @@ describe('commandRun — fordítás', () => {
     await writeFile(
       sor,
       pipal(await readFile(sor, 'utf8'), [
-        ['e1', 'clean'],
-        ['e1', 'clean-hu'],
+        ['e1', 'clean-moderate'],
+        ['e1', 'clean-moderate-hu'],
       ]),
       'utf8',
     )
@@ -1599,20 +1606,20 @@ describe('commandRun — fordítás', () => {
     expect(code).toBe(0)
     expect(hivasok.translate).toBe(1)
     const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
-    const tiszta = noteFile(cfg.notesRoot, item!, '_clean.md')
-    const magyar = noteFile(cfg.notesRoot, item!, '_clean-hu.md')
+    const tiszta = noteFile(cfg.notesRoot, item!, '_clean-moderate.md')
+    const magyar = noteFile(cfg.notesRoot, item!, '_clean-moderate-hu.md')
     const forrasVaz = skeletonOf(noteBody(await readFile(tiszta, 'utf8')).body)
     const magyarJegyzet = await readFile(magyar, 'utf8')
     expect(forrasVaz.timestamps).toEqual(['[00:00]'])
     expect(skeletonOf(noteBody(magyarJegyzet).body).timestamps).toEqual(forrasVaz.timestamps)
     expect(magyarJegyzet).toContain('\nlanguage: hu\n')
-    expect(magyarJegyzet).toContain('\ntranslation_of: clean\n')
+    expect(magyarJegyzet).toContain('\ntranslation_of: clean-moderate\n')
     expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
     const [, commitolt] = vi.mocked(gitCommitPaths).mock.calls[0]!
     expect(commitolt).toEqual(expect.arrayContaining([tiszta, magyar, sor]))
     const note = await readFile(sor, 'utf8')
     expect(note).toMatch(/^ {2}- \[x\] hu — ✓ 1\.00 · /m)
-    expect(note).toMatch(/^- \[x\] clean — ✓ 1\.00 · /m)
+    expect(note).toMatch(/^- \[x\] clean-moderate — ✓ 1\.00 · /m)
   })
 
   it('ha csak a fordítás van kipipálva, és a forrás nincs kész, modellhívás nélkül kihagyja, és megnevezi az okot', async () => {
@@ -1621,7 +1628,7 @@ describe('commandRun — fordítás', () => {
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
     const sor = queuePath(cfg.notesRoot)
     await commandScanQueue(cfg, { dryRun: false, commit: false })
-    await writeFile(sor, pipal(await readFile(sor, 'utf8'), [['e1', 'clean-hu']]), 'utf8')
+    await writeFile(sor, pipal(await readFile(sor, 'utf8'), [['e1', 'clean-moderate-hu']]), 'utf8')
     const hivasok = { generate: 0, translate: 0 }
 
     const code = await commandRun(
@@ -1634,11 +1641,11 @@ describe('commandRun — fordítás', () => {
     expect(code).toBe(0)
     expect(hivasok.generate).toBe(0)
     const elsoSor = await readFile(sor, 'utf8')
-    expect(elsoSor).toContain('  - [x] hu — ⏸ előbb a clean recept kell')
+    expect(elsoSor).toContain('  - [x] hu — ⏸ előbb a clean-moderate recept kell')
     const md = (await readdir(cfg.logsDir)).find((f) => f.endsWith('.md'))!
     const report = await readFile(join(cfg.logsDir, md), 'utf8')
-    expect(report).toContain('- clean-hu — Angol videó: előbb a clean recept kell')
-    expect(report).toContain('| clean-hu | 1 | 0 | 0 | 0 | 0 | 1 |')
+    expect(report).toContain('- clean-moderate-hu — Angol videó: előbb a clean-moderate recept kell')
+    expect(report).toContain('| clean-moderate-hu | 1 | 0 | 0 | 0 | 0 | 1 |')
     expect(report).toContain('A sor feldolgozva.')
     expect(report).not.toContain('Folytatás:')
 
@@ -1664,8 +1671,8 @@ describe('commandRun — fordítás', () => {
     await writeFile(
       sor,
       pipal(await readFile(sor, 'utf8'), [
-        ['h1', 'clean'],
-        ['h1', 'clean-hu'],
+        ['h1', 'clean-moderate'],
+        ['h1', 'clean-moderate-hu'],
       ]),
       'utf8',
     )
@@ -1681,7 +1688,7 @@ describe('commandRun — fordítás', () => {
     expect(code).toBe(0)
     expect(hivasok.translate).toBe(0)
     const note = await readFile(sor, 'utf8')
-    expect(note).toMatch(/^- \[x\] clean — ✓ /m)
+    expect(note).toMatch(/^- \[x\] clean-moderate — ✓ /m)
     expect(note).toContain('  - [x] hu — ⏸ a forrás már magyar')
   })
 
@@ -1694,8 +1701,8 @@ describe('commandRun — fordítás', () => {
     await writeFile(
       sor,
       pipal(await readFile(sor, 'utf8'), [
-        ['x1', 'clean'],
-        ['x1', 'clean-hu'],
+        ['x1', 'clean-moderate'],
+        ['x1', 'clean-moderate-hu'],
       ]),
       'utf8',
     )
@@ -1711,8 +1718,8 @@ describe('commandRun — fordítás', () => {
     expect(code).toBe(1)
     expect(hivasok.translate).toBe(0)
     const note = await readFile(sor, 'utf8')
-    expect(note).toMatch(/^- \[x\] clean — ✗ /m)
-    expect(note).toContain('  - [x] hu — ⏸ a clean recept jegyzete nem készült el')
+    expect(note).toMatch(/^- \[x\] clean-moderate — ✗ /m)
+    expect(note).toContain('  - [x] hu — ⏸ a clean-moderate recept jegyzete nem készült el')
   })
 
   it('a plafon miatt elhalasztott forrás fordítása is ⏳-t kap', async () => {
@@ -1724,8 +1731,8 @@ describe('commandRun — fordítás', () => {
     await writeFile(
       sor,
       pipal(await readFile(sor, 'utf8'), [
-        ['e1', 'clean'],
-        ['e1', 'clean-hu'],
+        ['e1', 'clean-moderate'],
+        ['e1', 'clean-moderate-hu'],
       ]),
       'utf8',
     )
@@ -1739,7 +1746,7 @@ describe('commandRun — fordítás', () => {
 
     expect(code).toBe(2)
     const note = await readFile(sor, 'utf8')
-    expect(note).toContain('- [x] clean — ⏳ a plafon miatt a következő futásra maradt')
+    expect(note).toContain('- [x] clean-moderate — ⏳ a plafon miatt a következő futásra maradt')
     expect(note).toContain('  - [x] hu — ⏳ a plafon miatt a következő futásra maradt')
   })
 })
@@ -1923,7 +1930,7 @@ describe('commandScanQueue', () => {
   it('translate kulccsal videónként felveszi a fordítások pipáit; másodszorra bájtra azonos', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     const cfg = loadConfig(
-      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean', 'summary'] } },
+      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] } },
       '/p/refinery.config.yaml',
     )
     const sor = queuePath(cfg.notesRoot)
@@ -1934,7 +1941,7 @@ describe('commandScanQueue', () => {
 
     expect(elso).toContain(
       '### 1. Első videó %%a1%%\n- [ ] summary\n  - [ ] hu\n- [ ] flashcards\n- [ ] qa\n' +
-        '- [ ] clean\n  - [ ] hu\n- [ ] bloom\n- [ ] notes\n',
+        '- [ ] clean-mild\n- [ ] clean-moderate\n  - [ ] hu\n- [ ] clean-deep\n- [ ] bloom\n- [ ] notes\n',
     )
     expect(await readFile(sor, 'utf8')).toBe(elso)
   })
@@ -1942,7 +1949,7 @@ describe('commandScanQueue', () => {
   it('fordítás fordítását a konfigban a sor írása előtt elutasítja', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     const cfg = loadConfig(
-      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean-hu'] } },
+      { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean-moderate-hu'] } },
       '/p/refinery.config.yaml',
     )
 
@@ -1970,7 +1977,9 @@ describe('commandScanQueue', () => {
         '  - [x] summary — ✓ 0.97 · $0.0512',
         '  - [ ] flashcards',
         '  - [ ] qa',
-        '  - [ ] clean',
+        '  - [ ] clean-mild',
+        '  - [ ] clean-moderate',
+        '  - [ ] clean-deep',
         '  - [ ] bloom',
         '  - [ ] notes',
         '  - [x] summary-hu — ⏸ előbb a summary recept kell',
@@ -1992,7 +2001,9 @@ describe('commandScanQueue', () => {
         '  - [x] hu — ⏸ előbb a summary recept kell',
         '- [ ] flashcards',
         '- [ ] qa',
-        '- [ ] clean',
+        '- [ ] clean-mild',
+        '- [ ] clean-moderate',
+        '- [ ] clean-deep',
         '- [ ] bloom',
         '- [ ] notes',
         '',
@@ -2049,7 +2060,7 @@ describe('commandScanQueue', () => {
         '  - [x] hu — ✓ 0.90 · $0.0100',
         '- [ ] flashcards',
         '- [ ] qa',
-        '- [ ] clean',
+        '- [ ] clean-moderate',
         '- [ ] bloom',
         '- [ ] notes',
         '',
@@ -2192,6 +2203,7 @@ describe('main és súgó', () => {
     expect(USAGE).toContain('--no-judge')
     expect(USAGE).toContain('--fix')
     expect(USAGE).toContain('--help, -h')
+    expect(USAGE).toContain('watch')
   })
 
   it('a main([]) 1-gyel tér vissza és kiírja a súgót', async () => {
@@ -2215,6 +2227,35 @@ describe('main és súgó', () => {
     } finally {
       logSpy.mockRestore()
     }
+  })
+
+  it('a watch a nem támogatott kapcsolót megnevezve elutasítja, és el sem indul', async () => {
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+    await mkdir(join(vault, '.git'))
+    vi.mocked(commandWatch).mockClear()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await main(['watch', '--dry-run', '--config', configPath])).toBe(1)
+      expect(await main(['watch', '--recipe', 'summary', '--config', configPath])).toBe(1)
+      expect(vi.mocked(commandWatch)).not.toHaveBeenCalled()
+      const uzenetek = errorSpy.mock.calls.map((call) => String(call[0]))
+      expect(uzenetek[0]).toContain('--dry-run')
+      expect(uzenetek[0]).toContain('--config, --source, --no-commit')
+      expect(uzenetek[1]).toContain('--recipe')
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('a watch a támogatott kapcsolókat továbbadja', async () => {
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+    await mkdir(join(vault, '.git'))
+    vi.mocked(commandWatch).mockClear()
+    expect(await main(['watch', '--source', 'downloads', '--no-commit', '--config', configPath])).toBe(0)
+    expect(vi.mocked(commandWatch)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(commandWatch).mock.calls[0]![1]).toEqual({ source: 'downloads', commit: false })
   })
 })
 
@@ -2255,7 +2296,9 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
       `- [x] summary — ✓ 0.97 · $0.0471 · [jegyzet](<${link}>)`,
       '- [ ] flashcards',
       '- [ ] qa',
-      '- [ ] clean',
+      '- [ ] clean-mild',
+      '- [ ] clean-moderate',
+      '- [ ] clean-deep',
       '- [ ] bloom',
       '- [ ] notes',
     ])
@@ -2324,9 +2367,9 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
 
   it('csak fájllal kész fordításpár, forrásrekord nélkül: scan → run → scan nem írja át egymás utótagját', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
-    const raw = { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean'] } }
+    const raw = { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean-moderate'] } }
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
-    const jegyzet = noteFile(cfg.notesRoot, await elsoElem(), '_clean-hu.md')
+    const jegyzet = noteFile(cfg.notesRoot, await elsoElem(), '_clean-moderate-hu.md')
     await mkdir(dirname(jegyzet), { recursive: true })
     await writeFile(jegyzet, '# Kézzel írt fordítás\n', 'utf8')
     const sor = queuePath(cfg.notesRoot)
@@ -2351,21 +2394,21 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     expect(runUtan).toBe(scanUtan)
     expect(await readFile(sor, 'utf8')).toBe(scanUtan)
     const store = openState(cfg.statePath)
-    expect(store.artifactOf('a1', 'clean-hu')).toMatchObject({ status: 'done', path: jegyzet })
+    expect(store.artifactOf('a1', 'clean-moderate-hu')).toMatchObject({ status: 'done', path: jegyzet })
     store.close()
   })
 
   it('done rekordú fordításpár hibás forrás mellett: a futás nem írja át ⏸-ra a ✓ utótagot', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
-    const raw = { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean'] } }
+    const raw = { ...rawWithVault(5), translate: { to: 'hu', recipes: ['clean-moderate'] } }
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
     const item = await elsoElem()
     // A jegyzetfájl szándékosan hiányzik: a pár késznek a rekord miatt kész.
-    const jegyzet = noteFile(cfg.notesRoot, item, '_clean-hu.md')
+    const jegyzet = noteFile(cfg.notesRoot, item, '_clean-moderate-hu.md')
     const pre = openState(cfg.statePath)
     pre.recordItem(item)
-    pre.recordArtifact('a1', 'clean', 'failed', null, 'időtúllépés')
-    pre.recordArtifact('a1', 'clean-hu', 'done', jegyzet, null, {
+    pre.recordArtifact('a1', 'clean-moderate', 'failed', null, 'időtúllépés')
+    pre.recordArtifact('a1', 'clean-moderate-hu', 'done', jegyzet, null, {
       iterations: 1,
       score: 0.9,
       costUsd: 0.01,
@@ -2412,7 +2455,7 @@ describe('commandList', () => {
     vi.restoreAllMocks()
   })
 
-  /** Két videó; az elsőn kész summary, a másodikon hibás clean. */
+  /** Két videó; az elsőn kész summary, a másodikon hibás clean-moderate. */
   async function ketVideoAllapottal() {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     await makeVideo(downloads, 'b1', 'Második videó', 'Csatorna B')
@@ -2428,7 +2471,7 @@ describe('commandList', () => {
         costUsd: 0.08,
         model: 'proba-draft',
       })
-      store.recordArtifact(idOf('Második videó'), 'clean', 'failed', null, 'szimulált hiba')
+      store.recordArtifact(idOf('Második videó'), 'clean-moderate', 'failed', null, 'szimulált hiba')
     } finally {
       store.close()
     }

@@ -6,12 +6,12 @@
  * (`evaluation.md` §1).
  */
 import { bloomRecipe } from '../../src/recipe/bloom.js'
-import { cleanRecipe } from '../../src/recipe/clean.js'
+import { cleanRecipeFor } from '../../src/recipe/clean.js'
 import { notesRecipe } from '../../src/recipe/notes.js'
 import { summaryRecipe } from '../../src/recipe/summary.js'
 import type { Recipe } from '../../src/recipe/types.js'
 
-export type SkeletonRecipe = 'clean' | 'summary' | 'notes' | 'bloom'
+export type SkeletonRecipe = 'clean-moderate' | 'summary' | 'notes' | 'bloom'
 
 export interface SkeletonLabel {
   id: string
@@ -334,14 +334,14 @@ function broken(text: string, from: string, to: string): string {
  * innen veszi.
  */
 export const SKELETON_SOURCE_RECIPES: Record<SkeletonRecipe, Recipe> = {
-  clean: cleanRecipe,
+  'clean-moderate': cleanRecipeFor('moderate'),
   summary: summaryRecipe,
   notes: notesRecipe,
   bloom: bloomRecipe,
 }
 
 export const SKELETON_LABELS: SkeletonLabel[] = [
-  { id: 'clean-helyes', recipe: 'clean', source: CLEAN_SOURCE, translation: CLEAN_HU, label: 'ok' },
+  { id: 'clean-helyes', recipe: 'clean-moderate', source: CLEAN_SOURCE, translation: CLEAN_HU, label: 'ok' },
   { id: 'bloom-helyes', recipe: 'bloom', source: BLOOM_SOURCE, translation: BLOOM_HU, label: 'ok' },
   { id: 'notes-helyes', recipe: 'notes', source: NOTES_SOURCE, translation: NOTES_HU, label: 'ok' },
   {
@@ -353,7 +353,7 @@ export const SKELETON_LABELS: SkeletonLabel[] = [
   },
   {
     id: 'clean-kimaradt-bekezdes',
-    recipe: 'clean',
+    recipe: 'clean-moderate',
     source: CLEAN_SOURCE,
     translation: broken(
       CLEAN_HU,
@@ -365,7 +365,7 @@ export const SKELETON_LABELS: SkeletonLabel[] = [
   },
   {
     id: 'clean-osszevont-bekezdes',
-    recipe: 'clean',
+    recipe: 'clean-moderate',
     source: CLEAN_SOURCE,
     translation: broken(CLEAN_HU, 'sorrend.\n\n[00:34] 17', 'sorrend. 17'),
     label: 'broken',
@@ -373,7 +373,7 @@ export const SKELETON_LABELS: SkeletonLabel[] = [
   },
   {
     id: 'clean-atirt-idobelyeg',
-    recipe: 'clean',
+    recipe: 'clean-moderate',
     source: CLEAN_SOURCE,
     translation: broken(CLEAN_HU, '[00:34]', '[00:35]'),
     label: 'broken',
@@ -381,7 +381,7 @@ export const SKELETON_LABELS: SkeletonLabel[] = [
   },
   {
     id: 'clean-osszefoglalo',
-    recipe: 'clean',
+    recipe: 'clean-moderate',
     source: CLEAN_SOURCE,
     translation:
       '[00:01] A beszélő elmondja, hogy egy ember és az AI is elég egy céghez, de előbb azt kell eldönteni, mit adsz el.',
