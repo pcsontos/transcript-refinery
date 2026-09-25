@@ -91,3 +91,12 @@ export function errorMessage(error: unknown): string {
   if (typeof body?.message === 'string') return body.message
   return error instanceof Error ? error.message : 'Ismeretlen hiba.'
 }
+
+/** A tooltipek HTML-szövegébe kerülő érték: a felhasználói szöveg nem lehet jelölés. */
+export function escapeHtml(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+}
