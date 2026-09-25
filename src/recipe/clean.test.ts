@@ -1,6 +1,21 @@
 import { describe, expect, it } from 'vitest'
+import type { ModelClient } from '../model/client.js'
 import type { SourceItem } from '../types.js'
-import { CLEAN_LEVELS, CLEAN_RECIPES, cleanRecipeFor } from './clean.js'
+import { CLEAN_LEVELS, CLEAN_RECIPES, cleanRecipeFor, type CleanLevel } from './clean.js'
+
+/** A bírónak küldött promptot rögzítő kliens; mindig hibátlan ítéletet ad. */
+function biroKliens(prompts: string[]): ModelClient {
+  return {
+    generate: () => Promise.reject(new Error('a generálás itt nem hívható')),
+    generateObject: <T>(_role: unknown, prompt: string) => {
+      prompts.push(prompt)
+      return Promise.resolve({
+        value: { score: 1, gaps: [] } as T,
+        usage: { inputTokens: 1, outputTokens: 1 },
+      })
+    },
+  }
+}
 
 const ITEM: SourceItem = {
   itemId: 'abc123',
@@ -85,8 +100,24 @@ describe('cleanRecipeFor', () => {
     }
   })
 
-  it('a bíró utasítása szintenként más', () => {
-    const judges = CLEAN_RECIPES.map((r) => r.rubric.criteria.find((c) => !c.blocking)!)
-    expect(new Set(judges).size).toBe(3)
+  it('a bíró utasítása szintenként más, és a szintre jellemző kitételt tartalmazza', async () => {
+    const UNIQUE: Record<CleanLevel, string> = {
+      mild: 'Missing headings or sparse paragraphing are NOT gaps',
+      moderate: 'Removing a filler word is NOT a gap',
+      deep: 'false starts and repetitions are expected',
+    }
+    const prompts: string[] = []
+    for (const level of CLEAN_LEVELS) {
+      const judge = cleanRecipeFor(level).rubric.criteria.find((c) => !c.blocking)!
+      await judge.score({ transcript: 'NYERS', output: 'TISZTA' }, biroKliens(prompts))
+    }
+    expect(prompts).toHaveLength(3)
+    expect(new Set(prompts).size).toBe(3)
+    CLEAN_LEVELS.forEach((level, index) => {
+      for (const other of CLEAN_LEVELS) {
+        if (other === level) expect(prompts[index]).toContain(UNIQUE[other])
+        else expect(prompts[index]).not.toContain(UNIQUE[other])
+      }
+    })
   })
 })
