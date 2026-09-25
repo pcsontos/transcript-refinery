@@ -165,6 +165,10 @@ feldolgozási sort mutatja; az elem oldalán a jegyzet és a normalizált átira
 egymás mellett látszik, a bíró hiánylistájával — így kiderül, *miért* maradt egy
 jegyzet a küszöb alatt. Egy CLI-ből indított futás élőben követhető: az éppen
 feldolgozott elem, a pontszám és a költés a plafonhoz mérve, SSE-n.
+A riportoldal (`/reports`) csatornánként összesíti a korpuszt, a költést és a
+jegyzetek minőségét, két grafikonnal (költés futásonként, költség csatornánként
+receptre bontva); a hiányzó (csatorna, recept) párokhoz vágólapra másolható
+`refinery run` parancsot ad — elindítani a CLI-ből kell.
 
 A mérési harness (`pnpm eval`) ugyanezt a loopot futtatja egy determinisztikus
 fixture-modellel: kulcs és hálózat nélkül, három szintetikus feliraton fut le,
@@ -336,6 +340,8 @@ pnpm web
 ```
 
 A felület a `http://127.0.0.1:4310` címen érhető el.
+Oldalai: áttekintő, elemek (szűrők URL-ből is: `/items?channel=<név>&kind=<típus>`),
+riport, hibák, futások.
 
 ### Tesztek és mérések
 

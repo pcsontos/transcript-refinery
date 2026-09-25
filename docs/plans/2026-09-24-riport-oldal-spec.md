@@ -49,8 +49,9 @@ futtatni** — az utóbbihoz csatornánként és receptenként vágólapra máso
   `clean`, `bloom`, `notes`, `clean-hu`, `summary-hu`, `notes-hu`, `bloom-hu`.
   A `transcript` modellhívás nélkül készül, költsége nincs.
 - **Az állapottár (2026-09-24, `.state/refinery.db`).** 19 különböző csatorna
-  az `items` táblában; a felderítés 27-et ad. A 3 `flashcards` műtermék
-  `cost_usd` mezője `NULL`. Egy régi, `–` típusú rekord is van; a
+  az `items` táblában; a felderítés 27-et ad. A `NULL` költségű
+  rekordok (a 3 `flashcards` és néhány `bloom`, `clean`, `notes`) mind
+  `failed`; kész, költség nélküli fizetős műtermék nincs. Egy régi, `–` típusú rekord is van; a
   `buildItemRows()` csak az ismert típusokat olvassa, ezért nem zavar.
 - **A futásnaplók.** 41 `.jsonl` a `logs/` alatt. A `readRuns()`
   (`src/view/runs.ts`) futásonként `spentUsd`-t, `startedAt`-et, `command`-ot
@@ -392,3 +393,12 @@ Modellhívás nélkül, pénzt nem költ:
 Tokenszámok és draft/judge-bontás, becsült költség a hiányzókra, futás
 indítása a böngészőből, dátumszűrő, export (CSV/JSON), az `/items` URL-jének
 visszaírása szűrésváltáskor, a `refinery` globális telepítése (#72).
+
+## A tervben rögzített eltérések
+
+A terv (`2026-09-24-riport-oldal.md`) próbája alapján: a nyelvkód elsőként a
+felderítésből jön; a becslés színe semleges szürke; az unovis témája
+`:root:root` szelektorral kapja a Nuxt UI tokenjeit; a vízszintes sáv
+megfordítva, a legdrágább felül; a `null` költség a katalógusban `–`; új
+exportok: `TOP_LIMIT`, `CoverageCell`, a `readReports` `isAlive` paramétere;
+a tooltip szövege `escapeHtml`-lel készül.

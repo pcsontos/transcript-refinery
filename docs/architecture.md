@@ -157,6 +157,13 @@ A CLI `list` parancsa ugyanezt az olvasó réteget használja (`readItems()`):
 a terminálos lista és a felület elemlistája ugyanarra az állapotra
 ugyanazt mutatja.
 
+A felület riportoldala is erre épül (`readReports()`, `src/view/reports.ts`):
+a `buildItemRows()` celláiból csatornánként összesít, a futásnaplókból
+(`readRuns()`) a tényleges költést adja. A két költségszám szándékosan
+különbözik: a futásnapló az `item:refined` események összege, minden
+újrafuttatással; az állapottár műtermékenként csak az utolsó futás költségét
+tartja.
+
 A folytathatóság ebből ingyen adódik: ugyanannak a parancsnak az újrafuttatása
 kihagyja a késznek jelölt elemeket. **Nincs külön `resume` parancs — a hétköznapi
 parancs maga a resume.**
