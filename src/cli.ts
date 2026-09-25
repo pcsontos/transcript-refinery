@@ -68,6 +68,7 @@ import {
   summarizeChannels,
 } from './view/list.js'
 import { artifactKinds } from './view/overview.js'
+import { commandWatch } from './watch/command.js'
 
 /**
  * A `finish` commitból eredő hibáját jelöli, megkülönböztetve a riportírás
@@ -95,10 +96,12 @@ Parancsok:
   run             Átiratot készít és a vaultba írja.
   check-pricing   Összeveti a config árazását a LiteLLM élő áraival.
   list            Kilistázza az elemeket típusonkénti állapottal; nem ír semmit.
+  watch           Figyeli a forrásmappákat: az új feliratból átirat és
+                  _queue.md-sor lesz; modellt nem hív. Ctrl+C: leállítás.
 
 Kapcsolók:
   --config <út>     konfigurációs fájl (alapértelmezés: refinery.config.yaml)
-  --source <név>    csak a megadott forrásmappából
+  --source <név>    csak a megadott forrásmappából (watch: csak azt figyeli)
   --channel <név>   csak a megadott csatorna (metaadat nélküli elemre nem illik)
   --limit <szám>    legfeljebb ennyi elem
   --recipe <id>     receptet is futtat (pl. summary); enélkül csak átirat
@@ -908,6 +911,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       limit: values.limit === undefined ? undefined : Number(values.limit),
       lineWidth: process.stdout.isTTY ? process.stdout.columns : undefined,
     })
+  }
+  if (command === 'watch') {
+    return commandWatch(cfg, { source: values.source, commit: !values['no-commit'] })
   }
   if (command === 'run') {
     return commandRun(cfg, raw, {

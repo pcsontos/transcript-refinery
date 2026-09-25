@@ -2196,6 +2196,7 @@ describe('main és súgó', () => {
     expect(USAGE).toContain('--no-judge')
     expect(USAGE).toContain('--fix')
     expect(USAGE).toContain('--help, -h')
+    expect(USAGE).toContain('watch')
   })
 
   it('a main([]) 1-gyel tér vissza és kiírja a súgót', async () => {

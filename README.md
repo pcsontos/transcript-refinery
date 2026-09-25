@@ -343,6 +343,34 @@ típus hibára futott. A `--source`, a `--channel` és a `--limit` ugyanúgy
 szűr, mint a `run`-nál. A számok ugyanabból az olvasó rétegből jönnek, mint
 a webes felületéi.
 
+#### Figyelés (`watch`)
+
+Előtérben futó figyelő: amint a letöltő (pl. a Pinchflat) új `.srt` vagy
+`.vtt` feliratot tesz a configban megadott `sources` mappák valamelyikébe,
+abból átirat lesz, és az elem bekerül a vault `_queue.md` sorába. **Modellt nem
+hív, tehát nem költ** — a recepteket továbbra is te pipálod ki a sorban, és a
+`run --queue` futtatja őket.
+
+```bash
+refinery watch                 # minden forrásmappa
+refinery watch --source youtube
+refinery watch --no-commit     # a vaultba ír, de nem commitol
+```
+
+Indításkor egy felzárkózó kör pótolja, ami a leállás alatt érkezett. Minden
+eseményről egy sor megy ki:
+
+```
+14:32:05  új átirat: AI Engineer / Full Walkthrough … (en)
+14:32:06  _queue.md frissítve: +1 elem
+14:32:07  commit: a1b2c3d (push ok)
+```
+
+A letöltés közbeni fájlt megvárja (a fájl mérete ~2 mp-ig nem változik), és a
+gyorsan egymás után érkező feliratokat egy körben dolgozza fel. Egy hibás
+felirat nem állítja le: a hibát kiírja, és csak akkor próbálja újra, ha a fájl
+megváltozik. Ctrl+C-re a futó kör befejeződik.
+
 #### Árazás ellenőrzése (`check-pricing`)
 
 Összeveti a konfigurációban beállított árakat a LiteLLM élő díjszabásával:

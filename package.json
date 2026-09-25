@@ -37,12 +37,12 @@
     "web:lint": "pnpm --filter transcript-refinery-web lint"
   },
   "devDependencies": {
-    "transcript-refinery": "workspace:*",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.0.0",
     "bumpp": "^12.2.2",
     "eslint": "^10.9.1",
     "evalite": "0.19.0",
+    "transcript-refinery": "workspace:*",
     "tsx": "^4.23.13",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.68.0",
@@ -51,6 +51,7 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.43",
     "ai": "^7.0.91",
+    "chokidar": "5.0.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   }
