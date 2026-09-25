@@ -28,6 +28,7 @@
     "measure": "tsx evals/measure/run.ts",
     "calibrate": "tsx evals/measure/calibrate.ts",
     "calibrate:translate": "tsx evals/measure/calibrate-translate.ts",
+    "calibrate:clean": "tsx evals/measure/calibrate-clean.ts",
     "release": "bumpp",
     "web": "pnpm build && pnpm --filter transcript-refinery-web build && pnpm --filter transcript-refinery-web start",
     "web:dev": "pnpm build && pnpm --filter transcript-refinery-web dev",
