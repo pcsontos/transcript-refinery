@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { gitCommitPaths, isDirty } from './git.js'
+import { gitCommitPaths, gitHeadShort, isDirty } from './git.js'
 
 const run = promisify(execFile)
 let repo: string
@@ -56,5 +56,12 @@ describe('isDirty', () => {
   it('piszkosnak látja, ha van követetlen fájl', async () => {
     await writeFile(join(repo, 'uj.md'), 'x', 'utf8')
     expect(await isDirty(repo)).toBe(true)
+  })
+})
+
+describe('gitHeadShort', () => {
+  it('gitHeadShort a HEAD rövid hashét adja', async () => {
+    const hash = await gitHeadShort(repo)
+    expect(hash).toMatch(/^[0-9a-f]{7,}$/)
   })
 })

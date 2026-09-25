@@ -53,3 +53,9 @@ export async function gitPush(repo: string): Promise<PushResult> {
     return { pushed: false, reason: (error as Error).message }
   }
 }
+
+/** A HEAD rövid hashe — a watch ezzel jelzi a commitot a terminálon. */
+export async function gitHeadShort(repo: string): Promise<string> {
+  const { stdout } = await run('git', ['rev-parse', '--short', 'HEAD'], { cwd: repo })
+  return stdout.trim()
+}
