@@ -161,7 +161,7 @@ gazda-taskban:
   - `interface ItemRank { itemId; title; channel: string | null; value }`
   - `TRANSLATION_SERIES = 'fordítás'`, `TOP_LIMIT = 10`
 
-- [ ] **1. lépés: a `list.ts` két exportja (tiszta refaktor).** A
+- [x] **1. lépés: a `list.ts` két exportja (tiszta refaktor).** A
   `src/view/list.ts`-ben a `kindCodes` elé kerül a `translationBase`, és a
   `kindCodes` ezt használja; a `rowCost` exportot kap. Csere:
 
@@ -220,12 +220,12 @@ function rowCost(row: ItemListRow): number | null {
 export function rowCost(row: ItemListRow): number | null {
 ```
 
-- [ ] **2. lépés: a regressziós horgony.**
+- [x] **2. lépés: a regressziós horgony.**
 
 Run: `pnpm vitest run src/view/list.test.ts src/cli.test.ts`
 Expected: PASS — a `kindCodes` és a `list` parancs kimenete változatlan.
 
-- [ ] **3. lépés: a bukó teszt.** Hozd létre a `src/view/reports.test.ts`-t:
+- [x] **3. lépés: a bukó teszt.** Hozd létre a `src/view/reports.test.ts`-t:
 
 ```ts
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
@@ -684,12 +684,12 @@ describe('readReports', () => {
 })
 ```
 
-- [ ] **4. lépés: futtasd, bukjon.**
+- [x] **4. lépés: futtasd, bukjon.**
 
 Run: `pnpm vitest run src/view/reports.test.ts`
 Expected: FAIL — `Failed to resolve import "./reports.js"`.
 
-- [ ] **5. lépés: az implementáció.** Hozd létre a `src/view/reports.ts`-t:
+- [x] **5. lépés: az implementáció.** Hozd létre a `src/view/reports.ts`-t:
 
 ```ts
 import type { Config } from '../config.js'
@@ -1003,12 +1003,12 @@ export async function readReports(
 }
 ```
 
-- [ ] **6. lépés: futtasd, menjen át.**
+- [x] **6. lépés: futtasd, menjen át.**
 
 Run: `pnpm vitest run src/view/reports.test.ts`
 Expected: PASS, 21 teszt.
 
-- [ ] **7. lépés: az export.** A `src/index.ts`-ben a
+- [x] **7. lépés: az export.** A `src/index.ts`-ben a
   `export { groupFailures, readFailures, type FailureGroup } from './view/failures.js'`
   sor után:
 
@@ -1029,7 +1029,7 @@ export {
 } from './view/reports.js'
 ```
 
-- [ ] **8. lépés: mutációs ellenőrzés.** Egyenként, mindegyik után
+- [x] **8. lépés: mutációs ellenőrzés.** Egyenként, mindegyik után
   visszaállítva (`git checkout src/view/reports.ts` nem jó, mert új fájl —
   előtte `cp src/view/reports.ts /tmp/reports.ts.bak`, utána vissza):
   1. a `seriesOf` törzse legyen `kind` → 2 teszt bukik (a sorozatok listája, a
@@ -1043,12 +1043,12 @@ export {
 Run (mindháromnál): `pnpm vitest run src/view/reports.test.ts 2>&1 | grep -E "Tests |FAIL"`
 Expected: legalább 1 FAIL; visszaállítás után 21 passed.
 
-- [ ] **9. lépés: teljes ellenőrzés.**
+- [x] **9. lépés: teljes ellenőrzés.**
 
 Run: `pnpm test && pnpm typecheck && pnpm lint`
 Expected: 1019 teszt zöld, tiszta typecheck és lint.
 
-- [ ] **10. lépés: commit** (`commit-message` skill, `Refs #74`):
+- [x] **10. lépés: commit** (`commit-message` skill, `Refs #74`):
 
 ```
 feat(view): Add report view model for web UI
@@ -1074,7 +1074,7 @@ feat(view): Add report view model for web UI
 - Adja: `GET /api/reports` → `Reports`; az `/items?source=&channel=&kind=&status=`
   (a `status` a magyar címke: `kész`, `hibás`, `hátra`).
 
-- [ ] **1. lépés: a bukó e2e-tesztek.** A `web/test/e2e/api.test.ts`
+- [x] **1. lépés: a bukó e2e-tesztek.** A `web/test/e2e/api.test.ts`
   típus-importjába a `Overview,` sor után kerüljön `Reports,`; majd az
   `it('az oldalak a szerveren renderelve a szintetikus adatot mutatják', …)`
   elé:
@@ -1107,12 +1107,12 @@ feat(view): Add report view model for web UI
   })
 ```
 
-- [ ] **2. lépés: futtasd, bukjon.**
+- [x] **2. lépés: futtasd, bukjon.**
 
 Run: `pnpm web:test 2>&1 | grep -E "Tests |FAIL"`
 Expected: 2 FAIL (`/api/reports` 404; az `/items` `2 / 2 elem`-et mutat).
 
-- [ ] **3. lépés: az API-útvonal.** `web/server/api/reports.get.ts`:
+- [x] **3. lépés: az API-útvonal.** `web/server/api/reports.get.ts`:
 
 ```ts
 import { readReports } from 'transcript-refinery'
@@ -1120,7 +1120,7 @@ import { readReports } from 'transcript-refinery'
 export default defineEventHandler(() => coreHandler((cfg) => readReports(cfg)))
 ```
 
-- [ ] **4. lépés: az `/items` induló szűrői.** A `web/app/pages/items/index.vue`-ban
+- [x] **4. lépés: az `/items` induló szűrői.** A `web/app/pages/items/index.vue`-ban
 
 ```ts
 const source = ref(ALL)
@@ -1146,22 +1146,22 @@ const kind = ref(fromQuery('kind', kinds.value, 'summary'))
 const status = ref(fromQuery('status', STATUS_LABELS, ALL))
 ```
 
-- [ ] **5. lépés: futtasd, menjen át.**
+- [x] **5. lépés: futtasd, menjen át.**
 
 Run: `pnpm web:test 2>&1 | grep -E "Test Files|Tests |FAIL"`
 Expected: 20 passed.
 
-- [ ] **6. lépés: mutációs ellenőrzés.** `const status = ref(fromQuery('status', STATUS_LABELS, ALL))`
+- [x] **6. lépés: mutációs ellenőrzés.** `const status = ref(fromQuery('status', STATUS_LABELS, ALL))`
   → `const status = ref(ALL)`: „az elemlista az URL-ből kapja az induló
   szűrőt" bukik. Visszaállítás. (A bukó teszt a teljes HTML-t kiírja —
   a `grep` szűrés itt fontos.)
 
-- [ ] **7. lépés: teljes ellenőrzés.**
+- [x] **7. lépés: teljes ellenőrzés.**
 
 Run: `pnpm web:typecheck && pnpm web:lint`
 Expected: tiszta.
 
-- [ ] **8. lépés: commit** (`Refs #74`):
+- [x] **8. lépés: commit** (`Refs #74`):
 
 ```
 feat(web): Add reports API and URL filters for items
@@ -1195,7 +1195,7 @@ feat(web): Add reports API and URL filters for items
   `ReportsChannelCostChart` komponens (a Nuxt a `components/reports/`
   mappából ezzel az előtaggal regisztrálja).
 
-- [ ] **1. lépés: a bukó SSR-teszt.** A `web/test/e2e/api.test.ts`-ben a
+- [x] **1. lépés: a bukó SSR-teszt.** A `web/test/e2e/api.test.ts`-ben a
   Task 2 két tesztje után:
 
 ```ts
@@ -1210,19 +1210,19 @@ feat(web): Add reports API and URL filters for items
   })
 ```
 
-- [ ] **2. lépés: futtasd, bukjon.**
+- [x] **2. lépés: futtasd, bukjon.**
 
 Run: `pnpm web:test 2>&1 | grep -E "Tests |FAIL"`
 Expected: 1 FAIL (a `/reports` 404).
 
-- [ ] **3. lépés: az unovis.**
+- [x] **3. lépés: az unovis.**
 
 Run: `pnpm --filter transcript-refinery-web add @unovis/vue@^1.7.0 @unovis/ts@^1.7.0`
 Expected: a `web/package.json` `dependencies`-ébe bekerül a két csomag,
 `^1.7.0`-val. A `cac` peer-figyelmeztetés már korábban is megvolt, nem ettől
 jön.
 
-- [ ] **4. lépés: színek és téma.** A `web/app/assets/css/main.css` végére:
+- [x] **4. lépés: színek és téma.** A `web/app/assets/css/main.css` végére:
 
 ```css
 /*
@@ -1284,7 +1284,7 @@ node <dataviz>/scripts/validate_palette.js "#2a78d6,#eb6834,#1baf7a,#eda100,#e87
 node <dataviz>/scripts/validate_palette.js "#3987e5,#d95926,#199e70,#c98500,#d55181,#008300,#9085e9" --mode dark --surface "#171717"
 ```
 
-- [ ] **5. lépés: segédfüggvények.** Új `web/app/utils/reports.ts`:
+- [x] **5. lépés: segédfüggvények.** Új `web/app/utils/reports.ts`:
 
 ```ts
 /**
@@ -1346,7 +1346,7 @@ export function escapeHtml(text: string): string {
 }
 ```
 
-- [ ] **6. lépés: a futásgrafikon.** Új
+- [x] **6. lépés: a futásgrafikon.** Új
   `web/app/components/reports/RunCostChart.client.vue`:
 
 ```vue
@@ -1419,7 +1419,7 @@ const events = {
 </template>
 ```
 
-- [ ] **7. lépés: a csatornagrafikon.** Új
+- [x] **7. lépés: a csatornagrafikon.** Új
   `web/app/components/reports/ChannelCostChart.client.vue`:
 
 ```vue
@@ -1491,7 +1491,7 @@ function tooltip({ datum: d, stackIndex }: StackedDatum): string {
 </template>
 ```
 
-- [ ] **8. lépés: az oldal.** Új `web/app/pages/reports.vue`:
+- [x] **8. lépés: az oldal.** Új `web/app/pages/reports.vue`:
 
 ```vue
 <script setup lang="ts">
@@ -1795,24 +1795,24 @@ const captionText = (c: ChannelReport): string =>
 </template>
 ```
 
-- [ ] **9. lépés: a menüpont.** A `web/app/layouts/default.vue`-ban az
+- [x] **9. lépés: a menüpont.** A `web/app/layouts/default.vue`-ban az
   `{ label: 'Elemek', icon: 'i-lucide-list', to: '/items' },` sor után:
 
 ```ts
   { label: 'Riport', icon: 'i-lucide-chart-column', to: '/reports' },
 ```
 
-- [ ] **10. lépés: futtasd, menjen át.**
+- [x] **10. lépés: futtasd, menjen át.**
 
 Run: `pnpm web:test 2>&1 | grep -E "Test Files|Tests |FAIL"`
 Expected: 21 passed.
 
-- [ ] **11. lépés: teljes ellenőrzés.**
+- [x] **11. lépés: teljes ellenőrzés.**
 
 Run: `pnpm test && pnpm typecheck && pnpm lint && pnpm web:typecheck && pnpm web:lint`
 Expected: minden zöld, tiszta.
 
-- [ ] **12. lépés: képernyőkép a valódi korpuszon.** A Claude-in-Chrome
+- [x] **12. lépés: képernyőkép a valódi korpuszon.** A Claude-in-Chrome
   bővítménynek a próbán nem volt engedélye a `localhost`/`127.0.0.1`
   oldalra, és a fejlesztői szerver HMR-je a headless Chrome-ot megakasztja —
   ezért production build + headless Chrome:
@@ -1836,7 +1836,7 @@ szürke jól elválik; a csatornasáv legdrágábbja felül van; a tengelyfelira
 nem ütköznek; nincs vízszintes túlcsordulás. (A `.output` build-kimenet, a
 `.gitignore` fedi.)
 
-- [ ] **13. lépés: commit** (`Refs #74`):
+- [x] **13. lépés: commit** (`Refs #74`):
 
 ```
 feat(web): Add reports page with cost charts
@@ -1856,7 +1856,7 @@ feat(web): Add reports page with cost charts
 - Módosít: `docs/architecture.md`
 - Módosít: `docs/plans/2026-09-24-riport-oldal-spec.md`
 
-- [ ] **1. lépés: README.** A „A felület (`mise exec -- pnpm web`, …) csak
+- [x] **1. lépés: README.** A „A felület (`mise exec -- pnpm web`, …) csak
   olvas." bekezdés végére (a „…SSE-n." mondat után) új mondat:
 
 ```markdown
@@ -1874,7 +1874,7 @@ Oldalai: áttekintő, elemek (szűrők URL-ből is: `/items?channel=<név>&kind=
 riport, hibák, futások.
 ```
 
-- [ ] **2. lépés: architektúra.** A `docs/architecture.md`-ben a „A CLI `list`
+- [x] **2. lépés: architektúra.** A `docs/architecture.md`-ben a „A CLI `list`
   parancsa ugyanezt az olvasó réteget használja (`readItems()`): …" bekezdés
   után:
 
@@ -1887,7 +1887,7 @@ különbözik: a futásnapló az `item:refined` események összege, minden
 tartja.
 ```
 
-- [ ] **3. lépés: a spec átvezetése.** A spec „Amit a tervezés előtt
+- [x] **3. lépés: a spec átvezetése.** A spec „Amit a tervezés előtt
   megmértünk" részében a `flashcards`-mondatot javítsd a valóságra („a `NULL`
   költségű rekordok mind `failed`; kész, költség nélküli fizetős műtermék
   nincs"), és a spec végére új szakasz:
@@ -1903,7 +1903,7 @@ exportok: `TOP_LIMIT`, `CoverageCell`, a `readReports` `isAlive` paramétere;
 a tooltip szövege `escapeHtml`-lel készül.
 ```
 
-- [ ] **4. lépés: élő számellenőrzés (pénzt nem költ).** A repó gyökeréből
+- [x] **4. lépés: élő számellenőrzés (pénzt nem költ).** A repó gyökeréből
   (#72: más mappából a relatív útvonalak mást jelentenek), a production
   szerver futása mellett (Task 3, 12. lépés):
 
@@ -1918,7 +1918,7 @@ Expected: a `spentUsd` = a `jq`-összeg, a `vaultCostUsd` = az `sqlite`-összeg
 (lebegőpontos kerekítésen belül); a katalógus `summary` oszlopának
 `kész`-összege = a `list --channels` `Összesen` sorának `sum` értéke.
 
-- [ ] **5. lépés: interaktív ellenőrzés böngészőben.** A headless kép a
+- [x] **5. lépés: interaktív ellenőrzés böngészőben.** A headless kép a
   tooltipet, a kattintást és a vágólapot nem fedi. A Claude-in-Chrome
   bővítménnyel **`http://localhost:4311/reports`** (a `127.0.0.1` alakot a
   bővítmény „browser-internal URL"-ként elutasítja), vagy ha a bővítmény nem
@@ -1936,7 +1936,7 @@ Expected: a `spentUsd` = a `jq`-összeg, a `vaultCostUsd` = az `sqlite`-összeg
   4. egy katalóguscellára kattintva az `/items` a csatornára és típusra
      szűrve nyílik, és az „N / M elem" sor egyezik a cella összesével.
 
-- [ ] **6. lépés: commit** (`Refs #74`):
+- [x] **6. lépés: commit** (`Refs #74`):
 
 ```
 docs: Document reports page and plan deviations
