@@ -48,8 +48,8 @@ const EXPECTED: Record<string, { prompt: string; repair: string }> = {
     repair: '9061cafc2f9b709aef06acf98d253e5c9b0ee6a6b32fe38bdb5b743d55901a19',
   },
   'clean-deep': {
-    prompt: '0ffbd3e714c5b75a969a12cd9ecff13a784b63965ee72af1e905b808abd259d9',
-    repair: '26567348ec6e7c649bc719cfb307b57a863fe58e864adc1d00ae83c345984435',
+    prompt: 'a8d8fe9f87c83943662579bd24b52968fcb77c994263e9037655202e61351bd5',
+    repair: '475ce89850011bff9b1160d963574a7bffbd3119580aab9cb0b561193ded4f54',
   },
   bloom: {
     prompt: '9c9196b97fe0ee7b0ccada981a86750087e439c7a17c3321378a5ba3d572f6cc',

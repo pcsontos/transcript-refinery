@@ -25,8 +25,13 @@ export const CLEAN_THRESHOLDS: Record<CleanLevel, FidelityThresholds> = {
 
 /**
  * A költségbecslés kimeneti aránya szintenként: a medián elemen mért
- * tokenarány, felfelé kerekítve (ugyanaz a mérés). Egy fölött van, mert a
- * kimenet a bekezdés-időbélyegeket és a fejléceket is hordozza.
+ * tokenarány, felfelé kerekítve (ugyanaz a mérés). Hogy miért van egy fölött,
+ * nincs ellenőrizve: a mért érték a modell saját kimeneti tokenszáma a
+ * `postprocess` előtt, tehát az időbélyegek nem számítanak bele, és a deep
+ * (időbélyeg nélkül) is 1,11–1,13 a medián és a leghosszabb elemen.
+ * Lehetséges, nem igazolt okok: a modell tokenizálója eltér a
+ * `TOKENS_PER_WORD = 1.35` feltevéstől, vagy a kimeneti token gondolkodási
+ * tokeneket is tartalmaz.
  */
 const OUTPUT_RATIO: Record<CleanLevel, number> = { mild: 1.3, moderate: 1.3, deep: 1.14 }
 
@@ -118,7 +123,10 @@ const rulesFor =
       languageRule(item),
       RULE.traceable,
       ...LEVEL_RULES[level],
-      '- Do not write timestamps. They are added separately.',
+      // A deep nem kap időbélyeget, tehát nincs mit „külön hozzáadni".
+      level === 'deep'
+        ? '- Do not write timestamps.'
+        : '- Do not write timestamps. They are added separately.',
       RULE.noFrontmatter,
       RULE.noWikilinks,
     ].join('\n')
