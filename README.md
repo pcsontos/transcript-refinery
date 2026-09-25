@@ -226,6 +226,30 @@ enélkül a pnpm egy workspace-gyökér csomag saját bin-jét nem kötné be a
 `node_modules/.bin`-be. Az `npx` ugyanezt a helyi `node_modules/.bin/refinery`-t
 találja meg; a registryhez nem is fordul, mert a csomag `"private": true`.
 
+#### Használat a terminálból, bárhonnan
+
+A `refinery` parancs a gépen bárhonnan futtatható, ha egyszer globálisan
+bekötöd (a repó gyökeréből):
+
+```bash
+pnpm build && npm link
+```
+
+A pnpm 12-ben a `pnpm link --global` már nem létezik, a `pnpm add -g link:.`
+pedig bin nélkül köti be a csomagot — ezért itt az `npm link` a működő út.
+A link a `dist/`-re mutat: kódváltozás után elég újra `pnpm build`. A
+parancs alapból a **munkakönyvtár** `refinery.config.yaml`-ját keresi, ezért
+más mappából a `--config` kell — a legkényelmesebb egy alias a shell
+konfigurációjában:
+
+```bash
+alias refinery='refinery --config /abszolút/út/transcript-refinery/refinery.config.yaml'
+```
+
+A configban megadott relatív útvonalak (`state.path`, `logs.dir`) és a
+`.env` a **config fájl mappájához** képest értendők, nem a munkakönyvtárhoz:
+bárhonnan indítva ugyanazt az állapottárat és kulcsot használja.
+
 #### Felderítés (`scan`)
 
 Kilistázza a konfigurált forrásokból elérhető feliratokat, azok szószámát és becsült minőségét (fájlírás nélkül):

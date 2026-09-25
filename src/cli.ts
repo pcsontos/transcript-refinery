@@ -1,15 +1,12 @@
 #!/usr/bin/env node
 import { existsSync, realpathSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
-  CONFIG_FILENAME,
-  loadConfig,
-  loadDotEnv,
+  loadCliConfig,
   loadModelConfig,
-  readConfigFile,
   readConfigText,
   validateConfig,
   type Config,
@@ -945,9 +942,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     allowPositionals: false,
   })
 
-  const configPath = resolve(process.cwd(), values.config ?? CONFIG_FILENAME)
-  const raw = await readConfigFile(configPath)
-  const cfg = loadConfig(raw, configPath)
+  const { raw, cfg } = await loadCliConfig(values.config)
   await validateConfig(cfg)
 
   if (command === 'scan') {
@@ -958,7 +953,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   if (command === 'check-pricing') {
     return commandCheckPricing(loadModelConfig(raw, process.env, cfg.configPath), {
       fix: values.fix,
-      configPath,
+      configPath: cfg.configPath,
     })
   }
   if (command === 'list') {
@@ -1006,7 +1001,6 @@ const isEntrypoint =
   process.argv[1] !== undefined &&
   import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
 if (isEntrypoint) {
-  loadDotEnv()
   main(process.argv.slice(2))
     .then((code) => process.exit(code))
     .catch((error: Error) => {
