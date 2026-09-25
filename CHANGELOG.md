@@ -3,6 +3,40 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.4.0] — 2026-09-25
+
+Új **Riport** oldal a webes felületen (`/reports`): egy helyen látod, mennyit
+költöttél, hová ment a pénz, mekkora a korpusz, és hol maradt gyenge egy
+jegyzet. Csak olvas, futást nem indít.
+
+### 📊 Hol megy a pénz
+
+- **Összesítő sor:** a videók, a csatornák és a szavak száma, a futásnaplók
+  szerinti tényleges költés és a vaultban lévő jegyzetek költsége — a kettő
+  szándékosan különbözik, mert az újrafuttatások is pénzbe kerültek.
+- **Költés futásonként:** oszlopgrafikon a tényleges és a becsült összeggel;
+  rámutatva a parancs és az arány, kattintásra a futás oldala nyílik.
+- **Költség csatornánként:** receptre bontott sáv, a fordítások egy közös
+  színben, típusonként a tooltipben.
+- Minden grafikon alatt ugyanazok a számok táblázatban is.
+
+### 🗂️ Mit futtass legközelebb
+
+- **Csatorna-katalógus:** csatornánként videószám, szószám, nyelv,
+  feliratforrás, költség és receptenként a `kész/összes` arány.
+- **Egy kattintásos parancs:** a hiányzó (csatorna, recept) párhoz a 📋 gomb
+  a vágólapra teszi a `refinery run --recipe … --channel '…'` parancsot —
+  elindítani a terminálból kell, indításkor a szokásos becsléssel.
+- A katalógus cellája az elemlistára visz, csatornára és receptre szűrve; az
+  elemlista szűrői mostantól az URL-ből is jöhetnek
+  (`/items?channel=<név>&kind=<típus>`).
+
+### ⭐ Minőség
+
+- **Csatornánkénti minőség:** átlagpontszám, és hány jegyzet maradt a küszöb
+  alatt — a leggyengébb csatorna felül.
+- **Toplisták:** a legdrágább és a leghosszabb videók.
+
 ## [1.3.0] — 2026-09-24
 
 Új `refinery list` parancs: SQLite-lekérdezés nélkül, a terminálban látod,
@@ -172,6 +206,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.4.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.4.0
 [1.3.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.3.0
 [1.2.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.2.0
 [1.1.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.1.0
