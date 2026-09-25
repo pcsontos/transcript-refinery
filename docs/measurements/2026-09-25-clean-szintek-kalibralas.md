@@ -60,10 +60,15 @@ mérés tehát nem próbálta ki.
 | moderate | 0,75 → **0,86** | 0,75 → **0,82** | 0,95 → **1,30** |
 | deep | 0,5 → **0,68** | 0,5 → **0,59** | 0,75 → **1,14** |
 
-Az `outputRatio` mindhárom szinten egy fölé került. A kimenet a szöveg mellett a
-bekezdésenkénti `[mm:ss]` időbélyegeket (mild, moderate) és a fejléceket
-(moderate, deep) is hordozza, a tokenarány ezért nagyobb a szóaránynál. A régi
-0,95/0,75 alulbecsülte a költséget.
+Az `outputRatio` mindhárom szinten egy fölé került. Hogy miért, azt nem
+ellenőriztem. Az időbélyegek nem lehetnek az okai: a mért érték a modell saját
+kimeneti tokenszáma (`generateUsage.outputTokens`) a `postprocess` előtt, a
+prompt pedig tiltja az időbélyeget; a deep, amely időbélyeget egyáltalán nem
+kap, a medián és a leghosszabb elemen szintén 1,13, ill. 1,11. Lehetséges, de
+nem igazolt okok: a modell tokenizálója szavanként több tokent ad, mint a
+becslés `TOKENS_PER_WORD = 1.35` feltevése, vagy a kimeneti tokenszám
+gondolkodási tokeneket is tartalmaz. A régi 0,95/0,75 mindenesetre
+alulbecsülte a költséget.
 
 ## Szemrevételezés
 
@@ -100,10 +105,11 @@ sorrendben.
   is beleszámítanak.
 - **A deep** nem tartalmaz időbélyeget. Az egyetlen `\d:\d\d` alakú találat
   (a leghosszabb elemen) a beszédben elhangzó óraidő, nem időbélyeg. Kihagyott
-  tartalomra nincs jel: a fejléclista mindhárom elemen végigköveti a beszéd
-  szerkezetét, és a két, végéig átnézett deep kimenet (a legrövidebb és a
-  leghosszabb elem) a beszéd záró gondolatáig és elköszönéséig ér, ugyanott
-  zárul, ahol az ugyanazon elem mild kimenete. A legrövidebb elem alacsony szóaránya (0,73) átfogalmazásból és
+  tartalomra a két kézzel átnézett elemen (a legrövidebb és a leghosszabb)
+  nincs jel: a fejléclista végigköveti a beszéd szerkezetét, és mindkét deep
+  kimenet a beszéd záró gondolatáig és elköszönéséig ér, ugyanott zárul, ahol
+  az ugyanazon elem mild kimenete. A medián elem deep kimenetén a szkript csak
+  a fejléceket számolta meg; a sorrendjüket a beszéddel nem vetettem össze. A legrövidebb elem alacsony szóaránya (0,73) átfogalmazásból és
   tömörítésből jön, nem hiányzó szakaszból.
 - **Összefoglalás** egyik szinten sincs: a kimenetek a beszéd menetét követik,
   összegző szakasz vagy „Summary" fejléc nélkül.

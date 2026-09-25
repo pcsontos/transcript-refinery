@@ -22,7 +22,8 @@ import { rateLimited } from './rate-limit.js'
 /**
  * A `clean`-szintek hűségküszöbének és kimeneti arányának kalibrálása valódi
  * hívásokkal (spec 2.4). Három elem — a legrövidebb, a medián és a
- * leghosszabb azok közül, amelyeknek van régi `_clean.md` jegyzete —, szintenként
+ * leghosszabb azok közül, amelyeknek van `_clean.md` vagy `_clean-moderate.md`
+ * jegyzete —, szintenként
  * egy generálással, **bíró és hűségkapu nélkül**: a kapu küszöbét épp most
  * mérjük, a kezdőérték nem buktathatja el a mérést.
  *
@@ -57,10 +58,14 @@ interface Candidate {
   timed: TimedLine[]
 }
 
-// 1. Jelöltek: a régi `_clean.md`-vel rendelkező elemek szószáma. Nulla modellhívás.
+// 1. Jelöltek: a tisztított jegyzettel rendelkező elemek szószáma. A régi
+// `_clean.md` a tervezett átnevezés után `_clean-moderate.md` lesz; bármelyik
+// megfelel. Nulla modellhívás.
+const CLEAN_MARKERS = ['_clean.md', '_clean-moderate.md']
 const candidates: Candidate[] = []
 for (const item of await discoverAll(cfg.sources, cfg.languages)) {
-  if (!existsSync(noteFile(cfg.notesRoot, item, '_clean.md'))) continue
+  const hasCleanNote = CLEAN_MARKERS.some((file) => existsSync(noteFile(cfg.notesRoot, item, file)))
+  if (!hasCleanNote) continue
   try {
     const normalized = await normalizeItem(item)
     candidates.push({
@@ -74,7 +79,7 @@ for (const item of await discoverAll(cfg.sources, cfg.languages)) {
   }
 }
 if (candidates.length === 0) {
-  console.error('Nincs olyan elem, amelynek van régi _clean.md jegyzete.')
+  console.error('Nincs olyan elem, amelynek van _clean.md vagy _clean-moderate.md jegyzete.')
   process.exit(2)
 }
 candidates.sort((a, b) => a.words - b.words)

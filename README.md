@@ -345,9 +345,9 @@ a webes felületéi.
 
 #### Figyelés (`watch`)
 
-Előtérben futó figyelő: amint a letöltő (pl. a Pinchflat) új `.srt` vagy
-`.vtt` feliratot tesz a configban megadott `sources` mappák valamelyikébe,
-abból átirat lesz, és az elem bekerül a vault `_queue.md` sorába. **Modellt nem
+Előtérben futó figyelő: amint a letöltő új `.srt` vagy `.vtt` feliratot tesz a
+configban megadott `sources` mappák valamelyikébe, abból átirat lesz, és az
+elem bekerül a vault `_queue.md` sorába. **Modellt nem
 hív, tehát nem költ** — a recepteket továbbra is te pipálod ki a sorban, és a
 `run --queue` futtatja őket.
 
@@ -356,6 +356,9 @@ refinery watch                 # minden forrásmappa
 refinery watch --source youtube
 refinery watch --no-commit     # a vaultba ír, de nem commitol
 ```
+
+Más kapcsolót (pl. `--dry-run`, `--recipe`) nem ismer: ilyenkor hibával,
+indulás nélkül kilép.
 
 Indításkor egy felzárkózó kör pótolja, ami a leállás alatt érkezett. Minden
 eseményről egy sor megy ki:
@@ -369,7 +372,8 @@ eseményről egy sor megy ki:
 A letöltés közbeni fájlt megvárja (a fájl mérete ~2 mp-ig nem változik), és a
 gyorsan egymás után érkező feliratokat egy körben dolgozza fel. Egy hibás
 felirat nem állítja le: a hibát kiírja, és csak akkor próbálja újra, ha a fájl
-megváltozik. Ctrl+C-re a futó kör befejeződik.
+megváltozik, vagy a watch újraindításakor. Ctrl+C-re a futó kör befejeződik;
+a második Ctrl+C azonnal kilép.
 
 #### Árazás ellenőrzése (`check-pricing`)
 

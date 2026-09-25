@@ -40,13 +40,14 @@ logs:
   dir: logs
 
 # Fordítás (elhagyható). Bármelyik recept kész jegyzetéből célnyelvű változat
-# készül, forrásreceptenként egy saját recepttel: `clean` → `clean-hu`. A
-# fordítás a vaultban lévő forrásjegyzetből dolgozik, tehát a forrásreceptnek
-# előbb el kell készülnie; enélkül a fordítás megnevezett okkal kimarad.
+# készül, forrásreceptenként egy saját recepttel: `clean-moderate` →
+# `clean-moderate-hu`. A fordítás a vaultban lévő forrásjegyzetből dolgozik,
+# tehát a forrásreceptnek előbb el kell készülnie; enélkül a fordítás
+# megnevezett okkal kimarad.
 # Célnyelv: en, hu, nl, de, es, fr vagy it.
 # translate:
 #   to: hu
-#   recipes: [clean, summary, notes]
+#   recipes: [clean-moderate, summary, notes]
 
 # Szerep → modell. A receptek szerepet kérnek, nem modellnevet; a konkrét
 # választás mérési eredmény lesz, nem vélemény (decisions/0004).
