@@ -67,9 +67,13 @@ bekezdésenkénti `[mm:ss]` időbélyegeket (mild, moderate) és a fejléceket
 
 ## Szemrevételezés
 
-Szintenként mindhárom kimenet eleje és vége átnézve, és egy szkript
-megszámolta a töltelékszavakat a forrásban és a kimenetekben (szószintű
-egyezéssel, kis- és nagybetű nélkül). A számok forrás/mild/moderate/deep
+Mind a kilenc kimenetre egy szkript megszámolta a fejléceket, az
+időbélyeg alakú mintákat és a töltelékszavakat a forrásban és a kimenetben
+(szószintű egyezéssel, kis- és nagybetű nélkül). Kézzel átnézett szöveg: a
+legrövidebb elem mild, moderate és deep kimenetének eleje (kb. 14 sor), a
+leghosszabb elem mild és deep kimenetének eleje, valamint e két elem mild és
+deep kimenetének vége (az utolsó kb. 700 karakter). A medián elem kimeneteit
+csak a szkript vizsgálta. A számok forrás/mild/moderate/deep
 sorrendben.
 
 | elem | `so` | `like` | `kind of` | `you know` | `actually` |
@@ -84,22 +88,22 @@ sorrendben.
   `uh`/`um` a forrásokban nulla: a YouTube-feliratok eleve nem tartalmazzák,
   ezért van a mild szóaránya 1 közelében (0,92–1,01). A mild tehát nem
   hagyja figyelmen kívül a szabályt, egyszerűen kevés a kivágnivaló. A
-  megmaradt `so`/`like`/`actually` előfordulások közül a szúrópróbával
-  ellenőrzöttek jelentést hordoztak („So as you can imagine", „a list of
-  things like"). Ezeket a szabály szándékosan meghagyja. Hogy mindegyik
-  ilyen-e, azt nem ellenőriztem. Egy apróság: a mild a leghosszabb elem végén meghagyta az
-  `[Applause]` jelölést.
+  megmaradt `so`/`like` előfordulások közül a szúrópróbával ellenőrzöttek
+  jelentést hordozó használatok voltak (kötőszó, ill. hasonlítás). Ezeket a
+  szabály szándékosan meghagyja. Hogy mindegyik ilyen-e, azt nem
+  ellenőriztem. Egy apróság: a mild a leghosszabb elem végén meghagyott egy
+  szögletes zárójeles hangjelölést (taps).
 - **A mild nem ír fejlécet:** mindhárom kimenetben nulla `#`-sor van,
   bekezdésenkénti `[mm:ss]` időbélyeggel.
 - **A moderate** fejlécekkel tagol (9/12/19 fejléc), bekezdésenként
   időbélyeggel. A szóarány 1 fölött lehet (1,01; 1,04), mert a fejlécek szavai
   is beleszámítanak.
-- **A deep** nem tartalmaz időbélyeget. Az egyetlen `\d:\d\d` alakú találat a
-  beszéd része („this talk started at exactly 6:00"). Tartalmat nem hagy ki:
-  a fejléclista végigköveti az előadások szerkezetét, és mindkét ellenőrzött
-  kimenet a beszéd valódi zárásáig ér (a code-review-videó utolsó gondolata és
-  a „Thank you for watching", ill. az előadás egri elvonulásos példája és a
-  köszönet). A legrövidebb elem alacsony szóaránya (0,73) átfogalmazásból és
+- **A deep** nem tartalmaz időbélyeget. Az egyetlen `\d:\d\d` alakú találat
+  (a leghosszabb elemen) a beszédben elhangzó óraidő, nem időbélyeg. Kihagyott
+  tartalomra nincs jel: a fejléclista mindhárom elemen végigköveti a beszéd
+  szerkezetét, és a két, végéig átnézett deep kimenet (a legrövidebb és a
+  leghosszabb elem) a beszéd záró gondolatáig és elköszönéséig ér, ugyanott
+  zárul, ahol az ugyanazon elem mild kimenete. A legrövidebb elem alacsony szóaránya (0,73) átfogalmazásból és
   tömörítésből jön, nem hiányzó szakaszból.
 - **Összefoglalás** egyik szinten sincs: a kimenetek a beszéd menetét követik,
   összegző szakasz vagy „Summary" fejléc nélkül.
@@ -111,10 +115,20 @@ változott, ismételt mérés nem kellett.
 
 - A script saját könyvelése: **$2.71** (a `calibration-clean.json` `spentUsd`-je).
 - LiteLLM `/key/info`: futás előtt `spend` 19.35430414, utána 23.05974414, tehát
-  **$3.71**. Ez a hiteles összeg. A különbség ismert jelenség: a projekt
-  könyvelése a konfigurált árakkal és a `ModelUsage` tokenszámaival számol, a
-  LiteLLM a saját árazásával. A becslés $2.06 volt, a 2×-es ráhagyás ($4.11)
+  **$3.71**. Ez a hiteles összeg. A becslés $2.06 volt, a 2×-es ráhagyás ($4.11)
   lefedte a valós költést.
+- **A $1.00-os (37%-os) eltérés oka nem ellenőrzött.** Az árazás nem
+  magyarázza: a LiteLLM `/model/info` szerint a `sub2api--claude-opus-5-5` élő
+  ára 4.0 / 20.0 USD millió tokenenként (be/ki), pontosan egyezik a
+  konfiguráció `pricing.draft` értékével (4 / 20). A 2026-09-17-i fordítási
+  mérésnél a `/key/info` különbsége még egyezett a script könyvelésével. Nem
+  kizárt okok, egyiket sem igazoltam: más forgalom ugyanazon a kulcson a futás
+  alatt; a cache-írás drágább ára, amelyet a `ModelUsage` nem különböztet meg (a
+  `/model/info` szerint 5.0 USD millió tokenenként; a mintán kb. 95 ezer
+  bemeneti tokennel számolva ez legfeljebb kb. $0.10 többlet, egyedül tehát
+  nem magyarázza); vagy olyan hívás, amelyet a proxy számláz, de a kliens nem
+  könyvel el. A kérésenkénti LiteLLM költésnaplóhoz (`/spend/logs`)
+  a kulcsnak nincs jogosultsága (admin kell), ezzel lehetne tisztázni.
 
 ## A mérés korlátja
 
