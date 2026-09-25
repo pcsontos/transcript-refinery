@@ -13,17 +13,22 @@ export type CleanLevel = 'mild' | 'moderate' | 'deep'
 export const CLEAN_LEVELS: readonly CleanLevel[] = ['mild', 'moderate', 'deep']
 
 /**
- * A hűségkapu küszöbei szintenként. **Kezdőértékek a kalibrálás előtt** — a 5.
- * task mérése írja felül őket (`docs/measurements/2026-09-25-clean-szintek-kalibralas.md`).
+ * A hűségkapu küszöbei szintenként. Mért értékek (2026-09-25,
+ * `sub2api--claude-opus-5-5`), a mért minimum mínusz 0,05 — lásd
+ * `docs/measurements/2026-09-25-clean-szintek-kalibralas.md`.
  */
 export const CLEAN_THRESHOLDS: Record<CleanLevel, FidelityThresholds> = {
-  mild: { minWordRatio: 0.75, minCoverage: 0.75, task: 'cleanup' },
-  moderate: { minWordRatio: 0.75, minCoverage: 0.75, task: 'cleanup' },
-  deep: { minWordRatio: 0.5, minCoverage: 0.5, task: 'edit' },
+  mild: { minWordRatio: 0.86, minCoverage: 0.84, task: 'cleanup' },
+  moderate: { minWordRatio: 0.86, minCoverage: 0.82, task: 'cleanup' },
+  deep: { minWordRatio: 0.68, minCoverage: 0.59, task: 'edit' },
 }
 
-/** A költségbecslés kimeneti aránya szintenként; a kalibrálás felülírja. */
-const OUTPUT_RATIO: Record<CleanLevel, number> = { mild: 0.95, moderate: 0.95, deep: 0.75 }
+/**
+ * A költségbecslés kimeneti aránya szintenként: a medián elemen mért
+ * tokenarány, felfelé kerekítve (ugyanaz a mérés). Egy fölött van, mert a
+ * kimenet a bekezdés-időbélyegeket és a fejléceket is hordozza.
+ */
+const OUTPUT_RATIO: Record<CleanLevel, number> = { mild: 1.3, moderate: 1.3, deep: 1.14 }
 
 /**
  * A töltelékszó-szabály: minden szinten ugyanaz. A „jelentést hordoz" kitétel
