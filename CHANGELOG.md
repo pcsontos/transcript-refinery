@@ -3,6 +3,51 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.5.0] — 2026-09-25
+
+A `refinery` parancs mostantól bárhonnan biztonságosan fut, a tisztított leirat
+három szerkesztési szinten készül, és az újonnan letöltött feliratok maguktól
+bekerülnek a feldolgozási sorba.
+
+### 🧭 Bárhonnan futtatható parancs
+
+- A configban megadott relatív útvonalak (`state.path`, `logs.dir`) és a
+  `.env` a **config fájl mappájához** képest értendők. Más mappából,
+  `--config`-gal indítva a parancs ugyanazt az állapottárat látja, és nem hoz
+  létre új, üres állapottárat, amely a kész elemeket újra kifizettetné.
+- Globális telepítés: `pnpm build && npm link`, utána egy shell-aliasszal a
+  terminálban bárhonnan hívható (lásd a README-t).
+
+### ✂️ A tisztított leirat három szintje
+
+- A `clean` helyett három recept: `clean-mild` (írásjel, nagybetű,
+  félrehallás; nincs fejléc), `clean-moderate` (bekezdések és `##` fejlécek)
+  és `clean-deep` (írott formára szerkeszt, ismétlések nélkül, időbélyeg
+  nélkül). A töltelékszavakat mindhárom eltávolítja.
+- A hűségkapu és a bíró szintenként mást vár; a küszöbök egy kalibráló
+  mérésből jönnek (`docs/measurements/2026-09-25-clean-szintek-kalibralas.md`).
+- Bármelyik szint fordítható (`translate.recipes: [clean-deep]` →
+  `clean-deep-hu`).
+- A `refinery list` oszlopkódja `cle-mil`, `cle-mod`, `cle-dee`; a
+  riportoldal költséggrafikonján a három szint egy közös sorozat.
+- **Átállás:** a régi `clean` azonosító megszűnt. A meglévő `_clean.md` és
+  `_clean-hu.md` jegyzetek `clean-moderate` néven élnek tovább; a configban a
+  `translate.recipes` `clean` elemét `clean-moderate`-re kell írni. Az első
+  `scan --queue` minden meglévő videó alá felveszi a `clean-mild` és
+  `clean-deep` sort is.
+
+### 👀 Új feliratok figyelése
+
+- Új `refinery watch` parancs: figyeli a forrásmappákat, és az új `.srt` vagy
+  `.vtt` feliratból átiratot készít és felveszi a `_queue.md`-be. **Modellt
+  nem hív, tehát nem költ** — a recepteket továbbra is te pipálod ki.
+- Indításkor pótolja, ami a leállás alatt érkezett; a letöltés közbeni fájlt
+  megvárja, a gyorsan érkező feliratokat egy körben dolgozza fel, és minden
+  eseményről egy időbélyeges sort ír ki.
+- Egy hibás felirat nem állítja le: a fájl változásakor vagy újraindításkor
+  újrapróbálja. Ctrl+C-re a futó kör befejeződik; `--no-commit` mellett nem
+  commitol a vaultba.
+
 ## [1.4.0] — 2026-09-25
 
 Új **Riport** oldal a webes felületen (`/reports`): egy helyen látod, mennyit
@@ -206,6 +251,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.5.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.0
 [1.4.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.4.0
 [1.3.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.3.0
 [1.2.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.2.0
