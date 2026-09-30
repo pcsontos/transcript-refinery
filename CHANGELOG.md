@@ -3,6 +3,17 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.5.1] — 2026-09-30
+
+Javítás: a jegyzetek újra a valódi eszközverziót jelölik.
+
+### 🐛 Javítások
+
+- A jegyzetek frontmatterjében a `generator` mező eddig mindig
+  `transcript-refinery@0.1.0` volt, bármelyik verzió írta. Mostantól a kiadott
+  verziót mutatja (most `transcript-refinery@1.5.1`), és minden kiadással
+  magától követi. A már kiírt jegyzetekben a régi érték marad.
+
 ## [1.5.0] — 2026-09-25
 
 A `refinery` parancs mostantól bárhonnan biztonságosan fut, a tisztított leirat
@@ -251,6 +262,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.5.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.1
 [1.5.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.0
 [1.4.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.4.0
 [1.3.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.3.0
