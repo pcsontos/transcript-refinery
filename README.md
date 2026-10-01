@@ -381,7 +381,9 @@ a második Ctrl+C azonnal kilép.
 
 #### Árazás ellenőrzése (`check-pricing`)
 
-Összeveti a konfigurációban beállított árakat a LiteLLM élő díjszabásával:
+Összeveti a konfigurációban beállított árakat a LiteLLM élő díjszabásával,
+**modellenként**: a `model.draft`, a `model.judge` és a `model.recipes`
+minden modelljét egyszer.
 
 ```bash
 node dist/cli.js check-pricing
@@ -393,6 +395,35 @@ megjegyzéseinek megtartásával:
 ```bash
 node dist/cli.js check-pricing --fix
 ```
+
+#### Receptenkénti modell (`model.recipes`)
+
+Alapból minden recept a `model.draft` modellen generál. Egy-egy recept más
+modellre tehető:
+
+```yaml
+model:
+  draft: sub2api--claude-opus-5-5
+  judge: sub2api--claude-sonnet-5
+  recipes:
+    notes: sub2api--claude-sonnet-5
+
+pricing:
+  sub2api--claude-opus-5-5: { input_per_million: 4, output_per_million: 20 }
+  sub2api--claude-sonnet-5: { input_per_million: 3, output_per_million: 15 }
+```
+
+- A kulcs pontos receptazonosító; a fordítás külön kulcs (`notes-hu`), nem
+  örököl a forrásrecepttől.
+- A pontozás mindig a `model.judge`.
+- A `pricing` modellnév szerint áll; minden használt modellnek kell ár, és a
+  költség (becslés, plafon, riport) a ténylegesen használt modell árán
+  számolódik.
+
+Ha egy modell nem fogadja el a kényszerített tool-hívást (pl.
+`claude-opus-5-5` a LiteLLM-en át), a sémás receptek és a bíró magától
+választható tool-hívásra váltanak; a futás ezt modellenként egyszer jelzi
+(`! <modell>: a kényszerített tool_choice nem támogatott…`).
 
 ### Webes felület (Web UI)
 
