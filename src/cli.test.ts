@@ -1811,7 +1811,28 @@ describe('commandCheckPricing', () => {
     const code = await commandCheckPricing(MODEL_CONFIG)
 
     expect(code).toBe(1)
-    expect(naplo.mock.calls.flat().join('\n')).toContain('ELTÉR draft')
+    expect(naplo.mock.calls.flat().join('\n')).toContain('ELTÉR claude-sonnet-5')
+    naplo.mockRestore()
+  })
+
+  it('a receptes felülbírálás modelljét is ellenőrzi', async () => {
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    stubLiteLLM([
+      { model_name: 'claude-sonnet-5', input: 0.000002, output: 0.00001 },
+      { model_name: 'grok-4-fast-reasoning', input: 0.00000125, output: 0.0000025 },
+      { model_name: 'claude-opus-5-5', input: 0.000005, output: 0.000025 },
+    ])
+    const cfg = {
+      ...MODEL_CONFIG,
+      recipeModels: { notes: 'claude-opus-5-5' },
+      modelPricing: {
+        ...MODEL_CONFIG.modelPricing,
+        'claude-opus-5-5': { inputPerMillion: 4, outputPerMillion: 20 },
+      },
+    }
+
+    expect(await commandCheckPricing(cfg)).toBe(1)
+    expect(naplo.mock.calls.flat().join('\n')).toContain('ELTÉR claude-opus-5-5')
     naplo.mockRestore()
   })
 
@@ -1837,8 +1858,8 @@ describe('commandCheckPricing', () => {
       [
         '# Ár-megjegyzés.',
         'pricing:',
-        '  draft: { input_per_million: 2.00, output_per_million: 10.00 }',
-        '  judge: { input_per_million: 1.25, output_per_million: 2.50 }',
+        '  claude-sonnet-5: { input_per_million: 2.00, output_per_million: 10.00 }',
+        '  grok-4-fast-reasoning: { input_per_million: 1.25, output_per_million: 2.50 }',
         '',
       ].join('\n'),
       'utf8',
@@ -1849,7 +1870,7 @@ describe('commandCheckPricing', () => {
     expect(code).toBe(0)
     const text = await readFile(configPath, 'utf8')
     expect(text).toContain('# Ár-megjegyzés.')
-    expect(text).toContain('draft: { input_per_million: 3, output_per_million: 15 }')
+    expect(text).toContain('claude-sonnet-5: { input_per_million: 3, output_per_million: 15 }')
     await rm(fixDir, { recursive: true, force: true })
     naplo.mockRestore()
   })

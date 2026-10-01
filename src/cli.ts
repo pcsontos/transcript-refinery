@@ -16,6 +16,7 @@ import { collectEvents, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
 import { createModelClient, type ModelClient } from './model/client.js'
 import { applyPricingFix, comparePricing, fetchLivePricing } from './model/pricing-check.js'
+import { usedModels } from './model/recipe-model.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { COMMIT_SCOPE, VERSION } from './meta.js'
@@ -348,13 +349,17 @@ export async function commandCheckPricing(
     return 2
   }
 
-  const { mismatches, unknown } = comparePricing(modelConfig.models, modelConfig.pricing, live)
-  for (const u of unknown) {
-    console.log(`? ${u.role} (${u.model}): a LiteLLM nem ismeri ezt a modellt — nem ellenőrizhető.`)
+  const { mismatches, unknown } = comparePricing(
+    usedModels(modelConfig),
+    modelConfig.modelPricing,
+    live,
+  )
+  for (const model of unknown) {
+    console.log(`? ${model}: a LiteLLM nem ismeri ezt a modellt — nem ellenőrizhető.`)
   }
   for (const m of mismatches) {
     console.log(
-      `ELTÉR ${m.role} (${m.model}): config $${m.configured.inputPerMillion.toFixed(2)}/$${m.configured.outputPerMillion.toFixed(2)} (be/ki, milliónként) — LiteLLM $${m.live.inputPerMillion.toFixed(2)}/$${m.live.outputPerMillion.toFixed(2)}`,
+      `ELTÉR ${m.model}: config $${m.configured.inputPerMillion.toFixed(2)}/$${m.configured.outputPerMillion.toFixed(2)} (be/ki, milliónként) — LiteLLM $${m.live.inputPerMillion.toFixed(2)}/$${m.live.outputPerMillion.toFixed(2)}`,
     )
   }
   if (mismatches.length === 0 && unknown.length === 0) {
@@ -366,7 +371,7 @@ export async function commandCheckPricing(
     const fixed = applyPricingFix(await readConfigText(opts.configPath), mismatches)
     await writeFileAtomic(opts.configPath, fixed)
     console.log(
-      `Javítva a configban: ${mismatches.map((m) => m.role).join(', ')} — ${opts.configPath}`,
+      `Javítva a configban: ${mismatches.map((m) => m.model).join(', ')} — ${opts.configPath}`,
     )
     return 0
   }

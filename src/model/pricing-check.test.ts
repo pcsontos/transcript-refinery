@@ -6,13 +6,12 @@ import {
   type LivePricing,
 } from './pricing-check.js'
 import type { ModelPricing } from '../config.js'
-import type { ModelRole } from '../types.js'
 
-const MODELS: Record<ModelRole, string> = { draft: 'claude-sonnet-5', judge: 'grok-4-fast-reasoning' }
+const MODELS = ['claude-sonnet-5', 'grok-4-fast-reasoning']
 
-const PRICING: Record<ModelRole, ModelPricing> = {
-  draft: { inputPerMillion: 2, outputPerMillion: 10 },
-  judge: { inputPerMillion: 1.25, outputPerMillion: 2.5 },
+const PRICING: Record<string, ModelPricing> = {
+  'claude-sonnet-5': { inputPerMillion: 2, outputPerMillion: 10 },
+  'grok-4-fast-reasoning': { inputPerMillion: 1.25, outputPerMillion: 2.5 },
 }
 
 describe('comparePricing', () => {
@@ -32,9 +31,8 @@ describe('comparePricing', () => {
     const result = comparePricing(MODELS, PRICING, live)
     expect(result.mismatches).toEqual([
       {
-        role: 'draft',
         model: 'claude-sonnet-5',
-        configured: PRICING.draft,
+        configured: PRICING['claude-sonnet-5'],
         live: { inputPerMillion: 3, outputPerMillion: 15 },
       },
     ])
@@ -55,7 +53,7 @@ describe('comparePricing', () => {
     ])
     const result = comparePricing(MODELS, PRICING, live)
     expect(result.mismatches).toEqual([])
-    expect(result.unknown).toEqual([{ role: 'draft', model: 'claude-sonnet-5' }])
+    expect(result.unknown).toEqual(['claude-sonnet-5'])
   })
 
   it('egy cent alatti eltérést nem jelez (kerekítési zaj)', () => {
@@ -64,6 +62,19 @@ describe('comparePricing', () => {
       ['grok-4-fast-reasoning', { inputPerMillion: 1.25, outputPerMillion: 2.5 }],
     ])
     expect(comparePricing(MODELS, PRICING, live).mismatches).toEqual([])
+  })
+
+  it('a receptes felülbírálás modelljét is ellenőrzi', () => {
+    const live = new Map<string, LivePricing>([
+      ['claude-sonnet-5', { inputPerMillion: 2, outputPerMillion: 10 }],
+      ['grok-4-fast-reasoning', { inputPerMillion: 1.25, outputPerMillion: 2.5 }],
+      ['claude-opus-5-5', { inputPerMillion: 5, outputPerMillion: 25 }],
+    ])
+    const pricing = { ...PRICING, 'claude-opus-5-5': { inputPerMillion: 4, outputPerMillion: 20 } }
+
+    const result = comparePricing([...MODELS, 'claude-opus-5-5'], pricing, live)
+
+    expect(result.mismatches.map((m) => m.model)).toEqual(['claude-opus-5-5'])
   })
 })
 
@@ -124,36 +135,56 @@ describe('applyPricingFix', () => {
   const TEXT = [
     '# Ár-megjegyzés, amelynek meg kell maradnia.',
     'pricing:',
-    '  draft: { input_per_million: 2.00, output_per_million: 10.00 }',
-    '  judge: { input_per_million: 1.25, output_per_million: 2.50 }',
+    '  claude-sonnet-5: { input_per_million: 2.00, output_per_million: 10.00 }',
+    '  grok-4-fast-reasoning: { input_per_million: 1.25, output_per_million: 2.50 }',
     '',
   ].join('\n')
 
-  it('csak az eltérő szerep árát írja át, a megjegyzést és a flow-alakot megtartva', () => {
+  it('csak az eltérő modell árát írja át, a megjegyzést és a flow-alakot megtartva', () => {
     const fixed = applyPricingFix(TEXT, [
       {
-        role: 'draft',
         model: 'claude-sonnet-5',
-        configured: PRICING.draft,
+        configured: PRICING['claude-sonnet-5']!,
         live: { inputPerMillion: 3, outputPerMillion: 15 },
       },
     ])
 
     expect(fixed).toContain('# Ár-megjegyzés, amelynek meg kell maradnia.')
-    expect(fixed).toContain('draft: { input_per_million: 3, output_per_million: 15 }')
-    expect(fixed).toContain('judge: { input_per_million: 1.25, output_per_million: 2.50 }')
+    expect(fixed).toContain('claude-sonnet-5: { input_per_million: 3, output_per_million: 15 }')
+    expect(fixed).toContain(
+      'grok-4-fast-reasoning: { input_per_million: 1.25, output_per_million: 2.50 }',
+    )
   })
 
   it('két tizedesre kerekít, mert az élő ár tokenárból visszaszorzott', () => {
     const fixed = applyPricingFix(TEXT, [
       {
-        role: 'judge',
         model: 'grok-4-fast-reasoning',
-        configured: PRICING.judge,
+        configured: PRICING['grok-4-fast-reasoning']!,
         live: { inputPerMillion: 2.4999999999999996, outputPerMillion: 12.345 },
       },
     ])
 
-    expect(fixed).toContain('judge: { input_per_million: 2.5, output_per_million: 12.35 }')
+    expect(fixed).toContain(
+      'grok-4-fast-reasoning: { input_per_million: 2.5, output_per_million: 12.35 }',
+    )
+  })
+
+  it('pontot és dupla kötőjelet tartalmazó modellnevet is talál', () => {
+    const text = [
+      'pricing:',
+      '  sub2api--grok-4.7: { input_per_million: 2.00, output_per_million: 10.00 }',
+      '',
+    ].join('\n')
+
+    const fixed = applyPricingFix(text, [
+      {
+        model: 'sub2api--grok-4.7',
+        configured: { inputPerMillion: 2, outputPerMillion: 10 },
+        live: { inputPerMillion: 3, outputPerMillion: 12 },
+      },
+    ])
+
+    expect(fixed).toContain('sub2api--grok-4.7: { input_per_million: 3, output_per_million: 12 }')
   })
 })
