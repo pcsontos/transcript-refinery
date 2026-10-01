@@ -54,6 +54,16 @@ describe('estimateItemUsd', () => {
       estimateItemUsd(3_000, 0, CFG, { outputRatio: 0.1, judges: 2 }),
     )
   })
+
+  it('a becslés alakjában adott draft-árat használja a szerep ára helyett', () => {
+    const draga = { inputPerMillion: 300, outputPerMillion: 1500 }
+    const alap = estimateItemUsd(10_000, 0, CFG)
+    const felulbiralt = estimateItemUsd(10_000, 0, CFG, { draftPricing: draga })
+    const nezet = { ...CFG, pricing: { ...CFG.pricing, draft: draga } }
+
+    expect(felulbiralt).toBeGreaterThan(alap)
+    expect(felulbiralt).toBeCloseTo(estimateItemUsd(10_000, 0, nezet), 10)
+  })
 })
 
 describe('estimateRunUsd', () => {

@@ -1,4 +1,4 @@
-import type { ModelConfig } from '../config.js'
+import type { ModelConfig, ModelPricing } from '../config.js'
 import type { ModelRole } from '../types.js'
 import type { ModelUsage } from './client.js'
 import { TOKENS_PER_WORD, costOf } from './pricing.js'
@@ -19,6 +19,8 @@ const DEFAULT_JUDGES = 2
 export interface EstimateShape {
   outputRatio?: number
   judges?: number
+  /** A recept generáló modelljének ára (`model.recipes`); hiánya a `draft` ára. */
+  draftPricing?: ModelPricing
 }
 
 /**
@@ -47,7 +49,7 @@ export function estimateItemUsd(
       inputTokens: transcriptTokens * generations,
       outputTokens: outputTokens * generations,
     },
-    cfg.pricing.draft,
+    shape.draftPricing ?? cfg.pricing.draft,
   )
 
   const judgeCalls = generations * judges
