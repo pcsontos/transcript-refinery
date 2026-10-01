@@ -112,6 +112,15 @@ export type RunEvent =
       delayMs: number
       reason: string
     }
+  | {
+      type: 'model:fallback'
+      /**
+       * A modell, amely elutasította a kényszerített `tool_choice`-t; a sémás
+       * hívásai mostantól választható tool-hívással mennek (#78). Modellenként
+       * egyszer jön.
+       */
+      model: string
+    }
 
 export type EventSink = (event: RunEvent) => void
 

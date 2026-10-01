@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ZodType } from 'zod'
 import {
   commandCheckPricing,
   commandList,
@@ -960,6 +961,117 @@ describe('commandRun — a hibás elem a naplóban és a riportban', () => {
     const md = (await readdir(masodikCfg.logsDir)).find((f) => f.endsWith('.md'))!
     const report = await readFile(join(masodikCfg.logsDir, md), 'utf8')
     expect(report).toContain('| kihagyva | 3 |')
+  })
+})
+
+describe('commandRun — receptenkénti modell és visszaesés', () => {
+  /** A futásnapló eseményei. */
+  async function esemenyek(logsDir: string): Promise<RunEvent[]> {
+    const jsonl = (await readdir(logsDir)).find((f) => f.endsWith('.jsonl'))!
+    return (await readFile(join(logsDir, jsonl), 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as RunEvent)
+  }
+
+  /** A `summary` a `proba-sonnet` modellen fut, feltűnően eltérő áron. */
+  const rawFelulbiralt = () => {
+    const raw = rawWithVault(5)
+    return {
+      ...raw,
+      model: { ...raw.model, recipes: { summary: 'proba-sonnet' } },
+      pricing: {
+        ...raw.pricing,
+        'proba-sonnet': { input_per_million: 70, output_per_million: 700 },
+      },
+    }
+  }
+
+  it('a felülbírált recept kliense a felülbírált modellt kapja, és az ő árán könyvel', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawFelulbiralt()
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const modellek: string[] = []
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      {
+        createClient: (view) => {
+          modellek.push(view.models.draft)
+          return hamisKliens({ generate: 0 })
+        },
+      },
+    )
+
+    expect(code).toBe(0)
+    expect(modellek).toEqual(['proba-sonnet'])
+    const refined = (await esemenyek(cfg.logsDir)).find((e) => e.type === 'item:refined')
+    if (refined?.type !== 'item:refined') throw new Error('nincs item:refined esemény')
+    // Generálás a felülbírált áron (70/700), pontozás a bíró áron (0,2/0,5).
+    const vart = refined.rounds.reduce(
+      (sum, r) =>
+        sum +
+        (r.generateTokens.input * 70 + r.generateTokens.output * 700) / 1_000_000 +
+        (r.scoreTokens.input * 0.2 + r.scoreTokens.output * 0.5) / 1_000_000,
+      0,
+    )
+    expect(refined.usd).toBeCloseTo(vart, 10)
+  })
+
+  it('ismeretlen receptkulcsra a futás előtt beszédes hibával áll meg', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const alap = rawWithVault(5)
+    const raw = { ...alap, model: { ...alap.model, recipes: { nots: 'proba-draft' } } }
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    let hivott = false
+
+    await expect(
+      commandRun(
+        cfg,
+        raw,
+        { recipe: 'summary', dryRun: false, force: false, commit: false },
+        {
+          createClient: () => {
+            hivott = true
+            return hamisKliens({ generate: 0 })
+          },
+        },
+      ),
+    ).rejects.toThrow(/model\.recipes: ismeretlen recept: nots/)
+    expect(hivott).toBe(false)
+  })
+
+  it('a visszaesést modellenként egyszer írja a naplóba', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      {
+        createClient: (_view, opts) => {
+          const kliens = hamisKliens({ generate: 0 })
+          return {
+            ...kliens,
+            generateObject: <T>(role: ModelRole, prompt: string, schema: ZodType<T>) => {
+              // Ahogy a valódi kliens: minden bíróhívásnál rögzít, a jelzés egyszeri.
+              opts?.fallback?.add('proba-judge')
+              return kliens.generateObject(role, prompt, schema)
+            },
+          }
+        },
+      },
+    )
+
+    expect(code).toBe(0)
+    const fallbacks = (await esemenyek(cfg.logsDir)).filter((e) => e.type === 'model:fallback')
+    // A napló minden sorhoz `at` időbélyeget is ír, ezért `toMatchObject`.
+    expect(fallbacks).toHaveLength(1)
+    expect(fallbacks[0]).toMatchObject({ type: 'model:fallback', model: 'proba-judge' })
   })
 })
 
