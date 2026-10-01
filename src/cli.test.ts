@@ -176,8 +176,8 @@ const rawConfig = (costLimitUsd: number) => ({
     judge: 'proba-judge',
   },
   pricing: {
-    draft: { input_per_million: 3, output_per_million: 15 },
-    judge: { input_per_million: 0.2, output_per_million: 0.5 },
+    'proba-draft': { input_per_million: 3, output_per_million: 15 },
+    'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
   },
   cost_limit_usd: costLimitUsd,
 })
@@ -1763,10 +1763,15 @@ describe('commandCheckPricing', () => {
       ModelRole,
       string
     >,
+    recipeModels: {},
     judgeEnabled: true,
     pricing: {
       draft: { inputPerMillion: 2, outputPerMillion: 10 },
       judge: { inputPerMillion: 1.25, outputPerMillion: 2.5 },
+    },
+    modelPricing: {
+      'claude-sonnet-5': { inputPerMillion: 2, outputPerMillion: 10 },
+      'grok-4-fast-reasoning': { inputPerMillion: 1.25, outputPerMillion: 2.5 },
     },
     costLimitUsd: 5,
   }

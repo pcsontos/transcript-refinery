@@ -243,8 +243,17 @@ const ModelSchema = z.object({
     judge: z.string().min(1, 'A model.judge kötelező.'),
     /** Hamisra állítva a bíró pontozói nem futnak; a determinisztikus kapuk igen. */
     judge_enabled: z.boolean().default(true),
+    /**
+     * Receptazonosító → modell: a `draft` felülbírálása az adott receptnél.
+     * A kulcsokat a futás regisztere ellenőrzi (`assertRecipeModels`), hogy
+     * a konfig ne függjön a receptektől.
+     */
+    recipes: z
+      .record(z.string().min(1), z.string().min(1, 'A model.recipes értéke modellnév kell legyen.'))
+      .default({}),
   }),
-  pricing: z.object({ draft: PriceSchema, judge: PriceSchema }),
+  /** Modellnév → ár. Minden használt modellnek kell ára legyen. */
+  pricing: z.record(z.string().min(1), PriceSchema),
   cost_limit_usd: z.coerce
     .number()
     .positive('Kötelező és pozitív: köteg nem indul felső korlát nélkül.'),
@@ -259,10 +268,16 @@ export interface ModelPricing {
 export interface ModelConfig {
   baseUrl: string
   apiKey: string
+  /** Szerep → modell; a `draft` a receptek alapértelmezése. */
   models: Record<ModelRole, string>
+  /** Receptazonosító → modell; a `draft` felülbírálása az adott receptnél. */
+  recipeModels: Readonly<Record<string, string>>
   /** Fusson-e a bíró. A `--no-judge` kapcsoló felülírja. */
   judgeEnabled: boolean
+  /** Szerep → ár: a `models` két modelljének ára, a `modelPricing`-ből. */
   pricing: Record<ModelRole, ModelPricing>
+  /** Modellnév → ár. */
+  modelPricing: Readonly<Record<string, ModelPricing>>
   /** Futásonkénti felső korlát dollárban. */
   costLimitUsd: number
 }
@@ -291,21 +306,50 @@ export function loadModelConfig(
     )
   }
   const c = parsed.data
+  const used = [c.model.draft, c.model.judge, ...Object.values(c.model.recipes)]
+
+  // A régi, szerep szerinti alak (v1.5.x-ig): a `draft`/`judge` kulcs nem
+  // modellnév. Előbb ezt nézzük, hogy a hiányzó-ár hiba helyett az átírási
+  // útmutató jöjjön.
+  const legacy = ['draft', 'judge'].filter(
+    (key) => Object.hasOwn(c.pricing, key) && !used.includes(key),
+  )
+  if (legacy.length > 0) {
+    throw new Error(
+      [
+        `pricing: a(z) ${legacy.join(', ')} kulcs a régi, szerep szerinti alak. Az ár mostantól modellnév szerint áll, például:`,
+        '  pricing:',
+        `    ${c.model.draft}: { input_per_million: …, output_per_million: … }`,
+        `    ${c.model.judge}: { input_per_million: …, output_per_million: … }`,
+        `(${configPath})`,
+      ].join('\n'),
+    )
+  }
+
+  const missing = [...new Set(used)].filter((model) => !Object.hasOwn(c.pricing, model))
+  if (missing.length > 0) {
+    throw new Error(
+      `pricing: nincs ára a következő modellnek: ${missing.join(', ')}. Minden használt modellnek (model.draft, model.judge, model.recipes) kell ár. (${configPath})`,
+    )
+  }
+
+  const modelPricing: Record<string, ModelPricing> = Object.fromEntries(
+    Object.entries(c.pricing).map(([model, price]) => [
+      model,
+      { inputPerMillion: price.input_per_million, outputPerMillion: price.output_per_million },
+    ]),
+  )
+  // A fenti ellenőrzés után mindkettőnek van ára.
+  const priceOf = (model: string): ModelPricing => modelPricing[model]!
+
   return {
     baseUrl: c.model.base_url,
     apiKey,
     models: { draft: c.model.draft, judge: c.model.judge },
+    recipeModels: c.model.recipes,
     judgeEnabled: c.model.judge_enabled,
-    pricing: {
-      draft: {
-        inputPerMillion: c.pricing.draft.input_per_million,
-        outputPerMillion: c.pricing.draft.output_per_million,
-      },
-      judge: {
-        inputPerMillion: c.pricing.judge.input_per_million,
-        outputPerMillion: c.pricing.judge.output_per_million,
-      },
-    },
+    pricing: { draft: priceOf(c.model.draft), judge: priceOf(c.model.judge) },
+    modelPricing,
     costLimitUsd: c.cost_limit_usd,
   }
 }

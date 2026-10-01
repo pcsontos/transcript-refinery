@@ -59,15 +59,20 @@ model:
   # futnak). false esetén egy futásra sem kapcsolható vissza parancssorból;
   # a --no-judge csak kikapcsolni tud.
   # judge_enabled: true
+  # Receptenkénti modell (opcionális): a `draft` felülbírálása egy-egy
+  # receptnél. A kulcs pontos receptazonosító; a fordítás (pl. notes-hu)
+  # külön kulcs, nem örököl a forrásrecepttől. A bíró mindig a `judge`.
+  # recipes:
+  #   notes: claude-sonnet-5
 
-# USD egymillió tokenre, szerepenként be- és kimenetre. Azért konfigurációból
-# és nem beégetett ártáblázatból, mert az avul. Ellenőrizd a LiteLLM
-# `/model/info` végpontjával, valahányszor a `model:` fenti modelljei
-# változnak — ezek a számok a jelenlegi `claude-sonnet-5` / `grok-4-fast-reasoning`
-# párra igazak (ellenőrizve: 2026-09-11).
+# USD egymillió tokenre, **modellnév szerint**, be- és kimenetre. Minden
+# használt modellnek (model.draft, model.judge, model.recipes) kell ár; a
+# fölösleges sor nem baj. Azért konfigurációból és nem beégetett
+# ártáblázatból, mert az avul: ellenőrizd a `refinery check-pricing`
+# paranccsal, valahányszor a modellek változnak (ellenőrizve: 2026-09-11).
 pricing:
-  draft: { input_per_million: 2.00, output_per_million: 10.00 }
-  judge: { input_per_million: 1.25, output_per_million: 2.50 }
+  claude-sonnet-5: { input_per_million: 2.00, output_per_million: 10.00 }
+  grok-4-fast-reasoning: { input_per_million: 1.25, output_per_million: 2.50 }
 
 # Futásonkénti költségplafon dollárban. Kötelező: köteg nem indul felső korlát
 # nélkül. A korpusz mért mediánjából egy elem nagyjából 8 cent, tehát az
