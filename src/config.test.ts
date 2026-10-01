@@ -231,6 +231,29 @@ describe('loadModelConfig', () => {
     expect(uzenet).toContain('/p/c.yaml')
   })
 
+  it('a régi alakot egy rosszul elhelyezett judge_enabled mellett is felismeri, nem Zod-hibát ad', () => {
+    // A felhasználó valódi configjában a judge_enabled a pricing: alá
+    // keveredett. A szigorú, modellnév szerinti séma ezen elbukna, mielőtt az
+    // átírási útmutató megjelenhetne — ezért ezt a nyers adaton, a
+    // sémaellenőrzés előtt kell felismerni.
+    const raw = {
+      ...RAW,
+      pricing: {
+        draft: { input_per_million: 3, output_per_million: 15 },
+        judge: { input_per_million: 0.2, output_per_million: 0.5 },
+        judge_enabled: true,
+      },
+    }
+    let uzenet = ''
+    try {
+      loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')
+    } catch (error) {
+      uzenet = (error as Error).message
+    }
+    expect(uzenet).toMatch(/régi, szerep szerinti alak/)
+    expect(uzenet).not.toMatch(/Invalid input/)
+  })
+
   it('a loadConfig a régi pricing-alakot nem nézi', () => {
     const raw = {
       ...MIN,

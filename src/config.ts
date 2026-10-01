@@ -292,11 +292,57 @@ export interface ModelConfig {
  * A kulcs az egyetlen érték, ami **nem** a YAML-ból jön: titok, aminek nincs
  * helye egy verziókövetett konfigurációs fájlban.
  */
+/** A régi, szerep szerinti `pricing`-kulcsok, ha nem ütköznek valódi modellnévvel. */
+function legacyPricingKeys(pricing: object, used: readonly string[]): string[] {
+  return ['draft', 'judge'].filter((key) => Object.hasOwn(pricing, key) && !used.includes(key))
+}
+
+/** Az átírási útmutató a régi, szerep szerinti `pricing`-alakra. */
+function legacyPricingError(
+  legacy: readonly string[],
+  draft: string,
+  judge: string,
+  configPath: string,
+): Error {
+  return new Error(
+    [
+      `pricing: a(z) ${legacy.join(', ')} kulcs a régi, szerep szerinti alak. Az ár mostantól modellnév szerint áll, például:`,
+      '  pricing:',
+      `    ${draft}: { input_per_million: …, output_per_million: … }`,
+      `    ${judge}: { input_per_million: …, output_per_million: … }`,
+      `(${configPath})`,
+    ].join('\n'),
+  )
+}
+
+/** `unknown`-ból kinyert objektum, vagy `undefined`, ha nem objektum. */
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined
+}
+
 export function loadModelConfig(
   raw: unknown,
   env: Record<string, string | undefined>,
   configPath: string,
 ): ModelConfig {
+  // A régi, szerep szerinti `pricing`-alak (v1.5.x-ig) extra kulcsot is
+  // tartalmazhat (pl. a `judge_enabled` rosszul a `pricing:` alá kerülve),
+  // amitől a szigorú, modellnév szerinti séma elbukna, mielőtt az átírási
+  // útmutató megjelenhetne. Ezért ezt a nyers adaton, a sémaellenőrzés
+  // ELŐTT nézzük; ha a nyers alak nem egyértelmű, a rendes séma dönt.
+  const rawModel = asRecord(asRecord(raw)?.model)
+  const rawPricing = asRecord(asRecord(raw)?.pricing)
+  const rawDraft = rawModel?.draft
+  const rawJudge = rawModel?.judge
+  if (typeof rawDraft === 'string' && typeof rawJudge === 'string' && rawPricing) {
+    const rawRecipes = asRecord(rawModel?.recipes) ?? {}
+    const rawRecipeModels = Object.values(rawRecipes).filter(
+      (v): v is string => typeof v === 'string',
+    )
+    const legacy = legacyPricingKeys(rawPricing, [rawDraft, rawJudge, ...rawRecipeModels])
+    if (legacy.length > 0) throw legacyPricingError(legacy, rawDraft, rawJudge, configPath)
+  }
+
   const parsed = ModelSchema.safeParse(raw)
   if (!parsed.success) fail(parsed.error, configPath)
   const apiKey = env.LITELLM_API_KEY
@@ -308,23 +354,11 @@ export function loadModelConfig(
   const c = parsed.data
   const used = [c.model.draft, c.model.judge, ...Object.values(c.model.recipes)]
 
-  // A régi, szerep szerinti alak (v1.5.x-ig): a `draft`/`judge` kulcs nem
-  // modellnév. Előbb ezt nézzük, hogy a hiányzó-ár hiba helyett az átírási
-  // útmutató jöjjön.
-  const legacy = ['draft', 'judge'].filter(
-    (key) => Object.hasOwn(c.pricing, key) && !used.includes(key),
-  )
-  if (legacy.length > 0) {
-    throw new Error(
-      [
-        `pricing: a(z) ${legacy.join(', ')} kulcs a régi, szerep szerinti alak. Az ár mostantól modellnév szerint áll, például:`,
-        '  pricing:',
-        `    ${c.model.draft}: { input_per_million: …, output_per_million: … }`,
-        `    ${c.model.judge}: { input_per_million: …, output_per_million: … }`,
-        `(${configPath})`,
-      ].join('\n'),
-    )
-  }
+  // Ugyanez a régi alak akkor is előfordulhat, ha minden `pricing`-bejegyzés
+  // önmagában érvényes árnak néz ki (a fenti nyers ellenőrzés ezt nem kapja
+  // el) — ezt a sikeresen elemzett adaton nézzük.
+  const legacy = legacyPricingKeys(c.pricing, used)
+  if (legacy.length > 0) throw legacyPricingError(legacy, c.model.draft, c.model.judge, configPath)
 
   const missing = [...new Set(used)].filter((model) => !Object.hasOwn(c.pricing, model))
   if (missing.length > 0) {
