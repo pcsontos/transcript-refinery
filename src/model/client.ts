@@ -1,8 +1,21 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
-import { Output, generateText, type FinishReason, type LanguageModel } from 'ai'
+import {
+  NoObjectGeneratedError,
+  Output,
+  generateText,
+  tool,
+  type FinishReason,
+  type LanguageModel,
+} from 'ai'
 import type { ZodType } from 'zod'
 import type { ModelConfig } from '../config.js'
 import { MODEL_ROLES, type ModelRole } from '../types.js'
+import {
+  extractObject,
+  isForcedToolChoiceRejection,
+  toolChoiceFallback,
+  type ToolChoiceFallback,
+} from './tool-fallback.js'
 
 /** Egyetlen hívás tényleges token-felhasználása. */
 export interface ModelUsage {
@@ -87,10 +100,74 @@ function ellenorizdAVeget(role: ModelRole, finishReason: FinishReason): void {
   )
 }
 
+/**
+ * A tool-úton a séma ezen a néven megy ki. A modell látja, ezért beszédes; a
+ * válaszból csak ezt az egy tool-hívást fogadjuk el.
+ */
+const RESULT_TOOL = 'submit_result'
+
+/** A modell neve a visszaesési emlékezet kulcsához. */
+function modelNameOf(model: LanguageModel): string {
+  return typeof model === 'string' ? model : model.modelId
+}
+
+export interface ModelClientOptions {
+  /**
+   * A kényszerített `tool_choice`-t elutasító modellek emlékezete. A CLI egy
+   * futásra egyet ad, és minden receptkliens ugyanazt kapja; hiányában a
+   * kliens sajátot tart.
+   */
+  fallback?: ToolChoiceFallback
+}
+
 /** Szerep→modell leképezésből épít klienst. Ez a tesztelhető mag. */
 export function modelClientFrom(
   models: Record<ModelRole, LanguageModel>,
+  opts: ModelClientOptions = {},
 ): ModelClient {
+  const fallback = opts.fallback ?? toolChoiceFallback()
+
+  /**
+   * Sémás hívás **választható** tool-hívással (`tool_choice: auto`), a
+   * kényszerített helyett — a `claude-opus-5-5` csak ezt fogadja el (#78).
+   * Mivel a modell dönthet úgy is, hogy szöveget ad, az eredmény a
+   * tool-argumentum vagy a szöveges JSON; mindkettő a sémán megy át. A
+   * kudarc `AI_NoObjectGeneratedError`: a `structured.ts` ugyanúgy
+   * csomagolja, mint a sémás út hibáját, tehát nincs új hibaút.
+   */
+  async function viaTool<T>(
+    role: ModelRole,
+    prompt: string,
+    schema: ZodType<T>,
+  ): Promise<ModelResult<T>> {
+    const result = await generateText({
+      model: models[role],
+      prompt,
+      tools: {
+        [RESULT_TOOL]: tool({
+          description: 'Submit the result. Call this tool exactly once with the complete result.',
+          inputSchema: schema,
+        }),
+      },
+      toolChoice: 'auto',
+    })
+    // A `tool-calls` itt a rendes vég; a csonkolást ugyanúgy elzárjuk.
+    ellenorizdAVeget(role, result.finishReason)
+    const call = result.toolCalls.find((c) => c.toolName === RESULT_TOOL)
+    const extracted = extractObject(schema, call?.input, result.text)
+    if (!extracted.ok) {
+      throw new NoObjectGeneratedError({
+        message: 'No object generated: the response did not match the schema.',
+        cause: new Error(extracted.reason),
+        text: call === undefined ? result.text : JSON.stringify(call.input),
+        response: result.response,
+        usage: result.usage,
+        finishReason: result.finishReason,
+      })
+    }
+    return { value: extracted.value, usage: usageOf(result.usage) }
+  }
+
   return {
     async generate(role, prompt) {
       const { text, usage, finishReason } = await generateText({
@@ -102,11 +179,24 @@ export function modelClientFrom(
     },
 
     async generateObject(role, prompt, schema) {
+      const name = modelNameOf(models[role])
+      if (fallback.has(name)) return viaTool(role, prompt, schema)
+
+      // Csak ez az egy elutasítás vált utat; minden más hiba a mai módon megy
+      // tovább. A 400 nem átmeneti, tehát sem az SDK, sem a `retry.ts` nem
+      // próbálja újra — a visszaesés ezért itt, a kliensen belül történik.
       const result = await generateText({
         model: models[role],
         prompt,
         output: Output.object({ schema }),
+      }).catch((error: unknown) => {
+        if (!isForcedToolChoiceRejection(error)) throw error
+        return null
       })
+      if (result === null) {
+        fallback.add(name)
+        return viaTool(role, prompt, schema)
+      }
       // A vég ellenőrzése megelőzi az `output` kiolvasását: az egy getter,
       // ami csonka válasznál a homályos „nincs kimenet" hibával száll el.
       // Így a naplóba a tényleges ok kerül, nem a következménye.
@@ -116,6 +206,14 @@ export function modelClientFrom(
   }
 }
 
+export interface CreateModelClientOptions extends ModelClientOptions {
+  /**
+   * Kizárólag a teszt adja meg: így a kimenő kérés törzse valódi hálózat
+   * nélkül ellenőrizhető.
+   */
+  fetch?: typeof globalThis.fetch
+}
+
 /**
  * A valódi kliens: egyetlen OpenAI-kompatibilis provider a LiteLLM
  * alap-URL-jére. Az útválasztás, a tartalék-útvonal és a terheléselosztás a
@@ -123,7 +221,7 @@ export function modelClientFrom(
  */
 export function createModelClient(
   cfg: ModelConfig,
-  fetch?: typeof globalThis.fetch,
+  opts: CreateModelClientOptions = {},
 ): ModelClient {
   const provider = createOpenAICompatible({
     name: 'litellm',
@@ -134,14 +232,12 @@ export function createModelClient(
     // akkor `{ type: "json_object" }` megy ki a `json_schema` helyett
     // (`:569`). A pilótán ettől lett a `flashcards` 0/5.
     supportsStructuredOutputs: true,
-    // Kizárólag a teszt adja meg: így a kimenő kérés törzse valódi hálózat
-    // nélkül ellenőrizhető.
-    ...(fetch ? { fetch } : {}),
+    ...(opts.fetch ? { fetch: opts.fetch } : {}),
   })
 
   const models = Object.fromEntries(
     MODEL_ROLES.map((role) => [role, provider(cfg.models[role])]),
   ) as Record<ModelRole, LanguageModel>
 
-  return modelClientFrom(models)
+  return modelClientFrom(models, { fallback: opts.fallback })
 }
