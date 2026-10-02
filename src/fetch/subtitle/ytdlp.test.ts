@@ -1,5 +1,11 @@
+import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { folderSource } from '../../source/folder.js'
+import { commandFetch } from '../command.js'
 import {
+  createYtdlpRunner,
   downloadArgs,
   parsePlaylistProbe,
   parseVideoProbe,
@@ -85,5 +91,45 @@ describe('yt-dlp argumentumok', () => {
     expect(YTDLP_MISSING).toBe(
       'A yt-dlp nem található a PATH-on. Telepítés: brew install yt-dlp vagy mise use yt-dlp',
     )
+  })
+
+  it('a PATH-on álló yt-dlp fájlját a folderSource látja', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'fetch-bin-'))
+    const bin = join(root, 'bin')
+    const out = join(root, 'out')
+    await mkdir(bin)
+    await writeFile(
+      join(bin, 'yt-dlp'),
+      `#!/usr/bin/env node
+const args = process.argv.slice(2)
+if (args[0] === '--version') process.exit(0)
+if (args.includes('-J')) {
+  process.stdout.write(JSON.stringify({ id: 'abcdefghijk', title: 'Video', channel: 'Chan' }))
+  process.exit(0)
+}
+const home = args[args.indexOf('--paths') + 1].replace(/^home:/, '')
+const fs = await import('node:fs/promises')
+await fs.mkdir(home, { recursive: true })
+await fs.writeFile(home + '/Video [abcdefghijk].hu.vtt', 'WEBVTT\\n')
+await fs.writeFile(home + '/Video [abcdefghijk].info.json', JSON.stringify({ id: 'abcdefghijk', title: 'Video' }))
+process.exit(0)
+`,
+    )
+    await chmod(join(bin, 'yt-dlp'), 0o755)
+    const previous = process.env.PATH
+    process.env.PATH = `${bin}:${previous ?? ''}`
+    try {
+      const code = await commandFetch(
+        ['subtitle', 'abcdefghijk', '--out', out, '--sub-lang', 'hu'],
+        { runner: createYtdlpRunner(), stdout: () => {}, stderr: () => {} },
+      )
+      expect(code).toBe(0)
+      const items = await folderSource({ name: 'out', path: out }, ['hu']).discover()
+      expect(items).toHaveLength(1)
+      expect(items[0]?.metadata.videoId).toBe('abcdefghijk')
+      expect(items[0]?.language).toBe('hu')
+    } finally {
+      process.env.PATH = previous
+    }
   })
 })
