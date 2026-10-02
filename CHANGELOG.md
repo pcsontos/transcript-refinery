@@ -3,6 +3,34 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.6.0] — 2026-10-02
+
+Új parancs: a YouTube-feliratok letöltése a refinery-ből indul, külön
+eszköz nélkül.
+
+### 📥 `refinery fetch subtitle`
+
+- Egy YouTube-videóhoz, lejátszási listához vagy címlistához (`--list`,
+  soronként egy cím) letölti a feliratot (`.vtt`, `.srt`) és az `.info.json`
+  metaadatot. A célmappát a `run` és a `watch` forrásként be tudja olvasni.
+  A letöltést a `yt-dlp` végzi, ezért annak a PATH-on kell lennie.
+- Felismeri a szokásos YouTube-címeket: `watch`, `youtu.be`, `shorts`,
+  `embed`, `playlist`, `music.youtube.com`, és a csupasz videóazonosítót. A
+  `watch?v=…&list=…` cím alapból csak a videót jelenti, a teljes listát a
+  `--yes-playlist` kapcsolóval.
+- A célmappa alapból a config első forrása, a nyelvek a config `languages`
+  listája. Mindkettő felülírható (`--out`, `--sub-lang`). A videó a
+  csatornája mappájába kerül, a lista egy közös mappába; `--flat` esetén
+  minden a célmappa gyökerébe.
+- Újrafuttatva a már letöltött feliratot átugorja, a félbemaradt letöltést
+  pótolja. Mindent újra a `--overwrite` tölt le. A `--playlist-items` a
+  lista egy részére szűr.
+- Tételenként `[OK]`, `[SKIP]` vagy `[FAIL]` sort ír, a végén összesítést.
+  Hibás cím vagy felirat nélküli videó esetén a többi tétel lefut, de a
+  kilépési kód 1. Ctrl+C-re a már kész tételek összesítésével áll le.
+- A `run` és a `watch` továbbra sem használ hálózatot, csak a helyi fájlokat
+  olvassa.
+
 ## [1.5.2] — 2026-10-02
 
 Javítás: a feldolgozási sor zárójeles című videóknál sem akad el.
@@ -274,6 +302,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.6.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.6.0
 [1.5.2]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.2
 [1.5.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.1
 [1.5.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.0
