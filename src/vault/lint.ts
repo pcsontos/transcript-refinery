@@ -1,7 +1,8 @@
 import { parse as parseYaml } from 'yaml'
 
 const WIKILINK = /\[\[[^\]]+\]\]/g
-const MARKDOWN_LINK = /!?\[[^\]]*\]\(([^)]*)\)/g
+// A `<…>` cél egészben, a záró `>`-ig: zárójelet is tartalmazhat (videócím).
+const MARKDOWN_LINK = /!?\[[^\]]*\]\((<[^>\n]*>|[^)]*)\)/g
 const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/
 
 /**
