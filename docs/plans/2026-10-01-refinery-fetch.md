@@ -4,7 +4,7 @@
 
 **Goal:** A `refinery fetch subtitle` parancs YouTube-feliratot és `.info.json` fájlt ír egy helyi mappába a `yt-dlp` segítségével, és a kész párost átugorja.
 
-**Architecture:** A parancs a csővezetéken kívül, a `src/fetch/` modulban él. Az argumentumok, a cím osztályozása, a célmappa és az átugrás tiszta vagy fájlrendszeres függvény. A `yt-dlp` egy injektált folyamatfuttató. A `run` és a `watch` kódja nem változik. A `fetch` belépési pontja a `subtitle` modalitást ellenőrzi (később `audio` és `video` modalitásokkal bővíthető).
+**Architecture:** A parancs a csővezetéken kívül él. A közös vezérlés és bemenetosztályozás a `src/fetch/` gyökerében él (`command.ts`, `classify.ts`), míg a felirat-specifikus letöltési és átugrási logika a `src/fetch/subtitle/` almappába szerveződik (`args.ts`, `skip.ts`, `ytdlp.ts`). A `yt-dlp` egy injektált folyamatfuttató. A `run` és a `watch` kódja nem változik. A `fetch` belépési pontja a `subtitle` modalitást ellenőrzi (később `audio` és `video` modalitásokkal bővíthető).
 
 **Tech Stack:** Node.js `>=26.2.0`, TypeScript, `node:util` `parseArgs`, `node:child_process` `spawn`, Vitest. Új függőség nincs.
 
@@ -46,16 +46,16 @@ Ezek a bemenetek a specből következnek, és egy elnézett ág rossz mappát va
 
 | Fájl | Felelősség |
 |---|---|
-| `src/fetch/classify.ts` | Egy sor → videó, lista vagy elutasítás |
-| `src/fetch/args.ts` | A `fetch subtitle` utáni argumentumok → `FetchArgs` vagy hiba |
-| `src/fetch/skip.ts` | Célmappa neve, kész pár, hiányos fájl takarítása |
-| `src/fetch/ytdlp.ts` | Argumentumlisták, JSON-olvasás, folyamatfuttató |
-| `src/fetch/command.ts` | Mód ellenőrzése (`subtitle`), sorrend, kiírás, kilépési kód, listafájl |
+| `src/fetch/classify.ts` | Egy sor → videó, lista vagy elutasítás (közös URL osztályozó) |
+| `src/fetch/subtitle/args.ts` | A `fetch subtitle` utáni argumentumok → `SubtitleArgs` vagy hiba |
+| `src/fetch/subtitle/skip.ts` | Célmappa neve, kész feliratpár, hiányos fájl takarítása |
+| `src/fetch/subtitle/ytdlp.ts` | Feliratos argumentumlisták, JSON-olvasás, folyamatfuttató |
+| `src/fetch/command.ts` | Mód ellenőrzése (`subtitle`), diszpecselés, kiírás, kilépési kód, listafájl |
 | `src/cli.ts` | `fetch` ág a közös elemző előtt, `USAGE` |
 | `README.md` | Egy bekezdés az „Ami már fut” alatt |
 | `docs/decisions/0008-forras-fuggetlen-bemenet.md` | A spec kiegészítő bekezdése |
 
-A tesztek a modul mellett vannak: `src/fetch/*.test.ts`, plusz egy `describe` a `src/cli.test.ts`-ben.
+A tesztek a modulok mellett vannak: `src/fetch/*.test.ts` és `src/fetch/subtitle/*.test.ts`, plusz egy `describe` a `src/cli.test.ts`-ben.
 
 ---
 
@@ -139,7 +139,8 @@ describe('classifyInput', () => {
       raw: 'https://www.youtube.com/watch?v=rovid',
     })
     expect(classifyInput('https://vimeo.com/123456789', false).kind).toBe('rejected')
-    expect(classifyInput('   ', false)).toEqual({ kind: 'rejected', raw: '' })\n  })
+    expect(classifyInput('   ', false)).toEqual({ kind: 'rejected', raw: '' })
+  })
 })
 ```
 
@@ -239,29 +240,29 @@ git commit -m "feat(fetch): classify YouTube addresses"
 
 ---
 
-### Task 2: Argumentumok
+### Task 2: Subtitle argumentumok
 
 **Files:**
-- Create: `src/fetch/args.ts`
-- Test: `src/fetch/args.test.ts`
+- Create: `src/fetch/subtitle/args.ts`
+- Test: `src/fetch/subtitle/args.test.ts`
 
 **Interfaces:**
 - Consumes: semmit
 - Produces:
-  - `export interface FetchArgs { inputs: string[]; listPath?: string; out?: string; subLang?: string[]; subFormat: string[]; overwrite: boolean; flat: boolean; playlistItems?: string; yesPlaylist: boolean; config?: string }`
-  - `export type ParseResult = { ok: true; args: FetchArgs } | { ok: false; error: string }`
-  - `export function parseFetchArgs(argv: readonly string[]): ParseResult`
-  - `inputs` a nyers sorok, még osztályozás nélkül. A `parseFetchArgs` a mód (`subtitle`) utáni argumentumokat dolgozza fel. `subLang === undefined` azt jelenti, hogy a config dönt. `subFormat` mindig legalább egy elem, alapból `['vtt', 'srt']`.
+  - `export interface SubtitleArgs { inputs: string[]; listPath?: string; out?: string; subLang?: string[]; subFormat: string[]; overwrite: boolean; flat: boolean; playlistItems?: string; yesPlaylist: boolean; config?: string }`
+  - `export type ParseResult = { ok: true; args: SubtitleArgs } | { ok: false; error: string }`
+  - `export function parseSubtitleArgs(argv: readonly string[]): ParseResult`
+  - `inputs` a nyers sorok, még osztályozás nélkül. A `parseSubtitleArgs` a `subtitle` mód utáni argumentumokat dolgozza fel. `subLang === undefined` azt jelenti, hogy a config dönt. `subFormat` mindig legalább egy elem, alapból `['vtt', 'srt']`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { parseFetchArgs } from './args.js'
+import { parseSubtitleArgs } from './args.js'
 
-describe('parseFetchArgs', () => {
+describe('parseSubtitleArgs', () => {
   it('egy cím és célmappa, a formátum alapból vtt,srt', () => {
-    const parsed = parseFetchArgs(['https://youtu.be/abcdefghijk', '--out', '/tmp/felirat'])
+    const parsed = parseSubtitleArgs(['https://youtu.be/abcdefghijk', '--out', '/tmp/felirat'])
     expect(parsed).toEqual({
       ok: true,
       args: {
@@ -280,55 +281,55 @@ describe('parseFetchArgs', () => {
   })
 
   it('a nyelv kisbetűsödik, a lista útvonal megmarad', () => {
-    const parsed = parseFetchArgs(['--sub-lang', 'HU,en-US', '--list', 'lista.txt'])
+    const parsed = parseSubtitleArgs(['--sub-lang', 'HU,en-US', '--list', 'lista.txt'])
     expect(parsed.ok && parsed.args.inputs).toEqual([])
     expect(parsed.ok && parsed.args.listPath).toBe('lista.txt')
     expect(parsed.ok && parsed.args.subLang).toEqual(['hu', 'en-US'])
   })
 
   it('cím és --list együtt, és egyik híján is, hiba', () => {
-    expect(parseFetchArgs(['https://youtu.be/abcdefghijk', '--list', 'a.txt'])).toEqual({
+    expect(parseSubtitleArgs(['https://youtu.be/abcdefghijk', '--list', 'a.txt'])).toEqual({
       ok: false,
       error: 'Adj meg egy címet vagy egy --list fájlt, a kettőt együtt nem.',
     })
-    expect(parseFetchArgs(['--out', '/tmp/felirat'])).toEqual({
+    expect(parseSubtitleArgs(['--out', '/tmp/felirat'])).toEqual({
       ok: false,
       error: 'Adj meg egy címet vagy egy --list fájlt.',
     })
-    expect(parseFetchArgs(['elso', 'masodik'])).toEqual({
+    expect(parseSubtitleArgs(['elso', 'masodik'])).toEqual({
       ok: false,
       error: 'Egy cím adható meg.',
     })
   })
 
   it('a relatív --out, a hibás nyelv és a dupla formátum hiba', () => {
-    expect(parseFetchArgs(['abcdefghijk', '--out', 'relatív'])).toEqual({
+    expect(parseSubtitleArgs(['abcdefghijk', '--out', 'relatív'])).toEqual({
       ok: false,
       error: 'A --out abszolút útvonal kell legyen.',
     })
-    expect(parseFetchArgs(['abcdefghijk', '--sub-lang', 'all'])).toEqual({
+    expect(parseSubtitleArgs(['abcdefghijk', '--sub-lang', 'all'])).toEqual({
       ok: false,
       error: 'A --sub-lang eleme nyelvkód, például hu vagy en-US.',
     })
-    expect(parseFetchArgs(['abcdefghijk', '--sub-format', 'vtt,vtt'])).toEqual({
+    expect(parseSubtitleArgs(['abcdefghijk', '--sub-format', 'vtt,vtt'])).toEqual({
       ok: false,
       error: 'A --sub-format egy formátumot csak egyszer tartalmazhat.',
     })
-    expect(parseFetchArgs(['abcdefghijk', '--sub-format', 'srt,best'])).toEqual({
+    expect(parseSubtitleArgs(['abcdefghijk', '--sub-format', 'srt,best'])).toEqual({
       ok: false,
       error: 'A --sub-format csak vtt és srt lehet.',
     })
   })
 
   it('a --force ismeretlen kapcsoló', () => {
-    expect(parseFetchArgs(['abcdefghijk', '--force'])).toEqual({
+    expect(parseSubtitleArgs(['abcdefghijk', '--force'])).toEqual({
       ok: false,
       error: 'Ismeretlen kapcsoló: --force',
     })
   })
 
   it('a --sub-format sorrendje megmarad', () => {
-    const parsed = parseFetchArgs(['abcdefghijk', '--sub-format', 'srt,vtt'])
+    const parsed = parseSubtitleArgs(['abcdefghijk', '--sub-format', 'srt,vtt'])
     expect(parsed.ok && parsed.args.subFormat).toEqual(['srt', 'vtt'])
   })
 })
@@ -338,12 +339,10 @@ A `--list` ág `inputs` tömbje üres: a fájl tartalmát a parancs olvassa. A `
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm exec vitest run src/fetch/args.test.ts`
+Run: `pnpm exec vitest run src/fetch/subtitle/args.test.ts`
 Expected: FAIL, a modul nem létezik.
 
 - [ ] **Step 3: Write minimal implementation**
-
-A `FetchArgs` mezői: `inputs`, `listPath`, `out`, `subLang`, `subFormat`, `overwrite`, `flat`, `playlistItems`, `yesPlaylist`, `config`.
 
 ```ts
 import { isAbsolute } from 'node:path'
@@ -351,7 +350,7 @@ import { parseArgs } from 'node:util'
 
 const LANG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
 
-export interface FetchArgs {
+export interface SubtitleArgs {
   inputs: string[]
   listPath?: string
   out?: string
@@ -364,7 +363,7 @@ export interface FetchArgs {
   config?: string
 }
 
-export type ParseResult = { ok: true; args: FetchArgs } | { ok: false; error: string }
+export type ParseResult = { ok: true; args: SubtitleArgs } | { ok: false; error: string }
 
 function fail(error: string): ParseResult {
   return { ok: false, error }
@@ -400,8 +399,8 @@ function formats(raw: string | undefined): string[] | ParseResult {
   return items
 }
 
-/** A fetch saját elemzője a mód (subtitle) utáni argumentumokra. */
-export function parseFetchArgs(argv: readonly string[]): ParseResult {
+/** A subtitle modalitás saját kapcsolóelemzője. */
+export function parseSubtitleArgs(argv: readonly string[]): ParseResult {
   let values: {
     out?: string
     list?: string
@@ -473,14 +472,14 @@ export function parseFetchArgs(argv: readonly string[]): ParseResult {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pnpm exec vitest run src/fetch/args.test.ts`
+Run: `pnpm exec vitest run src/fetch/subtitle/args.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/fetch/args.ts src/fetch/args.test.ts
-git commit -m "feat(fetch): parse fetch arguments"
+git add src/fetch/subtitle/args.ts src/fetch/subtitle/args.test.ts
+git commit -m "feat(fetch): parse subtitle arguments"
 ```
 
 ---
@@ -488,8 +487,8 @@ git commit -m "feat(fetch): parse fetch arguments"
 ### Task 3: Célmappa és átugrás
 
 **Files:**
-- Create: `src/fetch/skip.ts`
-- Test: `src/fetch/skip.test.ts`
+- Create: `src/fetch/subtitle/skip.ts`
+- Test: `src/fetch/subtitle/skip.test.ts`
 
 **Interfaces:**
 - Consumes: `sanitizeSegment(name: string): string` a `src/vault/sanitize.ts`-ből
@@ -590,7 +589,7 @@ describe('prepareIncomplete', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm exec vitest run src/fetch/skip.test.ts`
+Run: `pnpm exec vitest run src/fetch/subtitle/skip.test.ts`
 Expected: FAIL, a modul nem létezik.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -598,11 +597,11 @@ Expected: FAIL, a modul nem létezik.
 ```ts
 import { readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { sanitizeSegment } from '../vault/sanitize.js'
+import { sanitizeSegment } from '../../vault/sanitize.js'
 
 const VIDEO_ID = '([A-Za-z0-9_-]{11})'
-const SUB = new RegExp(`^(.*) \\\\\\\\[${VIDEO_ID}\\\\\\\\]\\\\\\\\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\\\\\\\\.(vtt|srt)$`, 'i')
-const INFO = new RegExp(`^(.*) \\\\\\\\[${VIDEO_ID}\\\\\\\\]\\\\\\\\.info\\\\\\\\.json$`, 'i')
+const SUB = new RegExp(`^(.*) \\[${VIDEO_ID}\\]\\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\\.(vtt|srt)$`, 'i')
+const INFO = new RegExp(`^(.*) \\[${VIDEO_ID}\\]\\.info\\.json$`, 'i')
 
 export function videoDir(out: string, channel: string, flat: boolean): string {
   return flat ? out : join(out, sanitizeSegment(channel))
@@ -672,23 +671,23 @@ export async function prepareIncomplete(dir: string, videoId: string): Promise<v
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pnpm exec vitest run src/fetch/skip.test.ts`
+Run: `pnpm exec vitest run src/fetch/subtitle/skip.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/fetch/skip.ts src/fetch/skip.test.ts
+git add src/fetch/subtitle/skip.ts src/fetch/subtitle/skip.test.ts
 git commit -m "feat(fetch): skip a complete subtitle pair"
 ```
 
 ---
 
-### Task 4: A yt-dlp argumentumai
+### Task 4: Subtitle yt-dlp argumentumai
 
 **Files:**
-- Create: `src/fetch/ytdlp.ts`
-- Test: `src/fetch/ytdlp.test.ts`
+- Create: `src/fetch/subtitle/ytdlp.ts`
+- Test: `src/fetch/subtitle/ytdlp.test.ts`
 
 **Interfaces:**
 - Consumes: semmit
@@ -804,7 +803,7 @@ describe('yt-dlp argumentumok', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm exec vitest run src/fetch/ytdlp.test.ts`
+Run: `pnpm exec vitest run src/fetch/subtitle/ytdlp.test.ts`
 Expected: FAIL, a modul nem létezik.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -948,26 +947,32 @@ export function createYtdlpRunner(): ProcessRunner {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pnpm exec vitest run src/fetch/ytdlp.test.ts`
+Run: `pnpm exec vitest run src/fetch/subtitle/ytdlp.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/fetch/ytdlp.ts src/fetch/ytdlp.test.ts
-git commit -m "feat(fetch): build yt-dlp argument lists"
+git add src/fetch/subtitle/ytdlp.ts src/fetch/subtitle/ytdlp.test.ts
+git commit -m "feat(fetch): build subtitle yt-dlp argument lists"
 ```
 
 ---
 
-### Task 5: Egy videó letöltése
+### Task 5: Subtitle parancsvezérlés (egy videó)
 
 **Files:**
 - Create: `src/fetch/command.ts`
 - Test: `src/fetch/command.test.ts`
 
 **Interfaces:**
-- Consumes: a 2–4. feladat exportjai, plusz `classifyInput`, `videoDir`, `alreadyFetched`, `prepareIncomplete`, `installSigint` a `src/run/finish.ts`-ből, `loadCliConfig` a `src/config.ts`-ből
+- Consumes:
+  - `classifyInput` a `src/fetch/classify.js`-ből
+  - `parseSubtitleArgs` a `src/fetch/subtitle/args.js`-ből
+  - `videoDir`, `alreadyFetched`, `prepareIncomplete` a `src/fetch/subtitle/skip.js`-ből
+  - `createYtdlpRunner`, `versionArgs`, `videoProbeArgs`, `downloadArgs`, `parseVideoProbe`, `YTDLP_MISSING` a `src/fetch/subtitle/ytdlp.js`-ből
+  - `installSigint` a `src/run/finish.ts`-ből
+  - `loadCliConfig` a `src/config.ts`-ből
 - Produces:
   - `export interface FetchRuntime { runner?: ProcessRunner; stdout?: (line: string) => void; stderr?: (line: string) => void; signals?: { on(event: string, listener: () => void): unknown; off?(event: string, listener: () => void): unknown } }`
   - `export function listEntries(text: string): string[]`
@@ -985,7 +990,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { commandFetch } from './command.js'
-import type { ProcessResult, ProcessRunner } from './ytdlp.js'
+import type { ProcessResult, ProcessRunner } from './subtitle/ytdlp.js'
 
 const ID = 'abcdefghijk'
 const URL = `https://www.youtube.com/watch?v=${ID}`
@@ -1152,7 +1157,8 @@ describe('commandFetch egy videóra', () => {
     let calls = 0
     const runner: ProcessRunner = () => {
       calls += 1
-      return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })\n    }
+      return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
+    }
     const streams = io()
     expect(await commandFetch(['subtitle', 'https://vimeo.com/1', '--out', out, '--sub-lang', 'hu'], { ...streams, runner })).toBe(1)
     expect(streams.out[0]).toBe('[FAIL] https://vimeo.com/1: nem YouTube-cím')
@@ -1235,7 +1241,7 @@ A `commandFetch` sorrendje:
    - `const mode = argv[0]`
    - Ha `!mode || mode.startsWith('-')`: stderr `Hiányzó fetch-mód. Ismert: subtitle`, `return 1`.
    - Ha `mode !== 'subtitle'`: stderr `Ismeretlen fetch-mód: ${mode}. Ismert: subtitle`, `return 1`.
-3. `parseFetchArgs(argv.slice(1))`. Hiba esetén `stderr(error)`, vissza `1`.
+3. `parseSubtitleArgs(argv.slice(1))`. Hiba esetén `stderr(error)`, vissza `1`.
 4. Ha `listPath` megvan, vagy az egyetlen input `classifyInput(..., yesPlaylist).kind === 'playlist'`: `stderr('A lista a következő feladat.')`, vissza `1`. Futtatót nem hív.
 5. Célmappa és nyelvek. Ha `out` és `subLang` is megvan, és `config` nincs, configot nem tölt. Különben `loadCliConfig(args.config)`. A dobott hiba üzenete stderr, vissza `1`. A cél az `args.out ?? cfg.sources[0].path`. A nyelv az `args.subLang ?? (cfg.languages.length > 0 ? cfg.languages : ['hu', 'en'])`.
 6. `mkdir(out, { recursive: true })`. Ha a `stat` fájlt lát, stderr `A --out nem mappa: <út>`, vissza `1`. A `mkdir` egyéb hibája stderr, vissza `1`.
@@ -1276,7 +1282,7 @@ function finish(rows: readonly Kind[], stopped: boolean, stdout: (line: string) 
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pnpm exec vitest run src/fetch/command.test.ts src/fetch/args.test.ts src/fetch/skip.test.ts src/fetch/ytdlp.test.ts src/fetch/classify.test.ts`
+Run: `pnpm exec vitest run src/fetch/command.test.ts src/fetch/classify.test.ts src/fetch/subtitle/args.test.ts src/fetch/subtitle/skip.test.ts src/fetch/subtitle/ytdlp.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -1478,7 +1484,7 @@ Expected: FAIL. A listafájlos hívás még a `A lista a következő feladat.` �
 A `A lista a következő feladat.` ág törlődik. A bemenetek összegyűjtése:
 
 ```ts
-async function inputsFrom(args: FetchArgs): Promise<{ lines: string[] } | { error: string }> {
+async function inputsFrom(args: SubtitleArgs): Promise<{ lines: string[] } | { error: string }> {
   if (args.listPath === undefined) return { lines: args.inputs }
   try {
     return { lines: listEntries(await readFile(args.listPath, 'utf8')) }
@@ -1520,7 +1526,7 @@ git commit -m "feat(fetch): fetch playlists and url lists"
 ### Task 7: Valódi folyamatindító
 
 **Files:**
-- Modify: `src/fetch/ytdlp.test.ts`
+- Modify: `src/fetch/subtitle/ytdlp.test.ts`
 
 **Interfaces:**
 - Consumes: `createYtdlpRunner(): ProcessRunner`, `commandFetch`, `folderSource`, `readSidecar` közvetetten a `folderSource`-on át
@@ -1533,8 +1539,8 @@ import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { folderSource } from '../source/folder.js'
-import { commandFetch } from './command.js'
+import { folderSource } from '../../source/folder.js'
+import { commandFetch } from '../command.js'
 import { createYtdlpRunner } from './ytdlp.js'
 
 it('a PATH-on álló yt-dlp fájlját a folderSource látja', async () => {
@@ -1582,7 +1588,7 @@ A teszt a `describe` blokkon belül van, hogy a fájl `describe` importja megmar
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pnpm exec vitest run src/fetch/ytdlp.test.ts`
+Run: `pnpm exec vitest run src/fetch/subtitle/ytdlp.test.ts`
 Expected: FAIL, amíg a teszt nincs a fájlban. A teszt beírása után, ha a runner jó, egyből PASS is lehet: akkor a Step 2 helyett jegyezd fel, hogy a futás azonnal PASS, mert a `createYtdlpRunner` a 4. feladatban elkészült. Nem kell új viselkedést kitalálni.
 
 - [ ] **Step 3: Write minimal implementation**
@@ -1591,13 +1597,13 @@ Ha a teszt PASS, ez a lépés üres. Ha a `spawn` nem találja a `bin/yt-dlp` pr
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pnpm exec vitest run src/fetch/ytdlp.test.ts`
+Run: `pnpm exec vitest run src/fetch/subtitle/ytdlp.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/fetch/ytdlp.test.ts src/fetch/ytdlp.ts
+git add src/fetch/subtitle/ytdlp.test.ts src/fetch/subtitle/ytdlp.ts
 git commit -m "test(fetch): spawn yt-dlp from PATH"
 ```
 
@@ -1725,7 +1731,7 @@ git commit -m "feat(fetch): wire the fetch subtitle command"
 | Parancs, modalitás (`subtitle`), kapcsolók, config nélküliség, `validateConfig` kihagyása | 2, 5, 8 |
 | Célfa B, `sanitizeSegment`, fájlnév-szerződés | 3, 4, 5, 7 |
 | Átugrás a célmappában, nyelvi prefix, sérült fájl | 3, 5, 6 |
-| Modulok, `-J` probe, letöltő argumentumok | 4, 5, 6 |
+| Modulok (`src/fetch/subtitle/`), `-J` probe, letöltő argumentumok | 4, 5, 6 |
 | Hibák, kimenet, 0 / 1 / 130, menet közbeni ENOENT, hiányzó/ismeretlen mód | 5, 6 |
 | Config `sources[0]`, üres `languages` → `hu,en`, `--flat`, `--overwrite` | 5 |
 | Listafájl, playlist, `--playlist-items`, két példány | 6 |
