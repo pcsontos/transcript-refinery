@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { NoObjectGeneratedError } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { collectEvents, type RunEvent } from './events.js'
@@ -527,6 +528,97 @@ describe('processItem recepttel', () => {
       (e): e is Extract<RunEvent, { type: 'item:refined' }> => e.type === 'item:refined',
     )
     expect(refined!.usd).toBeCloseTo(3.2, 10)
+  })
+
+  it('a sémahiba okát és a nyers választ is a hibaeseménybe írja', async () => {
+    // 2026-10-01: az Opus-bíró tool-ágon sémán kívüli választ adott, és a
+    // naplóból nem derült ki, mit — csak az általános üzenet maradt meg.
+    const biroRecept: Recipe = {
+      ...ATMENO_RECEPT,
+      id: 'biros',
+      rubric: { criteria: [faithfulnessCriterion], passThreshold: 0.8 },
+    }
+    const client: ModelClient = {
+      generate: () =>
+        Promise.resolve({ value: '## Jegyzet\n', usage: { inputTokens: 1, outputTokens: 1 } }),
+      generateObject: () =>
+        Promise.reject(
+          new NoObjectGeneratedError({
+            message: 'No object generated: the response did not match the schema.',
+            cause: new Error('score: Too big: expected number to be <=1'),
+            text: '{"score":85,"gaps":[]}',
+            response: { id: 'r', timestamp: new Date(0), modelId: 'm' },
+            usage: { inputTokens: 1, outputTokens: 1 } as never,
+            finishReason: 'tool-calls',
+          }),
+        ),
+    }
+    const { sink, events } = collectEvents()
+
+    await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: { recipe: biroRecept, client, modelConfig: MODELL_CFG, guard: createCostGuard(5) },
+    })
+
+    const failed = events.find(
+      (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
+    )
+    expect(failed!.detail).toContain('score: Too big')
+    expect(failed!.detail).toContain('{"score":85,"gaps":[]}')
+  })
+
+  it('a hosszú nyers választ levágja a hibaeseményben', async () => {
+    const client: ModelClient = {
+      generate: () =>
+        Promise.reject(
+          new NoObjectGeneratedError({
+            message: 'No object generated',
+            text: 'x'.repeat(10_000),
+            response: { id: 'r', timestamp: new Date(0), modelId: 'm' },
+            usage: { inputTokens: 1, outputTokens: 1 } as never,
+            finishReason: 'stop',
+          }),
+        ),
+      generateObject: () => Promise.reject(new Error('nem hívjuk')),
+    }
+    const { sink, events } = collectEvents()
+
+    await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: { recipe: ATMENO_RECEPT, client, modelConfig: MODELL_CFG, guard: createCostGuard(5) },
+    })
+
+    const failed = events.find(
+      (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
+    )
+    expect(failed!.detail!.length).toBeLessThan(2_200)
+    expect(failed!.detail).toContain('…')
+  })
+
+  it('sima hibánál nincs részlet a hibaeseményben', async () => {
+    const { sink, events } = collectEvents()
+
+    await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: {
+          generate: () => Promise.reject(new Error('hálózati hiba')),
+          generateObject: () => Promise.reject(new Error('nem hívjuk')),
+        },
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    const failed = events.find(
+      (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',
+    )
+    expect(failed!.error).toBe('hálózati hiba')
+    expect(failed!.detail).toBeUndefined()
   })
 
   it('sérült feliratnál recept-futásban típusonként egy hibaeseményt küld', async () => {

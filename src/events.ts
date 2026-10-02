@@ -32,6 +32,11 @@ export type RunEvent =
       error: string
       /** A hiba hívási lánca, ha van — a diagnózishoz; a felület nem mutatja. */
       stack?: string
+      /**
+       * A modell-hiba belső oka és a nyers válasz (levágva), ha van — e nélkül
+       * egy sémahibából csak az általános üzenet marad meg.
+       */
+      detail?: string
     }
   | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
   | {
