@@ -3,6 +3,49 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.7.0] — 2026-10-02
+
+Az Opus 5.5 mostantól vázlatíróként és bíróként is használható, a generáló
+modell receptenként választható, az árazás pedig modellnév szerint áll.
+
+### 🤖 Opus 5.5 a sémás recepteken és a bírónál
+
+- Az Opus 5.5 eddig 400-as hibával elutasította a sémás (strukturált) hívást,
+  ezért a `flashcards`, `bloom` és `notes` recept, valamint a bíró pontozása
+  elbukott rajta. Mostantól a refinery ilyenkor magától tool-hívásra vált, és
+  a választ ugyanúgy a sémához ellenőrzi. Futásonként és modellenként egyszer
+  szól erről: `! <modell>: a kényszerített tool_choice nem támogatott…`.
+- Ha egy modell válasza nem felel meg a sémának, a futás `.jsonl`-naplója a
+  hiba okát és a modell nyers válaszának elejét is rögzíti.
+
+### 🎛️ Receptenkénti modell
+
+- `model.recipes.<recept>`: a generáló modell receptenként felülbírálható,
+  például `flashcards: sub2api--claude-sonnet-5`. A fordítás saját
+  azonosítóval áll (`notes-hu`), nem örököl. A bíró modellje nem változik.
+- A költségbecslés, a plafon és a riport a recepthez választott modell árával
+  számol.
+
+### 💲 Árazás modellnév szerint
+
+- A `pricing` kulcsai mostantól a modellnevek, nem a `draft`/`judge` szerep.
+  Minden használt modellnek kell ár; ha hiányzik, vagy egy `model.recipes`
+  kulcs nem létező recept, a futás az induláskor beszédes hibával áll meg.
+- A `check-pricing` modellenként ellenőriz, és a `--fix` a pontot vagy dupla
+  kötőjelet tartalmazó modellnevet (`sub2api--grok-4.7`) is javítja.
+- **Átállás:** a régi, szerep szerinti `pricing`-alakra a receptes `run` és a
+  `check-pricing` átírási útmutatót ad. Írd át modellnév szerintire, utána a
+  `refinery check-pricing --fix` az élő árakra állítja:
+
+  ```yaml
+  pricing:
+    sub2api--grok-4.7: { input_per_million: …, output_per_million: … }
+    sub2api--claude-opus-5-5: { input_per_million: …, output_per_million: … }
+  ```
+
+  A `judge_enabled` a `model:` alá tartozik. A `scan`, a `list` és a `fetch`
+  régi configgal is fut.
+
 ## [1.6.0] — 2026-10-02
 
 Új parancs: a YouTube-feliratok letöltése a refinery-ből indul, külön
@@ -302,6 +345,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.7.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.7.0
 [1.6.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.6.0
 [1.5.2]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.2
 [1.5.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.1
