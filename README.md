@@ -77,6 +77,10 @@ metaadat nélkül is, nulla wikilink. Másodszor futtatva nem ír semmit. Sérü
 a futást, a záró riport megnevezi a hibás elemet és az okát. Recept nélkül ez
 bit-azonos a Fázis 0 kimenetével — a Fázis 1 ezt nem törte el.
 
+A `refinery fetch subtitle` YouTube-feliratot és `.info.json` metaadatot tölt egy helyi
+mappába a `yt-dlp` segítségével. Ami már ott van, azt átugorja. A `run` és a
+`watch` ettől még csak a helyi fájlt olvassa, hálózat nélkül.
+
 A `run --recipe summary` a normalizált átiratból összefoglaló jegyzetet
 készít, korlátos evaluator–optimizer loopban: a modell generál, egy rubrika
 pontoz **és konkrét hiányokat nevez meg**, a modell eddig javít, amíg átmegy

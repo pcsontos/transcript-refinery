@@ -2575,3 +2575,33 @@ describe('commandList', () => {
     expect(USAGE).toContain('--channels')
   })
 })
+
+describe('fetch a CLI-ben', () => {
+  it('a USAGE felsorolja a fetch subtitle parancsot és a saját kapcsolóit', () => {
+    expect(USAGE).toContain('fetch subtitle')
+    expect(USAGE).toContain('--out <út>')
+    expect(USAGE).toContain('--list <fájl>')
+    expect(USAGE).toContain('--sub-lang')
+    expect(USAGE).toContain('--sub-format')
+    expect(USAGE).toContain('--overwrite')
+    expect(USAGE).toContain('--flat')
+    expect(USAGE).toContain('--playlist-items')
+    expect(USAGE).toContain('--yes-playlist')
+  })
+
+  it('a fetch subtitle --out nem kéri a vaultot', async () => {
+    const errors: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((line: unknown) => {
+      errors.push(String(line))
+    })
+    const code = await main(['fetch', 'subtitle', '--out', '/tmp/felirat', '--sub-lang', 'hu'])
+    spy.mockRestore()
+    expect(code).toBe(1)
+    expect(errors.join('\n')).not.toContain('vault.path')
+    expect(errors.join('\n')).toContain('Adj meg egy címet vagy egy --list fájlt.')
+  })
+
+  it('a run nem fogadja a --out kapcsolót', async () => {
+    await expect(main(['run', '--out', '/tmp/felirat'])).rejects.toThrow(/out/)
+  })
+})

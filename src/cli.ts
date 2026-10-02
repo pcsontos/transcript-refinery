@@ -68,6 +68,7 @@ import {
   summarizeChannels,
 } from './view/list.js'
 import { artifactKinds } from './view/overview.js'
+import { commandFetch } from './fetch/command.js'
 import { commandWatch } from './watch/command.js'
 
 /**
@@ -108,6 +109,8 @@ Parancsok:
   run             Átiratot készít és a vaultba írja.
   check-pricing   Összeveti a config árazását a LiteLLM élő áraival.
   list            Kilistázza az elemeket típusonkénti állapottal; nem ír semmit.
+  fetch subtitle  YouTube-feliratot és .info.json fájlt tölt egy mappába.
+                  A run és a watch nem hívja.
   watch           Figyeli a forrásmappákat: az új feliratból átirat és
                   _queue.md-sor lesz; modellt nem hív. Ctrl+C: leállítás.
                   Csak a --config, --source és --no-commit kapcsolót ismeri.
@@ -135,6 +138,16 @@ Kapcsolók:
   --fix             check-pricing: a talált árazási eltéréseket visszaírja
                     a konfigurációs fájlba
   --help, -h        megjeleníti ezt a súgót
+
+  A fetch subtitle saját kapcsolói, a run ezeket nem ismeri:
+  --out <út>        célmappa, abszolút; hiányában a config első sources eleme
+  --list <fájl>     soronkénti címek; a # sor és az üres sor kimarad
+  --sub-lang <kód>  vesszős nyelvkódok; alap a config languages, vagy hu,en
+  --sub-format <f>  vtt és srt, vesszővel; alap: vtt,srt
+  --overwrite       meglévő felirat és .info.json újraírása
+  --flat            minden fájl az --out gyökerébe
+  --playlist-items  lista szűrése, a yt-dlp -I értékeként
+  --yes-playlist    a watch?v=&list= cím a teljes listát jelenti
 
   A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
 `
@@ -875,6 +888,8 @@ export async function main(argv: readonly string[]): Promise<number> {
     console.log(USAGE)
     return wantsHelp ? 0 : 1
   }
+
+  if (command === 'fetch') return commandFetch(argv.slice(1))
 
   const { values } = parseArgs({
     args: [...argv.slice(1)],

@@ -65,3 +65,8 @@ nélkül.
   kimenete forrásmappaként jön vissza.
 - A `Source` absztrakció megmarad; a „két implementációval igazolva" szerepét
   két különböző eredetű forrásmappa tölti be, nem egy URL-adapter.
+
+**Kiegészítés (2026-10-01).** A `refinery fetch subtitle` a feliratot előállító
+testvérparancs: `yt-dlp`-vel `.vtt`/`.srt` és `.info.json` fájlt ír egy
+mappába. A csővezeték nem hívja, és a felderítés szerződése nem változik.
+A transzkribálás továbbra is kívül van.
