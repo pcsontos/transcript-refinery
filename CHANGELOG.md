@@ -3,6 +3,18 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.5.2] — 2026-10-02
+
+Javítás: a feldolgozási sor zárójeles című videóknál sem akad el.
+
+### 🐛 Javítások
+
+- A `refinery scan --queue` eddig megállt, ha a sorban zárójeles című videó
+  volt (például „… (My design workflow) …"). A kész jelölésnél téves hibát
+  jelzett („a link célja nem szögletes zárójelben áll"), pedig a link
+  szabályos volt. Mostantól az ilyen sorok is késznek jelölődnek. A
+  `_queue.md` a hibás futásoknál sem sérült (#100).
+
 ## [1.5.1] — 2026-09-30
 
 Javítás: a jegyzetek újra a valódi eszközverziót jelölik.
@@ -262,6 +274,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.5.2]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.2
 [1.5.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.1
 [1.5.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.0
 [1.4.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.4.0
