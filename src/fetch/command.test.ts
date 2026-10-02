@@ -239,3 +239,177 @@ describe('commandFetch egy videóra', () => {
     expect(download).toContain(`home:${join(source, 'Csatorna')}`)
   })
 })
+
+describe('listafájl és köteg', () => {
+  it('a megjegyzést és az üres sort kihagyja, az idegen cím nem állítja meg a videót', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'fetch-list-'))
+    const list = join(root, 'lista.txt')
+    const out = join(root, 'out')
+    await writeFile(list, '# megjegyzés\n\nhttps://vimeo.com/1\nabcdefghijk\n')
+    const seen: string[][] = []
+    const runner: ProcessRunner = (args) => {
+      seen.push([...args])
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
+      if (args.includes('-J')) {
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }),
+          stderr: '',
+        })
+      }
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      return (async () => {
+        await mkdir(dest, { recursive: true })
+        await writeFile(join(dest, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')
+        await writeFile(join(dest, `Cím [${ID}].info.json`), JSON.stringify({ id: ID }))
+        return { code: 0, stdout: '', stderr: '' }
+      })()
+    }
+    const streams = io()
+    const code = await commandFetch(['subtitle', '--list', list, '--out', out, '--sub-lang', 'hu'], { ...streams, runner })
+    expect(code).toBe(1)
+    expect(streams.out[0]).toBe('[FAIL] https://vimeo.com/1: nem YouTube-cím')
+    expect(streams.out[1]).toBe(`[OK]   Cím [${ID}]`)
+    expect(streams.out.at(-1)).toBe('Kész: 1 letöltve, 0 átugorva, 0 felirat nélkül, 1 hibás.')
+    expect(seen.filter((args) => args.includes('--write-subs'))).toHaveLength(1)
+  })
+
+  it('üres listafájl indulási hiba', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'fetch-list-'))
+    const list = join(root, 'ures.txt')
+    await writeFile(list, '# csak megjegyzés\n\n')
+    const streams = io()
+    const code = await commandFetch(['subtitle', '--list', list, '--out', join(root, 'out'), '--sub-lang', 'hu'], streams)
+    expect(code).toBe(1)
+    expect(streams.err[0]).toBe('A listafájl nem tartalmaz címet.')
+  })
+})
+
+describe('lejátszási lista', () => {
+  it('két lista ugyanarra az azonosítóra két letöltést indít', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-pl-'))
+    const list = join(out, 'lista.txt')
+    await writeFile(
+      list,
+      'https://www.youtube.com/playlist?list=PLelso\nhttps://www.youtube.com/playlist?list=PLmasodik\n',
+    )
+    const downloads: string[] = []
+    const runner: ProcessRunner = (args) => {
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
+      if (args.includes('--flat-playlist')) {
+        const id = args.at(-1)?.includes('PLelso') ? 'PLelso' : 'PLmasodik'
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify({ id, title: `Kurzus ${id}`, entries: [{ id: ID, title: 'Első' }] }),
+          stderr: '',
+        })
+      }
+      downloads.push(args[args.indexOf('--paths') + 1] ?? '')
+      const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
+      return (async () => {
+        await mkdir(dest, { recursive: true })
+        await writeFile(join(dest, `Első [${ID}].hu.vtt`), 'WEBVTT\n')
+        await writeFile(join(dest, `Első [${ID}].info.json`), JSON.stringify({ id: ID }))
+        return { code: 0, stdout: '', stderr: '' }
+      })()
+    }
+    const streams = io()
+    expect(await commandFetch(['subtitle', '--list', list, '--out', out, '--sub-lang', 'hu'], { ...streams, runner })).toBe(0)
+    expect(downloads).toHaveLength(2)
+    expect(downloads.some((dest) => dest.includes('Kurzus PLelso [PLelso]'))).toBe(true)
+    expect(downloads.some((dest) => dest.includes('Kurzus PLmasodik [PLmasodik]'))).toBe(true)
+  })
+
+  it('az azonosító nélküli elem hiba, a következő elem letöltődik', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-pl-'))
+    let downloads = 0
+    const runner: ProcessRunner = (args) => {
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
+      if (args.includes('--flat-playlist')) {
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify({
+            id: 'PLxxx',
+            title: 'Kurzus',
+            entries: [{ title: 'nincs' }, { id: ID, title: 'Van' }],
+          }),
+          stderr: '',
+        })
+      }
+      downloads += 1
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      return (async () => {
+        await mkdir(dest, { recursive: true })
+        await writeFile(join(dest, `Van [${ID}].hu.vtt`), 'WEBVTT\n')
+        await writeFile(join(dest, `Van [${ID}].info.json`), JSON.stringify({ id: ID }))
+        return { code: 0, stdout: '', stderr: '' }
+      })()
+    }
+    const streams = io()
+    const url = 'https://www.youtube.com/playlist?list=PLxxx'
+    expect(await commandFetch(['subtitle', url, '--out', out, '--sub-lang', 'hu'], { ...streams, runner })).toBe(1)
+    expect(streams.out[0]).toBe(`[FAIL] ${url}: hiányzó videóazonosító`)
+    expect(downloads).toBe(1)
+  })
+
+  it('a második tétel ENOENT-je megáll, az első bent van az összesítésben', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'fetch-miss-'))
+    const list = join(root, 'lista.txt')
+    const out = join(root, 'out')
+    await writeFile(list, 'abcdefghijk\nzzzzzzzzzzz\n')
+    let probes = 0
+    const runner: ProcessRunner = (args) => {
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
+      if (args.includes('-J')) {
+        probes += 1
+        if (probes === 2) return Promise.reject(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }))
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }),
+          stderr: '',
+        })
+      }
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      return (async () => {
+        await mkdir(dest, { recursive: true })
+        await writeFile(join(dest, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')
+        await writeFile(join(dest, `Cím [${ID}].info.json`), JSON.stringify({ id: ID }))
+        return { code: 0, stdout: '', stderr: '' }
+      })()
+    }
+    const streams = io()
+    const code = await commandFetch(['subtitle', '--list', list, '--out', out, '--sub-lang', 'hu'], { ...streams, runner })
+    expect(code).toBe(1)
+    expect(streams.out[0]).toBe(`[OK]   Cím [${ID}]`)
+    expect(streams.out.at(-1)).toBe('Kész: 1 letöltve, 0 átugorva, 0 felirat nélkül, 0 hibás.')
+    expect(streams.err[0]).toContain('brew install yt-dlp')
+  })
+})
+
+describe('megszakítás és védelem', () => {
+  it('a félbeszakadt letöltés nem kap sort és összesítést', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-stop-'))
+    const handlers: Array<() => void> = []
+    const runner: ProcessRunner = (args) => {
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
+      if (args.includes('-J')) {
+        return Promise.resolve({
+          code: 0,
+          stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }),
+          stderr: '',
+        })
+      }
+      for (const handler of handlers) handler()
+      return Promise.resolve({ code: 1, stdout: '', stderr: 'Interrupted\n' })
+    }
+    const streams = io()
+    const code = await commandFetch(['subtitle', URL, '--out', out, '--sub-lang', 'hu'], {
+      runner,
+      stdout: streams.stdout,
+      stderr: streams.stderr,
+      signals: { on: (_event, listener) => handlers.push(listener) },
+    })
+    expect(code).toBe(130)
+    expect(streams.out).toEqual([])
+  })
+})

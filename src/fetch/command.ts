@@ -1,13 +1,15 @@
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, readFile, stat } from 'node:fs/promises'
 import { loadCliConfig } from '../config.js'
 import { installSigint } from '../run/finish.js'
 import { classifyInput } from './classify.js'
-import { parseSubtitleArgs } from './subtitle/args.js'
-import { alreadyFetched, prepareIncomplete, videoDir } from './subtitle/skip.js'
+import { parseSubtitleArgs, type SubtitleArgs } from './subtitle/args.js'
+import { alreadyFetched, playlistDir, prepareIncomplete, videoDir } from './subtitle/skip.js'
 import {
   createYtdlpRunner,
   downloadArgs,
+  parsePlaylistProbe,
   parseVideoProbe,
+  playlistProbeArgs,
   type ProcessResult,
   type ProcessRunner,
   versionArgs,
@@ -72,6 +74,16 @@ function firstLine(str: string): string {
   return line ?? ''
 }
 
+async function inputsFrom(args: SubtitleArgs): Promise<{ lines: string[] } | { error: string }> {
+  if (args.listPath === undefined) return { lines: args.inputs }
+  try {
+    return { lines: listEntries(await readFile(args.listPath, 'utf8')) }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { error: `Nincs listafájl: ${args.listPath}.` }
+    return { error: (error as Error).message }
+  }
+}
+
 export async function commandFetch(argv: readonly string[], runtime?: FetchRuntime): Promise<number> {
   const stdout = runtime?.stdout ?? ((line: string) => console.log(line))
   const stderr = runtime?.stderr ?? ((line: string) => console.error(line))
@@ -98,11 +110,13 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
   }
   const args = parsed.args
 
-  if (
-    args.listPath !== undefined ||
-    (args.inputs[0] !== undefined && classifyInput(args.inputs[0], args.yesPlaylist).kind === 'playlist')
-  ) {
-    stderr('A lista a következő feladat.')
+  const inputResult = await inputsFrom(args)
+  if ('error' in inputResult) {
+    stderr(inputResult.error)
+    return 1
+  }
+  if (inputResult.lines.length === 0) {
+    stderr('A listafájl nem tartalmaz címet.')
     return 1
   }
 
@@ -179,65 +193,153 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
       return 1
     }
 
-    const inputUrl = args.inputs[0]!
-    const classified = classifyInput(inputUrl, args.yesPlaylist)
-    if (classified.kind === 'rejected') {
-      stdout(`[FAIL] ${classified.raw}: nem YouTube-cím`)
-      rows.push('failed')
-      return finish(rows, stopped, stdout)
-    }
+    for (const raw of inputResult.lines) {
+      if (stopped) break
+      const classified = classifyInput(raw, args.yesPlaylist)
+      if (classified.kind === 'rejected') {
+        stdout(`[FAIL] ${classified.raw}: nem YouTube-cím`)
+        rows.push('failed')
+        continue
+      }
 
-    const pRes = await runCmd(videoProbeArgs(classified.url))
-    if ('missing' in pRes) {
-      if (rows.length > 0) stdout(summary(rows))
-      return 1
-    }
-    const probe = pRes.code === 0 ? parseVideoProbe(pRes.stdout) : null
-    if (probe === null) {
-      const reason = pRes.code !== 0 ? firstLine(pRes.stderr) : 'hiányzó videóazonosító'
-      stdout(`[FAIL] ${classified.url}: ${reason || 'hiányzó videóazonosító'}`)
-      rows.push('failed')
-      return finish(rows, stopped, stdout)
-    }
+      if (classified.kind === 'video') {
+        const pRes = await runCmd(videoProbeArgs(classified.url))
+        if ('missing' in pRes) {
+          if (rows.length > 0) stdout(summary(rows))
+          return 1
+        }
+        if (stopped) break
 
-    const title = probe.title?.split(/\r?\n/)[0]?.trim() || probe.id
-    const dest = videoDir(out, probe.channel ?? '', args.flat)
+        const probe = pRes.code === 0 ? parseVideoProbe(pRes.stdout) : null
+        if (probe === null) {
+          const reason = pRes.code !== 0 ? firstLine(pRes.stderr) : 'hiányzó videóazonosító'
+          stdout(`[FAIL] ${classified.url}: ${reason || 'hiányzó videóazonosító'}`)
+          rows.push('failed')
+          continue
+        }
 
-    if (!args.overwrite && (await alreadyFetched(dest, probe.id, languages))) {
-      stdout(`[SKIP] ${title} [${probe.id}]`)
-      rows.push('skipped')
-      return finish(rows, stopped, stdout)
-    }
+        const title = probe.title?.split(/\r?\n/)[0]?.trim() || probe.id
+        const dest = videoDir(out, probe.channel ?? '', args.flat)
 
-    if (!args.overwrite) {
-      await prepareIncomplete(dest, probe.id)
-    }
+        if (!args.overwrite && (await alreadyFetched(dest, probe.id, languages))) {
+          stdout(`[SKIP] ${title} [${probe.id}]`)
+          rows.push('skipped')
+          continue
+        }
 
-    const dlRes = await runCmd(
-      downloadArgs({
-        url: classified.url,
-        dest,
-        languages,
-        formats: args.subFormat,
-        overwrite: args.overwrite,
-      }),
-    )
-    if ('missing' in dlRes) {
-      if (rows.length > 0) stdout(summary(rows))
-      return 1
-    }
+        if (!args.overwrite) {
+          await prepareIncomplete(dest, probe.id)
+        }
 
-    const fetched = await alreadyFetched(dest, probe.id, languages)
-    if (fetched) {
-      stdout(`[OK]   ${title} [${probe.id}]`)
-      rows.push('downloaded')
-    } else if (dlRes.code === 0) {
-      stdout(`[SKIP] Nincs felirat: ${title} [${probe.id}]`)
-      rows.push('no-subtitle')
-    } else {
-      const errLine = firstLine(dlRes.stderr)
-      stdout(`[FAIL] ${classified.url}: ${errLine || 'letöltési hiba'}`)
-      rows.push('failed')
+        const dlRes = await runCmd(
+          downloadArgs({
+            url: classified.url,
+            dest,
+            languages,
+            formats: args.subFormat,
+            overwrite: args.overwrite,
+          }),
+        )
+        if ('missing' in dlRes) {
+          if (rows.length > 0) stdout(summary(rows))
+          return 1
+        }
+        if (stopped) break
+
+        const fetched = await alreadyFetched(dest, probe.id, languages)
+        if (fetched) {
+          stdout(`[OK]   ${title} [${probe.id}]`)
+          rows.push('downloaded')
+        } else if (dlRes.code === 0) {
+          stdout(`[SKIP] Nincs felirat: ${title} [${probe.id}]`)
+          rows.push('no-subtitle')
+        } else {
+          const errLine = firstLine(dlRes.stderr)
+          stdout(`[FAIL] ${classified.url}: ${errLine || 'letöltési hiba'}`)
+          rows.push('failed')
+        }
+        continue
+      }
+
+      // classified.kind === 'playlist'
+      const plRes = await runCmd(playlistProbeArgs(classified.url, args.playlistItems))
+      if ('missing' in plRes) {
+        if (rows.length > 0) stdout(summary(rows))
+        return 1
+      }
+      if (stopped) break
+
+      if (plRes.code !== 0) {
+        const reason = firstLine(plRes.stderr) || 'ismeretlen hiba'
+        stdout(`[FAIL] ${classified.url}: ${reason}`)
+        rows.push('failed')
+        continue
+      }
+
+      const probe = parsePlaylistProbe(plRes.stdout)
+      if (probe === null) {
+        stdout(`[FAIL] ${classified.url}: hiányzó listaazonosító`)
+        rows.push('failed')
+        continue
+      }
+
+      if (probe.entries.length === 0) {
+        stdout(`[FAIL] ${classified.url}: a lista üres`)
+        rows.push('failed')
+        continue
+      }
+
+      const dest = playlistDir(out, probe.title ?? '', probe.id, args.flat)
+
+      for (const entry of probe.entries) {
+        if (stopped) break
+        if (!entry.id) {
+          stdout(`[FAIL] ${classified.url}: hiányzó videóazonosító`)
+          rows.push('failed')
+          continue
+        }
+
+        const videoUrl = `https://www.youtube.com/watch?v=${entry.id}`
+        const title = entry.title?.split(/\r?\n/)[0]?.trim() || entry.id
+
+        if (!args.overwrite && (await alreadyFetched(dest, entry.id, languages))) {
+          stdout(`[SKIP] ${title} [${entry.id}]`)
+          rows.push('skipped')
+          continue
+        }
+
+        if (!args.overwrite) {
+          await prepareIncomplete(dest, entry.id)
+        }
+
+        const dlRes = await runCmd(
+          downloadArgs({
+            url: videoUrl,
+            dest,
+            languages,
+            formats: args.subFormat,
+            overwrite: args.overwrite,
+          }),
+        )
+        if ('missing' in dlRes) {
+          if (rows.length > 0) stdout(summary(rows))
+          return 1
+        }
+        if (stopped) break
+
+        const fetched = await alreadyFetched(dest, entry.id, languages)
+        if (fetched) {
+          stdout(`[OK]   ${title} [${entry.id}]`)
+          rows.push('downloaded')
+        } else if (dlRes.code === 0) {
+          stdout(`[SKIP] Nincs felirat: ${title} [${entry.id}]`)
+          rows.push('no-subtitle')
+        } else {
+          const errLine = firstLine(dlRes.stderr)
+          stdout(`[FAIL] ${videoUrl}: ${errLine || 'letöltési hiba'}`)
+          rows.push('failed')
+        }
+      }
     }
 
     return finish(rows, stopped, stdout)
