@@ -18,6 +18,17 @@ describe('lintVaultMarkdown', () => {
     expect(errors[0]).toMatch(/szögletes/i)
   })
 
+  it('elfogadja a zárójelet tartalmazó szögletes zárójeles linkcélt', () => {
+    // Valódi videócím: a `)` a célon belül nem zárja le a linket.
+    const md =
+      '[jegyzet](<transcripts/manual/My Secret Sauce (My design workflow) [H1l66NhU-_8]_notes.md>)'
+    expect(lintVaultMarkdown(md)).toEqual([])
+  })
+
+  it('a zárójelet tartalmazó csupasz linkcélt továbbra is elutasítja', () => {
+    expect(lintVaultMarkdown('[Terv](./terv (v2).md)')).toHaveLength(1)
+  })
+
   it('a képhivatkozást is ellenőrzi', () => {
     expect(lintVaultMarkdown('![kép](kep.png)')).toHaveLength(1)
   })
