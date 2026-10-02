@@ -8,12 +8,14 @@ const CFG: ModelConfig = {
   baseUrl: 'http://nem.szamit',
   apiKey: 'sk-teszt',
   models: { draft: 'draft-modell', judge: 'judge-modell' },
+  recipeModels: {},
   judgeEnabled: true,
   pricing: {
     // Szándékosan nagyon eltérő árak: így a szerep-tévesztés látszik.
     draft: { inputPerMillion: 3, outputPerMillion: 15 },
     judge: { inputPerMillion: 0.2, outputPerMillion: 0.5 },
   },
+  modelPricing: {},
   costLimitUsd: 100,
 }
 

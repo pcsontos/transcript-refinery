@@ -143,8 +143,8 @@ describe('loadModelConfig', () => {
     ...MIN,
     model: { base_url: 'http://localhost:4000/v1', draft: 'd', judge: 'j' },
     pricing: {
-      draft: { input_per_million: 3, output_per_million: 15 },
-      judge: { input_per_million: 0.2, output_per_million: 0.5 },
+      d: { input_per_million: 3, output_per_million: 15 },
+      j: { input_per_million: 0.2, output_per_million: 0.5 },
     },
     cost_limit_usd: 5,
   }
@@ -173,6 +173,93 @@ describe('loadModelConfig', () => {
   it('a judge_enabled kikapcsolható a YAML-ból', () => {
     const raw = { ...RAW, model: { ...RAW.model, judge_enabled: false } }
     expect(loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml').judgeEnabled).toBe(false)
+  })
+
+  it('a szerep ára a modellnév szerinti árból jön', () => {
+    const cfg = loadModelConfig(RAW, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')
+    expect(cfg.pricing.draft).toEqual({ inputPerMillion: 3, outputPerMillion: 15 })
+    expect(cfg.pricing.judge).toEqual({ inputPerMillion: 0.2, outputPerMillion: 0.5 })
+    expect(cfg.modelPricing.j).toEqual({ inputPerMillion: 0.2, outputPerMillion: 0.5 })
+  })
+
+  it('a model.recipes alapértelmezése üres', () => {
+    expect(loadModelConfig(RAW, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml').recipeModels).toEqual({})
+  })
+
+  it('a receptenkénti felülbírálást beolvassa', () => {
+    const raw = {
+      ...RAW,
+      model: { ...RAW.model, recipes: { notes: 'sonnet-proba' } },
+      pricing: { ...RAW.pricing, 'sonnet-proba': { input_per_million: 3, output_per_million: 15 } },
+    }
+    const cfg = loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')
+    expect(cfg.recipeModels).toEqual({ notes: 'sonnet-proba' })
+  })
+
+  it('árazott, de nem használt modellt megenged', () => {
+    const raw = {
+      ...RAW,
+      pricing: { ...RAW.pricing, tartalek: { input_per_million: 1, output_per_million: 1 } },
+    }
+    expect(() => loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')).not.toThrow()
+  })
+
+  it('hiányzó árnál megnevezi a modellt', () => {
+    const raw = { ...RAW, model: { ...RAW.model, recipes: { notes: 'sonnet-proba' } } }
+    expect(() => loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')).toThrow(
+      /pricing: nincs ára.*sonnet-proba/,
+    )
+  })
+
+  it('a régi, szerep szerinti pricing-alakot átírási útmutatóval utasítja el', () => {
+    const raw = {
+      ...RAW,
+      pricing: {
+        draft: { input_per_million: 3, output_per_million: 15 },
+        judge: { input_per_million: 0.2, output_per_million: 0.5 },
+      },
+    }
+    let uzenet = ''
+    try {
+      loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')
+    } catch (error) {
+      uzenet = (error as Error).message
+    }
+    expect(uzenet).toMatch(/régi, szerep szerinti alak/)
+    expect(uzenet).toContain('d: { input_per_million:')
+    expect(uzenet).toContain('j: { input_per_million:')
+    expect(uzenet).toContain('/p/c.yaml')
+  })
+
+  it('a régi alakot egy rosszul elhelyezett judge_enabled mellett is felismeri, nem Zod-hibát ad', () => {
+    // A felhasználó valódi configjában a judge_enabled a pricing: alá
+    // keveredett. A szigorú, modellnév szerinti séma ezen elbukna, mielőtt az
+    // átírási útmutató megjelenhetne — ezért ezt a nyers adaton, a
+    // sémaellenőrzés előtt kell felismerni.
+    const raw = {
+      ...RAW,
+      pricing: {
+        draft: { input_per_million: 3, output_per_million: 15 },
+        judge: { input_per_million: 0.2, output_per_million: 0.5 },
+        judge_enabled: true,
+      },
+    }
+    let uzenet = ''
+    try {
+      loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')
+    } catch (error) {
+      uzenet = (error as Error).message
+    }
+    expect(uzenet).toMatch(/régi, szerep szerinti alak/)
+    expect(uzenet).not.toMatch(/Invalid input/)
+  })
+
+  it('a loadConfig a régi pricing-alakot nem nézi', () => {
+    const raw = {
+      ...MIN,
+      pricing: { draft: { input_per_million: 3, output_per_million: 15 } },
+    }
+    expect(() => loadConfig(raw, '/p/c.yaml')).not.toThrow()
   })
 })
 

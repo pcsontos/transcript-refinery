@@ -14,8 +14,10 @@ import {
 } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
-import { createModelClient, type ModelClient } from './model/client.js'
+import { createModelClient, type ModelClient, type ModelClientOptions } from './model/client.js'
 import { applyPricingFix, comparePricing, fetchLivePricing } from './model/pricing-check.js'
+import { assertRecipeModels, modelConfigFor, usedModels } from './model/recipe-model.js'
+import { toolChoiceFallback } from './model/tool-fallback.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { COMMIT_SCOPE, VERSION } from './meta.js'
@@ -184,6 +186,8 @@ function render(event: RunEvent): string | null {
       return `  ! ${event.itemId}: ${String(event.count)}/${String(event.total)} bekezdés időbélyeg nélkül`
     case 'item:retry':
       return `  ↻ ${event.itemId}: ${event.reason} — újrapróba ${String(event.attempt)}., ${String(event.delayMs / 1000)} mp múlva`
+    case 'model:fallback':
+      return `  ! ${event.model}: a kényszerített tool_choice nem támogatott, tool-hívással (auto) folytatom`
     default:
       return null
   }
@@ -348,13 +352,17 @@ export async function commandCheckPricing(
     return 2
   }
 
-  const { mismatches, unknown } = comparePricing(modelConfig.models, modelConfig.pricing, live)
-  for (const u of unknown) {
-    console.log(`? ${u.role} (${u.model}): a LiteLLM nem ismeri ezt a modellt — nem ellenőrizhető.`)
+  const { mismatches, unknown } = comparePricing(
+    usedModels(modelConfig),
+    modelConfig.modelPricing,
+    live,
+  )
+  for (const model of unknown) {
+    console.log(`? ${model}: a LiteLLM nem ismeri ezt a modellt — nem ellenőrizhető.`)
   }
   for (const m of mismatches) {
     console.log(
-      `ELTÉR ${m.role} (${m.model}): config $${m.configured.inputPerMillion.toFixed(2)}/$${m.configured.outputPerMillion.toFixed(2)} (be/ki, milliónként) — LiteLLM $${m.live.inputPerMillion.toFixed(2)}/$${m.live.outputPerMillion.toFixed(2)}`,
+      `ELTÉR ${m.model}: config $${m.configured.inputPerMillion.toFixed(2)}/$${m.configured.outputPerMillion.toFixed(2)} (be/ki, milliónként) — LiteLLM $${m.live.inputPerMillion.toFixed(2)}/$${m.live.outputPerMillion.toFixed(2)}`,
     )
   }
   if (mismatches.length === 0 && unknown.length === 0) {
@@ -366,7 +374,7 @@ export async function commandCheckPricing(
     const fixed = applyPricingFix(await readConfigText(opts.configPath), mismatches)
     await writeFileAtomic(opts.configPath, fixed)
     console.log(
-      `Javítva a configban: ${mismatches.map((m) => m.role).join(', ')} — ${opts.configPath}`,
+      `Javítva a configban: ${mismatches.map((m) => m.model).join(', ')} — ${opts.configPath}`,
     )
     return 0
   }
@@ -380,13 +388,14 @@ export interface RunRuntime {
   /** Kilépés megszakításkor. */
   exit?: (code: number) => void
   /** A modellkliens gyártása; alapértelmezésben a valódi LiteLLM-kliens. */
-  createClient?: (cfg: ModelConfig) => ModelClient
+  createClient?: (cfg: ModelConfig, opts?: ModelClientOptions) => ModelClient
 }
 
-/** A modellréteg egy futásra: egy kliens és egy költségőr, minden receptnek közösen. */
+/** A modellréteg egy futásra: receptenkénti kliens, egy közös költségőr. */
 interface ModelRuntime {
   modelConfig: ModelConfig
-  client: ModelClient
+  /** A receptre szabott nézet kliense; modellenként egyszer készül. */
+  clientFor(view: ModelConfig): ModelClient
   guard: CostGuard
 }
 
@@ -419,14 +428,30 @@ export async function commandRun(
   const registry = recipesFor(cfg)
   const recipe = flags.recipe ? recipeFrom(registry, flags.recipe) : null
 
-  // Egy kliens és egy költségőr az egész indításra: a plafon így nem
-  // receptenként, hanem együtt vonatkozik minden egységre.
+  // Egy költségőr az egész indításra: a plafon így nem receptenként, hanem
+  // együtt vonatkozik minden egységre. A kliens a receptre szabott nézetből
+  // készül (`model.recipes`), modellenként egyszer, és a visszaesés
+  // emlékezete (`tool-fallback.ts`) mindegyiknek közös.
   let model: ModelRuntime | undefined
+  // A jelzés célja a lenti `printing`; addig modellhívás nem történik, tehát
+  // nincs mit elveszíteni.
+  let reportFallback: (name: string) => void = () => undefined
   if (recipe || queueMode) {
     const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    assertRecipeModels(modelConfig, Object.keys(registry))
+    const fallback = toolChoiceFallback((name) => reportFallback(name))
+    const createClient = runtime.createClient ?? createModelClient
+    const clients = new Map<string, ModelClient>()
     model = {
       modelConfig,
-      client: (runtime.createClient ?? createModelClient)(modelConfig),
+      clientFor(view) {
+        let client = clients.get(view.models.draft)
+        if (client === undefined) {
+          client = createClient(view, { fallback })
+          clients.set(view.models.draft, client)
+        }
+        return client
+      },
       guard: createCostGuard(modelConfig.costLimitUsd),
     }
   }
@@ -435,16 +460,17 @@ export async function commandRun(
   // kell, mert a config alapértelmezése amúgy is a bekapcsolt bíró.
   const skipJudge = flags.noJudge ?? !(model?.modelConfig.judgeEnabled ?? true)
 
-  const depsFor = (unitRecipe: Recipe | null): RecipeDeps | undefined =>
-    unitRecipe && model
-      ? {
-          recipe: unitRecipe,
-          client: model.client,
-          modelConfig: model.modelConfig,
-          guard: model.guard,
-          skipJudge,
-        }
-      : undefined
+  const depsFor = (unitRecipe: Recipe | null): RecipeDeps | undefined => {
+    if (!unitRecipe || !model) return undefined
+    const view = modelConfigFor(model.modelConfig, unitRecipe.id)
+    return {
+      recipe: unitRecipe,
+      client: model.clientFor(view),
+      modelConfig: view,
+      guard: model.guard,
+      skipJudge,
+    }
+  }
 
   // A futás műtermék-típusa queue nélkül: recepttel a recept azonosítója,
   // enélkül az átirat. A riport és a hibás-szűrő ugyanazt kérdezi.
@@ -484,6 +510,7 @@ export async function commandRun(
     const line = render(e)
     if (line !== null) console.log(line)
   }
+  reportFallback = (name) => printing({ type: 'model:fallback', model: name })
 
   // A napló első sora: a felület ebből tudja, mi fut, és él-e még a folyamat.
   printing({ type: 'run:started', command: commandLine, pid: process.pid })

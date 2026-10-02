@@ -327,6 +327,28 @@ async function runRecipe(
   return { status: 'published', recipePath: published.path }
 }
 
+/** A hibaeseménybe kerülő nyers válasz felső korlátja, karakterben. */
+const DETAIL_TEXT_LIMIT = 2_000
+
+/**
+ * A modell-hiba belső oka és a nyers válasz a naplóba. Az
+ * `AI_NoObjectGeneratedError` üzenete általános („did not match the
+ * schema"); az, hogy a modell mit adott vissza, csak a `cause`-ban és a
+ * `text`-ben van.
+ */
+function detailOf(error: unknown): { detail?: string } {
+  if (typeof error !== 'object' || error === null) return {}
+  const parts: string[] = []
+  const cause = (error as { cause?: unknown }).cause
+  if (cause instanceof Error) parts.push(`cause: ${cause.message}`)
+  const text = (error as { text?: unknown }).text
+  if (typeof text === 'string' && text !== '') {
+    const cut = text.length > DETAIL_TEXT_LIMIT ? `${text.slice(0, DETAIL_TEXT_LIMIT)}…` : text
+    parts.push(`text: ${cut}`)
+  }
+  return parts.length > 0 ? { detail: parts.join('\n') } : {}
+}
+
 /** Egyetlen elem végigvitele a csővezetéken. Soha nem dob kivételt. */
 export async function processItem(
   item: SourceItem,
@@ -394,6 +416,7 @@ export async function processItem(
           kind: recipeDeps.recipe.id,
           error: message,
           stack,
+          ...detailOf(error),
         })
         // A recept hibája nem ronthatja el az átirat már sikeres állapotát —
         // az `outcome` a már elért eredményt (vagy a kezdeti 'skipped'-et) tartja meg.
@@ -419,6 +442,7 @@ export async function processItem(
         kind: ARTIFACT_KIND,
         error: message,
         stack,
+        ...detailOf(error),
       })
     }
     if (kellRecept && recipeDeps) {
@@ -430,6 +454,7 @@ export async function processItem(
         kind: recipeDeps.recipe.id,
         error: message,
         stack,
+        ...detailOf(error),
       })
     }
     return { status: 'failed', error: message }

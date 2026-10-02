@@ -6,11 +6,13 @@ const CFG: ModelConfig = {
   baseUrl: 'http://localhost:4000/v1',
   apiKey: 'sk-proba',
   models: { draft: 'draft-modell', judge: 'judge-modell' },
+  recipeModels: {},
   judgeEnabled: true,
   pricing: {
     draft: { inputPerMillion: 3, outputPerMillion: 15 },
     judge: { inputPerMillion: 0.2, outputPerMillion: 0.5 },
   },
+  modelPricing: {},
   costLimitUsd: 5,
 }
 
@@ -51,6 +53,16 @@ describe('estimateItemUsd', () => {
     expect(estimateItemUsd(3_000, 0, CFG)).toBe(
       estimateItemUsd(3_000, 0, CFG, { outputRatio: 0.1, judges: 2 }),
     )
+  })
+
+  it('a becslés alakjában adott draft-árat használja a szerep ára helyett', () => {
+    const draga = { inputPerMillion: 300, outputPerMillion: 1500 }
+    const alap = estimateItemUsd(10_000, 0, CFG)
+    const felulbiralt = estimateItemUsd(10_000, 0, CFG, { draftPricing: draga })
+    const nezet = { ...CFG, pricing: { ...CFG.pricing, draft: draga } }
+
+    expect(felulbiralt).toBeGreaterThan(alap)
+    expect(felulbiralt).toBeCloseTo(estimateItemUsd(10_000, 0, nezet), 10)
   })
 })
 

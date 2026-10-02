@@ -32,6 +32,11 @@ export type RunEvent =
       error: string
       /** A hiba hívási lánca, ha van — a diagnózishoz; a felület nem mutatja. */
       stack?: string
+      /**
+       * A modell-hiba belső oka és a nyers válasz (levágva), ha van — e nélkül
+       * egy sémahibából csak az általános üzenet marad meg.
+       */
+      detail?: string
     }
   | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
   | {
@@ -111,6 +116,15 @@ export type RunEvent =
       attempt: number
       delayMs: number
       reason: string
+    }
+  | {
+      type: 'model:fallback'
+      /**
+       * A modell, amely elutasította a kényszerített `tool_choice`-t; a sémás
+       * hívásai mostantól választható tool-hívással mennek (#78). Modellenként
+       * egyszer jön.
+       */
+      model: string
     }
 
 export type EventSink = (event: RunEvent) => void

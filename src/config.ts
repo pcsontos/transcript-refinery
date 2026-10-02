@@ -243,8 +243,17 @@ const ModelSchema = z.object({
     judge: z.string().min(1, 'A model.judge kötelező.'),
     /** Hamisra állítva a bíró pontozói nem futnak; a determinisztikus kapuk igen. */
     judge_enabled: z.boolean().default(true),
+    /**
+     * Receptazonosító → modell: a `draft` felülbírálása az adott receptnél.
+     * A kulcsokat a futás regisztere ellenőrzi (`assertRecipeModels`), hogy
+     * a konfig ne függjön a receptektől.
+     */
+    recipes: z
+      .record(z.string().min(1), z.string().min(1, 'A model.recipes értéke modellnév kell legyen.'))
+      .default({}),
   }),
-  pricing: z.object({ draft: PriceSchema, judge: PriceSchema }),
+  /** Modellnév → ár. Minden használt modellnek kell ára legyen. */
+  pricing: z.record(z.string().min(1), PriceSchema),
   cost_limit_usd: z.coerce
     .number()
     .positive('Kötelező és pozitív: köteg nem indul felső korlát nélkül.'),
@@ -259,10 +268,16 @@ export interface ModelPricing {
 export interface ModelConfig {
   baseUrl: string
   apiKey: string
+  /** Szerep → modell; a `draft` a receptek alapértelmezése. */
   models: Record<ModelRole, string>
+  /** Receptazonosító → modell; a `draft` felülbírálása az adott receptnél. */
+  recipeModels: Readonly<Record<string, string>>
   /** Fusson-e a bíró. A `--no-judge` kapcsoló felülírja. */
   judgeEnabled: boolean
+  /** Szerep → ár: a `models` két modelljének ára, a `modelPricing`-ből. */
   pricing: Record<ModelRole, ModelPricing>
+  /** Modellnév → ár. */
+  modelPricing: Readonly<Record<string, ModelPricing>>
   /** Futásonkénti felső korlát dollárban. */
   costLimitUsd: number
 }
@@ -277,11 +292,57 @@ export interface ModelConfig {
  * A kulcs az egyetlen érték, ami **nem** a YAML-ból jön: titok, aminek nincs
  * helye egy verziókövetett konfigurációs fájlban.
  */
+/** A régi, szerep szerinti `pricing`-kulcsok, ha nem ütköznek valódi modellnévvel. */
+function legacyPricingKeys(pricing: object, used: readonly string[]): string[] {
+  return ['draft', 'judge'].filter((key) => Object.hasOwn(pricing, key) && !used.includes(key))
+}
+
+/** Az átírási útmutató a régi, szerep szerinti `pricing`-alakra. */
+function legacyPricingError(
+  legacy: readonly string[],
+  draft: string,
+  judge: string,
+  configPath: string,
+): Error {
+  return new Error(
+    [
+      `pricing: a(z) ${legacy.join(', ')} kulcs a régi, szerep szerinti alak. Az ár mostantól modellnév szerint áll, például:`,
+      '  pricing:',
+      `    ${draft}: { input_per_million: …, output_per_million: … }`,
+      `    ${judge}: { input_per_million: …, output_per_million: … }`,
+      `(${configPath})`,
+    ].join('\n'),
+  )
+}
+
+/** `unknown`-ból kinyert objektum, vagy `undefined`, ha nem objektum. */
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined
+}
+
 export function loadModelConfig(
   raw: unknown,
   env: Record<string, string | undefined>,
   configPath: string,
 ): ModelConfig {
+  // A régi, szerep szerinti `pricing`-alak (v1.5.x-ig) extra kulcsot is
+  // tartalmazhat (pl. a `judge_enabled` rosszul a `pricing:` alá kerülve),
+  // amitől a szigorú, modellnév szerinti séma elbukna, mielőtt az átírási
+  // útmutató megjelenhetne. Ezért ezt a nyers adaton, a sémaellenőrzés
+  // ELŐTT nézzük; ha a nyers alak nem egyértelmű, a rendes séma dönt.
+  const rawModel = asRecord(asRecord(raw)?.model)
+  const rawPricing = asRecord(asRecord(raw)?.pricing)
+  const rawDraft = rawModel?.draft
+  const rawJudge = rawModel?.judge
+  if (typeof rawDraft === 'string' && typeof rawJudge === 'string' && rawPricing) {
+    const rawRecipes = asRecord(rawModel?.recipes) ?? {}
+    const rawRecipeModels = Object.values(rawRecipes).filter(
+      (v): v is string => typeof v === 'string',
+    )
+    const legacy = legacyPricingKeys(rawPricing, [rawDraft, rawJudge, ...rawRecipeModels])
+    if (legacy.length > 0) throw legacyPricingError(legacy, rawDraft, rawJudge, configPath)
+  }
+
   const parsed = ModelSchema.safeParse(raw)
   if (!parsed.success) fail(parsed.error, configPath)
   const apiKey = env.LITELLM_API_KEY
@@ -291,21 +352,38 @@ export function loadModelConfig(
     )
   }
   const c = parsed.data
+  const used = [c.model.draft, c.model.judge, ...Object.values(c.model.recipes)]
+
+  // Ugyanez a régi alak akkor is előfordulhat, ha minden `pricing`-bejegyzés
+  // önmagában érvényes árnak néz ki (a fenti nyers ellenőrzés ezt nem kapja
+  // el) — ezt a sikeresen elemzett adaton nézzük.
+  const legacy = legacyPricingKeys(c.pricing, used)
+  if (legacy.length > 0) throw legacyPricingError(legacy, c.model.draft, c.model.judge, configPath)
+
+  const missing = [...new Set(used)].filter((model) => !Object.hasOwn(c.pricing, model))
+  if (missing.length > 0) {
+    throw new Error(
+      `pricing: nincs ára a következő modellnek: ${missing.join(', ')}. Minden használt modellnek (model.draft, model.judge, model.recipes) kell ár. (${configPath})`,
+    )
+  }
+
+  const modelPricing: Record<string, ModelPricing> = Object.fromEntries(
+    Object.entries(c.pricing).map(([model, price]) => [
+      model,
+      { inputPerMillion: price.input_per_million, outputPerMillion: price.output_per_million },
+    ]),
+  )
+  // A fenti ellenőrzés után mindkettőnek van ára.
+  const priceOf = (model: string): ModelPricing => modelPricing[model]!
+
   return {
     baseUrl: c.model.base_url,
     apiKey,
     models: { draft: c.model.draft, judge: c.model.judge },
+    recipeModels: c.model.recipes,
     judgeEnabled: c.model.judge_enabled,
-    pricing: {
-      draft: {
-        inputPerMillion: c.pricing.draft.input_per_million,
-        outputPerMillion: c.pricing.draft.output_per_million,
-      },
-      judge: {
-        inputPerMillion: c.pricing.judge.input_per_million,
-        outputPerMillion: c.pricing.judge.output_per_million,
-      },
-    },
+    pricing: { draft: priceOf(c.model.draft), judge: priceOf(c.model.judge) },
+    modelPricing,
     costLimitUsd: c.cost_limit_usd,
   }
 }

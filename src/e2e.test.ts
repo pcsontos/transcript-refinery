@@ -315,8 +315,8 @@ describe('végponttól végpontig — a feldolgozási sor valódi gittel', () =>
       logs: { dir: join(work, 'logs') },
       model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
       pricing: {
-        draft: { input_per_million: 3, output_per_million: 15 },
-        judge: { input_per_million: 0.2, output_per_million: 0.5 },
+        'proba-draft': { input_per_million: 3, output_per_million: 15 },
+        'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
       },
       cost_limit_usd: 5,
     }
@@ -413,8 +413,8 @@ describe('végponttól végpontig — megszakadt futás után a vault-commit', (
     logs: { dir: join(work, 'logs') },
     model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
     pricing: {
-      draft: { input_per_million: 3, output_per_million: 15 },
-      judge: { input_per_million: 0.2, output_per_million: 0.5 },
+      'proba-draft': { input_per_million: 3, output_per_million: 15 },
+      'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
     },
     cost_limit_usd: 5,
   })

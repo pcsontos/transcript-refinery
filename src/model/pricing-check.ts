@@ -1,6 +1,5 @@
 import { isMap, isScalar, parseDocument } from 'yaml'
 import type { ModelPricing } from '../config.js'
-import type { ModelRole } from '../types.js'
 
 /** USD egymillió tokenre, a LiteLLM `/model/info` válaszából számolva. */
 export interface LivePricing {
@@ -47,7 +46,6 @@ export async function fetchLivePricing(
 }
 
 export interface PricingMismatch {
-  role: ModelRole
   model: string
   configured: ModelPricing
   live: LivePricing
@@ -56,7 +54,7 @@ export interface PricingMismatch {
 export interface PricingCheckResult {
   mismatches: PricingMismatch[]
   /** A configban szereplő modell, amit a LiteLLM nem ismer — nem ellenőrizhető. */
-  unknown: { role: ModelRole; model: string }[]
+  unknown: string[]
 }
 
 /**
@@ -66,27 +64,32 @@ export interface PricingCheckResult {
  */
 const TOLERANCE_USD = 0.01
 
-/** Szerepenként hasonlítja a configban rögzített árat az élő LiteLLM-árhoz. */
+/**
+ * Modellenként hasonlítja a configban rögzített árat az élő LiteLLM-árhoz. A
+ * `models` a ténylegesen használt modellek listája (`usedModels`), egyszer
+ * mindegyik — a receptes felülbírálás modellje is.
+ */
 export function comparePricing(
-  models: Record<ModelRole, string>,
-  pricing: Record<ModelRole, ModelPricing>,
+  models: readonly string[],
+  pricing: Readonly<Record<string, ModelPricing>>,
   live: Map<string, LivePricing>,
 ): PricingCheckResult {
   const mismatches: PricingMismatch[] = []
-  const unknown: { role: ModelRole; model: string }[] = []
-  for (const role of Object.keys(models) as ModelRole[]) {
-    const model = models[role]
+  const unknown: string[] = []
+  for (const model of models) {
     const liveRate = live.get(model)
     if (!liveRate) {
-      unknown.push({ role, model })
+      unknown.push(model)
       continue
     }
-    const configured = pricing[role]
+    // A betöltő minden használt modellhez árat követel; ár nélkül nincs mit hasonlítani.
+    const configured = pricing[model]
+    if (configured === undefined) continue
     const inputOff = Math.abs(configured.inputPerMillion - liveRate.inputPerMillion) > TOLERANCE_USD
     const outputOff =
       Math.abs(configured.outputPerMillion - liveRate.outputPerMillion) > TOLERANCE_USD
     if (inputOff || outputOff) {
-      mismatches.push({ role, model, configured, live: liveRate })
+      mismatches.push({ model, configured, live: liveRate })
     }
   }
   return { mismatches, unknown }
@@ -112,7 +115,7 @@ export function applyPricingFix(
 ): string {
   const doc = parseDocument(configText)
   for (const mismatch of mismatches) {
-    const node = doc.getIn(['pricing', mismatch.role])
+    const node = doc.getIn(['pricing', mismatch.model])
     if (!isMap(node)) continue
     node.set('input_per_million', round2(mismatch.live.inputPerMillion))
     node.set('output_per_million', round2(mismatch.live.outputPerMillion))

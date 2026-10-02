@@ -1,4 +1,5 @@
 import type { ModelConfig } from '../config.js'
+import { modelConfigFor } from '../model/recipe-model.js'
 import {
   DEFAULT_OUTPUT_RATIO,
   sliceToBudget,
@@ -141,6 +142,8 @@ export async function estimateUnits(
         // A bírók számát a rubrikából vesszük, nem külön mezőből: így egy
         // recept nem tud hazudni a saját költségéről.
         judges: unit.recipe.rubric.criteria.filter((c) => !c.blocking).length,
+        // A receptenkénti modell ára (`model.recipes`); a bíró ára közös.
+        draftPricing: modelConfigFor(cfg, unit.recipe.id).pricing.draft,
       },
     })
   }

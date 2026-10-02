@@ -34,11 +34,13 @@ const CFG: ModelConfig = {
   baseUrl: 'http://localhost:4000/v1',
   apiKey: 'sk-proba',
   models: { draft: 'draft-modell', judge: 'judge-modell' },
+  recipeModels: {},
   judgeEnabled: true,
   pricing: {
     draft: { inputPerMillion: 3, outputPerMillion: 15 },
     judge: { inputPerMillion: 0.2, outputPerMillion: 0.5 },
   },
+  modelPricing: {},
   costLimitUsd: 5,
 }
 
@@ -117,6 +119,7 @@ describe('estimateUnits', () => {
       shape: {
         outputRatio: summary.outputRatio,
         judges: summary.rubric.criteria.filter((c) => !c.blocking).length,
+        draftPricing: CFG.pricing.draft,
       },
     })
     expect(slice.planned).toEqual([units[1]])
@@ -155,6 +158,29 @@ describe('estimateUnits', () => {
 
     expect(slice.planned).toEqual([units[0]])
     expect(slice.deferred).toEqual([units[1]])
+  })
+
+  it('a felülbírált recept a saját modellje árán becsül', async () => {
+    const summary = getRecipe('summary')
+    const draga = { inputPerMillion: 300, outputPerMillion: 1500 }
+    const cfg: ModelConfig = {
+      ...CFG,
+      recipeModels: { summary: 'draga-modell' },
+      modelPricing: { 'draga-modell': draga },
+    }
+    const units: WorkUnit[] = [{ item: elem(), recipe: summary }]
+
+    const { slice } = await estimateUnits(units, cfg)
+
+    const words = (await normalizeItem(elem())).wordsNormalized
+    const nezet = { ...CFG, pricing: { ...CFG.pricing, draft: draga } }
+    expect(slice.usd).toBeCloseTo(
+      estimateItemUsd(words, summary.maxIterations, nezet, {
+        outputRatio: summary.outputRatio,
+        judges: summary.rubric.criteria.filter((c) => !c.blocking).length,
+      }),
+      10,
+    )
   })
 })
 
@@ -225,7 +251,11 @@ describe('estimateUnits fordítással', () => {
     const { first } = await estimateUnits([{ item: elem(), recipe: cleanHu }], CFG)
 
     expect(first!.words).toBeCloseTo(words * clean.outputRatio!, 10)
-    expect(first!.shape).toEqual({ outputRatio: cleanHu.outputRatio, judges: 1 })
+    expect(first!.shape).toEqual({
+      outputRatio: cleanHu.outputRatio,
+      judges: 1,
+      draftPricing: CFG.pricing.draft,
+    })
   })
 
   it('kimeneti arány nélküli forrásnál a becslő alapértelmezésével', async () => {
