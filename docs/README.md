@@ -12,6 +12,11 @@ együtt ez a dokumentáció a projekt egyik terméke, nem melléktermék.
 | [`decisions/`](<./decisions/>) | egy rekord minden érdemben vitatott döntésről |
 | [`plans/`](<./plans/>) | fázisonkénti implementációs tervek, feladatokra bontva |
 
+A [`plans/2026-10-04-telegram-cloudflare-beszelgetes.md`](<./plans/2026-10-04-telegram-cloudflare-beszelgetes.md>)
+nem terv, hanem egy tervezőbeszélgetés jegyzete: Telegram-vezérlés, Cloudflare
+Workflow-mag, Access mögötti olvasó oldal, commit a privát vault-repóba. Döntés
+még nincs róla.
+
 ## A döntések
 
 | # | Kérdés | Válasz |
