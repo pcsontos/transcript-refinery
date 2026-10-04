@@ -2,7 +2,8 @@
 
 Jegyzet egy 2026-10-04-i tervezőbeszélgetésről. Nem döntésrekord és nem
 implementációs terv: a kérdést, a mostani kódra támaszkodó választ és a nyitott
-pontokat rögzíti. Implementáció nem indult.
+pontokat rögzíti. Implementáció nem indult. A felirat-fallback szakasz a
+beszélgetés későbbi kibontása.
 
 ## A kérdés
 
@@ -73,14 +74,83 @@ Workflow-lépés importálja. A `node:fs`, a `chokidar` és a `node:sqlite` nem 
 
 ## Ami nem Workers-natív
 
-**Felirat.** A `refinery fetch subtitle` ma `yt-dlp`-t indít. Az edge-ről a
-YouTube timedtext gyakran elhasal. Első körben egy caption-HTTP hívás a
-Workflowban, és ha 403 jön, egy otthoni `yt-dlp` fallback vagy egy
-feliratszolgáltatás. Enélkül a bot csak „nincs felirat” üzeneteket küld.
+**Felirat.** A Worker nem tudja lefuttatni a mostani fetch-et. A
+`src/fetch/subtitle/ytdlp.ts` folyamatot indít: `--skip-download --write-subs
+--write-auto-subs --write-info-json`. A YouTube timedtext végpontja az
+adatközponti IP-ket és a nem böngészős TLS-ujjlenyomatot gyakran elutasítja:
+„not a bot”, vagy üres felirat a válasz. A lakossági gépről ugyanaz a `yt-dlp`
+működik. A két út ezt a rést hidalja át; a csővezeték utána ugyanazt a `.vtt`-t
+kapja. A hivatalos YouTube `captions.download` kiesik: a videó tulajdonosának
+jogát kéri, idegen videóra nem ad feliratot.
 
 **Modell.** A Worker a helyi LiteLLM-et nem látja. Vagy a gateway publikus és
 kulcsos, vagy a Workflow közvetlenül a providerhez beszél. A rubrika minősége
 miatt ez nem Workers AI-ra cserélendő.
+
+## Felirat: otthoni yt-dlp fallback
+
+Egy vékony HTTP-szolgáltatás azon a gépen, ahol a `yt-dlp` ma is fut. A Workflow
+először az edge-ről próbálja a feliratot. Ha 403, 429 vagy üres a törzs, ezt
+hívja, és a választ az R2-be teszi.
+
+A szerződés egy videó, nem egy parancssor:
+
+```text
+POST /subtitle
+{ "url": "https://www.youtube.com/watch?v=...", "langs": ["hu", "en"] }
+
+200
+{ "id": "...", "title": "...", "channel": "...",
+  "language": "hu", "kind": "creator" | "auto",
+  "vtt": "...", "info": { } }
+```
+
+Belül a meglévő `videoProbeArgs` és `downloadArgs` fut, a kimenet a válaszba
+kerül, nem a lemezre. A playlist-bontás marad a Workflowban: a szolgáltatás egy
+videót szolgál ki, különben egy üzenet órákig tartja a folyamatot.
+
+Elérni Cloudflare Tunnelen érdemes, nem portnyitással. A `cloudflared` kifelé
+csatlakozik, a Worker a belső hosztnevet hívja. A hitelesítés Access service token
+vagy egy hosszú közös titok a fejléchez. A végpont nem kerül nyilvános internetre,
+és nem fogad tetszőleges shell-parancsot, csak YouTube-címet és nyelvkódot.
+
+A gépnek fent kell lennie. Ha alszik, a Workflow a lépést átmeneti hibának veszi,
+és később újrapróbálja. A Telegram addig azt írja, hogy a felirat a helyi
+letöltőre vár. A `yt-dlp`-t pinnelni kell, és a `curl_cffi` extra is kell hozzá:
+anélkül a metaadat megjön, a felirat viszont üres, mert a PO-tokenes kliensre esik
+vissza.
+
+Ez a kisebb eltérés a mostani kódtól. Ugyanaz a bináris, ugyanaz a formátum, nulla
+feliratdíj. Az ára az, hogy a pipeline egy otthoni gépre vár.
+
+## Felirat: feliratszolgáltatás
+
+Itt egy külső fél oldja meg az IP- és ujjlenyomat-problémát. A Workflow ugyanezt a
+szerződést hívja, csak a hoszt nem a saját gép. Három fajta van, és nem
+csereszabatosak.
+
+A saját fetcher plusz lakossági proxy azt jelenti, hogy a timedtext-hívás egy
+lakossági proxy mögül megy. Havi néhány dollár, a kód saját, a proxy használati
+feltétele és a YouTube botvédelme a kockázat. Adatközponti vagy „static
+residential” proxy nem elég: ugyanaz a blokk, mint a Workerről.
+
+A hosztolt transcript-API videoazonosítót és nyelvet vár, VTT-t vagy json3-at ad.
+Nincs saját gép, nincs `yt-dlp`. Cserébe hívásonként fizetendő, a szerzői és az
+automatikus felirat megkülönböztetése a szolgáltatótól függ, és ha ők elromlanak
+vagy árat emelnek, a fetch velük romlik. A rubrika ettől nem változik, de a bemenet
+minősége igen.
+
+A szerződés legyen ugyanaz, mint a házi szolgáltatásé. Akkor a Workflow nem tudja,
+melyik implementáció válaszolt, és a kettő egymás fallbackje lehet.
+
+## Felirat: sorrend
+
+Az edge-próba maradjon első, mert olcsó és néha elég. A második a házi `yt-dlp`:
+a formátumot már a repó ismeri, a lakossági IP megvan, és egy személyes appnál a gép
+ébrenléte vállalható. Szolgáltatást akkor érdemes elé tenni, ha a gép gyakran alszik,
+vagy a feldolgozás nem függhet egy otthoni folyamattól. A kettő együtt is működik:
+edge, utána szolgáltatás, utána házi `yt-dlp`, és csak a harmadik bukás „nincs
+felirat”.
 
 ## Olvasó oldal
 
@@ -117,3 +187,6 @@ igen, de nincs rájuk válasz:
 - a vault már létező privát repo-e, amit az Obsidian Git szinkronizál;
 - a LiteLLM marad-e a modellút, vagy a Workflow közvetlenül a providerhez beszél;
 - csak egy olvasója van-e az oldalnak.
+
+A felirat sorrendje sem eldöntött. A jegyzet alapállása: edge, utána házi `yt-dlp`,
+szolgáltatás csak ha a gép ébrenléte nem vállalható.
