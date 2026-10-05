@@ -12,10 +12,16 @@ együtt ez a dokumentáció a projekt egyik terméke, nem melléktermék.
 | [`decisions/`](<./decisions/>) | egy rekord minden érdemben vitatott döntésről |
 | [`plans/`](<./plans/>) | fázisonkénti implementációs tervek, feladatokra bontva |
 
-A [`plans/2026-10-04-telegram-cloudflare-beszelgetes.md`](<./plans/2026-10-04-telegram-cloudflare-beszelgetes.md>)
-nem terv, hanem egy tervezőbeszélgetés jegyzete: Telegram-vezérlés, Cloudflare
-Workflow-mag, Access mögötti olvasó oldal, commit a privát vault-repóba. Döntés
-még nincs róla.
+A [`plans/2026-10-04-telegram-cloudflare-brief.md`](<./plans/2026-10-04-telegram-cloudflare-brief.md>)
+a Telegram-vezérlés, a `peter-mba` refinery-konténer, az Access mögötti
+olvasó oldal és a vault-commit briefje. A
+[`plans/2026-10-04-telegram-cloudflare-spec.md`](<./plans/2026-10-04-telegram-cloudflare-spec.md>)
+az első szelet spece, a
+[`plans/2026-10-04-telegram-cloudflare.md`](<./plans/2026-10-04-telegram-cloudflare.md>)
+pedig a hozzá tartozó implementációs terv. A saját chat videóját a `refinery serve` tölti fel az
+R2-be, a kiírt feliratfájllal és az `info.json` fájllal. A Worker a konténert
+hívja, a magot nem futtatja. A vault, a recept és a `run` a későbbi szelet.
+Implementáció nem indult.
 
 ## A döntések
 
