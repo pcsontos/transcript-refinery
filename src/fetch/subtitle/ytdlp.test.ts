@@ -7,6 +7,7 @@ import { commandFetch } from '../command.js'
 import {
   createYtdlpRunner,
   downloadArgs,
+  originalSubtitleLang,
   parsePlaylistProbe,
   parseVideoProbe,
   playlistProbeArgs,
@@ -35,6 +36,8 @@ describe('yt-dlp argumentumok', () => {
       '--no-playlist',
       '--no-progress',
       '--no-overwrites',
+      '--js-runtimes',
+      'node',
       '--paths',
       'home:/out/Csatorna',
       '-o',
@@ -69,15 +72,74 @@ describe('yt-dlp argumentumok', () => {
       '--',
       'https://www.youtube.com/playlist?list=PLxxx',
     ])
-    expect(videoProbeArgs('https://www.youtube.com/watch?v=abcdefghijk')).toContain('--no-playlist')
+    expect(videoProbeArgs('https://www.youtube.com/watch?v=abcdefghijk')).toEqual([
+      '-J',
+      '--no-playlist',
+      '--skip-download',
+      '--no-progress',
+      '--js-runtimes',
+      'node',
+      '--',
+      'https://www.youtube.com/watch?v=abcdefghijk',
+    ])
   })
 
-  it('a probe a channelt, annak híján az uploadert olvassa', () => {
+  it('a probe a channelt, annak híján az uploadert olvassa, és a feliratsávok kulcsait', () => {
     expect(parseVideoProbe('{"id":"abcdefghijk","uploader":"Feltöltő","title":"Cím"}')).toEqual({
       id: 'abcdefghijk',
       title: 'Cím',
       channel: 'Feltöltő',
+      manualLangs: [],
+      automaticLangs: [],
     })
+    expect(
+      parseVideoProbe(
+        '{"id":"abcdefghijk","language":"en","subtitles":{"en":[{}]},"automatic_captions":{"en-orig":[{}],"hu":[{}]}}',
+      ),
+    ).toMatchObject({
+      language: 'en',
+      manualLangs: ['en'],
+      automaticLangs: ['en-orig', 'hu'],
+    })
+  })
+
+  it('az eredeti nyelv a videó nyelve, a fordított automatikus sáv kimarad', () => {
+    expect(
+      originalSubtitleLang({
+        language: 'en',
+        manualLangs: [],
+        automaticLangs: ['en', 'en-orig', 'hu'],
+      }),
+    ).toBe('en-orig')
+    expect(
+      originalSubtitleLang({
+        language: 'en',
+        manualLangs: [],
+        automaticLangs: ['en', 'hu'],
+      }),
+    ).toBe('en')
+    expect(
+      originalSubtitleLang({
+        language: 'en',
+        manualLangs: ['hu'],
+        automaticLangs: ['en-orig', 'hu'],
+      }),
+    ).toBe('en-orig')
+    expect(
+      originalSubtitleLang({
+        language: 'hu',
+        manualLangs: ['hu'],
+        automaticLangs: ['en'],
+      }),
+    ).toBe('hu')
+    expect(
+      originalSubtitleLang({
+        language: 'de',
+        manualLangs: [],
+        automaticLangs: ['en', 'hu'],
+      }),
+    ).toBeNull()
+    expect(originalSubtitleLang({ manualLangs: ['en'], automaticLangs: ['en'] })).toBeNull()
     expect(parseVideoProbe('{"id":"rovid"}')).toBeNull()
     expect(parsePlaylistProbe('{"id":"PLxxx","title":"Kurzus","entries":[{"title":"nincs id"}]}')).toEqual({
       id: 'PLxxx',
@@ -104,7 +166,7 @@ describe('yt-dlp argumentumok', () => {
 const args = process.argv.slice(2)
 if (args[0] === '--version') process.exit(0)
 if (args.includes('-J')) {
-  process.stdout.write(JSON.stringify({ id: 'abcdefghijk', title: 'Video', channel: 'Chan' }))
+  process.stdout.write(JSON.stringify({ id: 'abcdefghijk', title: 'Video', channel: 'Chan', language: 'hu', subtitles: { hu: [{}] } }))
   process.exit(0)
 }
 const home = args[args.indexOf('--paths') + 1].replace(/^home:/, '')

@@ -52,29 +52,37 @@ async function remoteReady(
   languages: readonly string[],
 ): Promise<{ complete: boolean; title: string }> {
   const keys = await store.list(`videos/${videoId}/`)
-  let subtitle = false
+  const found: string[] = []
   let infoOk = false
+  let infoLanguage: string | undefined
   let title = videoId
   for (const key of keys) {
     const name = key.slice(`videos/${videoId}/`.length)
     const sub = SUB_NAME.exec(name)
-    if (sub?.[1] !== undefined && languageMatches(sub[1], languages)) {
+    if (sub?.[1] !== undefined) {
       const body = await store.get(key)
-      if (body !== null && body.byteLength > 0) subtitle = true
+      if (body !== null && body.byteLength > 0) found.push(sub[1])
     }
     if (name !== 'info.json') continue
     const body = await store.get(key)
     if (body === null || body.byteLength === 0) continue
     try {
-      const raw = JSON.parse(new TextDecoder().decode(body)) as { id?: unknown; title?: unknown }
+      const raw = JSON.parse(new TextDecoder().decode(body)) as {
+        id?: unknown
+        title?: unknown
+        language?: unknown
+      }
       if (raw.id !== videoId) continue
       infoOk = true
+      infoLanguage = typeof raw.language === 'string' && raw.language.trim() !== '' ? raw.language : undefined
       const text = typeof raw.title === 'string' ? raw.title : ''
       title = text.trim() === '' ? videoId : text
     } catch {
       infoOk = false
     }
   }
+  const accepted = infoLanguage ? [infoLanguage] : languages
+  const subtitle = found.some((tag) => languageMatches(tag, accepted))
   return { complete: subtitle && infoOk, title }
 }
 

@@ -17,8 +17,11 @@ export function versionArgs(): string[] {
   return ['--version']
 }
 
+/** A konténerképen a Node van, a yt-dlp alapból csak a Denót kapcsolja be. */
+const JS_RUNTIME = ['--js-runtimes', 'node'] as const
+
 export function videoProbeArgs(url: string): string[] {
-  return ['-J', '--no-playlist', '--skip-download', '--no-progress', '--', url]
+  return ['-J', '--no-playlist', '--skip-download', '--no-progress', ...JS_RUNTIME, '--', url]
 }
 
 export function playlistProbeArgs(url: string, playlistItems?: string): string[] {
@@ -52,6 +55,7 @@ export function downloadArgs(input: {
     '--no-playlist',
     '--no-progress',
     input.overwrite ? '--force-overwrites' : '--no-overwrites',
+    ...JS_RUNTIME,
     '--paths',
     `home:${input.dest}`,
     '-o',
@@ -65,17 +69,63 @@ export interface VideoProbe {
   id: string
   title?: string
   channel?: string
+  language?: string
+  manualLangs: string[]
+  automaticLangs: string[]
 }
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
 }
 
+function langKeys(value: unknown): string[] {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return []
+  return Object.keys(value).filter((key) => key !== '')
+}
+
+function bestTag(language: string, tags: readonly string[]): string | null {
+  const wanted = language.toLowerCase()
+  const matching = tags.filter((tag) => tag.toLowerCase().startsWith(wanted))
+  if (matching.length === 0) return null
+  return (
+    matching.find((tag) => tag.toLowerCase() === `${wanted}-orig`) ??
+    matching.find((tag) => tag.toLowerCase() === wanted) ??
+    matching[0] ??
+    null
+  )
+}
+
+/** A yt-dlp `--sub-langs` értéke: a videó saját nyelvén lévő kézi vagy eredeti automatikus sáv. */
+export function originalSubtitleLang(probe: {
+  language?: string
+  manualLangs: readonly string[]
+  automaticLangs: readonly string[]
+}): string | null {
+  const language = probe.language?.trim()
+  if (!language) return null
+  return bestTag(language, probe.manualLangs) ?? bestTag(language, probe.automaticLangs)
+}
+
 export function parseVideoProbe(stdout: string): VideoProbe | null {
   try {
-    const raw = JSON.parse(stdout) as { id?: unknown; title?: unknown; channel?: unknown; uploader?: unknown }
+    const raw = JSON.parse(stdout) as {
+      id?: unknown
+      title?: unknown
+      channel?: unknown
+      uploader?: unknown
+      language?: unknown
+      subtitles?: unknown
+      automatic_captions?: unknown
+    }
     if (typeof raw.id !== 'string' || !VIDEO_ID.test(raw.id)) return null
-    return { id: raw.id, title: text(raw.title), channel: text(raw.channel) ?? text(raw.uploader) }
+    return {
+      id: raw.id,
+      title: text(raw.title),
+      channel: text(raw.channel) ?? text(raw.uploader),
+      language: text(raw.language),
+      manualLangs: langKeys(raw.subtitles),
+      automaticLangs: langKeys(raw.automatic_captions),
+    }
   } catch {
     return null
   }

@@ -45,6 +45,25 @@ describe('readLocalPair', () => {
     expect(pair.title).toBe('Cím')
   })
 
+  it('a videó nyelve kész, akkor is, ha a config listáján nincs', async () => {
+    await setup()
+    await writeFile(join(dir, `Cím [${ID}].de.vtt`), 'WEBVTT\n')
+    await writeFile(join(dir, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')
+    await writeFile(join(dir, `Cím [${ID}].info.json`), JSON.stringify({ id: ID, title: 'Cím', language: 'de' }))
+    const pair = await readLocalPair(dir, ID, ['hu', 'en'])
+    expect(pair.complete).toBe(true)
+    expect(pair.files.map((file) => file.language)).toEqual(['de'])
+  })
+
+  it('az info nyelve mellett a fordított sáv nem készít párt', async () => {
+    await setup()
+    await writeFile(join(dir, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')
+    await writeFile(join(dir, `Cím [${ID}].info.json`), JSON.stringify({ id: ID, title: 'Cím', language: 'en' }))
+    const pair = await readLocalPair(dir, ID, ['hu', 'en'])
+    expect(pair.complete).toBe(false)
+    expect(pair.files).toEqual([])
+  })
+
   it('az en kérésre az en-US fájl illik', async () => {
     await setup()
     await writeFile(join(dir, `Cím [${ID}].en-US.vtt`), 'WEBVTT\n')

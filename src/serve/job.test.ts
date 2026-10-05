@@ -67,6 +67,34 @@ describe('runJob', () => {
     expect(callbacks).toEqual([{ status: 'ready', title: 'Kész cím' }])
   })
 
+  it('az R2-ben a videó nyelve elég, a config lista nélkül is', async () => {
+    const info = new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Német', language: 'de' }))
+    const store = memoryStore({
+      [`videos/${ID}/de.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: info,
+    })
+    const calls: string[] = []
+    const callbacks: CallbackBody[] = []
+    await runJob(job, {
+      store,
+      languages: ['hu', 'en'],
+      readPair: () => Promise.resolve(pair({})),
+      deletePair: () => Promise.resolve(),
+      readFile: () => Promise.resolve(info),
+      fetchSubtitle: () => {
+        calls.push('fetch')
+        return Promise.resolve({ code: 0, stdout: '', stderr: '' })
+      },
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    expect(calls).toEqual([])
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Német' }])
+  })
+
   it('hiányos helyi párt töröl, majd letölt', async () => {
     const store = memoryStore()
     const calls: string[] = []
