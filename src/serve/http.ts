@@ -67,6 +67,7 @@ async function handle(
     return
   }
   if (!authorized(request.headers.authorization, input.secret)) {
+    console.warn(`[serve] 401 Jogosulatlan kérés: ${request.headers['x-forwarded-for'] ?? request.socket.remoteAddress}`)
     send(response, 401)
     return
   }
@@ -74,15 +75,18 @@ async function handle(
   try {
     body = JSON.parse(await readBody(request)) as unknown
   } catch {
+    console.warn(`[serve] 400 Hibás JSON body`)
     send(response, 400)
     return
   }
   if (!isJob(body)) {
+    console.warn(`[serve] 400 Nem érvényes ServeJob body`)
     send(response, 400)
     return
   }
   const fresh = input.gate.current === null
   const status = acceptJob(input.gate, body.jobId)
+  console.log(`[serve] POST /jobs: jobId=${body.jobId} videoId=${body.videoId} -> HTTP ${status} (fresh=${fresh})`)
   if (status === 202 && fresh) {
     void Promise.resolve()
       .then(() => input.onJob(body))

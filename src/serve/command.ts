@@ -64,32 +64,57 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
     deletePair: (videoId) => deleteLocalPair(outDir, videoId),
     readFile: async (path) => new Uint8Array(await readFile(path)),
     fetchSubtitle: async (url) => {
+      console.log(`[serve] Letöltés indítása yt-dlp-vel: ${url}`)
       const stdout: string[] = []
       const stderr: string[] = []
       const code = await commandFetch(subtitleArgv(url, outDir), {
-        stdout: (line) => stdout.push(line),
-        stderr: (line) => stderr.push(line),
+        stdout: (line) => {
+          console.log(`  [fetch] ${line}`)
+          stdout.push(line)
+        },
+        stderr: (line) => {
+          console.error(`  [fetch:err] ${line}`)
+          stderr.push(line)
+        },
       })
+      console.log(`[serve] Letöltés kész, kilépési kód: ${code}`)
       return { code, stdout: stdout.join('\n'), stderr: stderr.join('\n') }
     },
     callback: async (jobId, body) => {
-      await fetch(`${callbackBase}/internal/jobs/${encodeURIComponent(jobId)}`, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      })
+      console.log(`[serve] Visszahívás a Worker felé: ${jobId} -> ${JSON.stringify(body)}`)
+      try {
+        const response = await fetch(`${callbackBase}/internal/jobs/${encodeURIComponent(jobId)}`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        console.log(`[serve] Visszahívás válaszkód: ${response.status}`)
+      } catch (err) {
+        console.error(`[serve] Visszahívás hiba:`, err instanceof Error ? err.message : err)
+      }
     },
   }
   const gate: ServeGate = { current: null }
   const server = createServeServer({
     secret,
     gate,
-    onJob: (job: ServeJob) => runJob(job, effects),
+    onJob: async (job: ServeJob) => {
+      console.log(`[serve] Munka végrehajtása indult: ${job.jobId} (${job.url})`)
+      try {
+        await runJob(job, effects)
+        console.log(`[serve] Munka kész: ${job.jobId}`)
+      } catch (err) {
+        console.error(`[serve] Munka sikertelen: ${job.jobId}:`, err)
+      }
+    },
   })
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
-      server.listen(port, host, () => resolve())
+      server.listen(port, host, () => {
+        console.log(`[serve] Refinery daemon elindult: http://${host}:${port}`)
+        resolve()
+      })
     })
   } catch (cause) {
     console.error(cause instanceof Error ? cause.message : 'A serve port nem nyílt meg.')
