@@ -12,9 +12,9 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && git config --system --add safe.directory '*' \
  && if [ "$TARGETARCH" = "arm64" ]; then \
-      curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux_aarch64 -o /usr/local/bin/yt-dlp; \
+      curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_linux_aarch64 -o /usr/local/bin/yt-dlp; \
     else \
-      curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux -o /usr/local/bin/yt-dlp; \
+      curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_linux -o /usr/local/bin/yt-dlp; \
     fi \
  && chmod 755 /usr/local/bin/yt-dlp
 WORKDIR /app
