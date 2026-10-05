@@ -30,12 +30,13 @@ function languageMatches(tag: string, languages: readonly string[]): boolean {
   return languages.some((wanted) => lower.startsWith(wanted.toLowerCase()))
 }
 
-async function readInfo(path: string): Promise<{ id: string | null; title: string }> {
+async function readInfo(path: string): Promise<{ id: string | null; title: string; language?: string }> {
   try {
-    const raw = JSON.parse(await readFile(path, 'utf8')) as { id?: unknown; title?: unknown }
+    const raw = JSON.parse(await readFile(path, 'utf8')) as { id?: unknown; title?: unknown; language?: unknown }
     const id = typeof raw.id === 'string' ? raw.id : null
     const title = typeof raw.title === 'string' ? raw.title : ''
-    return { id, title }
+    const language = typeof raw.language === 'string' && raw.language.trim() !== '' ? raw.language : undefined
+    return { id, title, language }
   } catch {
     return { id: null, title: '' }
   }
@@ -54,24 +55,20 @@ export async function readLocalPair(
   } catch {
     return empty
   }
-  const files: SubtitleFile[] = []
+  const found: SubtitleFile[] = []
   let infoPath: string | null = null
   let title = videoId
   let infoOk = false
+  let infoLanguage: string | undefined
   for (const name of names) {
     const sub = SUB.exec(name)
-    if (
-      sub?.[2] === videoId &&
-      sub[3] !== undefined &&
-      sub[4] !== undefined &&
-      languageMatches(sub[3], languages)
-    ) {
+    if (sub?.[2] === videoId && sub[3] !== undefined && sub[4] !== undefined) {
       const absolutePath = join(dir, name)
       const file = await stat(absolutePath)
       if (file.size > 0) {
         const extension = sub[4].toLowerCase()
         if (extension === 'vtt' || extension === 'srt') {
-          files.push({ language: sub[3], extension, absolutePath })
+          found.push({ language: sub[3], extension, absolutePath })
         }
       }
     }
@@ -82,10 +79,13 @@ export async function readLocalPair(
       const info = await readInfo(path)
       if (info.id === videoId) {
         infoOk = true
+        infoLanguage = info.language
         title = info.title.trim() === '' ? videoId : info.title
       }
     }
   }
+  const accepted = infoLanguage ? [infoLanguage] : languages
+  const files = found.filter((file) => languageMatches(file.language, accepted))
   return { complete: files.length > 0 && infoOk, title, files, infoPath }
 }
 

@@ -8,6 +8,17 @@ import type { ProcessResult, ProcessRunner } from './subtitle/ytdlp.js'
 const ID = 'abcdefghijk'
 const URL = `https://www.youtube.com/watch?v=${ID}`
 
+function probeJson(over: Record<string, unknown> = {}): string {
+  return JSON.stringify({
+    id: ID,
+    title: 'Cím',
+    channel: 'Csatorna',
+    language: 'hu',
+    subtitles: { hu: [{}] },
+    ...over,
+  })
+}
+
 function io() {
   const out: string[] = []
   const err: string[] = []
@@ -57,7 +68,7 @@ describe('commandFetch egy videóra', () => {
       seen.push([...args])
       if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
       if (args.includes('--no-playlist') && args.includes('-J')) {
-        return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }), stderr: '' }
+        return { code: 0, stdout: probeJson(), stderr: '' }
       }
       const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
       await mkdir(dest, { recursive: true })
@@ -88,7 +99,7 @@ describe('commandFetch egy videóra', () => {
       if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
       return Promise.resolve({
         code: 0,
-        stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }),
+        stdout: probeJson(),
         stderr: '',
       })
     })
@@ -109,7 +120,7 @@ describe('commandFetch egy videóra', () => {
       seen.push([...args])
       if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
       if (args.includes('-J')) {
-        return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }), stderr: '' }
+        return { code: 0, stdout: probeJson(), stderr: '' }
       }
       const home = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
       expect(await readFile(join(home, `Cím [${ID}].hu.vtt`), 'utf8')).toBe('WEBVTT\n')
@@ -130,7 +141,7 @@ describe('commandFetch egy videóra', () => {
       if (args.includes('-J')) {
         return Promise.resolve({
           code: 0,
-          stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }),
+          stdout: probeJson(),
           stderr: '',
         })
       }
@@ -198,7 +209,7 @@ describe('commandFetch egy videóra', () => {
     const { calls, runner } = runnerOf(async (args, seen) => {
       seen.push([...args])
       if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
-      if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }), stderr: '' }
+      if (args.includes('-J')) return { code: 0, stdout: probeJson(), stderr: '' }
       const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
       expect(dest).toBe(out)
       await writeFile(join(dest, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')
@@ -224,7 +235,7 @@ describe('commandFetch egy videóra', () => {
     const { calls, runner } = runnerOf(async (args, seen) => {
       seen.push([...args])
       if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
-      if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }), stderr: '' }
+      if (args.includes('-J')) return { code: 0, stdout: probeJson(), stderr: '' }
       const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
       await mkdir(dest, { recursive: true })
       await writeFile(join(dest, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')
@@ -235,7 +246,7 @@ describe('commandFetch egy videóra', () => {
     expect(await commandFetch(['subtitle', URL, '--config', config], { ...streams, runner })).toBe(0)
     const download = calls.find((args) => args.includes('--write-subs'))
     expect(download).toContain('--sub-langs')
-    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('hu,en')
+    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('hu')
     expect(download).toContain(`home:${join(source, 'Csatorna')}`)
   })
 
@@ -245,7 +256,7 @@ describe('commandFetch egy videóra', () => {
     const { calls, runner } = runnerOf(async (args, seen) => {
       seen.push([...args])
       if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
-      if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }), stderr: '' }
+      if (args.includes('-J')) return { code: 0, stdout: probeJson(), stderr: '' }
       const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
       await mkdir(dest, { recursive: true })
       await writeFile(join(dest, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')
@@ -256,7 +267,78 @@ describe('commandFetch egy videóra', () => {
     expect(await commandFetch(['subtitle', URL, '--out', out, '--flat'], { ...streams, runner })).toBe(0)
     const download = calls.find((args) => args.includes('--write-subs'))
     expect(download).toContain('--sub-langs')
-    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('hu,en')
+    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('hu')
+  })
+
+  it('angol videón az automatikus hu kimarad, az en letöltődik', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-en-'))
+    const { calls, runner } = runnerOf(async (args, seen) => {
+      seen.push([...args])
+      if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
+      if (args.includes('-J')) {
+        return {
+          code: 0,
+          stdout: probeJson({
+            language: 'en',
+            subtitles: {},
+            automatic_captions: { en: [{}], hu: [{}] },
+          }),
+          stderr: '',
+        }
+      }
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      await mkdir(dest, { recursive: true })
+      await writeFile(join(dest, `Cím [${ID}].en.vtt`), 'WEBVTT\n')
+      await writeFile(join(dest, `Cím [${ID}].info.json`), JSON.stringify({ id: ID, language: 'en' }))
+      return { code: 0, stdout: '', stderr: '' }
+    })
+    const streams = io()
+    expect(await commandFetch(['subtitle', URL, '--out', out, '--sub-lang', 'hu,en', '--flat'], { ...streams, runner })).toBe(0)
+    const download = calls.find((args) => args.includes('--write-subs'))
+    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('en')
+    expect(streams.out[0]).toBe(`[OK]   Cím [${ID}]`)
+  })
+
+  it('ha csak fordított sáv van, letöltés nélkül Nincs felirat', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-tr-'))
+    const { calls, runner } = runnerOf((args, seen) => {
+      seen.push([...args])
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
+      return Promise.resolve({
+        code: 0,
+        stdout: probeJson({ language: 'en', subtitles: {}, automatic_captions: { hu: [{}] } }),
+        stderr: '',
+      })
+    })
+    const streams = io()
+    expect(await commandFetch(['subtitle', URL, '--out', out, '--sub-lang', 'hu,en', '--flat'], { ...streams, runner })).toBe(1)
+    expect(calls.some((args) => args.includes('--write-subs'))).toBe(false)
+    expect(streams.out[0]).toBe(`[SKIP] Nincs felirat: Cím [${ID}]`)
+  })
+
+  it('a német videó de felirata kész, akkor is, ha a kért lista hu,en', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-de-'))
+    const { calls, runner } = runnerOf(async (args, seen) => {
+      seen.push([...args])
+      if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
+      if (args.includes('-J')) {
+        return {
+          code: 0,
+          stdout: probeJson({ language: 'de', subtitles: {}, automatic_captions: { de: [{}], en: [{}] } }),
+          stderr: '',
+        }
+      }
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      await mkdir(dest, { recursive: true })
+      await writeFile(join(dest, `Cím [${ID}].de.vtt`), 'WEBVTT\n')
+      await writeFile(join(dest, `Cím [${ID}].info.json`), JSON.stringify({ id: ID, language: 'de' }))
+      return { code: 0, stdout: '', stderr: '' }
+    })
+    const streams = io()
+    expect(await commandFetch(['subtitle', URL, '--out', out, '--sub-lang', 'hu,en', '--flat'], { ...streams, runner })).toBe(0)
+    const download = calls.find((args) => args.includes('--write-subs'))
+    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('de')
+    expect(streams.out[0]).toBe(`[OK]   Cím [${ID}]`)
   })
 })
 
@@ -273,7 +355,7 @@ describe('listafájl és köteg', () => {
       if (args.includes('-J')) {
         return Promise.resolve({
           code: 0,
-          stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }),
+          stdout: probeJson(),
           stderr: '',
         })
       }
@@ -324,6 +406,7 @@ describe('lejátszási lista', () => {
           stderr: '',
         })
       }
+      if (args.includes('-J')) return Promise.resolve({ code: 0, stdout: probeJson({ title: 'Első' }), stderr: '' })
       downloads.push(args[args.indexOf('--paths') + 1] ?? '')
       const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
       return (async () => {
@@ -356,6 +439,7 @@ describe('lejátszási lista', () => {
           stderr: '',
         })
       }
+      if (args.includes('-J')) return Promise.resolve({ code: 0, stdout: probeJson({ title: 'Van' }), stderr: '' })
       downloads += 1
       const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
       return (async () => {
@@ -385,7 +469,7 @@ describe('lejátszási lista', () => {
         if (probes === 2) return Promise.reject(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }))
         return Promise.resolve({
           code: 0,
-          stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }),
+          stdout: probeJson(),
           stderr: '',
         })
       }
@@ -415,7 +499,7 @@ describe('megszakítás és védelem', () => {
       if (args.includes('-J')) {
         return Promise.resolve({
           code: 0,
-          stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }),
+          stdout: probeJson(),
           stderr: '',
         })
       }
