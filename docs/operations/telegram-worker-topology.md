@@ -130,16 +130,73 @@ Ha feltétlenül szükséges, hogy a valós Telegram appból a te helyi Worker p
 
 ---
 
-## 4. Üzemeltetési és ellenőrző parancsok
+---
 
-### Telegram Webhook állapot ellenőrzése
+## 4. A Bot bemenetei és viselkedése
+
+A botnak nincsenek hagyományos `/parancsai`; a beérkező üzenetet szóközök mentén szavakra bontja, és minden elemet önállóan értékel (`worker/src/plan.ts`):
+
+| Bemenet formátuma | Feldolgozás módja | Bot válasza |
+|---|---|---|
+| **YouTube videó URL** (`watch?v=...`, `youtu.be/...`) | Felveszi a feldolgozási sorba, elindítja a kopogtatást | `Sorba került: <id>` |
+| **11 karakteres videó ID** (pl. `dQw4w9WgXcQ`) | Felismeri videóként, feldolgozza | `Sorba került: <id>` |
+| **Több videó egy üzenetben** | Mindegyik videót külön elemként sorba rendezi | Többsoros válasz mindegyik státuszával |
+| **Már sorban lévő videó** | Megelőzi a duplikációt | `Már sorban van: <id>.` |
+| **Lejátszási lista URL** | Jelenleg kihagyja | `Lejátszási lista későbbre marad.` |
+| **Nem YouTube webcím** | Érvénytelen forrásként jelzi | `Nem YouTube-cím.` |
+| **Bármilyen egyéb szöveg** | Nem indít feladatot | `Nincs YouTube-videó az üzenetben.` |
+
+### Életciklus üzenetek a chaten:
+- **Ha a peter-mba nem érhető el**: `A gép ébredésére vár: <id>.` (a háttérben futó percenkénti Cloudflare Cron újra próbálkozik).
+- **Sikeres letöltés és R2 feltöltés**: `<cím>. A felirat megvan.`
+- **Hiba**: a démon által visszaküldött hibaüzenet (pl. `Nincs felirat` vagy `A konténer elutasította a hívást.`).
+
+> [!NOTE]
+> **Biztonsági szűrés**: A bot kizárólag a `TELEGRAM_OWNER_CHAT_ID` azonosítójú privát chatből fogad el parancsokat. Bármely más felhasználótól vagy csoportból érkező üzenetet a Worker válasz nélkül, csendben eldob (`HTTP 200`).
+
+---
+
+## 5. Telegram Bot API kezelése curl-lel
+
+A bot webhookját és állapotát közvetlenül a hivatalos Telegram Bot API-n keresztül tudod felügyelni. A titkokat érdemes a `worker/.dev.vars`-ból betölteni a munkamenetbe:
+
 ```bash
-curl -s "https://api.telegram.org/bot<TOKEN>/getWebhookInfo" | jq
+set -a; source worker/.dev.vars; set +a
+API="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
 ```
-*Mit érdemes nézni?*
-- `url`: a helyes worker URL-re mutat-e.
-- `pending_update_count`: 0-e (ha nő, a worker nem válaszol 200-zal).
-- `last_error_message`: volt-e átviteli vagy 500-as hiba.
+
+### Gyakran használt Bot API hívások
+
+| Művelet | Parancs | Megjegyzés |
+|---|---|---|
+| **Webhook állapot lekérdezése** | `curl -s "$API/getWebhookInfo" \| jq` | Mutatja a regisztrált URL-t, a függő üzenetek számát és az utolsó hibát. |
+| **Webhook beállítása az éles Workerre** | `curl -s "$API/setWebhook" -F "url=https://transcript-refinery.peteroncode.workers.dev/telegram" -F "secret_token=$TELEGRAM_WEBHOOK_SECRET" -F "allowed_updates=[\"message\"]" -F "drop_pending_updates=true"` | Beállítja a webhook URL-t, a hitelesítő tokent, és eldobja az esetleg felgyülemlett hibás frissítéseket. |
+| **Webhook törlése** | `curl -s "$API/deleteWebhook?drop_pending_updates=true"` | Eltávolítja a webhookot. Szükséges, ha kézzel szeretnéd lekérdezni a `getUpdates`-et. |
+| **Bot token ellenőrzése** | `curl -s "$API/getMe" \| jq` | Ellenőrzi, hogy a token él-e és visszaadja a bot nevét/adatait. |
+| **Frissítések lekérése kézzel (Chat ID kereséshez)** | `curl -s "$API/getUpdates" \| jq` | **Csak törölt webhook mellett működik!** Segít kideríteni a saját `chat_id`-dat, ha ráírsz a botra. |
+| **Közvetlen üzenetküldés tesztelése** | `curl -s "$API/sendMessage" -H "Content-Type: application/json" -d "{\"chat_id\": $TELEGRAM_OWNER_CHAT_ID, \"text\": \"Teszt üzenet\"}"` | Megkerüli a Workert, közvetlenül a chatedbe küld üzenetet a bot nevében. |
+
+---
+
+## 6. Worker webhook tesztelése curl-lel
+
+Ha a Telegram alkalmazás nélkül szeretnéd tesztelni a Cloudflare Worker webhook fogadását, közvetlenül beküldhetsz egy emulált Telegram update-et:
+
+```bash
+set -a; source worker/.dev.vars; set +a
+
+curl -i -X POST https://transcript-refinery.peteroncode.workers.dev/telegram \
+  -H "Content-Type: application/json" \
+  -H "X-Telegram-Bot-Api-Secret-Token: $TELEGRAM_WEBHOOK_SECRET" \
+  -d "{\"update_id\": $(date +%s), \"message\": {\"message_id\": 1, \"chat\": {\"id\": $TELEGRAM_OWNER_CHAT_ID}, \"text\": \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\"}}"
+```
+
+- **`update_id`**: Mindig egyedi számnak kell lennie (a fenti parancsban az aktuális epoch időbélyeg), mivel a Worker a már látott `update_id`-kat idempotensen eldobja.
+- **Lokális Worker tesztelése**: Ugyanez a kérés futtatható a `http://localhost:8788/telegram` címre is, ha a gépeden fut a `pnpm worker:dev`.
+
+---
+
+## 7. Üzemeltetési és ellenőrző parancsok
 
 ### Éles Cloudflare Worker élő naplózása
 ```bash
