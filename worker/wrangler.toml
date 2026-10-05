@@ -8,5 +8,5 @@ crons = ["* * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "transcript-refinery"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "4fd2c124-7dcf-42a9-9e65-2ee224113967"
 migrations_dir = "migrations"

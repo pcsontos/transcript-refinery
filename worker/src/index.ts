@@ -14,8 +14,10 @@ interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void
 }
 
-function sameText(actual: string, expected: string): boolean {
-  if (expected === '' || actual.length !== expected.length) return false
+function sameText(actual: string | undefined, expected: string | undefined): boolean {
+  if (typeof actual !== 'string' || typeof expected !== 'string' || expected === '' || actual.length !== expected.length) {
+    return false
+  }
   let diff = 0
   for (let index = 0; index < actual.length; index += 1) {
     diff |= actual.charCodeAt(index) ^ expected.charCodeAt(index)
