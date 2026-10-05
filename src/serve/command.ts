@@ -38,13 +38,18 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
     console.error('Hiányzó SERVE_PORT.')
     return 1
   }
-  let languages: readonly string[]
-  try {
-    const { cfg } = await loadCliConfig(undefined)
-    languages = cfg.languages.length > 0 ? cfg.languages : ['hu', 'en']
-  } catch (cause) {
-    console.error(cause instanceof Error ? cause.message : 'A konfiguráció nem olvasható.')
-    return 1
+  let languages: readonly string[] = ['hu', 'en']
+  if (env.REFINERY_SUB_LANG && env.REFINERY_SUB_LANG.trim() !== '') {
+    languages = env.REFINERY_SUB_LANG.split(',').map((s) => s.trim()).filter(Boolean)
+  } else {
+    try {
+      const { cfg } = await loadCliConfig(undefined)
+      if (cfg.languages && cfg.languages.length > 0) {
+        languages = cfg.languages
+      }
+    } catch {
+      // Dedikált serve konténerben vagy ha nincs refinery.config.yaml, az alapértelmezett ['hu', 'en'] érvényes.
+    }
   }
   const r2: R2Config = {
     accountId: env.R2_ACCOUNT_ID ?? '',

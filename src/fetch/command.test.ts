@@ -238,6 +238,26 @@ describe('commandFetch egy videóra', () => {
     expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('hu,en')
     expect(download).toContain(`home:${join(source, 'Csatorna')}`)
   })
+
+  it('ha nincs config fájl, de van --out, alapértelmezett hu,en nyelvekkel sikeres', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'fetch-nocfg-'))
+    const out = join(root, 'out')
+    const { calls, runner } = runnerOf(async (args, seen) => {
+      seen.push([...args])
+      if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
+      if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }), stderr: '' }
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      await mkdir(dest, { recursive: true })
+      await writeFile(join(dest, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')
+      await writeFile(join(dest, `Cím [${ID}].info.json`), JSON.stringify({ id: ID }))
+      return { code: 0, stdout: '', stderr: '' }
+    })
+    const streams = io()
+    expect(await commandFetch(['subtitle', URL, '--out', out, '--flat'], { ...streams, runner })).toBe(0)
+    const download = calls.find((args) => args.includes('--write-subs'))
+    expect(download).toContain('--sub-langs')
+    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('hu,en')
+  })
 })
 
 describe('listafájl és köteg', () => {

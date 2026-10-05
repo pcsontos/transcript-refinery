@@ -126,21 +126,25 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
     out = args.out
     languages = args.subLang
   } else {
-    let loaded
+    let loaded: { cfg: { sources: { path: string }[]; languages?: string[] } } | null = null
     try {
       loaded = await loadCliConfig(args.config)
     } catch (error) {
-      stderr((error as Error).message)
-      return 1
+      if (args.config === undefined && args.out !== undefined) {
+        loaded = null
+      } else {
+        stderr((error as Error).message)
+        return 1
+      }
     }
-    const cfg = loaded.cfg
-    const resolvedOut = args.out ?? cfg.sources[0]?.path
+    const cfg = loaded?.cfg
+    const resolvedOut = args.out ?? cfg?.sources[0]?.path
     if (!resolvedOut) {
       stderr('Nincs célmappa: adj meg --out kapcsolót vagy config sources elemet.')
       return 1
     }
     out = resolvedOut
-    languages = args.subLang ?? (cfg.languages && cfg.languages.length > 0 ? cfg.languages : ['hu', 'en'])
+    languages = args.subLang ?? (cfg?.languages && cfg.languages.length > 0 ? cfg.languages : ['hu', 'en'])
   }
 
   try {
