@@ -5,6 +5,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile && pnpm build
 
 FROM node:26.2-bookworm-slim
+LABEL org.opencontainers.image.source="https://github.com/pcsontos/transcript-refinery"
 ARG TARGETARCH
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl \
