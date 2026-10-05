@@ -124,6 +124,52 @@ describe('handleCallback', () => {
     expect(repeat.sent).toEqual([])
   })
 
+  it('sikertelen ébredős vagy 401-es küldésnél a sor kopogtatható marad', async () => {
+    const store = memoryStore()
+    const down = deps(store, {
+      knock: () => Promise.resolve('down'),
+      send: (text) => Promise.resolve(!text.startsWith('A gép ébredésére vár')),
+    })
+    const planned = await handleUpdate(
+      { update_id: 5, message: { message_id: 1, chat: { id: 42 }, text: ID } },
+      down,
+    )
+    await applyKnocks(planned.knocks, down)
+    expect((await store.listByUpdate(5))[0]?.status).toBe('queued')
+
+    const secretStore = memoryStore()
+    const rejected = deps(secretStore, {
+      knock: () => Promise.resolve(401),
+      send: (text) => Promise.resolve(text !== 'A konténer elutasította a hívást.'),
+    })
+    const secret = await handleUpdate(
+      { update_id: 8, message: { message_id: 1, chat: { id: 42 }, text: ID } },
+      rejected,
+    )
+    await applyKnocks(secret.knocks, rejected)
+    expect((await secretStore.listByUpdate(8))[0]?.status).toBe('queued')
+  })
+
+  it('sikertelen hibamondatnál a sor nem lesz failed', async () => {
+    const store = memoryStore()
+    await store.insert({
+      jobId: `5:${ID}`,
+      updateId: 5,
+      chatId: '42',
+      messageId: 1,
+      videoId: ID,
+      url: `https://www.youtube.com/watch?v=${ID}`,
+      status: 'accepted',
+      error: null,
+      title: null,
+      notifiedReady: false,
+      acceptedAt: 1,
+    })
+    const failedSend = deps(store, { send: () => Promise.resolve(false) })
+    expect(await handleCallback(`5:${ID}`, { status: 'failed', error: 'Nincs felirat' }, failedSend)).toBe(200)
+    expect((await store.listByUpdate(5))[0]?.status).toBe('accepted')
+  })
+
   it('a 401 failed, és a cron nem éleszti', async () => {
     const store = memoryStore()
     const own = deps(store, { knock: () => Promise.resolve(401) })

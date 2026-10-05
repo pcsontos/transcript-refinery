@@ -4,7 +4,8 @@ import { applyKnocks, handleCallback, handleCron, handleUpdate, type WorkerDeps 
 interface Env {
   DB: D1Like
   TELEGRAM_BOT_TOKEN: string
-  OWNER_CHAT_ID: string
+  TELEGRAM_OWNER_CHAT_ID: string
+  TELEGRAM_WEBHOOK_SECRET: string
   REFINERY_SERVE_SECRET: string
   SERVE_URL: string
 }
@@ -13,10 +14,8 @@ interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void
 }
 
-function authorized(header: string | null, secret: string): boolean {
-  const actual = header ?? ''
-  const expected = `Bearer ${secret}`
-  if (actual.length !== expected.length) return false
+function sameText(actual: string, expected: string): boolean {
+  if (expected === '' || actual.length !== expected.length) return false
   let diff = 0
   for (let index = 0; index < actual.length; index += 1) {
     diff |= actual.charCodeAt(index) ^ expected.charCodeAt(index)
@@ -26,7 +25,7 @@ function authorized(header: string | null, secret: string): boolean {
 
 function deps(env: Env): WorkerDeps {
   return {
-    ownerChatId: env.OWNER_CHAT_ID,
+    ownerChatId: env.TELEGRAM_OWNER_CHAT_ID,
     store: createD1Store(env.DB),
     now: () => Date.now(),
     knock: async (job) => {
@@ -50,7 +49,7 @@ function deps(env: Env): WorkerDeps {
         const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ chat_id: env.OWNER_CHAT_ID, text }),
+          body: JSON.stringify({ chat_id: env.TELEGRAM_OWNER_CHAT_ID, text }),
         })
         return response.ok
       } catch {
@@ -87,6 +86,8 @@ const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/telegram' && request.method === 'POST') {
+      const hook = request.headers.get('x-telegram-bot-api-secret-token') ?? ''
+      if (!sameText(hook, env.TELEGRAM_WEBHOOK_SECRET)) return new Response(null, { status: 401 })
       let update: unknown
       try {
         update = await request.json()
@@ -101,7 +102,7 @@ const worker = {
     }
     const match = /^\/internal\/jobs\/([^/]+)$/.exec(url.pathname)
     if (match?.[1] !== undefined && request.method === 'POST') {
-      if (!authorized(request.headers.get('authorization'), env.REFINERY_SERVE_SECRET)) {
+      if (!sameText(request.headers.get('authorization') ?? '', `Bearer ${env.REFINERY_SERVE_SECRET}`)) {
         return new Response(null, { status: 401 })
       }
       let body: unknown

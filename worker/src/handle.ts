@@ -33,16 +33,18 @@ async function settle(row: JobRow, result: KnockResult, deps: WorkerDeps): Promi
     return
   }
   if (result === 401) {
+    const sent = await deps.send(REJECTED_SECRET)
+    if (!sent) return
     row.status = 'failed'
     row.error = REJECTED_SECRET
     await deps.store.save(row)
-    await deps.send(REJECTED_SECRET)
     return
   }
   if (row.status === 'waiting') return
+  const sent = await deps.send(waitingLine(row.videoId))
+  if (!sent) return
   row.status = 'waiting'
   await deps.store.save(row)
-  await deps.send(waitingLine(row.videoId))
 }
 
 export async function handleUpdate(
@@ -98,10 +100,11 @@ export async function handleCallback(
   const row = await findRow(deps.store, jobId)
   if (!row) return 200
   if (body.status === 'failed') {
+    const sent = await deps.send(body.error)
+    if (!sent) return 200
     row.status = 'failed'
     row.error = body.error
     await deps.store.save(row)
-    await deps.send(body.error)
     return 200
   }
   if (row.notifiedReady) return 200
