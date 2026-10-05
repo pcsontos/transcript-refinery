@@ -110,6 +110,7 @@ export async function runJob(job: ServeJob, effects: JobEffects): Promise<void> 
     let local = await effects.readPair(job.videoId)
     if (local.complete) {
       await upload(job, effects, local)
+      await effects.deletePair(job.videoId)
       await report(effects, job.jobId, { status: 'ready', title: local.title })
       return
     }
@@ -134,6 +135,7 @@ export async function runJob(job: ServeJob, effects: JobEffects): Promise<void> 
       return
     }
     await upload(job, effects, local)
+    await effects.deletePair(job.videoId)
     await report(effects, job.jobId, { status: 'ready', title: local.title })
   } catch (error) {
     const message = error instanceof Error ? error.message : UPLOAD_FAILED

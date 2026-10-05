@@ -99,7 +99,7 @@ describe('runJob', () => {
       },
       callback: () => Promise.resolve(),
     })
-    expect(calls).toEqual(['delete', 'fetch'])
+    expect(calls).toEqual(['delete', 'fetch', 'delete'])
     expect(store.objects[`videos/${ID}/hu.vtt`]).toBeDefined()
     expect(store.objects[`videos/${ID}/en.srt`]).toBeDefined()
     expect(store.objects[`videos/${ID}/info.json`]).toBeDefined()

@@ -33,6 +33,7 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
   const outDir = env.SERVE_OUT ?? ''
   const callbackBase = (env.WORKER_CALLBACK_URL ?? '').replace(/\/$/, '')
   const port = Number(env.SERVE_PORT && env.SERVE_PORT !== '' ? env.SERVE_PORT : '8787')
+  const host = env.SERVE_HOST && env.SERVE_HOST !== '' ? env.SERVE_HOST : '127.0.0.1'
   if (!Number.isInteger(port) || port <= 0) {
     console.error('Hiányzó SERVE_PORT.')
     return 1
@@ -83,7 +84,7 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
-      server.listen(port, '127.0.0.1', () => resolve())
+      server.listen(port, host, () => resolve())
     })
   } catch (cause) {
     console.error(cause instanceof Error ? cause.message : 'A serve port nem nyílt meg.')

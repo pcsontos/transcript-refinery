@@ -1,0 +1,8 @@
+node_modules
+.git
+.worktrees
+tmp
+.state
+dist
+.env*
+.DS_Store

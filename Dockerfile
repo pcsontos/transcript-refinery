@@ -1,15 +1,20 @@
 FROM node:26.2-bookworm AS build
-RUN corepack enable
+RUN npm install -g pnpm@12.6.0
 WORKDIR /src
 COPY . .
 RUN pnpm install --frozen-lockfile && pnpm build
 
 FROM node:26.2-bookworm-slim
+ARG TARGETARCH
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-ADD https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux /usr/local/bin/yt-dlp
-RUN chmod 755 /usr/local/bin/yt-dlp
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && if [ "$TARGETARCH" = "arm64" ]; then \
+      curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux_aarch64 -o /usr/local/bin/yt-dlp; \
+    else \
+      curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/download/2026.03.17/yt-dlp_linux -o /usr/local/bin/yt-dlp; \
+    fi \
+ && chmod 755 /usr/local/bin/yt-dlp
 WORKDIR /app
 COPY --from=build /src/package.json /app/package.json
 COPY --from=build /src/dist /app/dist
