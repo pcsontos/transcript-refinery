@@ -81,6 +81,9 @@ A `refinery fetch subtitle` YouTube-feliratot és `.info.json` metaadatot tölt 
 mappába a `yt-dlp` segítségével. Ami már ott van, azt átugorja. A `run` és a
 `watch` ettől még csak a helyi fájlt olvassa, hálózat nélkül.
 
+A `refinery serve` egy videó feliratát és `info.json` fájlját az R2-be tölti. A
+Telegram-ajtó a `worker/` csomag.
+
 A `run --recipe summary` a normalizált átiratból összefoglaló jegyzetet
 készít, korlátos evaluator–optimizer loopban: a modell generál, egy rubrika
 pontoz **és konkrét hiányokat nevez meg**, a modell eddig javít, amíg átmegy
@@ -440,6 +443,74 @@ pnpm web
 A felület a `http://127.0.0.1:4310` címen érhető el.
 Oldalai: áttekintő, elemek (szűrők URL-ből is: `/items?channel=<név>&kind=<típus>`),
 riport, hibák, futások.
+
+### Fejlesztés és hibakeresés (Debugging)
+
+A projekt két külön futtatókörnyezetet használ a háttérmunkákhoz: a helyi `refinery serve` démont (Node.js) és a Cloudflare Workert (`workerd`). Mindkettőhöz előre konfigurált VS Code és parancssori hibakeresési eszközök állnak rendelkezésre.
+
+#### 1. `refinery serve` debuggolása
+
+A `refinery serve` az Infisical titkokkal (`R2_*`, `REFINERY_SERVE_SECRET`) indul, és a 8787-es porton fogadja a Worker felől érkező feliratletöltési munkákat a helyi `tmp/serve-out` mappába.
+
+- **Parancssorból:**
+  ```bash
+  pnpm serve
+  ```
+- **VS Code-ban (töréspontokkal):**
+  1. Válaszd a **`CLI: Serve (pnpm serve)`** profilt a *Run and Debug* menüben (**F5**).
+  2. Ez egy dedikált JavaScript Debug Terminalt nyit, ahol a `tsx` futtatja a TypeScript forrást.
+  3. A töréspontok közvetlenül a TypeScript fájlokban (`src/serve/command.ts`, `src/serve/http.ts`, `src/serve/job.ts`) megállnak.
+
+> [!TIP]
+> Ha a 8787-es port foglalt (`EADDRINUSE`), ellenőrizd az előzőleg futó folyamatokat: `lsof -i :8787`, majd állítsd le a korábbi példányt.
+
+#### 2. Cloudflare Worker (`worker/src/index.ts`) debuggolása
+
+A Worker nem Node.js alatt fut, hanem a Cloudflare saját V8 futtatókörnyezetében (`workerd`), amelyet a Wrangler emulál lokálisan. A Wrangler egy V8 Inspector portot nyit (alapértelmezetten `9229`).
+
+##### A) VS Code Attach Debugger (Ajánlott)
+
+1. **Worker elindítása:**
+   - Parancssorból: `pnpm worker:dev`
+   - Vagy VS Code-ból: indítsd el a **`Worker: Dev (wrangler dev)`** profilt.
+   *(Ez az Infisical titkokat betöltve a `8788`-as porton indítja a szervert, hogy ne ütközzön a 8787-es `refinery serve` porttal, és megnyitja a `9229`-es inspector portot).*
+2. **Debugger csatlakoztatása:**
+   - Indítsd el a **`Worker: Attach (port 9229)`** konfigurációt a VS Code-ban (**F5**).
+3. **Töréspont elhelyezése:**
+   - Helyezz el töréspontokat a `worker/src/index.ts` fájlban (pl. `fetch` vagy `scheduled` metódusban).
+4. **Kérés kiváltása (trigger):**
+   - **Percenkénti cron / `handleCron` tesztelése:**
+     ```bash
+     curl http://localhost:8788/__scheduled
+     ```
+   - **Telegram webhook tesztelése:**
+     ```bash
+     curl -X POST http://localhost:8788/telegram \
+       -H "Content-Type: application/json" \
+       -H "X-Telegram-Bot-Api-Secret-Token: <titok>" \
+       -d '{"update_id": 1, "message": {"message_id": 1, "chat": {"id": 123456}, "text": "https://www.youtube.com/watch?v=..."}}'
+     ```
+   - **Belső visszahívás tesztelése:**
+     ```bash
+     curl -X POST http://localhost:8788/internal/jobs/<jobId> \
+       -H "Authorization: Bearer <titok>" \
+       -H "Content-Type: application/json" \
+       -d '{"status": "ready", "title": "Teszt videó"}'
+     ```
+
+##### B) Chrome DevTools (Egygombos megoldás)
+
+Ha terminálban futtatod a `pnpm worker:dev` parancsot:
+1. Nyomd meg a **`d`** billentyűt a terminálban.
+2. A Wrangler automatikusan megnyitja a Chrome DevTools felületét.
+3. A *Sources* fül alatt keresd meg az `index.ts` fájlt, és helyezz el töréspontokat.
+
+##### C) Éles Worker logok valós idejű követése (Tail)
+
+A felhőben futó éles Cloudflare Worker naplóinak élő streamelése a terminálba:
+```bash
+npx wrangler tail --config worker/wrangler.toml
+```
 
 ### Tesztek és mérések
 

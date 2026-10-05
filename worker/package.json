@@ -1,0 +1,8 @@
+{
+  "name": "transcript-refinery-worker",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "transcript-refinery": "workspace:*"
+  }
+}

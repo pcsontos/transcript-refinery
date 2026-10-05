@@ -8,6 +8,8 @@ coverage/
 .env
 .env.*
 !.env.example
+.dev.vars
+**/.dev.vars
 refinery.config.yaml
 refinery.config.*.yaml
 !refinery.config.example.yaml
@@ -25,3 +27,4 @@ tmp/
 evals/private/
 
 .DS_Store
+worker/.wrangler/**

@@ -17,17 +17,19 @@ jobs:
       - name: Függőségek
         run: pnpm install --frozen-lockfile
 
+      - name: Build
+        run: pnpm build
+
       - name: Típusellenőrzés
-        run: pnpm typecheck
+        run: |
+          pnpm typecheck
+          pnpm exec tsc -p worker/tsconfig.json --noEmit
 
       - name: Linter
         run: pnpm lint
 
       - name: Tesztek
         run: pnpm test
-
-      - name: Build
-        run: pnpm build
 
       - name: Offline mérés kulcs nélkül
         run: pnpm eval

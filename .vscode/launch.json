@@ -67,6 +67,30 @@
       "envFile": "${workspaceFolder}/.env"
     },
     {
+      "name": "CLI: Serve (pnpm serve)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm serve",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Worker: Dev (wrangler dev)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm worker:dev",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Worker: Attach (port 9229)",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "cwd": "${workspaceFolder}/worker",
+      "resolveSourceMapLocations": null,
+      "attachExistingChildren": false,
+      "autoAttachChildProcesses": false
+    },
+    {
       "name": "Vitest: Current Test File",
       "type": "node",
       "request": "launch",

@@ -271,6 +271,12 @@ importers:
         specifier: ^3.3.11
         version: 3.3.11(typescript@5.9.3)
 
+  worker:
+    dependencies:
+      transcript-refinery:
+        specifier: workspace:*
+        version: link:..
+
 packages:
 
   '@ai-sdk/gateway@4.0.73':
