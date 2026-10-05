@@ -7,6 +7,7 @@ együtt ez a dokumentáció a projekt egyik terméke, nem melléktermék.
 | | |
 |---|---|
 | [`architecture.md`](<./architecture.md>) | a csővezeték, az absztrakciók és a megkötések |
+| [`operations/`](<./operations/>) | üzemeltetési és integrációs útmutatók (Telegram, Worker, topológia) |
 | [`evaluation.md`](<./evaluation.md>) | mit mérünk, mivel és min |
 | [`roadmap.md`](<./roadmap.md>) | fázisok, megfigyelhető sikerkritériumokkal |
 | [`decisions/`](<./decisions/>) | egy rekord minden érdemben vitatott döntésről |

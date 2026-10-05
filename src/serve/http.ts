@@ -67,7 +67,9 @@ async function handle(
     return
   }
   if (!authorized(request.headers.authorization, input.secret)) {
-    console.warn(`[serve] 401 Jogosulatlan kérés: ${request.headers['x-forwarded-for'] ?? request.socket.remoteAddress}`)
+    const rawIp = request.headers['x-forwarded-for'] ?? request.socket.remoteAddress
+    const clientIp = Array.isArray(rawIp) ? rawIp[0] : (rawIp ?? 'unknown')
+    console.warn(`[serve] 401 Jogosulatlan kérés: ${clientIp}`)
     send(response, 401)
     return
   }

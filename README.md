@@ -512,6 +512,9 @@ A felhőben futó éles Cloudflare Worker naplóinak élő streamelése a termin
 npx wrangler tail --config worker/wrangler.toml
 ```
 
+> [!NOTE]
+> A Telegram bot, a Cloudflare Worker és a `peter-mba` célgépen futó démon teljes topológiáját, a webhook regisztrációját és az éles/helyi működés részletes szétválasztását az [Üzemeltetési és Topológiai Útmutató](docs/operations/telegram-worker-topology.md) dokumentálja.
+
 ### Tesztek és mérések
 
 ```bash

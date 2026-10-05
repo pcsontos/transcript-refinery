@@ -130,9 +130,7 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
     try {
       loaded = await loadCliConfig(args.config)
     } catch (error) {
-      if (args.config === undefined && args.out !== undefined) {
-        loaded = null
-      } else {
+      if (args.config !== undefined || args.out === undefined) {
         stderr((error as Error).message)
         return 1
       }
