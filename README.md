@@ -81,6 +81,9 @@ A `refinery fetch subtitle` YouTube-feliratot és `.info.json` metaadatot tölt 
 mappába a `yt-dlp` segítségével. Ami már ott van, azt átugorja. A `run` és a
 `watch` ettől még csak a helyi fájlt olvassa, hálózat nélkül.
 
+A `refinery serve` egy videó feliratát és `info.json` fájlját az R2-be tölti. A
+Telegram-ajtó a `worker/` csomag.
+
 A `run --recipe summary` a normalizált átiratból összefoglaló jegyzetet
 készít, korlátos evaluator–optimizer loopban: a modell generál, egy rubrika
 pontoz **és konkrét hiányokat nevez meg**, a modell eddig javít, amíg átmegy

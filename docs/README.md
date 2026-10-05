@@ -21,7 +21,7 @@ az első szelet spece, a
 pedig a hozzá tartozó implementációs terv. A saját chat videóját a `refinery serve` tölti fel az
 R2-be, a kiírt feliratfájllal és az `info.json` fájllal. A Worker a konténert
 hívja, a magot nem futtatja. A vault, a recept és a `run` a későbbi szelet.
-Implementáció nem indult.
+Az első szelet kódja a `src/serve/` és a `worker/` alatt van.
 
 ## A döntések
 
