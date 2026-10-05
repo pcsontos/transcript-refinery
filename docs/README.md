@@ -7,6 +7,7 @@ együtt ez a dokumentáció a projekt egyik terméke, nem melléktermék.
 | | |
 |---|---|
 | [`architecture.md`](<./architecture.md>) | a csővezeték, az absztrakciók és a megkötések |
+| [`usage.md`](<./usage.md>) | a CLI parancsok, futtatási módok és a webes felület |
 | [`operations/`](<./operations/>) | üzemeltetési és integrációs útmutatók (Telegram, Worker, topológia) |
 | [`evaluation.md`](<./evaluation.md>) | mit mérünk, mivel és min |
 | [`roadmap.md`](<./roadmap.md>) | fázisok, megfigyelhető sikerkritériumokkal |
