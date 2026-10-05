@@ -3,6 +3,54 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.8.0] — 2026-10-05
+
+Megérkezett a Telegram bot és Cloudflare Worker integráció, az önálló
+`refinery serve` démon közvetlen Cloudflare R2 felhőtárhellyel, valamint a
+konténeres futtatás Dockerben.
+
+### 🤖 Telegram bot és Cloudflare Worker
+
+- A Telegramon megosztott YouTube-linkekből a Cloudflare Worker automatikusan
+  feladatot hoz létre a Cloudflare D1 adatbázisban, majd továbbítja a
+  `refinery serve` felé.
+- Megbízható Telegram-válaszküldés: a Worker mindaddig megőrzi és újrapróbálja
+  a válaszüzenetet, amíg a küldés sikeresen le nem zajlik.
+- D1 migrációk és Worker fejlesztői parancsok (`worker:dev`, `worker:deploy`,
+  `worker:migrate`, `worker:migrate:local`).
+
+### 🌐 `refinery serve` démon és Cloudflare R2 feltöltés
+
+- Új parancs: `refinery serve`, amely önálló HTTP szolgáltatásként futva
+  fogadja a letöltési feladatokat a Workertől (`POST /jobs`).
+- A letöltött `.vtt` feliratot és `.info.json` metaadatot aláírt kéréssel
+  közvetlenül a Cloudflare R2 vödörbe menti, majd sikeres feltöltés után
+  törli a helyi ideiglenes fájlokat.
+- Fej nélküli (headless) működés: a `serve` és a `fetch` parancs config fájl
+  (`refinery.config.yaml`) nélkül, tisztán környezeti változókból is üzemel.
+- Valós idejű naplózás: részletes státuszjelzés a bejövő kérésekről, a
+  `yt-dlp` letöltésről és az R2 feltöltésekről (`[serve]`).
+
+### 🐳 Docker és üzemeltetés
+
+- Hivatalos Dockerfile a `refinery serve` headless futtatásához, beépített
+  `git` és `openssh-client` eszközökkel a konténerből történő vault-commitokhoz.
+- `docker:build`, `docker:push` és `docker:publish` npm szkriptek a GitHub
+  Container Registry-be (GHCR) történő publikáláshoz.
+- Új üzemeltetési útmutató (`docs/operations.md`) a Telegram bot és a Worker
+  architektúrájáról, környezeti változóiról és `curl`-ös teszteléséről.
+- A CLI referencia a `README.md`-ből átkerült a részletes `docs/usage.md`
+  dokumentumba.
+
+### 🛠️ További fejlesztések és javítások
+
+- **Feliratletöltés:** a `fetch` parancs mostantól kifejezetten a videó saját
+  (szerzői) feliratát kéri el, megelőzve az automatikusan generált feliratot.
+- **yt-dlp frissítés:** a Docker környezetben a `yt-dlp` a 2026.08.19-es
+  verzióra frissült.
+- **Helyi fejlesztés (DX):** VS Code hibakeresési profilok (`launch.json`) és
+  Infisical támogatás a `serve` és a Worker helyi futtatásához.
+
 ## [1.7.0] — 2026-10-02
 
 Az Opus 5.5 mostantól vázlatíróként és bíróként is használható, a generáló
@@ -345,6 +393,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.8.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.8.0
 [1.7.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.7.0
 [1.6.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.6.0
 [1.5.2]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.5.2
