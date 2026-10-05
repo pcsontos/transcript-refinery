@@ -71,6 +71,7 @@ import {
 } from './view/list.js'
 import { artifactKinds } from './view/overview.js'
 import { commandFetch } from './fetch/command.js'
+import { commandServe } from './serve/command.js'
 import { commandWatch } from './watch/command.js'
 
 /**
@@ -113,6 +114,7 @@ Parancsok:
   list            Kilistázza az elemeket típusonkénti állapottal; nem ír semmit.
   fetch subtitle  YouTube-feliratot és .info.json fájlt tölt egy mappába.
                   A run és a watch nem hívja.
+  serve           Egy videó feliratát az R2-be tölti. A fetch-utat hívja.
   watch           Figyeli a forrásmappákat: az új feliratból átirat és
                   _queue.md-sor lesz; modellt nem hív. Ctrl+C: leállítás.
                   Csak a --config, --source és --no-commit kapcsolót ismeri.
@@ -917,6 +919,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (command === 'fetch') return commandFetch(argv.slice(1))
+  if (command === 'serve') return commandServe(process.env)
 
   const { values } = parseArgs({
     args: [...argv.slice(1)],

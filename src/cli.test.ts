@@ -2715,6 +2715,11 @@ describe('commandList', () => {
 })
 
 describe('fetch a CLI-ben', () => {
+  it('a USAGE felsorolja a serve parancsot', () => {
+    expect(USAGE).toContain('serve')
+    expect(USAGE).toContain('Egy videó feliratát az R2-be tölti. A fetch-utat hívja.')
+  })
+
   it('a USAGE felsorolja a fetch subtitle parancsot és a saját kapcsolóit', () => {
     expect(USAGE).toContain('fetch subtitle')
     expect(USAGE).toContain('--out <út>')
