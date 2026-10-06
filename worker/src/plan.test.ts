@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { memoryStore, type JobRow } from './store.js'
 import {
+  MISSING_NOTE_URL,
   REJECTED_SECRET,
   alreadyLine,
+  decideTap,
   linesForMessage,
+  noteReadyMessage,
   queuedLine,
   readyLine,
+  summaryButton,
   waitingLine,
 } from './plan.js'
 
@@ -127,5 +131,23 @@ describe('mondatok', () => {
     expect(readyLine('Cím')).toBe('Cím. A felirat megvan.')
     expect(alreadyLine(ID)).toBe(`Már sorban van: ${ID}.`)
     expect(REJECTED_SECRET).toBe('A konténer elutasította a hívást.')
+  })
+
+  it('a jegyzet mondata két sor, a gomb adata a munka azonosítója', () => {
+    expect(noteReadyMessage('Cím', 'https://github.com/tulaj/repo/blob/main/a.md')).toBe(
+      'Cím. A jegyzet megvan.\nhttps://github.com/tulaj/repo/blob/main/a.md',
+    )
+    expect(summaryButton(`1:${ID}`)).toEqual({ text: 'summary', data: `summary:1:${ID}` })
+    expect(MISSING_NOTE_URL).toBe('A jegyzet linkje hiányzik.')
+  })
+
+  it('a koppintás a fázis és a státusz szerint dönt', () => {
+    expect(decideTap(null, true)).toEqual({ type: 'ignore' })
+    expect(decideTap(row({ status: 'ready' }), false)).toEqual({ type: 'ignore' })
+    expect(decideTap(row({ status: 'ready', phase: 'subtitle' }), true)).toEqual({ type: 'start' })
+    expect(decideTap(row({ status: 'accepted', phase: 'summary' }), true)).toEqual({ type: 'busy' })
+    expect(decideTap(row({ status: 'ready', phase: 'summary', noteNotified: true }), true)).toEqual({ type: 'resend' })
+    expect(decideTap(row({ status: 'failed', phase: 'summary' }), true)).toEqual({ type: 'retry' })
+    expect(decideTap(row({ status: 'queued', phase: 'subtitle' }), true)).toEqual({ type: 'ignore' })
   })
 })

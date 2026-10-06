@@ -19,3 +19,13 @@ export function readyLine(title: string): string {
 export function alreadyLine(videoId: string): string {
   return `Már sorban van: ${videoId}.`
 }
+
+export const MISSING_NOTE_URL = 'A jegyzet linkje hiányzik.'
+
+export function noteReadyMessage(title: string, noteUrl: string): string {
+  return `${title}. A jegyzet megvan.\n${noteUrl}`
+}
+
+export function summaryButton(jobId: string): { text: 'summary'; data: string } {
+  return { text: 'summary', data: `summary:${jobId}` }
+}
