@@ -114,6 +114,10 @@ const rules = (item: SourceItem): string =>
  * Strukturált jegyzet: fogalmanként definíció, magyarázat, példa és variáció,
  * összefoglaló táblázat, és ahol a tartalom indokolja, Mermaid-diagram. A
  * `summary`-tól a példa, a variáció és a táblázat különbözteti meg.
+ *
+ * Ez a hosszabb tanulójegyzet: a medián elemen nagyjából az átirat hossza
+ * (`outputRatio`), szemben a `summary` tizedével. A séma `summary` mezője és a
+ * `## Summary Table` csak belső részek, a rövid összefoglaló a `summary` recept.
  */
 export const notesRecipe: Recipe = {
   id: 'notes',

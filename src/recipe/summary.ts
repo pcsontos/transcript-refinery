@@ -28,7 +28,13 @@ const rules = (item: SourceItem): string =>
   ].join('\n')
 
 /**
- * Az első recept: strukturált tanulójegyzet a normalizált átiratból.
+ * Az első recept: összefoglaló jegyzet a normalizált átiratból. Egy nyitó
+ * bekezdés, utána `##` szakaszok felsorolással, nagyjából az átirat tizede, és
+ * az egész videót lefedi. A Telegram `summary` gombja ezt küldi.
+ *
+ * A prompt „study notes”-ot kér, de a hossz- és szerkezeti szabály összefoglalót
+ * ad. A szöveg szándékosan változatlan, mert a kalibrált kimenet ebből jön. A
+ * fogalmakra bontott, hosszabb tanulójegyzet a `notes` recept.
  *
  * A `_summary.md` utótag az elem alapnevéhez (`<alapnév>_summary.md`)
  * illeszkedik, a forrásmappát tükröző vault-almappában — lásd
