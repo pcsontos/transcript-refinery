@@ -88,7 +88,9 @@ describe('worker belépés', () => {
   it('a gombkoppintás üres answerCallbackQuery választ kér, idegen chatnél kopogtatás nélkül', async () => {
     const calls: { url: string; body: string }[] = []
     globalThis.fetch = (input, init) => {
-      calls.push({ url: String(input), body: String(init?.body ?? '') })
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      const raw = init?.body
+      calls.push({ url, body: typeof raw === 'string' ? raw : '' })
       return Promise.resolve(new Response(null, { status: 200 }))
     }
     const env = {

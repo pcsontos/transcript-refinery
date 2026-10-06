@@ -13,7 +13,13 @@ export function waitingLine(videoId: string): string {
 }
 
 function flatTitle(title: string): string {
-  return title.replace(/[\u0000-\u001F\u007F]+/g, ' ').replace(/ {2,}/g, ' ').trim()
+  const flat = [...title]
+    .map((char) => {
+      const code = char.codePointAt(0) ?? 0
+      return code <= 0x1f || code === 0x7f ? ' ' : char
+    })
+    .join('')
+  return flat.replace(/ {2,}/g, ' ').trim()
 }
 
 export function readyLine(title: string): string {

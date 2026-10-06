@@ -15,15 +15,18 @@ const ID = 'abcdefghijk'
 
 function client(calls: { generate: number }): ReturnType<RunRuntime['createClient'] & object> {
   return {
-    async generate() {
+    generate() {
       calls.generate += 1
-      return {
+      return Promise.resolve({
         value: '## Összefoglaló\n\nEgy mondat a jegyzetből.\n',
         usage: { inputTokens: 10, outputTokens: 5 },
-      }
+      })
     },
-    async generateObject<T>() {
-      return { value: { score: 1, gaps: [] } as T, usage: { inputTokens: 5, outputTokens: 2 } }
+    generateObject<T>() {
+      return Promise.resolve({
+        value: { score: 1, gaps: [] } as T,
+        usage: { inputTokens: 5, outputTokens: 2 },
+      })
     },
   }
 }
