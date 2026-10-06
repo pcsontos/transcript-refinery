@@ -299,6 +299,35 @@ describe('commandFetch egy videóra', () => {
     expect(streams.out[0]).toBe(`[OK]   Cím [${ID}]`)
   })
 
+  it('az en-US videó en sávja kész, nem Nincs felirat', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-en-us-'))
+    const { calls, runner } = runnerOf(async (args, seen) => {
+      seen.push([...args])
+      if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
+      if (args.includes('-J')) {
+        return {
+          code: 0,
+          stdout: probeJson({
+            language: 'en-US',
+            subtitles: { en: [{}] },
+            automatic_captions: { en: [{}], 'en-orig': [{}], hu: [{}] },
+          }),
+          stderr: '',
+        }
+      }
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      await mkdir(dest, { recursive: true })
+      await writeFile(join(dest, `Cím [${ID}].en.vtt`), 'WEBVTT\n')
+      await writeFile(join(dest, `Cím [${ID}].info.json`), JSON.stringify({ id: ID, language: 'en-US' }))
+      return { code: 0, stdout: '', stderr: '' }
+    })
+    const streams = io()
+    expect(await commandFetch(['subtitle', URL, '--out', out, '--sub-lang', 'hu,en', '--flat'], { ...streams, runner })).toBe(0)
+    const download = calls.find((args) => args.includes('--write-subs'))
+    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('en')
+    expect(streams.out[0]).toBe(`[OK]   Cím [${ID}]`)
+  })
+
   it('ha csak fordított sáv van, letöltés nélkül Nincs felirat', async () => {
     const out = await mkdtemp(join(tmpdir(), 'fetch-tr-'))
     const { calls, runner } = runnerOf((args, seen) => {
