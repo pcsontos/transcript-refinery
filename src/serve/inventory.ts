@@ -25,9 +25,19 @@ export function infoKey(videoId: string): string {
   return `videos/${videoId}/info.json`
 }
 
-function languageMatches(tag: string, languages: readonly string[]): boolean {
+export function languageMatches(tag: string, languages: readonly string[]): boolean {
   const lower = tag.toLowerCase()
-  return languages.some((wanted) => lower.startsWith(wanted.toLowerCase()))
+  const lowerBase = lower.split('-')[0] ?? lower
+  return languages.some((wanted) => {
+    const lowerWanted = wanted.toLowerCase()
+    const wantedBase = lowerWanted.split('-')[0] ?? lowerWanted
+    return (
+      lower === lowerWanted ||
+      lower.startsWith(`${lowerWanted}-`) ||
+      lowerWanted.startsWith(`${lower}-`) ||
+      (lowerBase !== '' && lowerBase === wantedBase)
+    )
+  })
 }
 
 async function readInfo(path: string): Promise<{ id: string | null; title: string; language?: string }> {

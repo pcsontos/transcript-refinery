@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import { sanitizeSegment } from '../vault/sanitize.js'
-import { infoKey, subtitleKey, type LocalPair } from './inventory.js'
+import { infoKey, languageMatches, subtitleKey, type LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
 
 export interface ServeJob {
@@ -41,10 +41,6 @@ export function subtitleArgv(url: string, outDir: string): string[] {
   return ['subtitle', url, '--out', outDir, '--flat']
 }
 
-function languageMatches(tag: string, languages: readonly string[]): boolean {
-  const lower = tag.toLowerCase()
-  return languages.some((wanted) => lower.startsWith(wanted.toLowerCase()))
-}
 
 function firstLine(text: string): string {
   const line = text.split('\n').find((item) => item.trim() !== '')
@@ -157,7 +153,7 @@ async function loadSummaryPair(
     return { ok: false, error: UNREADABLE_PAIR }
   }
   if (infoBody === null || infoBody.byteLength === 0) return { ok: false, error: UNREADABLE_PAIR }
-  let title = videoId
+  let title: string
   let accepted = effects.languages
   try {
     const raw = JSON.parse(new TextDecoder().decode(infoBody)) as { id?: unknown; title?: unknown; language?: unknown }
