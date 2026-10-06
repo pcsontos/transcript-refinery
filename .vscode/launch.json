@@ -91,6 +91,23 @@
       "autoAttachChildProcesses": false
     },
     {
+      "name": "Serve: Inspect (port 9230)",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm serve:inspect",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Serve: Attach (port 9230)",
+      "type": "node",
+      "request": "attach",
+      "port": 9230,
+      "cwd": "${workspaceFolder}",
+      "sourceMaps": true,
+      "resolveSourceMapLocations": null,
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
       "name": "Vitest: Current Test File",
       "type": "node",
       "request": "launch",
