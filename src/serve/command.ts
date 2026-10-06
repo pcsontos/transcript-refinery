@@ -1,10 +1,46 @@
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { loadCliConfig } from '../config.js'
 import { commandFetch } from '../fetch/command.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
-import { runJob, subtitleArgv, type JobEffects, type ServeJob } from './job.js'
+import { runJob, subtitleArgv, type JobEffects, type ServeJob, type SummaryOutcome } from './job.js'
 import { createR2Store, type R2Config } from './r2.js'
 import { createServeServer, type ServeGate } from './http.js'
+import { runSummary as defaultRunSummary } from './summary.js'
+
+type SummaryRun = (input: { videoId: string; outDir: string }) => Promise<SummaryOutcome>
+
+export function serveEffects(input: {
+  outDir: string
+  languages: readonly string[]
+  store: JobEffects['store']
+  fetchSubtitle: JobEffects['fetchSubtitle']
+  callback: JobEffects['callback']
+  readPair?: JobEffects['readPair']
+  deletePair?: JobEffects['deletePair']
+  readFile?: JobEffects['readFile']
+  runSummary?: SummaryRun
+}): JobEffects & {
+  writeFile: (path: string, body: Uint8Array) => Promise<void>
+  summarize: (videoId: string) => Promise<SummaryOutcome>
+} {
+  const summarizeWith = input.runSummary ?? defaultRunSummary
+  return {
+    store: input.store,
+    languages: input.languages,
+    outDir: input.outDir,
+    readPair: input.readPair ?? ((videoId) => readLocalPair(input.outDir, videoId, input.languages)),
+    deletePair: input.deletePair ?? ((videoId) => deleteLocalPair(input.outDir, videoId)),
+    readFile: input.readFile ?? (async (path) => new Uint8Array(await readFile(path))),
+    fetchSubtitle: input.fetchSubtitle,
+    callback: input.callback,
+    writeFile: async (path, body) => {
+      await mkdir(dirname(path), { recursive: true })
+      await writeFile(path, body)
+    },
+    summarize: (videoId) => summarizeWith({ videoId, outDir: input.outDir }),
+  }
+}
 
 const REQUIRED = [
   'REFINERY_SERVE_SECRET',
@@ -57,12 +93,10 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
     accessKeyId: env.R2_ACCESS_KEY_ID ?? '',
     secretAccessKey: env.R2_SECRET_ACCESS_KEY ?? '',
   }
-  const effects: JobEffects = {
-    store: createR2Store(r2),
+  const effects = serveEffects({
+    outDir,
     languages,
-    readPair: (videoId) => readLocalPair(outDir, videoId, languages),
-    deletePair: (videoId) => deleteLocalPair(outDir, videoId),
-    readFile: async (path) => new Uint8Array(await readFile(path)),
+    store: createR2Store(r2),
     fetchSubtitle: async (url) => {
       console.log(`[serve] Letöltés indítása yt-dlp-vel: ${url}`)
       const stdout: string[] = []
@@ -93,7 +127,7 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
         console.error(`[serve] Visszahívás hiba:`, err instanceof Error ? err.message : err)
       }
     },
-  }
+  })
   const gate: ServeGate = { current: null }
   const server = createServeServer({
     secret,
