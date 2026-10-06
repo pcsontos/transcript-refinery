@@ -50,7 +50,9 @@ A `/telegram` és az `/internal/*` nem kerülhet Access mögé, mert a Telegram 
 
 A védett útvonal a belépett felhasználó `sub` és `email` értékét a Workerben olvassa ki. Ha nincs érvényes azonosító, a válasz `403`, akkor is, ha az Access-szabály hibás. Az Access tehát nem az egyetlen kapu.
 
-Az elsődleges forrás a `ctx.access`. Ha ez a Worker kompatibilitási dátumán nem érhető el, a `Cf-Access-Jwt-Assertion` fejléc JWT-jét a Worker a `jose` könyvtárral ellenőrzi, a csapat JWKS-ével és az alkalmazás AUD-jával. A kettő közül az implementáció első lépése választ. A `jose` csak a második esetben új függőség.
+A forrás a `ctx.access`. Ez csak akkor létezik, ha a kérést az Access hitelesítette, és a JWT-t a futtatókörnyezet ellenőrzi. A Worker a `ctx.access.getIdentity()` hívás `email` és `user_uuid` mezőjét olvassa. Ha a `ctx.access` hiányzik, vagy a két mező közül bármelyik üres, a válasz `403`. Új függőség nincs.
+
+A `sub` ebben a specben az Access `user_uuid` értéke: a fiókon belül e-mail-címenként egyedi és stabil. Ez nem a Google saját `sub` azonosítója, amit a brief említ. Egy fióknál és egy identitásszolgáltatónál a kettő ugyanazt a személyt jelöli. A Google-azonosítót külön kiolvasni ma fölösleges munka lenne.
 
 ### Az engedélyezés
 
@@ -80,13 +82,13 @@ A `memoryStore` ugyanezeket a műveleteket tudja.
 | `VAULT_REPO` | 3b | `<tulaj>/<repo>` |
 | `VAULT_BRANCH` | 3b | a vault ága |
 
-Ha a `ctx.access` nem érhető el, ehhez jön a csapat domainje és az Access-alkalmazás AUD-ja. A `TELEGRAM_OWNER_CHAT_ID` törlődik.
+A `TELEGRAM_OWNER_CHAT_ID` törlődik a Workerből. A helyi debug-script továbbra is olvassa az Infisicalból, és ezzel írja be a helyi D1-be a saját kötését, mert helyben nincs Access.
 
 ## 2. A kötés (3a)
 
-A kötés két lépéses. A Google-belépés csak függő állapotot ír. A kötés akkor jön létre, amikor ugyanaz a Telegram-felhasználó tér vissza, aki a tokent kérte.
+A kötés két lépéses, két tokennel. A linktoken a bot üzenetében utazik. A visszatérő tokent a `/link` a belépés után készíti, és csak a belépett böngésző kapja meg, az átirányításban. A kötés akkor jön létre, amikor a visszatérő tokent ugyanaz a Telegram-felhasználó küldi be, aki a linktokent kérte.
 
-Ez egy támadást zár ki. Egy idegen kér egy linket, és elküldi a tulajdonosnak. A tulajdonos belép a saját Google-fiókjával. Egylépéses kötésnél az idegen Telegram-fiókja a tulajdonos fiókjához kötődne. Itt a visszatérő Telegram-felhasználó a tulajdonos, nem az idegen, ezért a kötés nem jön létre.
+Ez egy támadást zár ki. Egy idegen kér egy linket, és elküldi a tulajdonosnak. A tulajdonos belép a saját Google-fiókjával. A visszatérő token a tulajdonos böngészőjébe és Telegramjába kerül, ahol a `from.id` nem egyezik, ezért a kötés nem jön létre. Az idegen a saját linktokenjét ismeri, de az nem köt, mert nincs rajta függő fiók. Egyetlen tokennel ez a védelem nem állna meg: az idegen a belépés után maga küldené be ugyanazt a tokent, egyező `from.id`-vel.
 
 ### A menet
 
@@ -94,8 +96,10 @@ Ez egy támadást zár ki. Egy idegen kér egy linket, és elküldi a tulajdonos
 2. A Worker 32 véletlen bájtból tokent készít, base64url kódolással. Ez 43 karakter, belefér a Telegram 64 karakteres `start` paraméterébe. A D1-be a token SHA-256 hash-e kerül, a küldő `from.id` értéke, és a lejárat: most + 10 perc.
 3. A bot a linket küldi. A link a rendszer böngészőjében nyílik, nem a Telegram beépített nézetében.
 4. Az Access Google-lel azonosít, és csak az engedélyezett e-mailt engedi át.
-5. A `/link` a token sorába írja a `pending_sub` és `pending_email` értéket, és `302`-vel a `https://t.me/<TELEGRAM_BOT_USERNAME>?start=<token>` címre irányít.
-6. A Telegram a felhasználó nevében `/start <token>` üzenetet küld. A Worker ellenőriz, és köt.
+5. A `/link` elhasználja a linktokent, és új, visszatérő tokent készít ugyanazzal a `telegram_user_id` és lejárat értékkel, a `pending_sub` és `pending_email` mezőben a belépett fiókkal. Ezután `302`-vel a `https://t.me/<TELEGRAM_BOT_USERNAME>?start=<visszatérő token>` címre irányít.
+6. A Telegram a felhasználó nevében `/start <visszatérő token>` üzenetet küld. A Worker ellenőriz, és köt.
+
+A két token ugyanabban a `link_tokens` táblában él. A linktokenen nincs függő fiók, a visszatérőn van. A `/start <token>` csak függő fiókkal rendelkező tokent fogad el, a `/link` csak függő fiók nélkülit.
 
 ### A nem kötött felhasználó
 
@@ -112,8 +116,8 @@ Ide tartozik az is, akinek a kötött e-mailje már nincs az `ALLOWED_EMAILS` li
 | Állapot | Eredmény |
 |---|---|
 | Nincs azonosító | `403` |
-| A token ismeretlen, lejárt vagy elhasznált | HTML-oldal: `A link lejárt vagy már nem érvényes. Kérj újat a botban: /start` |
-| A token érvényes | A függő `sub` és e-mail beírása, majd `302` a `t.me` címre. |
+| A token ismeretlen, lejárt, elhasznált, vagy visszatérő token | HTML-oldal: `A link lejárt vagy már nem érvényes. Kérj újat a botban: /start` |
+| A token érvényes linktoken | A linktoken elhasználódik, a visszatérő token létrejön, majd `302` a `t.me` címre. |
 
 Ha a böngésző nem nyitja meg magától a Telegramot, a `t.me` oldal maga ad „megnyitás” gombot, ezért saját köztes oldal nincs. Az e-mailt a `/link` nem szűri az `ALLOWED_EMAILS` szerint. Ezt az Access teszi, és a következő lépésben a bot.
 
@@ -129,9 +133,7 @@ Ha a böngésző nem nyitja meg magától a Telegramot, a `t.me` oldal maga ad �
 
 A címküldés, a gomb, a cron és a visszahívás a második szelet szerint megy. Az új sor megkapja a küldő `sub` értékét. A `/start` paraméter nélkül: `Már be vagy kötve: <e-mail>.` A `/start <token>` kötött felhasználótól is a fenti táblázat szerint megy, így egy másik Google-fiókra át lehet kötni.
 
-### Takarítás
-
-A meglévő percenkénti cron törli a lejárt tokeneket.
+A lejárt tokenek a táblában maradnak. Egy felhasználónál ez néhány sor. A takarítás akkor jön, ha a tábla mérete számít.
 
 ## 3. Az olvasó (3b)
 
@@ -173,9 +175,10 @@ Minden változás a `worker/` alatt van. A tiszta döntések a `plan.ts` mintáj
 
 | Fájl | Tartalom |
 |---|---|
-| `auth.ts` | Az azonosító kiolvasása. Tiszta `isAllowed(email, list)`. |
-| `link.ts` | Token és hash. Tiszta döntés a `/start` és a `/start <token>` esetekre. |
-| `reader.ts` | Az útvonal a `note_url` értékből, a GitHub-hívás, az oldal-HTML. |
+| `plan.ts` | Tiszta `isAllowed`, `decideStart`, token és hash (3a). |
+| `handle.ts` | `/start`, `/start <token>`, `handleLink`, a kötött felhasználó engedélyezése (3a). |
+| `index.ts` | A `/link` útvonal és a `ctx.access` kiolvasása (3a). |
+| `reader.ts` | Az útvonal a `note_url` értékből, a GitHub-hívás, az oldal-HTML (3b). |
 | `store.ts`, `d1.ts` | `bindings`, `link_tokens`, `jobs.sub`. |
 | `migrations/0003_bindings.sql` | A három változás. |
 
@@ -188,11 +191,10 @@ A meglévő Vitest fedi, hamis tárral, hamis `send` függvénnyel és hamis `fe
 *3a:*
 
 - A nem kötött felhasználó címére a „kösd össze” sor jön, kopogtatás nincs. A `/start` linket ad, és a D1-ben a token hash-e van, nem maga a token.
-- `/link`: azonosító nélkül `403`. Lejárt, ismeretlen vagy elhasznált token esetén a hibaoldal. Érvényes token esetén a függő `sub`, és `302` a `t.me` címre.
-- `/start <token>`: mind a négy eset, köztük az idegen `from.id`, ami nem köt.
+- `/link`: azonosító nélkül `403`. Lejárt, ismeretlen, elhasznált vagy visszatérő token esetén a hibaoldal. Érvényes linktoken esetén a visszatérő token, és `302` a `t.me` címre.
+- `/start <token>`: mind a négy eset. Köztük az idegen, aki a saját linktokenjét küldi be a tulajdonos belépése után, és a tulajdonos, aki az idegen kérte visszatérő tokent küldi be. Egyik sem köt.
 - A kötés után a régi sorok megkapják a `sub` értéket. Ha az e-mail lekerül az `ALLOWED_EMAILS` listáról, a felhasználó kiesik. A `send` a sor chatjére küld.
-- A `/Notes`, a `/notes/` és a `//link` `404`. A `/telegram` és az `/internal` a mai módon viselkedik.
-- A cron törli a lejárt tokent.
+- A `/Link` és a `//link` `404`. A `/telegram` és az `/internal` a mai módon viselkedik.
 
 *3b:*
 
