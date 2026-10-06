@@ -1,4 +1,14 @@
-import { REJECTED_SECRET, alreadyLine, linesForMessage, queuedLine, readyLine, waitingLine } from './plan.js'
+import {
+  MISSING_NOTE_URL,
+  REJECTED_SECRET,
+  alreadyLine,
+  linesForMessage,
+  noteReadyMessage,
+  queuedLine,
+  readyLine,
+  summaryButton,
+  waitingLine,
+} from './plan.js'
 import type { JobRow, JobStore } from './store.js'
 
 export interface PlannedKnock {
@@ -12,7 +22,7 @@ export interface WorkerDeps {
   store: JobStore
   now: () => number
   knock: (job: PlannedKnock) => Promise<202 | 409 | 401 | 'down'>
-  send: (text: string) => Promise<boolean>
+  send: (text: string, button?: { text: string; data: string }) => Promise<boolean>
 }
 
 type KnockResult = 202 | 409 | 401 | 'down'
@@ -97,7 +107,7 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
 
 export async function handleCallback(
   jobId: string,
-  body: { status: 'ready'; title: string } | { status: 'failed'; error: string },
+  body: { status: 'ready'; title: string; noteUrl?: string } | { status: 'failed'; error: string },
   deps: WorkerDeps,
 ): Promise<number> {
   const row = await findRow(deps.store, jobId)
@@ -110,9 +120,33 @@ export async function handleCallback(
     await deps.store.save(row)
     return 200
   }
+  if (row.phase === 'summary') {
+    if (row.noteNotified) return 200
+    if (body.noteUrl === undefined || body.noteUrl === '') {
+      const sent = await deps.send(MISSING_NOTE_URL)
+      if (!sent) return 200
+      row.status = 'failed'
+      row.error = MISSING_NOTE_URL
+      await deps.store.save(row)
+      return 200
+    }
+    row.title = body.title
+    row.noteUrl = body.noteUrl
+    const sent = await deps.send(noteReadyMessage(body.title, body.noteUrl))
+    if (!sent) {
+      row.status = 'accepted'
+      row.noteNotified = false
+      await deps.store.save(row)
+      return 200
+    }
+    row.status = 'ready'
+    row.noteNotified = true
+    await deps.store.save(row)
+    return 200
+  }
   if (row.notifiedReady) return 200
   row.title = body.title
-  const sent = await deps.send(readyLine(body.title))
+  const sent = await deps.send(readyLine(body.title), summaryButton(row.jobId))
   if (!sent) {
     await deps.store.save(row)
     return 200

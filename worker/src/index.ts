@@ -76,10 +76,15 @@ function isUpdate(value: unknown): value is {
   return typeof (message.chat as { id?: unknown }).id === 'number'
 }
 
-function isCallback(value: unknown): value is { status: 'ready'; title: string } | { status: 'failed'; error: string } {
+function isCallback(
+  value: unknown,
+): value is { status: 'ready'; title: string; noteUrl?: string } | { status: 'failed'; error: string } {
   if (typeof value !== 'object' || value === null) return false
-  const body = value as { status?: unknown; title?: unknown; error?: unknown }
-  if (body.status === 'ready') return typeof body.title === 'string'
+  const body = value as { status?: unknown; title?: unknown; error?: unknown; noteUrl?: unknown }
+  if (body.status === 'ready') {
+    if (typeof body.title !== 'string') return false
+    return body.noteUrl === undefined || typeof body.noteUrl === 'string'
+  }
   if (body.status === 'failed') return typeof body.error === 'string'
   return false
 }

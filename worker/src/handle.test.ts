@@ -7,24 +7,48 @@ const ID = 'abcdefghijk'
 function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> = {}): WorkerDeps & {
   sent: string[]
   knocked: string[]
+  buttons: { text: string; data: string }[]
 } {
   const sent: string[] = []
   const knocked: string[] = []
+  const buttons: { text: string; data: string }[] = []
   return {
     ownerChatId: '42',
     store,
     now: () => 1_000_000,
     sent,
     knocked,
+    buttons,
     knock: (job) => {
       knocked.push(job.jobId)
       return Promise.resolve(202)
     },
-    send: (text) => {
+    send: (text, button) => {
       sent.push(text)
+      if (button) buttons.push(button)
       return Promise.resolve(true)
     },
     ...over,
+  }
+}
+
+function acceptedRow(partial: Partial<JobRow> = {}): JobRow {
+  return {
+    jobId: `5:${ID}`,
+    updateId: 5,
+    chatId: '42',
+    messageId: 1,
+    videoId: ID,
+    url: `https://www.youtube.com/watch?v=${ID}`,
+    status: 'accepted',
+    phase: 'subtitle',
+    error: null,
+    title: null,
+    noteUrl: null,
+    notifiedReady: false,
+    noteNotified: false,
+    acceptedAt: 1,
+    ...partial,
   }
 }
 
@@ -189,5 +213,53 @@ describe('handleCallback', () => {
     const cron = deps(store)
     await handleCron(cron)
     expect(cron.knocked).toEqual([])
+  })
+
+  it('a felirat kész üzenete summary gombot kap', async () => {
+    const store = memoryStore()
+    await store.insert(acceptedRow())
+    const ok = deps(store)
+    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, ok)
+    expect(ok.sent).toEqual(['Cím. A felirat megvan.'])
+    expect(ok.buttons).toEqual([{ text: 'summary', data: `summary:5:${ID}` }])
+  })
+
+  it('a summary kész linkje kimegy, noteUrl nélkül a mondat failed', async () => {
+    const store = memoryStore()
+    await store.insert(acceptedRow({ phase: 'summary' }))
+    const missing = deps(store)
+    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, missing)
+    expect(missing.sent).toEqual(['A jegyzet linkje hiányzik.'])
+    expect((await store.listByUpdate(5))[0]?.status).toBe('failed')
+
+    const quiet = memoryStore()
+    await quiet.insert(acceptedRow({ phase: 'summary' }))
+    const held = deps(quiet, { send: () => Promise.resolve(false) })
+    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, held)
+    expect((await quiet.listByUpdate(5))[0]?.status).toBe('accepted')
+
+    const unsent = memoryStore()
+    await unsent.insert(acceptedRow({ phase: 'summary' }))
+    const dropped = deps(unsent, { send: () => Promise.resolve(false) })
+    const keptUrl = 'https://github.com/tulaj/repo/blob/main/a_summary.md'
+    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím', noteUrl: keptUrl }, dropped)
+    expect((await unsent.listByUpdate(5))[0]?.status).toBe('accepted')
+    expect((await unsent.listByUpdate(5))[0]?.noteUrl).toBe(keptUrl)
+    expect((await unsent.listByUpdate(5))[0]?.noteNotified).toBe(false)
+
+    const linked = memoryStore()
+    await linked.insert(acceptedRow({ phase: 'summary' }))
+    const ok = deps(linked)
+    const url = 'https://github.com/tulaj/repo/blob/main/a_summary.md'
+    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím', noteUrl: url }, ok)
+    expect(ok.sent).toEqual([`Cím. A jegyzet megvan.\n${url}`])
+    const row = (await linked.listByUpdate(5))[0]
+    expect(row?.status).toBe('ready')
+    expect(row?.noteNotified).toBe(true)
+    expect(row?.noteUrl).toBe(url)
+
+    const repeat = deps(linked)
+    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím', noteUrl: url }, repeat)
+    expect(repeat.sent).toEqual([])
   })
 })
