@@ -2,6 +2,7 @@ import {
   MISSING_NOTE_URL,
   REJECTED_SECRET,
   alreadyLine,
+  decideTap,
   linesForMessage,
   noteReadyMessage,
   queuedLine,
@@ -15,6 +16,7 @@ export interface PlannedKnock {
   jobId: string
   videoId: string
   url: string
+  recipe?: 'summary'
 }
 
 export interface WorkerDeps {
@@ -23,6 +25,7 @@ export interface WorkerDeps {
   now: () => number
   knock: (job: PlannedKnock) => Promise<202 | 409 | 401 | 'down'>
   send: (text: string, button?: { text: string; data: string }) => Promise<boolean>
+  answerTap: (callbackQueryId: string) => Promise<void>
 }
 
 type KnockResult = 202 | 409 | 401 | 'down'
@@ -157,8 +160,43 @@ export async function handleCallback(
   return 200
 }
 
+export async function handleTap(
+  update: { update_id: number; callback_query: { id: string; data?: string; message?: { chat: { id: number } } } },
+  deps: WorkerDeps,
+): Promise<PlannedKnock[]> {
+  await deps.answerTap(update.callback_query.id)
+  if (!(await deps.store.rememberUpdate(update.update_id))) return []
+  const chatId = update.callback_query.message?.chat.id
+  if (chatId === undefined || String(chatId) !== deps.ownerChatId) return []
+  const data = update.callback_query.data ?? ''
+  if (!data.startsWith('summary:')) return []
+  const jobId = data.slice('summary:'.length)
+  const row = await findRow(deps.store, jobId)
+  const action = decideTap(row, true)
+  if (action.type === 'busy') {
+    if (row) await deps.send(alreadyLine(row.videoId))
+    return []
+  }
+  if (action.type === 'resend') {
+    if (row?.title && row.noteUrl) await deps.send(noteReadyMessage(row.title, row.noteUrl))
+    return []
+  }
+  if (action.type === 'ignore') return []
+  const claimed =
+    action.type === 'start'
+      ? await deps.store.claim(jobId, { phase: 'subtitle', status: 'ready' }, { phase: 'summary', status: 'queued' })
+      : await deps.store.claim(jobId, { phase: 'summary', status: 'failed' }, { phase: 'summary', status: 'queued' })
+  if (claimed === null) {
+    if (row) await deps.send(alreadyLine(row.videoId))
+    return []
+  }
+  return [{ jobId: claimed.jobId, videoId: claimed.videoId, url: claimed.url, recipe: 'summary' }]
+}
+
 export async function handleCron(deps: WorkerDeps): Promise<void> {
   for (const row of await deps.store.due(deps.now())) {
-    await settle(row, await deps.knock({ jobId: row.jobId, videoId: row.videoId, url: row.url }), deps)
+    const knock: PlannedKnock = { jobId: row.jobId, videoId: row.videoId, url: row.url }
+    if (row.phase === 'summary') knock.recipe = 'summary'
+    await settle(row, await deps.knock(knock), deps)
   }
 }

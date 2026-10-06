@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyKnocks, handleCallback, handleCron, handleUpdate, type WorkerDeps } from './handle.js'
+import { applyKnocks, handleCallback, handleCron, handleTap, handleUpdate, type PlannedKnock, type WorkerDeps } from './handle.js'
 import { memoryStore, type JobRow } from './store.js'
 
 const ID = 'abcdefghijk'
@@ -7,20 +7,31 @@ const ID = 'abcdefghijk'
 function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> = {}): WorkerDeps & {
   sent: string[]
   knocked: string[]
+  knocks: PlannedKnock[]
   buttons: { text: string; data: string }[]
+  answered: string[]
 } {
   const sent: string[] = []
   const knocked: string[] = []
+  const knocks: PlannedKnock[] = []
   const buttons: { text: string; data: string }[] = []
+  const answered: string[] = []
   return {
     ownerChatId: '42',
     store,
     now: () => 1_000_000,
     sent,
     knocked,
+    knocks,
     buttons,
+    answered,
+    answerTap: (callbackQueryId) => {
+      answered.push(callbackQueryId)
+      return Promise.resolve()
+    },
     knock: (job) => {
       knocked.push(job.jobId)
+      knocks.push(job)
       return Promise.resolve(202)
     },
     send: (text, button) => {
@@ -261,5 +272,99 @@ describe('handleCallback', () => {
     const repeat = deps(linked)
     await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím', noteUrl: url }, repeat)
     expect(repeat.sent).toEqual([])
+  })
+})
+
+describe('handleTap', () => {
+  it('két ready koppintásból egy summary kopogtatás indul', async () => {
+    const store = memoryStore()
+    await store.insert(acceptedRow({ status: 'ready', phase: 'subtitle', notifiedReady: true, title: 'Cím' }))
+    const first = deps(store)
+    const second = deps(store)
+    const tap = {
+      update_id: 20,
+      callback_query: { id: 'cq', data: `summary:5:${ID}`, message: { chat: { id: 42 } } },
+    }
+    expect(await handleTap(tap, first)).toEqual([
+      { jobId: `5:${ID}`, videoId: ID, url: `https://www.youtube.com/watch?v=${ID}`, recipe: 'summary' },
+    ])
+    expect(first.answered).toEqual(['cq'])
+    expect(await handleTap({ ...tap, update_id: 21, callback_query: { ...tap.callback_query, id: 'cq2' } }, second)).toEqual([])
+    expect(second.sent).toEqual([`Már sorban van: ${ID}.`])
+  })
+
+  it('az ismételt update_id nem kopogtat, a failed gomb újra queued', async () => {
+    const store = memoryStore()
+    await store.insert(acceptedRow({ status: 'failed', phase: 'summary', error: 'A vault frissítése nem sikerült.' }))
+    const depsOnce = deps(store)
+    const tap = {
+      update_id: 30,
+      callback_query: { id: 'cq', data: `summary:5:${ID}`, message: { chat: { id: 42 } } },
+    }
+    expect(await handleTap(tap, depsOnce)).toHaveLength(1)
+    expect(await handleTap(tap, depsOnce)).toEqual([])
+    expect((await store.listByUpdate(5))[0]?.status).toBe('queued')
+    expect((await store.listByUpdate(5))[0]?.phase).toBe('summary')
+  })
+
+  it('idegen chat és a kiment link nem kopogtat', async () => {
+    const store = memoryStore()
+    await store.insert(acceptedRow({
+      status: 'ready',
+      phase: 'summary',
+      title: 'Cím',
+      noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md',
+      noteNotified: true,
+    }))
+    const foreign = deps(store)
+    await handleTap({
+      update_id: 40,
+      callback_query: { id: 'cq', data: `summary:5:${ID}`, message: { chat: { id: 7 } } },
+    }, foreign)
+    expect(foreign.knocked).toEqual([])
+    expect(foreign.sent).toEqual([])
+    expect(foreign.answered).toEqual(['cq'])
+
+    const own = deps(store)
+    await handleTap({
+      update_id: 41,
+      callback_query: { id: 'cq2', data: `summary:5:${ID}`, message: { chat: { id: 42 } } },
+    }, own)
+    expect(own.sent).toEqual(['Cím. A jegyzet megvan.\nhttps://github.com/tulaj/repo/blob/main/a.md'])
+    expect(own.knocked).toEqual([])
+    const held = deps(store, { send: () => Promise.resolve(false) })
+    await handleTap({
+      update_id: 42,
+      callback_query: { id: 'cq3', data: `summary:5:${ID}`, message: { chat: { id: 42 } } },
+    }, held)
+    expect((await store.listByUpdate(5))[0]?.noteNotified).toBe(true)
+  })
+
+  it('a cron a summary fázist recepttel ébreszti, a felirat fázist anélkül', async () => {
+    const store = memoryStore()
+    await store.insert(acceptedRow({ status: 'queued', phase: 'subtitle' }))
+    await store.insert(acceptedRow({
+      jobId: `6:${ID}`,
+      updateId: 6,
+      status: 'queued',
+      phase: 'summary',
+    }))
+    const clock = deps(store)
+    await handleCron(clock)
+    expect(clock.knocks).toEqual([
+      { jobId: `5:${ID}`, videoId: ID, url: `https://www.youtube.com/watch?v=${ID}` },
+      { jobId: `6:${ID}`, videoId: ID, url: `https://www.youtube.com/watch?v=${ID}`, recipe: 'summary' },
+    ])
+  })
+
+  it('a 401 a summary fázist failedre teszi, a fázis summary marad', async () => {
+    const store = memoryStore()
+    await store.insert(acceptedRow({ status: 'queued', phase: 'summary' }))
+    const rejected = deps(store, { knock: () => Promise.resolve(401) })
+    await handleCron(rejected)
+    const row = (await store.listByUpdate(5))[0]
+    expect(row?.status).toBe('failed')
+    expect(row?.phase).toBe('summary')
+    expect(row?.error).toBe('A konténer elutasította a hívást.')
   })
 })
