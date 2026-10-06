@@ -72,9 +72,12 @@ export async function handleUpdate(
       videoId: job.videoId,
       url: job.url,
       status: 'queued',
+      phase: 'subtitle',
       error: null,
       title: null,
+      noteUrl: null,
       notifiedReady: false,
+      noteNotified: false,
       acceptedAt: null,
     }
     await deps.store.insert(row)

@@ -21,9 +21,12 @@ function row(partial: Partial<JobRow>): JobRow {
     videoId: ID,
     url: `https://www.youtube.com/watch?v=${ID}`,
     status: 'queued',
+    phase: 'subtitle',
     error: null,
     title: null,
+    noteUrl: null,
     notifiedReady: false,
+    noteNotified: false,
     acceptedAt: null,
     ...partial,
   }
@@ -84,6 +87,36 @@ describe('memoryStore', () => {
     await store.insert(row({ jobId: 'c', updateId: 3, status: 'failed' }))
     const due = await store.due(now)
     expect(due.map((item) => item.jobId)).toEqual(['b'])
+  })
+
+  it('a claim csak a várt állapotból ír, a rememberUpdate egyszer enged', async () => {
+    const store = memoryStore()
+    await store.insert(row({ status: 'ready', phase: 'subtitle' }))
+    const lost = await store.claim(
+      `1:${ID}`,
+      { phase: 'summary', status: 'ready' },
+      { phase: 'summary', status: 'queued' },
+    )
+    expect(lost).toBeNull()
+    const won = await store.claim(
+      `1:${ID}`,
+      { phase: 'subtitle', status: 'ready' },
+      { phase: 'summary', status: 'queued' },
+    )
+    expect(won?.phase).toBe('summary')
+    expect(won?.status).toBe('queued')
+    expect(won?.error).toBeNull()
+    expect(won?.acceptedAt).toBeNull()
+    const again = await store.claim(
+      `1:${ID}`,
+      { phase: 'subtitle', status: 'ready' },
+      { phase: 'summary', status: 'queued' },
+    )
+    expect(again).toBeNull()
+    expect(await store.rememberUpdate(9)).toBe(true)
+    expect(await store.rememberUpdate(9)).toBe(false)
+    await store.insert(row({ jobId: `4:${ID}`, updateId: 4, status: 'queued', phase: 'summary' }))
+    expect(await store.activeByVideo(ID)).not.toBeNull()
   })
 })
 

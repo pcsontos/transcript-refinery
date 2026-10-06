@@ -1,0 +1,6 @@
+ALTER TABLE jobs ADD COLUMN phase TEXT NOT NULL DEFAULT 'subtitle';
+ALTER TABLE jobs ADD COLUMN note_url TEXT;
+ALTER TABLE jobs ADD COLUMN note_notified INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE seen_updates (
+  update_id INTEGER PRIMARY KEY
+);

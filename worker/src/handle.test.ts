@@ -103,9 +103,12 @@ describe('handleCallback', () => {
       videoId: ID,
       url: `https://www.youtube.com/watch?v=${ID}`,
       status: 'accepted',
+      phase: 'subtitle',
       error: null,
       title: null,
+      noteUrl: null,
       notifiedReady: false,
+      noteNotified: false,
       acceptedAt: 1,
     }
     await store.insert(row)
@@ -160,9 +163,12 @@ describe('handleCallback', () => {
       videoId: ID,
       url: `https://www.youtube.com/watch?v=${ID}`,
       status: 'accepted',
+      phase: 'subtitle',
       error: null,
       title: null,
+      noteUrl: null,
       notifiedReady: false,
+      noteNotified: false,
       acceptedAt: 1,
     })
     const failedSend = deps(store, { send: () => Promise.resolve(false) })

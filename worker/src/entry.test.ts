@@ -19,6 +19,11 @@ describe('szállítási fájlok', () => {
     expect(sql).toContain('CREATE TABLE jobs')
     expect(sql).toContain('update_id')
     expect(sql).toContain('notified_ready')
+    const summary = await readFile('worker/migrations/0002_summary.sql', 'utf8')
+    expect(summary).toContain('phase')
+    expect(summary).toContain('note_url')
+    expect(summary).toContain('note_notified')
+    expect(summary).toContain('seen_updates')
   })
 })
 
