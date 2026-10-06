@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { deleteLocalPair, infoKey, readLocalPair, subtitleKey } from './inventory.js'
+import { deleteLocalPair, infoKey, languageMatches, readLocalPair, subtitleKey } from './inventory.js'
 
 const ID = 'abcdefghijk'
 let dir: string
@@ -72,6 +72,25 @@ describe('readLocalPair', () => {
     expect(pair.complete).toBe(true)
     expect(pair.title).toBe(ID)
     expect(pair.files[0]?.language).toBe('en-US')
+  })
+
+  it('az en-US videó nyelvére az en feliratfájl illik', async () => {
+    await setup()
+    await writeFile(join(dir, `Cím [${ID}].en.vtt`), 'WEBVTT\n')
+    await writeFile(join(dir, `Cím [${ID}].info.json`), JSON.stringify({ id: ID, title: 'Cím', language: 'en-US' }))
+    const pair = await readLocalPair(dir, ID, ['hu', 'en'])
+    expect(pair.complete).toBe(true)
+    expect(pair.files.map((file) => file.language)).toEqual(['en'])
+  })
+
+  it('a languageMatches kétirányúan kezeli a nyelvjárásokat és az alapkódokat', () => {
+    expect(languageMatches('en', ['en-US'])).toBe(true)
+    expect(languageMatches('en-US', ['en'])).toBe(true)
+    expect(languageMatches('en-orig', ['en-US'])).toBe(true)
+    expect(languageMatches('hu-HU', ['hu'])).toBe(true)
+    expect(languageMatches('hu', ['hu-HU'])).toBe(true)
+    expect(languageMatches('en', ['hu'])).toBe(false)
+    expect(languageMatches('de', ['en-US'])).toBe(false)
   })
 
   it('a deleteLocalPair csak ennek a videónak a fájlját törli', async () => {

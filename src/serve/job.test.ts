@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import type { LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
-import { runJob, subtitleArgv, type CallbackBody } from './job.js'
+import { runJob, subtitleArgv, type CallbackBody, type JobEffects } from './job.js'
 
 const ID = 'abcdefghijk'
 const job = { jobId: 'job-1', videoId: ID, url: `https://www.youtube.com/watch?v=${ID}` }
@@ -17,6 +17,32 @@ function memoryStore(initial: Record<string, Uint8Array> = {}): ObjectStore & { 
       return Promise.resolve()
     },
     get: (key) => Promise.resolve(objects[key] ?? null),
+  }
+}
+
+function emptyEffects(store: ReturnType<typeof memoryStore>): JobEffects {
+  return {
+    store,
+    languages: ['hu', 'en'],
+    outDir: '/data/telegram',
+    readPair: () => Promise.resolve(pair({})),
+    deletePair: () => Promise.resolve(),
+    readFile: () => Promise.resolve(new Uint8Array()),
+    writeFile: () => Promise.resolve(),
+    fetchSubtitle: () => Promise.reject(new Error('fetch')),
+    summarize: () => Promise.reject(new Error('summary')),
+    callback: () => Promise.resolve(),
+  }
+}
+
+function effectsWith(store: ReturnType<typeof memoryStore>, paths: string[]): JobEffects {
+  return {
+    ...emptyEffects(store),
+    writeFile: (path) => {
+      paths.push(path)
+      return Promise.resolve()
+    },
+    summarize: () => Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' }),
   }
 }
 
@@ -205,5 +231,125 @@ describe('runJob', () => {
     })
     expect(puts).toBe(3)
     expect(callbacks).toEqual([{ status: 'failed', error: 'A feltöltés nem sikerült.' }])
+  })
+
+  it('a summary teljes R2-készletnél nem hív fetch-et, és a linket visszahívja', async () => {
+    const info = new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Kész cím', language: 'hu' }))
+    const vtt = new TextEncoder().encode('WEBVTT\n')
+    const store = memoryStore({
+      [`videos/${ID}/hu.vtt`]: vtt,
+      [`videos/${ID}/info.json`]: info,
+    })
+    const written: { path: string; body: Uint8Array }[] = []
+    const callbacks: CallbackBody[] = []
+    let summarized = 0
+    await runJob({ ...job, recipe: 'summary' }, {
+      store,
+      languages: ['hu', 'en'],
+      outDir: '/data/telegram',
+      readPair: () => Promise.resolve(pair({})),
+      deletePair: () => {
+        written.push({ path: 'deleted', body: new Uint8Array() })
+        return Promise.resolve()
+      },
+      readFile: () => Promise.resolve(new Uint8Array()),
+      writeFile: (path, body) => {
+        written.push({ path, body })
+        return Promise.resolve()
+      },
+      fetchSubtitle: () => {
+        throw new Error('fetch')
+      },
+      summarize: () => {
+        summarized += 1
+        return Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a_summary.md' })
+      },
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    expect(summarized).toBe(1)
+    expect(written.map((item) => item.path).sort()).toEqual([
+      '/data/telegram/Kész cím [abcdefghijk].hu.vtt',
+      '/data/telegram/Kész cím [abcdefghijk].info.json',
+      'deleted',
+    ].sort())
+    expect(callbacks).toEqual([
+      { status: 'ready', title: 'Kész cím', noteUrl: 'https://github.com/tulaj/repo/blob/main/a_summary.md' },
+    ])
+  })
+
+  it('a cím perjele egy fájlnév marad', async () => {
+    const info = new TextEncoder().encode(JSON.stringify({ id: ID, title: 'A/B', language: 'hu' }))
+    const store = memoryStore({
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: info,
+    })
+    const paths: string[] = []
+    await runJob({ ...job, recipe: 'summary' }, effectsWith(store, paths))
+    expect(paths).toContain('/data/telegram/A⧸B [abcdefghijk].hu.vtt')
+    expect(paths).toContain('/data/telegram/A⧸B [abcdefghijk].info.json')
+  })
+
+  it('hiányos R2-nél nincs fetch és nincs summary', async () => {
+    const store = memoryStore()
+    const callbacks: CallbackBody[] = []
+    await runJob({ ...job, recipe: 'summary' }, {
+      ...emptyEffects(store),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    expect(callbacks).toEqual([{ status: 'failed', error: 'A felirat nincs az R2-ben.' }])
+  })
+
+  it('az olvashatatlan R2 a saját mondatát adja', async () => {
+    const info = new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' }))
+    const store = memoryStore({ [`videos/${ID}/info.json`]: info, [`videos/${ID}/hu.vtt`]: new Uint8Array([1]) })
+    store.get = () => Promise.resolve(null)
+    const callbacks: CallbackBody[] = []
+    await runJob({ ...job, recipe: 'summary' }, {
+      ...emptyEffects(store),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    expect(callbacks).toEqual([{ status: 'failed', error: 'A felirat nem olvasható az R2-ből.' }])
+  })
+
+  it('a törlés hibája a kész linket nem cseréli le', async () => {
+    const info = new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' }))
+    const store = memoryStore({
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: info,
+    })
+    const callbacks: CallbackBody[] = []
+    await runJob({ ...job, recipe: 'summary' }, {
+      ...emptyEffects(store),
+      summarize: () => Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' }),
+      deletePair: () => Promise.reject(new Error('a lemez tele')),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    expect(callbacks).toEqual([
+      { status: 'ready', title: 'Cím', noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' },
+    ])
+  })
+
+  it('a más recept failed, fetch nélkül', async () => {
+    const callbacks: CallbackBody[] = []
+    await runJob({ ...job, recipe: 'qa' }, {
+      ...emptyEffects(memoryStore()),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    expect(callbacks).toEqual([{ status: 'failed', error: 'Ismeretlen recept.' }])
   })
 })

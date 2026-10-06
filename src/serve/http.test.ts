@@ -50,6 +50,30 @@ describe('createServeServer', () => {
     expect(started).toEqual(['job-1'])
     release()
   })
+
+  it('a summary recept 202 és az onJob látja, a szám recept 400', async () => {
+    const seen: unknown[] = []
+    server = createServeServer({
+      secret: 'titok',
+      gate,
+      onJob: (job) => {
+        seen.push(job.recipe)
+        return Promise.resolve()
+      },
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const port = (server.address() as { port: number }).port
+    const job = {
+      jobId: 'job-1',
+      videoId: 'abcdefghijk',
+      url: 'https://www.youtube.com/watch?v=abcdefghijk',
+      recipe: 'summary',
+    }
+    expect(await post(port, 'titok', job)).toBe(202)
+    expect(seen).toEqual(['summary'])
+    expect(await post(port, 'titok', { ...job, jobId: 'job-2', recipe: 1 })).toBe(400)
+  })
 })
 
 describe('serve parancs', () => {

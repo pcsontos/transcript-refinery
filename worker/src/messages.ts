@@ -12,10 +12,30 @@ export function waitingLine(videoId: string): string {
   return `A gép ébredésére vár: ${videoId}.`
 }
 
+function flatTitle(title: string): string {
+  const flat = [...title]
+    .map((char) => {
+      const code = char.codePointAt(0) ?? 0
+      return code <= 0x1f || code === 0x7f ? ' ' : char
+    })
+    .join('')
+  return flat.replace(/ {2,}/g, ' ').trim()
+}
+
 export function readyLine(title: string): string {
-  return `${title}. A felirat megvan.`
+  return `${flatTitle(title)}. A felirat megvan.`
 }
 
 export function alreadyLine(videoId: string): string {
   return `Már sorban van: ${videoId}.`
+}
+
+export const MISSING_NOTE_URL = 'A jegyzet linkje hiányzik.'
+
+export function noteReadyMessage(title: string, noteUrl: string): string {
+  return `${flatTitle(title)}. A jegyzet megvan.\n${noteUrl}`
+}
+
+export function summaryButton(jobId: string): { text: 'summary'; data: string } {
+  return { text: 'summary', data: `summary:${jobId}` }
 }

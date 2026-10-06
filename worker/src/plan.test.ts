@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { memoryStore, type JobRow } from './store.js'
 import {
+  MISSING_NOTE_URL,
   REJECTED_SECRET,
   alreadyLine,
+  decideTap,
   linesForMessage,
+  noteReadyMessage,
   queuedLine,
   readyLine,
+  summaryButton,
   waitingLine,
 } from './plan.js'
 
@@ -21,9 +25,12 @@ function row(partial: Partial<JobRow>): JobRow {
     videoId: ID,
     url: `https://www.youtube.com/watch?v=${ID}`,
     status: 'queued',
+    phase: 'subtitle',
     error: null,
     title: null,
+    noteUrl: null,
     notifiedReady: false,
+    noteNotified: false,
     acceptedAt: null,
     ...partial,
   }
@@ -85,6 +92,36 @@ describe('memoryStore', () => {
     const due = await store.due(now)
     expect(due.map((item) => item.jobId)).toEqual(['b'])
   })
+
+  it('a claim csak a várt állapotból ír, a rememberUpdate egyszer enged', async () => {
+    const store = memoryStore()
+    await store.insert(row({ status: 'ready', phase: 'subtitle' }))
+    const lost = await store.claim(
+      `1:${ID}`,
+      { phase: 'summary', status: 'ready' },
+      { phase: 'summary', status: 'queued' },
+    )
+    expect(lost).toBeNull()
+    const won = await store.claim(
+      `1:${ID}`,
+      { phase: 'subtitle', status: 'ready' },
+      { phase: 'summary', status: 'queued' },
+    )
+    expect(won?.phase).toBe('summary')
+    expect(won?.status).toBe('queued')
+    expect(won?.error).toBeNull()
+    expect(won?.acceptedAt).toBeNull()
+    const again = await store.claim(
+      `1:${ID}`,
+      { phase: 'subtitle', status: 'ready' },
+      { phase: 'summary', status: 'queued' },
+    )
+    expect(again).toBeNull()
+    expect(await store.rememberUpdate(9)).toBe(true)
+    expect(await store.rememberUpdate(9)).toBe(false)
+    await store.insert(row({ jobId: `4:${ID}`, updateId: 4, status: 'queued', phase: 'summary' }))
+    expect(await store.activeByVideo(ID)).not.toBeNull()
+  })
 })
 
 describe('mondatok', () => {
@@ -94,5 +131,31 @@ describe('mondatok', () => {
     expect(readyLine('Cím')).toBe('Cím. A felirat megvan.')
     expect(alreadyLine(ID)).toBe(`Már sorban van: ${ID}.`)
     expect(REJECTED_SECRET).toBe('A konténer elutasította a hívást.')
+  })
+
+  it('a jegyzet mondata két sor, a gomb adata a munka azonosítója', () => {
+    expect(noteReadyMessage('Cím', 'https://github.com/tulaj/repo/blob/main/a.md')).toBe(
+      'Cím. A jegyzet megvan.\nhttps://github.com/tulaj/repo/blob/main/a.md',
+    )
+    expect(summaryButton(`1:${ID}`)).toEqual({ text: 'summary', data: `summary:1:${ID}` })
+    expect(MISSING_NOTE_URL).toBe('A jegyzet linkje hiányzik.')
+  })
+
+  it('a cím újsora és vezérlőkaraktere egy szóköz, a link marad a második sor', () => {
+    const noteUrl = 'https://github.com/tulaj/repo/blob/main/a.md'
+    expect(noteReadyMessage('Cím\nhttps://evil.example\u0007', noteUrl)).toBe(
+      `Cím https://evil.example. A jegyzet megvan.\n${noteUrl}`,
+    )
+    expect(readyLine('Cím\r\nmásodik')).toBe('Cím második. A felirat megvan.')
+  })
+
+  it('a koppintás a fázis és a státusz szerint dönt', () => {
+    expect(decideTap(null, true)).toEqual({ type: 'ignore' })
+    expect(decideTap(row({ status: 'ready' }), false)).toEqual({ type: 'ignore' })
+    expect(decideTap(row({ status: 'ready', phase: 'subtitle' }), true)).toEqual({ type: 'start' })
+    expect(decideTap(row({ status: 'accepted', phase: 'summary' }), true)).toEqual({ type: 'busy' })
+    expect(decideTap(row({ status: 'ready', phase: 'summary', noteNotified: true }), true)).toEqual({ type: 'resend' })
+    expect(decideTap(row({ status: 'failed', phase: 'summary' }), true)).toEqual({ type: 'retry' })
+    expect(decideTap(row({ status: 'queued', phase: 'subtitle' }), true)).toEqual({ type: 'ignore' })
   })
 })

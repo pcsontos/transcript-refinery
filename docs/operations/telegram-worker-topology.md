@@ -109,24 +109,97 @@ Ha a Worker logikát (webhook feldolgozás, D1 állapotgép, percenkénti cron) 
    curl http://localhost:8788/__scheduled
    ```
 
-#### C) Valós Telegram forgalom ideiglenes átirányítása a helyi gépre (opcionális)
-Ha feltétlenül szükséges, hogy a valós Telegram appból a te helyi Worker példányod válaszoljon:
-1. Nyiss egy alagutat a helyi 8788-as portra:
+#### C) Helyi futtatás és hibakeresés külön Telegram-bottal (lokális D1)
+
+Egy botnak egyszerre egy webhookja lehet. Az éles bot a `https://transcript-refinery.peteroncode.workers.dev/telegram` címen marad. A helyi, konténeren kívüli `refinery serve` és a helyi Wrangler D1 a `scripts/telegram-debug.sh` scripten keresztül egy második botot kap. A Cloudflare-ön tárolt `SERVE_URL` titok nem változik. A Dockerben futó `homelab-cloudflared` a gép `8788`-as portját nem éri el, ezért az alagút `ngrok`.
+
+A script az Infisical `dev` környezetének `/peter-mbp` útjáról olvas. A debug-bot tokenje és webhook-titka külön név, nem írja felül az éles kulcsokat:
+
+| Infisical kulcs | A helyi `worker/.dev.vars` sora |
+|---|---|
+| `TELEGRAM_DEBUG_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN` |
+| `TELEGRAM_OWNER_CHAT_ID` | `TELEGRAM_OWNER_CHAT_ID` |
+| `TELEGRAM_DEBUG_WEBHOOK_SECRET` | `TELEGRAM_WEBHOOK_SECRET` |
+| `REFINERY_SERVE_SECRET` | `REFINERY_SERVE_SECRET` |
+| — | `SERVE_URL=http://127.0.0.1:8787` |
+
+A `TELEGRAM_DEBUG_BOT_TOKEN` a BotFather tokenje. Ha nincs benne kettőspont, a script nem indít folyamatot. A `TELEGRAM_OWNER_CHAT_ID` a saját privát chat azonosítója, ugyanaz, mint az éles botnál. A `8787`, `8788`, `9229`, `9230` és `4040` port legyen szabad. A `9229`-en maradt `workerd` miatt a Wrangler `Address already in use` hibával kilép, és a script csak annyit lát, hogy a `8788` nem nyílt meg. Kell hozzá `ngrok`, `jq`, `infisical` és `lsof`. A futása alatt ne indítsd a `pnpm worker:dev` és a `./scripts/worker-dev-vars.sh` parancsot: mindkettő felülírja a `worker/.dev.vars` fájlt az éles titkokkal, és a `SERVE_URL` akkor a `peter-mba` alagútja lenne. A `pnpm serve:inspect` és a **Serve: Inspect (port 9230)** profil se fusson: mindkettő másik serve-t indítana a `8787`-es porton.
+
+Két dolog nélkül a script elindul, majd elhal. Mindkettő a script előtt kell.
+
+Az ngroknak bejelentkezett fiók kell. Konfiguráció nélkül elindul a `127.0.0.1:4040` cím, aztán `ERR_NGROK_4018` hibával kilép, és a script `curl: (7) Failed to connect to 127.0.0.1 port 4040` sorokat ír. A tokent a https://dashboard.ngrok.com/get-started/your-authtoken címről lehet kimásolni, egyszer:
+
+```bash
+ngrok config add-authtoken <a dashboard tokenje>
+```
+
+A Wrangler a `transcript-refinery/classify` importot a `dist/fetch/classify.js` fájlból oldja fel. Build nélkül a `tmp/telegram-debug/wrangler.log` ezt írja: `Could not resolve "transcript-refinery/classify"`. A worktree gyökerében:
+
+```bash
+pnpm build
+```
+
+##### 1. Ajánlott indítás normál futtatáshoz és hibakereséshez is
+
+Bár a script nevében benne van a `debug`, **ez nem áll meg törésponton és nem vár debugger csatlakozásra**. Magától elindul és a háttérben futtatja a teljes láncot. Ha csak simán használni akarod a debug botot a Telegram appból a lokális D1 adatbázissal, ez az egyetlen parancs elvégzi az összes szükséges lépést:
+
+```bash
+./scripts/telegram-debug.sh
+```
+
+A script ezt teszi automatikusan:
+1. Lefuttatja a `pnpm worker:migrate:local` parancsot. A Wrangler nem kap `--remote` kapcsolót, ezért a `8788`-as porton a helyi D1-et használja.
+2. Összeállítja a `worker/.dev.vars` fájlt a fenti táblázat szerint. A korábbi fájlt elteszi, és leállításkor visszaírja.
+3. Elindítja a `refinery serve` folyamatot a `127.0.0.1:8787` címen, `tsx --inspect=127.0.0.1:9230` kapcsolóval. A `WORKER_CALLBACK_URL` értéke `http://127.0.0.1:8788`, ezért a visszahívás a helyi D1-be megy.
+4. Elindítja a Wranglert export nélkül, a `8788`-as porton a helyi D1 adatbázissal. A töréspont a `127.0.0.1:9229` címen elérhető, de nem kötelező használni. A helyi cron nem indul magától: manuális teszteléshez `curl http://127.0.0.1:8788/__scheduled`.
+5. Elindítja az `ngrok http 8788` alagutat, kiolvassa a nyilvános `https` címet, és beállítja a Telegram webhookot a debug-tokennel (`allowed_updates=["message","callback_query"]`).
+
+A script kiírja a webhook címet és a két töréspontot. A naplók a `tmp/telegram-debug/` mappában követhetők: `serve.log`, `wrangler.log`, `ngrok.log`. `Ctrl+C`-vel leállítva tisztán törli a debug bot webhookját, leállítja a folyamatokat, és visszaállítja az eredeti `worker/.dev.vars` fájlt.
+
+##### 2. Miért nem elég a meglévő `pnpm worker:dev` és `pnpm serve`?
+
+Önálló pnpm scriptekkel indítva három probléma merülne fel:
+1. **Titkok felülírása**: A `pnpm worker:dev` beépítve futtatja az `infisical export ...` lépést, ami az **éles** `TELEGRAM_BOT_TOKEN`-t és az **éles** `SERVE_URL`-t (peter-mba tunnel) írja a `worker/.dev.vars`-ba, így felülcsapja a debug bot konfigurációját.
+2. **Rossz visszahívási cím**: A sima `pnpm serve` az éles Worker callback URL-t hívná a helyi helyett, így a letöltés befejeztével az éles D1-be küldené a visszahívást a lokális helyett.
+3. **Hiányzó alagút és webhook**: A Telegram szerverei nem látják a helyi gépet (`localhost:8788`). Ngrok és Telegram `setWebhook` nélkül a debug botnak küldött üzenetek soha nem érnének el a gépre.
+
+##### 3. Manuális futtatás (külön terminálokban, script nélkül)
+
+Ha nem a shell scriptet akarod használni, a következő lépésekkel indítható el a környezet:
+
+1. **Adatbázis migráció**:
+   ```bash
+   pnpm worker:migrate:local
+   ```
+2. **`worker/.dev.vars` beállítása** a debug bot adataival (lásd a fenti táblázatot).
+3. **1. terminál – Serve indítása lokális visszahívással**:
+   ```bash
+   WORKER_CALLBACK_URL="http://127.0.0.1:8788" pnpm serve
+   ```
+4. **2. terminál – Cloudflare Worker indítása (lokális D1)**:
+   *Fontos: ne a `pnpm worker:dev`-et indítsd!*
+   ```bash
+   npx wrangler dev --config worker/wrangler.toml --port 8788 --test-scheduled
+   ```
+5. **3. terminál – Ngrok és webhook regisztráció**:
    ```bash
    ngrok http 8788
    ```
-2. Állítsd át a Telegram webhookot az ideiglenes ngrok URL-re:
+   Majd az ngrok nyilvános URL-jével regisztráld a webhookot a Telegram API-n:
    ```bash
-   curl -F "url=https://<ngrok-id>.ngrok-free.app/telegram" \
-        -F "secret_token=<TELEGRAM_WEBHOOK_SECRET>" \
-        https://api.telegram.org/bot<TOKEN>/setWebhook
+   curl -sS "https://api.telegram.org/bot<TELEGRAM_DEBUG_BOT_TOKEN>/setWebhook" \
+     -F "url=https://<ngrok-id>.ngrok-free.app/telegram" \
+     -F "secret_token=<TELEGRAM_DEBUG_WEBHOOK_SECRET>" \
+     -F 'allowed_updates=["message","callback_query"]'
    ```
-3. A fejlesztés végeztével **mindig állítsd vissza** az éles Worker címére:
-   ```bash
-   curl -F "url=https://transcript-refinery.peteroncode.workers.dev/telegram" \
-        -F "secret_token=<TELEGRAM_WEBHOOK_SECRET>" \
-        https://api.telegram.org/bot<TOKEN>/setWebhook
-   ```
+
+##### 4. VS Code töréspontok csatolása (opcionális hibakereséshez)
+
+Ha valóban töréspontokon szeretnél megállni a futás során, a `./scripts/telegram-debug.sh` elindítása után:
+1. Várd meg ezt a két sort: `A Wrangler töréspontja: 127.0.0.1:9229` és `A serve töréspontja: 127.0.0.1:9230`.
+2. A Run and Debug panelen a **Worker: Attach (port 9229)** profilt indítsd (a **Worker: Dev** profilt ne, mert az felülírná a `.dev.vars`-t).
+3. A **Serve: Attach (port 9230)** profilt is indítsd.
+4. A Worker töréspontját a `worker/src` alá tedd (pl. `index.ts`), a serve töréspontját pedig a `src/serve/` alá.
 
 ---
 
@@ -170,7 +243,7 @@ API="https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}"
 | Művelet | Parancs | Megjegyzés |
 |---|---|---|
 | **Webhook állapot lekérdezése** | `curl -s "$API/getWebhookInfo" \| jq` | Mutatja a regisztrált URL-t, a függő üzenetek számát és az utolsó hibát. |
-| **Webhook beállítása az éles Workerre** | `curl -s "$API/setWebhook" -F "url=https://transcript-refinery.peteroncode.workers.dev/telegram" -F "secret_token=$TELEGRAM_WEBHOOK_SECRET" -F "allowed_updates=[\"message\"]" -F "drop_pending_updates=true"` | Beállítja a webhook URL-t, a hitelesítő tokent, és eldobja az esetleg felgyülemlett hibás frissítéseket. |
+| **Webhook beállítása az éles Workerre** | `curl -s "$API/setWebhook" -F "url=https://transcript-refinery.peteroncode.workers.dev/telegram" -F "secret_token=$TELEGRAM_WEBHOOK_SECRET" -F 'allowed_updates=["message","callback_query"]' -F "drop_pending_updates=true"` | Beállítja a webhook URL-t és a hitelesítő tokent. A `callback_query` a `summary` gomb. Üres `allowed_updates` minden típust enged. |
 | **Webhook törlése** | `curl -s "$API/deleteWebhook?drop_pending_updates=true"` | Eltávolítja a webhookot. Szükséges, ha kézzel szeretnéd lekérdezni a `getUpdates`-et. |
 | **Bot token ellenőrzése** | `curl -s "$API/getMe" \| jq` | Ellenőrzi, hogy a token él-e és visszaadja a bot nevét/adatait. |
 | **Frissítések lekérése kézzel (Chat ID kereséshez)** | `curl -s "$API/getUpdates" \| jq` | **Csak törölt webhook mellett működik!** Segít kideríteni a saját `chat_id`-dat, ha ráírsz a botra. |

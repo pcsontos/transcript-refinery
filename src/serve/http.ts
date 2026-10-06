@@ -37,8 +37,9 @@ function readBody(request: IncomingMessage): Promise<string> {
 
 function isJob(value: unknown): value is ServeJob {
   if (typeof value !== 'object' || value === null) return false
-  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown }
-  return typeof job.jobId === 'string' && typeof job.videoId === 'string' && typeof job.url === 'string'
+  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown }
+  if (typeof job.jobId !== 'string' || typeof job.videoId !== 'string' || typeof job.url !== 'string') return false
+  return job.recipe === undefined || typeof job.recipe === 'string'
 }
 
 function send(response: ServerResponse, status: number): void {

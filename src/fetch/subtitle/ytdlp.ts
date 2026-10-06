@@ -85,14 +85,19 @@ function langKeys(value: unknown): string[] {
 
 function bestTag(language: string, tags: readonly string[]): string | null {
   const wanted = language.toLowerCase()
-  const matching = tags.filter((tag) => tag.toLowerCase().startsWith(wanted))
+  const base = wanted.split('-')[0] ?? wanted
+  const rank = (tag: string): number => {
+    const candidate = tag.toLowerCase()
+    if (candidate === `${wanted}-orig`) return 0
+    if (candidate === wanted) return 1
+    if (candidate === `${base}-orig`) return 2
+    if (candidate === base) return 3
+    if (candidate.startsWith(`${wanted}-`)) return 4
+    return 5
+  }
+  const matching = tags.filter((tag) => rank(tag) < 5)
   if (matching.length === 0) return null
-  return (
-    matching.find((tag) => tag.toLowerCase() === `${wanted}-orig`) ??
-    matching.find((tag) => tag.toLowerCase() === wanted) ??
-    matching[0] ??
-    null
-  )
+  return [...matching].sort((a, b) => rank(a) - rank(b))[0] ?? null
 }
 
 /** A yt-dlp `--sub-langs` értéke: a videó saját nyelvén lévő kézi vagy eredeti automatikus sáv. */

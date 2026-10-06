@@ -139,6 +139,20 @@ describe('yt-dlp argumentumok', () => {
         automaticLangs: ['en', 'hu'],
       }),
     ).toBeNull()
+    expect(
+      originalSubtitleLang({
+        language: 'en-US',
+        manualLangs: ['en'],
+        automaticLangs: ['en', 'en-orig', 'hu'],
+      }),
+    ).toBe('en')
+    expect(
+      originalSubtitleLang({
+        language: 'en-US',
+        manualLangs: [],
+        automaticLangs: ['en', 'en-orig', 'hu'],
+      }),
+    ).toBe('en-orig')
     expect(originalSubtitleLang({ manualLangs: ['en'], automaticLangs: ['en'] })).toBeNull()
     expect(parseVideoProbe('{"id":"rovid"}')).toBeNull()
     expect(parsePlaylistProbe('{"id":"PLxxx","title":"Kurzus","entries":[{"title":"nincs id"}]}')).toEqual({

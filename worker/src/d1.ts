@@ -19,9 +19,12 @@ interface JobRecord {
   video_id: string
   url: string
   status: JobStatus
+  phase: JobRow['phase']
   error: string | null
   title: string | null
+  note_url: string | null
   notified_ready: number
+  note_notified: number
   accepted_at: number | null
 }
 
@@ -36,9 +39,12 @@ function toRow(record: JobRecord): JobRow {
     videoId: record.video_id,
     url: record.url,
     status: record.status,
+    phase: record.phase,
     error: record.error,
     title: record.title,
+    noteUrl: record.note_url,
     notifiedReady: record.notified_ready === 1,
+    noteNotified: record.note_notified === 1,
     acceptedAt: record.accepted_at,
   }
 }
@@ -62,8 +68,9 @@ export function createD1Store(db: D1Like): JobStore {
       await db
         .prepare(
           `INSERT INTO jobs (
-            job_id, update_id, chat_id, message_id, video_id, url, status, error, title, notified_ready, accepted_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            job_id, update_id, chat_id, message_id, video_id, url, status, phase, error, title,
+            note_url, notified_ready, note_notified, accepted_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           row.jobId,
@@ -73,9 +80,12 @@ export function createD1Store(db: D1Like): JobStore {
           row.videoId,
           row.url,
           row.status,
+          row.phase,
           row.error,
           row.title,
+          row.noteUrl,
           row.notifiedReady ? 1 : 0,
+          row.noteNotified ? 1 : 0,
           row.acceptedAt,
         )
         .run()
@@ -84,8 +94,8 @@ export function createD1Store(db: D1Like): JobStore {
       await db
         .prepare(
           `UPDATE jobs SET
-            update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?,
-            error = ?, title = ?, notified_ready = ?, accepted_at = ?
+            update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?, phase = ?,
+            error = ?, title = ?, note_url = ?, notified_ready = ?, note_notified = ?, accepted_at = ?
           WHERE job_id = ?`,
         )
         .bind(
@@ -95,9 +105,12 @@ export function createD1Store(db: D1Like): JobStore {
           row.videoId,
           row.url,
           row.status,
+          row.phase,
           row.error,
           row.title,
+          row.noteUrl,
           row.notifiedReady ? 1 : 0,
+          row.noteNotified ? 1 : 0,
           row.acceptedAt,
           row.jobId,
         )
@@ -113,6 +126,28 @@ export function createD1Store(db: D1Like): JobStore {
         .bind(now - FIFTEEN_MINUTES)
         .all<JobRecord>()
       return result.results.map(toRow)
+    },
+    async claim(jobId, expect, next) {
+      const result = await db
+        .prepare(
+          `UPDATE jobs SET phase = ?, status = ?, error = NULL, accepted_at = NULL
+           WHERE job_id = ? AND phase = ? AND status = ?`,
+        )
+        .bind(next.phase, next.status, jobId, expect.phase, expect.status)
+        .run()
+      const changes = (result as { meta?: { changes?: number } }).meta?.changes
+      if (changes !== 1) return null
+      const record = await db.prepare('SELECT * FROM jobs WHERE job_id = ?').bind(jobId).first<JobRecord>()
+      return record === null ? null : toRow(record)
+    },
+    async rememberUpdate(updateId) {
+      try {
+        const result = await db.prepare('INSERT INTO seen_updates (update_id) VALUES (?)').bind(updateId).run()
+        const changes = (result as { meta?: { changes?: number } }).meta?.changes
+        return changes === undefined || changes === 1
+      } catch {
+        return false
+      }
     },
   }
 }

@@ -209,7 +209,7 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
     }
 
     const dest = destOf(probe.channel ?? '')
-    if (!args.overwrite && (await alreadyFetched(dest, probe.id, [language]))) {
+    if (!args.overwrite && (await alreadyFetched(dest, probe.id, [lang]))) {
       stdout(`[SKIP] ${title} [${probe.id}]`)
       rows.push('skipped')
       return 'next'
@@ -229,7 +229,7 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
     if ('missing' in dlRes) return 'halt'
     if (stopped) return 'stop'
 
-    const fetched = await alreadyFetched(dest, probe.id, [language])
+    const fetched = await alreadyFetched(dest, probe.id, [lang])
     if (fetched) {
       stdout(`[OK]   ${title} [${probe.id}]`)
       rows.push('downloaded')

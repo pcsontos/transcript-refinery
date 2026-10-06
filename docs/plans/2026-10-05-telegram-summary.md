@@ -10,7 +10,7 @@
 
 **Spec:** `docs/plans/2026-10-05-telegram-summary-spec.md`
 
-Az implementáció a jelenlegi worktree-n indul. Ha a választott végrehajtás külön worktree-t kér, azt a végrehajtás skillje hozza létre.
+Az implementáció a `.worktrees/impl-telegram-summary` worktree-n, az `impl-telegram-summary` ágon indul.
 
 ## Global Constraints
 
@@ -25,6 +25,9 @@ Az implementáció a jelenlegi worktree-n indul. Ha a választott végrehajtás 
 - Mondatok, szó szerint: `A felirat nincs az R2-ben.` `A felirat nem olvasható az R2-ből.` `A vault frissítése nem sikerült.` `A push nem sikerült, a commit lokálisan maradt.` `A vault távoli címe nem GitHub-cím.` `Ismeretlen recept.` `A jegyzet linkje hiányzik.` `A jegyzet nem készült el.` Az utolsó csak akkor, ha a futás kilépője `0`, és a `_summary.md` még sincs a vaultban.
 - A CLI saját megállásának mondata egy sor, a naplóból. A `run:aborted` sora: `A futás megállt: <reason> (<spent> $ / <limit> $)`, négy tizedessel. Az `item:failed` `error` mezőjének első sora megy ki.
 - A teszt nem éri el a YouTube-ot, a Telegramot, az R2-t, a LiteLLM-et, és nem épít Docker-képet. Új tesztfüggőség nincs. A feladat végén az adott tesztfájl zöld, az utolsó feladat végén a `pnpm test` és a `pnpm typecheck` is.
+- A `SummaryGit` a `runSummary` paraméterének típusa a `src/serve/summary.ts` fájlban, export nélkül. A `command.ts` az alap git-függvényeket hívja. Második git-megvalósítás nincs.
+- A futás mondatát a `src/serve/summary.ts` helyi függvénye olvassa: a `logsDir` legutóbbi `.jsonl` fájlja, `run:aborted` és `item:failed`. Külön naplóolvasó modul nincs.
+- A `serveEffects` gyártó a `src/serve/command.ts` fájlban marad, mert a teszt így nem indít szervert. Recept-regiszter nincs. A `memoryStore` másolata a `src/serve/command.test.ts` fájlban marad másolat. Közös teszt-segéd fájl nincs. A `src/serve/note-url.ts` külön fájl marad.
 
 ## Review Focus
 
@@ -65,7 +68,7 @@ Ezek a bemenetek egy elnézett ágon kétszer hívják a modellt, rossz linket k
 - Consumes: semmit.
 - Produces: `export function githubNoteUrl(remote: string, branch: string, vaultRelativePath: string): string | null`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 import { describe, expect, it } from 'vitest'
@@ -90,12 +93,12 @@ describe('githubNoteUrl', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/serve/note-url.test.ts`
 Expected: FAIL, a `./note-url.js` modul nem létezik.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 const REMOTE = /^(?:git@github\.com:|https:\/\/github\.com\/)([^/]+)\/([^/]+?)(?:\.git)?$/
@@ -108,12 +111,12 @@ export function githubNoteUrl(remote: string, branch: string, vaultRelativePath:
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/serve/note-url.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/note-url.ts src/serve/note-url.test.ts
@@ -140,7 +143,7 @@ git commit -m "feat(serve): build the vault note's GitHub URL"
   - `claim(jobId: string, expect: { phase: JobPhase; status: JobStatus }, next: { phase: JobPhase; status: JobStatus }): Promise<JobRow | null>`
   - `rememberUpdate(updateId: number): Promise<boolean>` — `true`, ha ez az `update_id` először látszik
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 A `worker/src/plan.test.ts` `row` segédje kapja meg a három alapértéket: `phase: 'subtitle'`, `noteUrl: null`, `noteNotified: false`. A `memoryStore` blokk végére ez a teszt kerül:
 
@@ -178,12 +181,12 @@ it('a claim csak a várt állapotból ír, a rememberUpdate egyszer enged', asyn
 
 A `worker/src/entry.test.ts` migrációs tesztje olvassa a `worker/migrations/0002_summary.sql` fájlt is, és várja a `phase`, a `note_url`, a `note_notified` és a `seen_updates` szöveget.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run worker/src/plan.test.ts worker/src/entry.test.ts`
 Expected: FAIL, a `claim` nincs a táron. A `handle.test.ts` fordítási hibája a hiányzó `JobRow` mező. Minden ottani objektumliterál kapja: `phase: 'subtitle'`, `noteUrl: null`, `noteNotified: false`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 A `worker/migrations/0002_summary.sql` tartalma:
 
@@ -202,12 +205,12 @@ A `d1.ts` `JobRecord` és `toRow` a `phase`, `note_url`, `note_notified` oszlopo
 
 A `handle.ts` új sora a három alapértéket írja: `phase: 'subtitle'`, `noteUrl: null`, `noteNotified: false`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run worker/src/plan.test.ts worker/src/handle.test.ts worker/src/entry.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/store.ts worker/src/d1.ts worker/src/handle.ts worker/src/plan.test.ts worker/src/handle.test.ts worker/src/entry.test.ts worker/migrations/0002_summary.sql
@@ -232,7 +235,7 @@ git commit -m "feat(worker): remember the summary phase on a job"
   - `export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }`
   - `export function decideTap(row: JobRow | null, owner: boolean): TapAction`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 it('a jegyzet mondata két sor, a gomb adata a munka azonosítója', () => {
@@ -254,12 +257,12 @@ it('a koppintás a fázis és a státusz szerint dönt', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run worker/src/plan.test.ts`
 Expected: FAIL, a `decideTap` nincs exportálva.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```ts
 export const MISSING_NOTE_URL = 'A jegyzet linkje hiányzik.'
@@ -277,12 +280,12 @@ A `decideTap` sorrendje: `row === null` vagy `owner === false` esetén `{ type: 
 
 A `plan.ts` a `messages.ts` új neveit is újraexportálja, ahogy a mai mondatokat.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run worker/src/plan.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/messages.ts worker/src/plan.ts worker/src/plan.test.ts
@@ -301,7 +304,7 @@ git commit -m "feat(worker): decide what a summary tap does"
 - Consumes: `noteReadyMessage`, `summaryButton`, `MISSING_NOTE_URL`, `readyLine`, a `JobRow` új mezői.
 - Produces: a `handleCallback` a felirat kész üzenetéhez gombot kér, a summary fázisú kész testet a linküzenettel zárja. A `WorkerDeps.send` második, elhagyható paramétere: `{ text: string; data: string }`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 A teszt `deps` segédjének `send` függvénye a második paramétert is feljegyzi egy `buttons` tömbbe. Az alap `send` továbbra is a szöveget teszi a `sent` tömbbe.
 
@@ -358,12 +361,12 @@ it('a summary kész linkje kimegy, noteUrl nélkül a mondat failed', async () =
 
 Az `acceptedRow` a mai `handleCallback` teszt sorát adja, `phase: 'subtitle'` alapértékkel. A második paraméter felülírja.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts`
 Expected: FAIL, a gomb tömb üres, és a `noteUrl` nincs a visszahívás típusán.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 A `handleCallback` kész ága a sor `phase` mezője szerint megy.
 
@@ -373,12 +376,12 @@ Felirat fázis: a mai ág, a `send` második paramétere `summaryButton(row.jobI
 
 A visszahívás típusa a `handle.ts` és az `index.ts` `isCallback` függvényében: `ready` mellett a `title` szöveg, és ha a `noteUrl` jelen van, az is szöveg. Hiányzó `noteUrl` érvényes.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts`
 Expected: PASS. A régi kész-üzenet teszt továbbra is a `Cím. A felirat megvan.` szöveget várja.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/handle.ts worker/src/handle.test.ts worker/src/index.ts
@@ -401,7 +404,7 @@ git commit -m "feat(worker): attach the summary button and accept the note link"
   - `WorkerDeps.answerTap(callbackQueryId: string): Promise<void>`
   - A `handleCron` summary fázisban `recipe: 'summary'` kopogtatást ad
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 it('két ready koppintásból egy summary kopogtatás indul', async () => {
@@ -499,12 +502,12 @@ it('a 401 a summary fázist failedre teszi, a fázis summary marad', async () =>
 
 A `deps` a `knock` egész testét a `knocks` tömbbe teszi, és az `answerTap` az `answered` tömbbe írja az azonosítót.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts`
 Expected: FAIL, a `handleTap` nincs exportálva.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 A `handleTap` először meghívja a `deps.answerTap(callback_query.id)` függvényt. Utána a `rememberUpdate`. Ha `false`, üres tömb. Ha a chat nem a `ownerChatId`, üres tömb. A `data` eleje `summary:`, a maradék a `jobId`. A `decideTap` eredménye:
 
@@ -518,12 +521,12 @@ Ha a `claim` `null`, kimegy az `alreadyLine`, kopogtatás nincs. Ha sort ad, a v
 
 A `handleCron` a mai kopogtatást adja. Ha `row.phase === 'summary'`, a test `recipe` mezője `'summary'`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts worker/src/plan.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/handle.ts worker/src/handle.test.ts
@@ -542,7 +545,7 @@ git commit -m "feat(worker): start the summary from the button"
 - Consumes: `handleTap`, `PlannedKnock.recipe`, `answerTap`, a `send` gombparamétere.
 - Produces: a `/telegram` út a `callback_query` frissítést a `handleTap` felé viszi. Az `answerCallbackQuery` üres testű. A `sendMessage` a gombot `reply_markup.inline_keyboard` alatt küldi. A kopogtatás JSON-ja a `recipe` mezőt is viszi, ha van.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 it('a gombkoppintás üres answerCallbackQuery választ kér, idegen chatnél kopogtatás nélkül', async () => {
@@ -570,12 +573,12 @@ it('a gombkoppintás üres answerCallbackQuery választ kér, idegen chatnél ko
 
 Az `env` a fájlban már meglévő tesztkörnyezet. A `waitUntil` azonnal futtatja a kapott ígéretet, hogy a kopogtatás hiánya látszódjon.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run worker/src/entry.test.ts`
 Expected: FAIL, a hívások üresek.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Az `isTap` igaz, ha az `update_id` szám, és a `callback_query.id` szöveg. A `/telegram` ág az `isTap` vizsgálatot az `isUpdate` elé teszi. Igaz ágon meghívja a `handleTap` függvényt, a kopogtatásokat a `ctx.waitUntil(applyKnocks(...))` viszi, és `200` a válasz.
 
@@ -585,12 +588,12 @@ A `deps.send` a mai `sendMessage` testét küldi. Ha a második paraméter megva
 
 A `deps.knock` a mai fetch. A `JSON.stringify(job)` a `recipe` mezőt is viszi, mert az a `PlannedKnock` része.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run worker/src/entry.test.ts worker/src/handle.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/index.ts worker/src/entry.test.ts
@@ -615,7 +618,7 @@ git commit -m "feat(worker): route the summary button through the webhook"
   - `JobEffects` új, elhagyható mezői: `outDir?: string`, `writeFile?: (path: string, body: Uint8Array) => Promise<void>`, `summarize?: (videoId: string) => Promise<SummaryOutcome>`
   - A `runJob` recept nélkül a mai fetch. `recipe: "summary"` mellett a hatás fut, YouTube nélkül.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 it('a summary teljes R2-készletnél nem hív fetch-et, és a linket visszahívja', async () => {
@@ -773,12 +776,12 @@ A `CallbackBody` kész ága elhagyható `noteUrl` szöveget kap. A `JobEffects` 
 
 A `src/serve/http.test.ts` egy esete: a `{ jobId, videoId, url, recipe: 'summary' }` test `202`, és az `onJob` ezt a `recipe` mezőt látja. A `recipe: 1` test `400`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/serve/job.test.ts src/serve/http.test.ts`
 Expected: FAIL, a `recipe` nincs a `ServeJob` típuson.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 A `runJob` elején, ha `job.recipe !== undefined`, a summary ág fut, és a függvény visszatér. A mai fetch-út ettől nem változik.
 
@@ -792,12 +795,12 @@ A summary ág:
 
 A `http.ts` `isJob` a három mai mező mellett elfogadja a hiányzó `recipe` értéket. Ha jelen van, szövegnek kell lennie, és a visszaadott munka viszi. A `createServeServer` `onJob` ezt a testet kapja.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/serve/job.test.ts src/serve/http.test.ts`
 Expected: PASS. A recept nélküli fetch tesztek zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/job.ts src/serve/job.test.ts src/serve/http.ts src/serve/http.test.ts
@@ -815,11 +818,11 @@ git commit -m "feat(serve): run a summary job from the R2 pair"
 **Interfaces:**
 - Consumes: `githubNoteUrl` az 1. feladatból, `commandRun`, `loadConfig`, `readConfigFile`, `gitPullFfOnly`, `gitCommitPaths`, `gitPush`, `noteFile`, `splitSubtitleName`.
 - Produces:
-  - `export interface SummaryGit { pull(repo: string): Promise<void>; commit(repo: string, paths: readonly string[], message: string): Promise<boolean>; push(repo: string): Promise<{ pushed: boolean }>; remote(repo: string): Promise<string>; branch(repo: string): Promise<string> }`
+  - A `SummaryGit` nem exportált típus a `summary.ts` fájlban: `{ pull(repo: string): Promise<void>; commit(repo: string, paths: readonly string[], message: string): Promise<boolean>; push(repo: string): Promise<{ pushed: boolean }>; remote(repo: string): Promise<string>; branch(repo: string): Promise<string> }`. Második git-megvalósítás nincs.
   - `export async function runSummary(input: { videoId: string; outDir: string; createClient?: RunRuntime['createClient']; git?: SummaryGit; load?: () => Promise<{ cfg: Config; raw: unknown }> }): Promise<SummaryOutcome>`
   - A `SummaryOutcome` a 7. feladat típusa. A `summary.ts` onnan importálja.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 A teszt ideiglenes vaultot és csupasz `origin` repót készít, `main` ággal, `user.email` és `user.name` beállítással. A `LITELLM_API_KEY` a teszt idejére `sk-proba`, utána a régi érték. A forrásmappa egy `Beszéd [abcdefghijk].hu.vtt` és egy `Beszéd [abcdefghijk].info.json`. A felirat egy cue: `Hello from the video.` Az info `id`, `title: 'Beszéd'`, `language: 'hu'`. A `raw` a `cli.test.ts` `rawConfig` alakja, `cost_limit_usd: 5`, a vault útja a teszt vaultja, a `sources` a forrásmappa, a `state` és a `logs` a teszt saját mappája. A `load` ezt adja `loadConfig` eredményével.
 
@@ -863,32 +866,32 @@ A recept hiba tesztje a `generate` függvényt `Error('szimulált hiba')` dobás
 
 A config teszt `load` függvénye `Error('Nincs konfigurációs fájl: x\nMásodik sor')` hibát dob. Az eredmény `{ ok: false, error: 'Nincs konfigurációs fájl: x' }`. A `createClient` nem hívódik.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/serve/summary.test.ts`
 Expected: FAIL, a `./summary.js` modul nem létezik.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 A `runSummary` sorrendje:
 
 1. `load`. Dobásnál az első sor a hiba.
 2. `git.pull(cfg.vaultPath)`. Dobásnál `A vault frissítése nem sikerült.` A modellkliens ettől a ponttól még nem készül.
 3. A `commandRun` configja a betöltött config másolata, egyetlen forrással: `{ name: basename(outDir), path: outDir }`. A zászlók: `recipe: 'summary'`, `dryRun: false`, `force: false`, `commit: false`, `command: 'serve summary'`. A `createClient` a hívóé.
-4. Ha a kilépő nem `0`, a `logsDir` legutóbbi `.jsonl` fájljából jön a mondat. `run:aborted` esetén `A futás megállt: ${reason} (${spentUsd.toFixed(4)} $ / ${limitUsd.toFixed(4)} $)`. `item:failed` esetén az `error` első sora. Ha egyik sincs, `A futás megállt.`
+4. Ha a kilépő nem `0`, a mondatot a `summary.ts` helyi függvénye adja, külön modul nélkül. A `logsDir` legutóbbi `.jsonl` fájlját olvassa. `run:aborted` esetén `A futás megállt: ${reason} (${spentUsd.toFixed(4)} $ / ${limitUsd.toFixed(4)} $)`. `item:failed` esetén az `error` első sora. Ha egyik sincs, `A futás megállt.`
 5. A feliratfájl a `outDir` gyökerében a `splitSubtitleName` alapneve. A `noteFile` adja a `_transcript.md` és a `_summary.md` útját, a forrásnév a mappa neve, a `sourceFile` a fájlnév. A létező utak a `git.commit` listája. Az üzenet: `docs(transcript-refinery): átirat 1 videóhoz`.
 6. Sikertelen futásnál is lefut a commit és a push, ha van fájl. Ha a push `pushed: false`, a mondat `A push nem sikerült, a commit lokálisan maradt.` Különben a 4. pont mondata marad.
 7. Sikeres futásnál, ha a `_summary.md` nincs a lemezen, a mondat `A jegyzet nem készült el.`
 8. Sikeres push után a `githubNoteUrl(remote, branch, vaulthoz képesti posix út)`. `null` esetén `A vault távoli címe nem GitHub-cím.` Különben `{ ok: true, noteUrl }`.
 
-Az alap `git` a `gitPullFfOnly`, a `gitCommitPaths`, a `gitPush`, a `git remote get-url origin` és a `git rev-parse --abbrev-ref HEAD`.
+Az alap `git` a `gitPullFfOnly`, a `gitCommitPaths`, a `gitPush`, a `git remote get-url origin` és a `git rev-parse --abbrev-ref HEAD`. A `SummaryGit` típus export nélkül marad a fájlban. A `command.ts` ezt az alapot hívja.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/serve/summary.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/summary.ts src/serve/summary.test.ts
@@ -907,9 +910,9 @@ git commit -m "feat(serve): write the summary note and its GitHub link"
 - Consumes: `runSummary` a 8. feladatból, a `JobEffects.summarize` és `writeFile` a 7. feladatból.
 - Produces: a `refinery serve` a summary kopogtatásra a `runSummary` hatást hívja, a `SERVE_OUT` mappával. A felirat-lépés config nélkül is elindul.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
-A `command.ts` exportálja a `serveEffects` gyártót. A teszt nem indít szervert és nem hív LiteLLM-et.
+A `command.ts` exportálja a `serveEffects` gyártót. Recept-regiszter nincs. A teszt nem indít szervert és nem hív LiteLLM-et.
 
 ```ts
 it('a summary hatás a SERVE_OUT mappát és a videóazonosítót adja tovább', async () => {
@@ -933,23 +936,23 @@ it('a summary hatás a SERVE_OUT mappát és a videóazonosítót adja tovább',
 })
 ```
 
-A `fakeStore` a `job.test.ts` `memoryStore` üres példánya, ide másolva. A `writeFile` és a `summarize` a gyártó visszatérésén kötelező mező.
+A `fakeStore` a `job.test.ts` `memoryStore` üres példánya, ide másolva. Közös teszt-segéd fájl nincs. A `writeFile` és a `summarize` a gyártó visszatérésén kötelező mező.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/serve/command.test.ts`
 Expected: FAIL, a `serveEffects` nincs exportálva.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
-A `commandServe` a mai hatásobjektumot a `serveEffects` gyártójától kapja. A gyártó paramétereinek `runSummary` mezője elhagyható, az alapértéke a 8. feladat `runSummary` függvénye. A visszaadott hatás `writeFile` és `summarize` mezője kötelező. A `writeFile` létrehozza a szülőmappát, és kiírja a bájtokat. A `summarize` a kapott `runSummary({ videoId, outDir })` hívás. A felirat-lépés továbbra sem hívja. A `loadCliConfig` a nyelvekhez a mai `catch` ágon marad: hiányzó fájlnál `hu,en`.
+A `commandServe` a mai hatásobjektumot a `serveEffects` gyártójától kapja. A gyártó paramétereinek `runSummary` mezője elhagyható, az alapértéke a 8. feladat `runSummary` függvénye, git-paraméter nélkül, tehát az alap git-függvényekkel. Recept-regiszter nincs: a `recipe: "summary"` ág a 7. feladat `runJob` korai visszatérése. A visszaadott hatás `writeFile` és `summarize` mezője kötelező. A `writeFile` létrehozza a szülőmappát, és kiírja a bájtokat. A `summarize` a kapott `runSummary({ videoId, outDir })` hívás. A felirat-lépés továbbra sem hívja. A `loadCliConfig` a nyelvekhez a mai `catch` ágon marad: hiányzó fájlnál `hu,en`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/serve/command.test.ts src/serve/job.test.ts src/serve/summary.test.ts worker/src/handle.test.ts worker/src/entry.test.ts && pnpm test && pnpm typecheck`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/command.ts src/serve/command.test.ts
