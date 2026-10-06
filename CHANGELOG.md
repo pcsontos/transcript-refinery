@@ -3,6 +3,48 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.9.0] — 2026-10-06
+
+Megérkezett a Telegram-integráció második szelete: a letöltött feliratokból
+a Telegram gombról közvetlenül indítható az összefoglaló, amely bekerül az
+Obsidian vaultba, a bot pedig elküldi a közvetlen GitHub-hivatkozást.
+
+### 📝 Telegram summary és vault jegyzet
+
+- **Summary gomb a kész feliratra:** A YouTube-cím feliratának letöltése után a
+  kész Telegram-üzenet egy `summary` gombot kap (`summary:<jobId>`).
+- **Állapotkövetés és fáziskezelés a D1-ben:** A Cloudflare D1 feladatok új
+  `phase` (`subtitle` / `summary`), `note_url` és `note_notified` mezőkkel
+  bővültek. A summary csak befejezett felirat fázisból indítható; a feltételes
+  írás megelőzi a párhuzamos dupla indításokat.
+- **Összefoglaló generálása R2-ből:** A `refinery serve` démon a `recipe: "summary"`
+  kérésre a meglévő csővezetéket futtatja az R2-ből feloldott felirat és
+  `.info.json` alapján, YouTube-hívás nélkül. Elkészíti a `_summary.md` jegyzetet
+  (és szükség esetén a `_transcript.md`-t is).
+- **Vault commit és push:** A serve futása után csak a frissen keletkezett
+  jegyzetfájlok kerülnek a vault git commitjába, majd automatikus `git push`
+  történik a vault távoli repójába.
+- **Közvetlen GitHub-link:** A sikeres push után a serve összeállítja a GitHub blob
+  URL-t (`https://github.com/<owner>/<repo>/blob/<branch>/...`), amit a Worker
+  elküld a Telegram-chatbe.
+
+### 🛠️ Feliratillesztés és dialektuskezelés
+
+- **Kétirányú nyelvkód- és dialektusillesztés:** A letöltött feliratok nyelvkódjának
+  párosítása (`matchLanguageTag`) mostantól kezeli a regionális címkéket
+  (pl. `en-US` és `en`), megelőzve az eltérő jelölések miatti újraletöltéseket
+  vagy téves hiányjelzést.
+- **Dialektus-felmérés illesztése:** A felirat-felderítés a dialektuskódok
+  esetén is megtalálja a bázisnyelvnek megfelelő feliratot.
+
+### 🔍 Fejlesztői eszközök és hibakeresés
+
+- **Telegram debug és vizsgálati eszközök:** Új segédprogramok a helyi
+  hibakereséshez (`scripts/telegram-debug.sh`, `scripts/telegram-bot-info.sh`,
+  `scripts/local-jobs.sh`, `scripts/worker-dev-vars.sh`).
+- **VS Code hibakeresési profilok:** Frissített konfiguráció a `serve` és a Worker
+  egyidejű futtatásához és ellenőrzéséhez.
+
 ## [1.8.0] — 2026-10-05
 
 Megérkezett a Telegram bot és Cloudflare Worker integráció, az önálló
@@ -393,6 +435,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.9.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.9.0
 [1.8.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.8.0
 [1.7.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.7.0
 [1.6.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.6.0
