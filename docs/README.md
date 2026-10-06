@@ -22,8 +22,14 @@ az első szelet spece, a
 [`plans/2026-10-04-telegram-cloudflare.md`](<./plans/2026-10-04-telegram-cloudflare.md>)
 pedig a hozzá tartozó implementációs terv. A saját chat videóját a `refinery serve` tölti fel az
 R2-be, a kiírt feliratfájllal és az `info.json` fájllal. A Worker a konténert
-hívja, a magot nem futtatja. A vault, a recept és a `run` a későbbi szelet.
-Az első szelet kódja a `src/serve/` és a `worker/` alatt van.
+hívja, a magot nem futtatja. Az első szelet kódja a `src/serve/` és a `worker/`
+alatt van. A
+[`plans/2026-10-05-telegram-summary-spec.md`](<./plans/2026-10-05-telegram-summary-spec.md>)
+a második szelet spece, a
+[`plans/2026-10-05-telegram-summary.md`](<./plans/2026-10-05-telegram-summary.md>)
+pedig a hozzá tartozó implementációs terv: a `summary` gomb, a vault-jegyzet
+és a GitHub-link. Az olvasó, a Google-kötés, a többi recept és a lejátszási
+lista később marad.
 
 ## A döntések
 
