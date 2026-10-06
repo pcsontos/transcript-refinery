@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { access, readdir, readFile } from 'node:fs/promises'
+import { access, readdir, readFile, rm } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { commandRun, type RunRuntime } from '../cli.js'
@@ -72,6 +72,15 @@ async function failureLine(logsDir: string): Promise<string> {
   return 'A futás megállt.'
 }
 
+async function keepThisVideo(outDir: string, videoId: string): Promise<void> {
+  const names = await readdir(outDir)
+  await Promise.all(
+    names
+      .filter((name) => !name.includes(videoId))
+      .map((name) => rm(join(outDir, name), { recursive: true, force: true })),
+  )
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     await access(path)
@@ -105,6 +114,7 @@ export async function runSummary(input: {
     ...loaded.cfg,
     sources: [{ name: basename(input.outDir), path: input.outDir }],
   }
+  await keepThisVideo(input.outDir, input.videoId)
   const code = await commandRun(
     cfg,
     loaded.raw,
@@ -113,11 +123,10 @@ export async function runSummary(input: {
   )
   const failed = code === 0 ? null : await failureLine(cfg.logsDir)
   const names = await readdir(input.outDir)
-  const fileName =
-    names.find((name) => {
-      const parsed = splitSubtitleName(name)
-      return parsed !== null && parsed.base.includes(input.videoId)
-    }) ?? names.find((name) => splitSubtitleName(name) !== null)
+  const fileName = names.find((name) => {
+    const parsed = splitSubtitleName(name)
+    return parsed !== null && parsed.base.includes(input.videoId)
+  })
   const parsed = fileName === undefined ? null : splitSubtitleName(fileName)
   const paths: string[] = []
   let summaryPath: string | null = null

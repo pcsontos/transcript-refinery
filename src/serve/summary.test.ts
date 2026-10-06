@@ -128,6 +128,39 @@ describe('runSummary', () => {
     expect(second.generate).toBe(0)
   })
 
+  it('az idegen felirat nem hív modellt és nem kerül a commitba', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    await writeFile(
+      join(outDir, 'Más [zzzzzzzzzzz].hu.vtt'),
+      'WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nOther video.\n',
+    )
+    await writeFile(
+      join(outDir, 'Más [zzzzzzzzzzz].info.json'),
+      JSON.stringify({ id: 'zzzzzzzzzzz', title: 'Más', language: 'hu' }),
+    )
+    const calls = { generate: 0 }
+    const result = await runSummary({
+      videoId: ID,
+      outDir,
+      createClient: () => client(calls),
+      load,
+      git: gitFor('https://github.com/tulaj/repo.git'),
+    })
+    expect(result.ok).toBe(true)
+    expect(calls.generate).toBe(1)
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], {
+      cwd: vault,
+      encoding: 'utf8',
+    })
+    expect(names).not.toContain('zzzzzzzzzzz')
+    expect(names.trim().split('\n').sort()).toEqual([
+      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
+      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
+    ].sort())
+  })
+
   it('a git@ origin ugyanazt a linket adja', async () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, outDir, load } = await scene()

@@ -141,6 +141,14 @@ describe('mondatok', () => {
     expect(MISSING_NOTE_URL).toBe('A jegyzet linkje hiányzik.')
   })
 
+  it('a cím újsora és vezérlőkaraktere egy szóköz, a link marad a második sor', () => {
+    const noteUrl = 'https://github.com/tulaj/repo/blob/main/a.md'
+    expect(noteReadyMessage('Cím\nhttps://evil.example\u0007', noteUrl)).toBe(
+      `Cím https://evil.example. A jegyzet megvan.\n${noteUrl}`,
+    )
+    expect(readyLine('Cím\r\nmásodik')).toBe('Cím második. A felirat megvan.')
+  })
+
   it('a koppintás a fázis és a státusz szerint dönt', () => {
     expect(decideTap(null, true)).toEqual({ type: 'ignore' })
     expect(decideTap(row({ status: 'ready' }), false)).toEqual({ type: 'ignore' })
