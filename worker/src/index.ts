@@ -1,5 +1,5 @@
 import { createD1Store, type D1Like } from './d1.js'
-import { applyKnocks, handleCallback, handleCron, handleUpdate, type WorkerDeps } from './handle.js'
+import { applyKnocks, handleCallback, handleCron, handleTap, handleUpdate, type WorkerDeps } from './handle.js'
 
 interface Env {
   DB: D1Like
@@ -46,19 +46,47 @@ function deps(env: Env): WorkerDeps {
         return 'down'
       }
     },
-    send: async (text) => {
+    send: async (text, button) => {
+      const payload: {
+        chat_id: string
+        text: string
+        reply_markup?: { inline_keyboard: { text: string; callback_data: string }[][] }
+      } = { chat_id: env.TELEGRAM_OWNER_CHAT_ID, text }
+      if (button) payload.reply_markup = { inline_keyboard: [[{ text: button.text, callback_data: button.data }]] }
       try {
         const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ chat_id: env.TELEGRAM_OWNER_CHAT_ID, text }),
+          body: JSON.stringify(payload),
         })
         return response.ok
       } catch {
         return false
       }
     },
+    answerTap: async (callbackQueryId) => {
+      try {
+        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ callback_query_id: callbackQueryId }),
+        })
+      } catch {
+        return undefined
+      }
+    },
   }
+}
+
+function isTap(value: unknown): value is {
+  update_id: number
+  callback_query: { id: string; data?: string; message?: { chat: { id: number } } }
+} {
+  if (typeof value !== 'object' || value === null) return false
+  const update = value as { update_id?: unknown; callback_query?: unknown }
+  if (typeof update.update_id !== 'number') return false
+  if (typeof update.callback_query !== 'object' || update.callback_query === null) return false
+  return typeof (update.callback_query as { id?: unknown }).id === 'string'
 }
 
 function isUpdate(value: unknown): value is {
@@ -100,6 +128,12 @@ const worker = {
         update = await request.json()
       } catch {
         return new Response(null, { status: 400 })
+      }
+      if (isTap(update)) {
+        const workerDeps = deps(env)
+        const knocks = await handleTap(update, workerDeps)
+        ctx.waitUntil(applyKnocks(knocks, workerDeps))
+        return new Response(null, { status: 200 })
       }
       if (!isUpdate(update)) return new Response(null, { status: 400 })
       const workerDeps = deps(env)

@@ -84,4 +84,38 @@ describe('worker belépés', () => {
     expect((await worker.fetch(request('hook'), env, ctx)).status).toBe(200)
     expect(db.rows).toHaveLength(1)
   })
+
+  it('a gombkoppintás üres answerCallbackQuery választ kér, idegen chatnél kopogtatás nélkül', async () => {
+    const calls: { url: string; body: string }[] = []
+    globalThis.fetch = (input, init) => {
+      calls.push({ url: String(input), body: String(init?.body ?? '') })
+      return Promise.resolve(new Response(null, { status: 200 }))
+    }
+    const env = {
+      DB: memoryDb(),
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_OWNER_CHAT_ID: '42',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const request = new Request('https://worker.test/telegram', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'hook' },
+      body: JSON.stringify({
+        update_id: 50,
+        callback_query: { id: 'cq', data: 'summary:5:abcdefghijk', message: { chat: { id: 7 } } },
+      }),
+    })
+    const response = await worker.fetch(request, env, {
+      waitUntil: (promise) => {
+        void promise
+      },
+    })
+    expect(response.status).toBe(200)
+    expect(calls.map((call) => call.url)).toEqual([
+      'https://api.telegram.org/bottoken/answerCallbackQuery',
+    ])
+    expect(JSON.parse(calls[0]!.body)).toEqual({ callback_query_id: 'cq' })
+  })
 })
