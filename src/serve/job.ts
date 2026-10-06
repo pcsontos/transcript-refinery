@@ -1,4 +1,6 @@
+import { join } from 'node:path'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
+import { sanitizeSegment } from '../vault/sanitize.js'
 import { infoKey, subtitleKey, type LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
 
@@ -6,9 +8,14 @@ export interface ServeJob {
   jobId: string
   videoId: string
   url: string
+  recipe?: string
 }
 
-export type CallbackBody = { status: 'ready'; title: string } | { status: 'failed'; error: string }
+export type CallbackBody =
+  | { status: 'ready'; title: string; noteUrl?: string }
+  | { status: 'failed'; error: string }
+
+export type SummaryOutcome = { ok: true; noteUrl: string } | { ok: false; error: string }
 
 export interface JobEffects {
   store: ObjectStore
@@ -18,10 +25,16 @@ export interface JobEffects {
   readFile: (path: string) => Promise<Uint8Array>
   fetchSubtitle: (url: string) => Promise<{ code: number; stdout: string; stderr: string }>
   callback: (jobId: string, body: CallbackBody) => Promise<void>
+  outDir?: string
+  writeFile?: (path: string, body: Uint8Array) => Promise<void>
+  summarize?: (videoId: string) => Promise<SummaryOutcome>
 }
 
 const UPLOAD_FAILED = 'A feltöltés nem sikerült.'
 const NO_SUBTITLE = 'Nincs felirat'
+const MISSING_PAIR = 'A felirat nincs az R2-ben.'
+const UNREADABLE_PAIR = 'A felirat nem olvasható az R2-ből.'
+const UNKNOWN_RECIPE = 'Ismeretlen recept.'
 const SUB_NAME = /^([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
 
 export function subtitleArgv(url: string, outDir: string): string[] {
@@ -111,7 +124,112 @@ async function upload(job: ServeJob, effects: JobEffects, local: LocalPair): Pro
   console.log(`  [r2] Feltöltve: ${infoKey(job.videoId)}`)
 }
 
+async function forgetWork(effects: JobEffects, videoId: string): Promise<void> {
+  try {
+    await effects.deletePair(videoId)
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+async function loadSummaryPair(
+  effects: JobEffects,
+  videoId: string,
+): Promise<
+  | { ok: true; title: string; language: string; extension: string; subtitle: Uint8Array; info: Uint8Array }
+  | { ok: false; error: string }
+> {
+  const prefix = `videos/${videoId}/`
+  let keys: string[]
+  try {
+    keys = await effects.store.list(prefix)
+  } catch {
+    return { ok: false, error: UNREADABLE_PAIR }
+  }
+  const named = keys.map((key) => ({ key, name: key.slice(prefix.length) }))
+  const infoItem = named.find((item) => item.name === 'info.json')
+  const subs = named.filter((item) => SUB_NAME.test(item.name))
+  if (infoItem === undefined || subs.length === 0) return { ok: false, error: MISSING_PAIR }
+  let infoBody: Uint8Array | null
+  try {
+    infoBody = await effects.store.get(infoItem.key)
+  } catch {
+    return { ok: false, error: UNREADABLE_PAIR }
+  }
+  if (infoBody === null || infoBody.byteLength === 0) return { ok: false, error: UNREADABLE_PAIR }
+  let title = videoId
+  let accepted = effects.languages
+  try {
+    const raw = JSON.parse(new TextDecoder().decode(infoBody)) as { id?: unknown; title?: unknown; language?: unknown }
+    if (raw.id !== videoId) return { ok: false, error: MISSING_PAIR }
+    const text = typeof raw.title === 'string' ? raw.title : ''
+    title = text.trim() === '' ? videoId : text
+    if (typeof raw.language === 'string' && raw.language.trim() !== '') accepted = [raw.language]
+  } catch {
+    return { ok: false, error: MISSING_PAIR }
+  }
+  for (const sub of subs) {
+    const match = SUB_NAME.exec(sub.name)
+    if (match?.[1] === undefined || match[2] === undefined || !languageMatches(match[1], accepted)) continue
+    let subtitle: Uint8Array | null
+    try {
+      subtitle = await effects.store.get(sub.key)
+    } catch {
+      return { ok: false, error: UNREADABLE_PAIR }
+    }
+    if (subtitle === null || subtitle.byteLength === 0) return { ok: false, error: UNREADABLE_PAIR }
+    return { ok: true, title, language: match[1], extension: match[2], subtitle, info: infoBody }
+  }
+  return { ok: false, error: MISSING_PAIR }
+}
+
+async function runSummaryRecipe(job: ServeJob, effects: JobEffects): Promise<void> {
+  if (job.recipe !== 'summary') {
+    await report(effects, job.jobId, { status: 'failed', error: UNKNOWN_RECIPE })
+    return
+  }
+  const loaded = await loadSummaryPair(effects, job.videoId)
+  if (!loaded.ok) {
+    await forgetWork(effects, job.videoId)
+    await report(effects, job.jobId, { status: 'failed', error: loaded.error })
+    return
+  }
+  if (effects.outDir === undefined || effects.writeFile === undefined || effects.summarize === undefined) {
+    await forgetWork(effects, job.videoId)
+    await report(effects, job.jobId, { status: 'failed', error: UNREADABLE_PAIR })
+    return
+  }
+  const stem = `${sanitizeSegment(loaded.title)} [${job.videoId}]`
+  try {
+    await effects.writeFile(join(effects.outDir, `${stem}.${loaded.language}.${loaded.extension}`), loaded.subtitle)
+    await effects.writeFile(join(effects.outDir, `${stem}.info.json`), loaded.info)
+  } catch {
+    await forgetWork(effects, job.videoId)
+    await report(effects, job.jobId, { status: 'failed', error: UNREADABLE_PAIR })
+    return
+  }
+  let outcome: SummaryOutcome
+  try {
+    outcome = await effects.summarize(job.videoId)
+  } catch (error) {
+    const message = error instanceof Error ? firstLine(error.message) : ''
+    await forgetWork(effects, job.videoId)
+    await report(effects, job.jobId, { status: 'failed', error: message === '' ? UNREADABLE_PAIR : message })
+    return
+  }
+  await forgetWork(effects, job.videoId)
+  if (outcome.ok) {
+    await report(effects, job.jobId, { status: 'ready', title: loaded.title, noteUrl: outcome.noteUrl })
+    return
+  }
+  await report(effects, job.jobId, { status: 'failed', error: outcome.error })
+}
+
 export async function runJob(job: ServeJob, effects: JobEffects): Promise<void> {
+  if (job.recipe !== undefined) {
+    await runSummaryRecipe(job, effects)
+    return
+  }
   try {
     const remote = await remoteReady(effects.store, job.videoId, effects.languages)
     if (remote.complete) {
