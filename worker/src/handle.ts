@@ -111,11 +111,12 @@ async function handleStart(
   }
   const token = isToken(arg) ? await deps.store.token(await hashToken(arg)) : null
   const action = decideStart(token, userId, deps.now(), deps.allowedEmails)
+  // A visszatérő token az első felhasználásnál elhasználódik, akkor is, ha más küldi: kiszivárogva se kössön.
+  if (token !== null && token.pendingSub !== null && !token.used) await deps.store.saveToken({ ...token, used: true })
   if (token === null || action.type === 'invalid') {
     await deps.send(chatId, LINK_INVALID)
     return
   }
-  await deps.store.saveToken({ ...token, used: true })
   if (action.type === 'denied') {
     await deps.send(chatId, notAllowedLine(action.email))
     return

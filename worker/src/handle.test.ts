@@ -472,6 +472,19 @@ describe('kötés', () => {
     expect(await store.bindingFor('42')).toBeNull()
   })
 
+  it('a rossz felhasználó visszatérése elhasználja a tokent, a kiszivárgott token sem köt', async () => {
+    const store = memoryStore()
+    const flow = deps(store)
+    await handleUpdate(message(1, 7, '/start'), flow)
+    await handleLink(TOKEN_A, owner, flow)
+    await handleUpdate(message(2, 42, `/start ${TOKEN_B}`), deps(store))
+    expect((await store.token(await hashToken(TOKEN_B)))?.used).toBe(true)
+    const stranger = deps(store)
+    await handleUpdate(message(3, 7, `/start ${TOKEN_B}`), stranger)
+    expect(stranger.sent).toEqual([INVALID])
+    expect(await store.bindingFor('7')).toBeNull()
+  })
+
   it('a lejárt, a kitalált és a rossz alakú token a /link-en hibaoldal', async () => {
     const store = memoryStore()
     const flow = deps(store)
