@@ -1,6 +1,6 @@
 # Spec — A harmadik szelet: Google-kötés és olvasó oldal
 
-**Dátum:** 2026-10-07 · **Státusz:** jóváhagyásra vár
+**Dátum:** 2026-10-07 · **Státusz:** jóváhagyva · a 3b-pontosítás 2026-10-07
 
 Ez a dokumentum a [`2026-10-04-telegram-cloudflare-brief.md`](./2026-10-04-telegram-cloudflare-brief.md) harmadik szeletéből és a jóváhagyott tervezésből készült. Az előző szeletek spece a [`2026-10-04-telegram-cloudflare-spec.md`](./2026-10-04-telegram-cloudflare-spec.md) és a [`2026-10-05-telegram-summary-spec.md`](./2026-10-05-telegram-summary-spec.md). Ahol ez a spec nem mond mást, az ottani viselkedés marad.
 
@@ -27,7 +27,7 @@ Minden útvonal ugyanabban a Workerben van. Új Worker vagy Pages-projekt nincs.
 Telegram --webhook--> Worker /telegram          (webhook-titok)
 konténer --visszahívás--> Worker /internal/...  (serve-titok)
 böngésző --Access, Google--> Worker /link       (3a)
-böngésző --Access, Google--> Worker /notes      (3b)
+böngésző --Access, Google--> Worker /notes/... (3b)
                               |
                               +--> D1: jobs, bindings, link_tokens
                               +--> GitHub contents API (3b, csak olvasás)
@@ -39,10 +39,10 @@ böngésző --Access, Google--> Worker /notes      (3b)
 | `POST /internal/jobs/:id` | serve-titok, mint ma | a konténer visszahívása |
 | `GET /link?t=<token>` | Access, és a Workerben azonosító nélkül `403` | függő kötés, majd átirányítás a Telegramba |
 | `GET /notes` | ugyanígy | a saját jegyzetek listája (3b) |
-| `GET /notes/:jobId` | ugyanígy | egy jegyzet (3b) |
+| `GET /notes/:jobId/:fajta` | ugyanígy | egy jegyzet, `summary` vagy `transcript` (3b) |
 | minden más | — | `404` |
 
-Az útválasztás pontos, kisbetűs illesztés. A `/Notes`, a `/notes/` és a `//link` `404`.
+Az útválasztás pontos, kisbetűs illesztés. A `/Notes`, a `/notes/`, a `/notes/:jobId` fajta nélkül és a `//link` `404`.
 
 A `/telegram` és az `/internal/*` nem kerülhet Access mögé, mert a Telegram és a konténer nem lép be. Az Access-alkalmazás csak a `/link` és a `/notes` útvonalat fedi. A fiókszintű „minden Worker védelme” kapcsoló nem kapcsolható be, mert a webhookot is elzárná.
 
@@ -57,6 +57,8 @@ A `sub` ebben a specben az Access `user_uuid` értéke: a fiókon belül e-mail-
 ### Az engedélyezés
 
 Egy Telegram-frissítés akkor megy át, ha a küldő `from.id` értéke kötött, és a kötött e-mail szerepel az `TELEGRAM_ALLOWED_EMAILS` listán. A lista vesszővel elválasztott, a kis- és nagybetű nem számít. Ha egy e-mail lekerül a listáról, a hozzá kötött felhasználó azonnal kiesik, a kötés megmaradása mellett is.
+
+A bot csak privát chatben fogad üzenetet. Ha a `message.chat.id` nem egyezik a `message.from.id` értékével, a Worker csendben `200`-at ad, sor és válasz nélkül. Csoportban a kötés a többi tag sorait is a saját fiókjához írná, és a 3b után a jegyzeteik nála látszanának (#147, M2). Ez a 3b első lépése.
 
 A `TELEGRAM_OWNER_CHAT_ID` megszűnik. A `send` a sor saját `chat_id` értékére küld, nem egy rögzített chatre. A `decideTap` a „tulaj-e” helyett az „engedélyezett-e” jelzést kapja.
 
@@ -139,21 +141,24 @@ A lejárt tokenek a táblában maradnak. Egy felhasználónál ez néhány sor. 
 
 ### `GET /notes`
 
-Azonosító nélkül `403`. A lista a belépett `sub` sorai, amelyeknek van `note_url` értéke, újak elöl, az `accepted_at` szerint. Soronként a cím, a dátum és a `/notes/:jobId` link. Üres lista esetén: `Még nincs jegyzet. Küldj egy YouTube-címet a botnak.` Lapozás nincs.
+Azonosító nélkül `403`. A lista a belépett `sub` sorai, amelyeknek van `note_url` értéke, újak elöl, az `accepted_at` szerint. Videónként egy sor: a cím, a dátum, és fajtánként egy link, `summary` · `transcript`, a `/notes/:jobId/:fajta` címre. Üres lista esetén: `Még nincs jegyzet. Küldj egy YouTube-címet a botnak.` Lapozás nincs.
 
 Csak a boton át készült jegyzetek látszanak. A CLI-vel vagy a `_queue.md`-vel készültekről a D1 nem tud.
 
-### `GET /notes/:jobId`
+### `GET /notes/:jobId/:fajta`
 
-1. Azonosító nélkül `403`. Ha a sor nem létezik, vagy más `sub`-é, `404`. A két eset ugyanaz a válasz.
-2. Az útvonal a sor `note_url` értékéből jön. A Worker leválasztja a `https://github.com/<VAULT_REPO>/blob/<VAULT_BRANCH>/` előtagot, és a maradékot dekódolja. Ha az előtag nem egyezik, a válasz `404`, és GitHub-hívás nincs.
-3. A Cache API kulcsa a `jobId`, az élettartam 5 perc. A cache-t csak az engedélyezés után nézzük.
-4. Cache-tévesztésnél a Worker hívja: `GET https://api.github.com/repos/<VAULT_REPO>/contents/<útvonal>?ref=<VAULT_BRANCH>`, `Accept: application/vnd.github.html+json`, `Authorization: Bearer <VAULT_GITHUB_TOKEN>`. A válasz a GitHub szanitizált HTML-je.
-5. Az oldal: a cím, a „Megnyitás a GitHubon” link a `note_url` címre, és a renderelt HTML. Beágyazott CSS, rendszerbetűtípus, sötét mód a `prefers-color-scheme` szerint. Külső szkript nincs.
+A fajta egyelőre `summary` vagy `transcript`. A summary-futás mindkét fájlt ugyanabba a vault-commitba teszi, ugyanazzal az alapnévvel: `<alapnév>_summary.md` és `<alapnév>_transcript.md`. A receptek ezt a névrendet követik (`_<recept>.md`), ezért a 4. szelet új fajtákkal bővítheti a listát, és a már kiküldött linkek nem törnek el.
+
+1. Azonosító nélkül `403`. Ha a fajta ismeretlen, a sor nem létezik, vagy más `sub`-é, `404`. Az esetek ugyanazt a választ adják.
+2. Az útvonal a sor `note_url` értékéből jön. A Worker leválasztja a `https://github.com/<VAULT_REPO>/blob/<VAULT_BRANCH>/` előtagot, és a maradékot dekódolja. Az utolsó szakasz `_summary.md` végét `_<fajta>.md`-re cseréli. Ha az előtag nem egyezik, vagy a `note_url` nem `_summary.md`-re végződik, a válasz `404`, és GitHub-hívás nincs.
+3. A Worker hívja: `GET https://api.github.com/repos/<VAULT_REPO>/contents/<útvonal>?ref=<VAULT_BRANCH>`, `Accept: application/vnd.github.html+json`, `Authorization: Bearer <VAULT_GITHUB_TOKEN>`, `User-Agent: transcript-refinery`. A GitHub API `User-Agent` nélkül elutasít. A válasz a GitHub szanitizált HTML-je.
+4. Az oldal: a cím és a fajta a `<title>` elemben, a „Megnyitás a GitHubon” link a jegyzet GitHub-címére, és a renderelt HTML. A jegyzet saját első címsora a renderelt HTML-ben van, ezért a Worker nem tesz elé még egyet. Beágyazott CSS, rendszerbetűtípus, sötét mód a `color-scheme` szerint. Külső szkript nincs.
+
+Gyorsítótár nincs. A Cache API a `*.workers.dev` hoszton hatástalan, a Worker pedig ott fut. Egy felhasználónál a GitHub tokenes kerete bőven elég.
 
 A HTML-t a GitHub állítja elő, nem a Worker. A jegyzet modellkimenet egy idegen videó feliratából, ezért nyers HTML-ként nem kerülhet az oldalba. A Worker által beírt értékeket — cím, e-mail, hibamondat — a sablon escape-eli.
 
-Az implementáció első lépése egy valódi jegyzeten igazolja, hogy ez a fejléc ezen a végponton renderelt HTML-t ad, és megnézi, hogyan jelenik meg a frontmatter és a `[[wikilink]]`. Ha a frontmatter zavaró, a Worker a nyers tartalmat kéri, a frontmattert levágja, és a `POST /markdown` végpont renderel.
+A próba 2026-10-07-én egy valódi jegyzeten: a fejléc ezen a végponton `200`-zal renderelt HTML-t ad. A frontmatter a jegyzet elején táblázatként jelenik meg, és ez így marad. A nyers tartalom és a `POST /markdown` nem kell. A címsorok mellett a GitHub horgony-ikonjai állnak, ezeket a CSS elrejti.
 
 ### Hibák
 
@@ -167,7 +172,7 @@ Egyszerű HTML-oldal, `502` állapottal:
 
 ### A bot linkje
 
-A 3b-től a summary kész üzenetének második sora `https://<worker>/notes/<jobId>`. A `note_url` a D1-ben GitHub-cím marad, mert az útvonal forrása. A visszahívás teste nem változik.
+A 3b-től a summary kész üzenetének második sora `https://<worker>/notes/<jobId>/summary`. A transcript a `/notes` listából érhető el. A `note_url` a D1-ben GitHub-cím marad, mert az útvonal forrása. A visszahívás teste nem változik.
 
 ## 4. A kód határa
 
@@ -198,10 +203,12 @@ A meglévő Vitest fedi, hamis tárral, hamis `send` függvénnyel és hamis `fe
 
 *3b:*
 
-- A lista csak a saját `sub` sorait mutatja. Az idegen és a nem létező `jobId` ugyanazt a `404` választ adja.
-- Ha a `note_url` előtagja nem egyezik, `404`, GitHub-hívás nélkül.
+- A lista csak a saját `sub` sorait mutatja, soronként a `summary` és a `transcript` linkkel. Az idegen és a nem létező `jobId`, valamint az ismeretlen fajta ugyanazt a `404` választ adja.
+- A `transcript` a `note_url` `_summary.md` végét `_transcript.md`-re cserélve kéri a GitHubtól.
+- Ha a `note_url` előtagja nem egyezik, vagy nem `_summary.md`-re végződik, `404`, GitHub-hívás nélkül.
 - A GitHub `404`, `401` és hálózati hibája a táblázat mondatát adja. A cím és a hibamondat escape-elve kerül az oldalba.
-- A summary kész üzenete a `/notes/<jobId>` linket küldi.
+- A summary kész üzenete a `/notes/<jobId>/summary` linket küldi.
+- Csoportchatben (`chat.id` ≠ `from.id`) a bot hallgat: a `/start <token>` nem köt, és más sorának `sub` értéke nem változik.
 
 ## 6. Élesítés
 
@@ -219,4 +226,4 @@ A telepítés és a kötés között a bot mindenre a „kösd össze” sort ad
 
 **3a.** A tulajdonos `/start` üzenetet küld, a böngészőben belép a Google-fiókjával, visszatér a Telegramba, és a bot ezt írja: `Bekötve: <e-mail>.` Onnantól a címküldés és a summary gomb úgy megy, mint a második szeletben. Egy idegen Telegram-fiók nem jut tovább, akkor sem, ha a linkjét a tulajdonos nyitja meg és lépteti be. Az e-mail törlése az engedélyezőlistáról azonnal kizár.
 
-**3b.** A summary linkje a `/notes/<jobId>` oldalra visz. Az oldal belépés nélkül nem nyílik meg. Belépés után a jegyzet a vaultból jelenik meg, a `/notes` pedig a saját jegyzetek listáját adja.
+**3b.** A summary linkje a `/notes/<jobId>/summary` oldalra visz. Az oldal belépés nélkül nem nyílik meg. Belépés után a jegyzet a vaultból jelenik meg. A `/notes` a saját jegyzetek listáját adja, videónként a summary és a transcript linkjével.
