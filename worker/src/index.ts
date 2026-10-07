@@ -1,10 +1,20 @@
 import { createD1Store, type D1Like } from './d1.js'
-import { applyKnocks, handleCallback, handleCron, handleTap, handleUpdate, type WorkerDeps } from './handle.js'
+import {
+  applyKnocks,
+  handleCallback,
+  handleCron,
+  handleLink,
+  handleTap,
+  handleUpdate,
+  type WorkerDeps,
+} from './handle.js'
+import { LINK_INVALID_PAGE, newToken } from './plan.js'
 
 interface Env {
   DB: D1Like
+  ALLOWED_EMAILS: string
   TELEGRAM_BOT_TOKEN: string
-  TELEGRAM_OWNER_CHAT_ID: string
+  TELEGRAM_BOT_USERNAME: string
   TELEGRAM_WEBHOOK_SECRET: string
   REFINERY_SERVE_SECRET: string
   SERVE_URL: string
@@ -12,7 +22,10 @@ interface Env {
 
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void
+  access?: { getIdentity(): Promise<{ email?: unknown; user_uuid?: unknown } | undefined> }
 }
+
+const INVALID_LINK_PAGE = `<!doctype html><html lang="hu"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Transcript Refinery</title><p>${LINK_INVALID_PAGE}</p></html>`
 
 function sameText(actual: string | undefined, expected: string | undefined): boolean {
   if (typeof actual !== 'string' || typeof expected !== 'string' || expected === '' || actual.length !== expected.length) {
@@ -25,11 +38,26 @@ function sameText(actual: string | undefined, expected: string | undefined): boo
   return diff === 0
 }
 
-function deps(env: Env): WorkerDeps {
+async function identity(ctx: ExecutionContext): Promise<{ sub: string; email: string } | null> {
+  if (ctx.access === undefined) return null
+  try {
+    const who = await ctx.access.getIdentity()
+    if (who === undefined || typeof who.email !== 'string' || who.email === '') return null
+    if (typeof who.user_uuid !== 'string' || who.user_uuid === '') return null
+    return { sub: who.user_uuid, email: who.email }
+  } catch {
+    return null
+  }
+}
+
+function deps(env: Env, linkBase = ''): WorkerDeps {
   return {
-    ownerChatId: env.TELEGRAM_OWNER_CHAT_ID,
+    allowedEmails: env.ALLOWED_EMAILS,
+    botUsername: env.TELEGRAM_BOT_USERNAME,
+    linkBase,
     store: createD1Store(env.DB),
     now: () => Date.now(),
+    newToken,
     knock: async (job) => {
       try {
         const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/jobs`, {
@@ -46,12 +74,12 @@ function deps(env: Env): WorkerDeps {
         return 'down'
       }
     },
-    send: async (text, button) => {
+    send: async (chatId, text, button) => {
       const payload: {
         chat_id: string
         text: string
         reply_markup?: { inline_keyboard: { text: string; callback_data: string }[][] }
-      } = { chat_id: env.TELEGRAM_OWNER_CHAT_ID, text }
+      } = { chat_id: chatId, text }
       if (button) payload.reply_markup = { inline_keyboard: [[{ text: button.text, callback_data: button.data }]] }
       try {
         const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -78,30 +106,36 @@ function deps(env: Env): WorkerDeps {
   }
 }
 
+function hasNumericId(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && typeof (value as { id?: unknown }).id === 'number'
+}
+
 function isTap(value: unknown): value is {
   update_id: number
-  callback_query: { id: string; data?: string; message?: { chat: { id: number } } }
+  callback_query: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } }
 } {
   if (typeof value !== 'object' || value === null) return false
   const update = value as { update_id?: unknown; callback_query?: unknown }
   if (typeof update.update_id !== 'number') return false
   if (typeof update.callback_query !== 'object' || update.callback_query === null) return false
-  return typeof (update.callback_query as { id?: unknown }).id === 'string'
+  const query = update.callback_query as { id?: unknown; from?: unknown }
+  if (query.from !== undefined && !hasNumericId(query.from)) return false
+  return typeof query.id === 'string'
 }
 
 function isUpdate(value: unknown): value is {
   update_id: number
-  message?: { message_id: number; chat: { id: number }; text?: string }
+  message?: { message_id: number; chat: { id: number }; from?: { id: number }; text?: string }
 } {
   if (typeof value !== 'object' || value === null) return false
   const update = value as { update_id?: unknown; message?: unknown }
   if (typeof update.update_id !== 'number') return false
   if (update.message === undefined) return true
   if (typeof update.message !== 'object' || update.message === null) return false
-  const message = update.message as { message_id?: unknown; chat?: unknown; text?: unknown }
+  const message = update.message as { message_id?: unknown; chat?: unknown; from?: unknown }
   if (typeof message.message_id !== 'number') return false
-  if (typeof message.chat !== 'object' || message.chat === null) return false
-  return typeof (message.chat as { id?: unknown }).id === 'number'
+  if (message.from !== undefined && !hasNumericId(message.from)) return false
+  return hasNumericId(message.chat)
 }
 
 function isCallback(
@@ -129,17 +163,23 @@ const worker = {
       } catch {
         return new Response(null, { status: 400 })
       }
+      const workerDeps = deps(env, url.origin)
       if (isTap(update)) {
-        const workerDeps = deps(env)
         const knocks = await handleTap(update, workerDeps)
         ctx.waitUntil(applyKnocks(knocks, workerDeps))
         return new Response(null, { status: 200 })
       }
       if (!isUpdate(update)) return new Response(null, { status: 400 })
-      const workerDeps = deps(env)
       const result = await handleUpdate(update, workerDeps)
       ctx.waitUntil(applyKnocks(result.knocks, workerDeps))
       return new Response(null, { status: 200 })
+    }
+    if (url.pathname === '/link' && request.method === 'GET') {
+      const who = await identity(ctx)
+      if (who === null) return new Response(null, { status: 403 })
+      const result = await handleLink(url.searchParams.get('t') ?? '', who, deps(env, url.origin))
+      if (result.status === 302) return Response.redirect(result.location, 302)
+      return new Response(INVALID_LINK_PAGE, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })
     }
     const match = /^\/internal\/jobs\/([^/]+)$/.exec(url.pathname)
     if (match?.[1] !== undefined && request.method === 'POST') {

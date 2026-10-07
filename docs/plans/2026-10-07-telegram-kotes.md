@@ -1256,7 +1256,7 @@ git commit -m "feat(worker): Bind Telegram users and authorize by e-mail"
 - Consumes: `handleLink`, `WorkerDeps` (3. feladat), `newToken`, `LINK_INVALID_PAGE` (2. feladat)
 - Produces: `Env` új alakja: `DB`, `ALLOWED_EMAILS`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `REFINERY_SERVE_SECRET`, `SERVE_URL`. `ExecutionContext.access?: { getIdentity(): Promise<{ email?: unknown; user_uuid?: unknown } | undefined> }`.
 
-- [ ] **Step 1: A belépési tesztek átállítása**
+- [x] **Step 1: A belépési tesztek átállítása**
 
 ```bash
 perl -0pi -e "s/TELEGRAM_OWNER_CHAT_ID: '42',/ALLOWED_EMAILS: 'en\@example.com',\n      TELEGRAM_BOT_USERNAME: 'refinery_bot',/g; s/message: \{ message_id: 1, chat: \{ id: 42 \}, text/message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, text/; s/message: \{ chat: \{ id: 7 \} \} \}/from: { id: 7 }, message: { chat: { id: 7 } } }/" worker/src/entry.test.ts
@@ -1313,12 +1313,12 @@ A „worker belépés” `describe` végére:
   })
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/entry.test.ts`
 Expected: FAIL, a `/link` `404`-et ad a `403` helyett
 
-- [ ] **Step 3: `worker/src/index.ts` teljes cseréje**
+- [x] **Step 3: `worker/src/index.ts` teljes cseréje**
 
 ```ts
 import { createD1Store, type D1Like } from './d1.js'
@@ -1529,14 +1529,14 @@ const worker = {
 export default worker
 ```
 
-- [ ] **Step 4: Zöld, teljes ellenőrzés**
+- [x] **Step 4: Zöld, teljes ellenőrzés**
 
 Run: `pnpm vitest run worker`
 Expected: PASS
 Run: `pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: hibátlan
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/index.ts worker/src/entry.test.ts
