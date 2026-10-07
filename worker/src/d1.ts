@@ -228,5 +228,12 @@ export function createD1Store(db: D1Like): JobStore {
         .bind(token.pendingSub, token.pendingEmail, token.used ? 1 : 0, token.tokenHash)
         .run()
     },
+    async notesFor(sub) {
+      const result = await db
+        .prepare('SELECT * FROM jobs WHERE sub = ? AND note_url IS NOT NULL ORDER BY accepted_at DESC')
+        .bind(sub)
+        .all<JobRecord>()
+      return result.results.map(toRow)
+    },
   }
 }

@@ -59,3 +59,9 @@ export function alreadyBoundLine(email: string): string {
 export function notAllowedLine(email: string): string {
   return `Ez a Google-fiók nincs engedélyezve: ${email}.`
 }
+
+export const NO_NOTES = 'Még nincs jegyzet. Küldj egy YouTube-címet a botnak.'
+export const NOTE_MISSING = 'A jegyzet nincs a vaultban.'
+export const VAULT_LOCKED = 'A vault nem olvasható.'
+export const GITHUB_DOWN = 'A GitHub nem érhető el.'
+export const OPEN_ON_GITHUB = 'Megnyitás a GitHubon'

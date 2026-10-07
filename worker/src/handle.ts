@@ -46,7 +46,7 @@ type KnockResult = 202 | 409 | 401 | 'down'
 
 const START = /^\/start(?:\s+(\S+))?\s*$/
 
-async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
+export async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
   const head = jobId.split(':')[0]
   if (head === undefined || !/^\d+$/.test(head)) return null
   const rows = await store.listByUpdate(Number(head))

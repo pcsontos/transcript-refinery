@@ -52,6 +52,7 @@ export interface JobStore {
   insertToken(token: LinkToken): Promise<void>
   token(tokenHash: string): Promise<LinkToken | null>
   saveToken(token: LinkToken): Promise<void>
+  notesFor(sub: string): Promise<JobRow[]>
 }
 
 const OPEN: readonly JobStatus[] = ['queued', 'waiting', 'accepted']
@@ -124,5 +125,11 @@ export function memoryStore(): JobStore {
       }
       return Promise.resolve()
     },
+    notesFor: (sub) =>
+      Promise.resolve(
+        rows
+          .filter((row) => row.sub === sub && row.noteUrl !== null)
+          .sort((a, b) => (b.acceptedAt ?? 0) - (a.acceptedAt ?? 0)),
+      ),
   }
 }

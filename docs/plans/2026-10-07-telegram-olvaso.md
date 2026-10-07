@@ -158,7 +158,7 @@ git commit -m "fix(worker): Ignore messages outside private chats"
   - `notesPage(sub: string, deps: ReaderDeps): Promise<Response>`
   - `notePage(jobId: string, kind: string, sub: string, deps: ReaderDeps): Promise<Response>`
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 Új fájl, `worker/src/reader.test.ts`:
 
@@ -328,12 +328,12 @@ describe('notePage', () => {
 })
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/reader.test.ts`
 Expected: FAIL, `Failed to resolve import "./reader.js"`
 
-- [ ] **Step 3: A tár olvasása**
+- [x] **Step 3: A tár olvasása**
 
 A `worker/src/store.ts` `JobStore` interfészében a `saveToken(token: LinkToken): Promise<void>` sor után:
 
@@ -364,7 +364,7 @@ A `worker/src/d1.ts` `createD1Store` visszaadott objektumában a `saveToken` ut�
     },
 ```
 
-- [ ] **Step 4: A mondatok**
+- [x] **Step 4: A mondatok**
 
 A `worker/src/messages.ts` végére:
 
@@ -376,7 +376,7 @@ export const GITHUB_DOWN = 'A GitHub nem érhető el.'
 export const OPEN_ON_GITHUB = 'Megnyitás a GitHubon'
 ```
 
-- [ ] **Step 5: A `findRow` exportja**
+- [x] **Step 5: A `findRow` exportja**
 
 A `worker/src/handle.ts`-ben:
 
@@ -390,7 +390,7 @@ erre:
 export async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
 ```
 
-- [ ] **Step 6: `worker/src/reader.ts`**
+- [x] **Step 6: `worker/src/reader.ts`**
 
 ```ts
 import { findRow } from './handle.js'
@@ -480,7 +480,7 @@ export async function notePage(jobId: string, kind: string, sub: string, deps: R
 
 A `vaultRepo: ''` esetben az előtag `https://github.com//blob/…`, ami egyetlen valódi `note_url` elejével sem egyezik, ezért külön feltétel nem kell. A csere csak az utolsó szakasz végén történik, ezért egy `_summary.md`-t tartalmazó mappanév nem változik. A jegyzet saját első címsora a GitHub HTML-jében van, ezért a Worker nem tesz elé `<h1>`-et (a spec 3. szakasza, 4. lépés).
 
-- [ ] **Step 7: Fusson, menjen át, és a teljes ellenőrzés**
+- [x] **Step 7: Fusson, menjen át, és a teljes ellenőrzés**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld.
@@ -491,7 +491,7 @@ Mutációs próbák, egyenként, mindegyik után FAIL kell, utána vissza:
 - a `vaultPath` első sorát (a fajta-ellenőrzést) töröld → a `qa` fajta tesztje bukik;
 - a `notesPage` `items` sorában az első `escapeHtml(…)` hívást cseréld a puszta `row.title ?? row.videoId` értékre → a lista tesztje bukik.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add worker/src/store.ts worker/src/d1.ts worker/src/messages.ts worker/src/handle.ts worker/src/reader.ts worker/src/reader.test.ts
