@@ -19,7 +19,7 @@ Az implementáció a `.worktrees/impl-telegram-kotes` worktree-n, az `impl-teleg
 - Az útválasztás pontos: `url.pathname === '/link'` és `GET`. Minden más útvonal a mai. Ismeretlen útvonal `404`.
 - A token 32 véletlen bájt, base64url kódolással, 43 karakter, kitöltés nélkül. A tárban csak az SHA-256 hash-e van, 64 kisbetűs hexa. Az élettartam 10 perc (`TOKEN_TTL = 600000`). Ami nem `^[A-Za-z0-9_-]{43}$`, az érvénytelen token, tárhívás nélkül.
 - A `/link` csak függő fiók nélküli (link)tokent fogad el. A `/start <token>` csak függő fiókkal rendelkező (visszatérő) tokent. A visszatérő token a linktoken `telegram_user_id` és `expires_at` értékét örökli.
-- Engedélyezett az a Telegram-felhasználó (`from.id`), akinek van kötése, és a kötött e-mail az `ALLOWED_EMAILS` vesszős listáján van, kis- és nagybetű nélkül, a szóközöket levágva. Üres e-mail sosem engedélyezett.
+- Engedélyezett az a Telegram-felhasználó (`from.id`), akinek van kötése, és a kötött e-mail az `TELEGRAM_ALLOWED_EMAILS` vesszős listáján van, kis- és nagybetű nélkül, a szóközöket levágva. Üres e-mail sosem engedélyezett.
 - A `send` a megadott chatre küld. A sor üzenetei a sor `chat_id` értékére mennek. A `TELEGRAM_OWNER_CHAT_ID` a Workerből megszűnik.
 - A gomb csak akkor indít, ha a sor `sub` értéke egyezik a koppintó kötésének `sub` értékével.
 - Mondatok, szó szerint: `Előbb kösd össze a Google-fiókoddal: /start` · `Kösd össze a Google-fiókoddal (10 percig érvényes): <link>` · `Bekötve: <e-mail>.` · `Már be vagy kötve: <e-mail>.` · `Ez a Google-fiók nincs engedélyezve: <e-mail>.` · `A link lejárt vagy már nem érvényes. Kérj újat: /start` · az oldalon: `A link lejárt vagy már nem érvényes. Kérj újat a botban: /start`
@@ -30,7 +30,7 @@ Az implementáció a `.worktrees/impl-telegram-kotes` worktree-n, az `impl-teleg
 
 1. Az idegen kér linket, a tulajdonos lépteti be: sem az idegen linktokenje, sem a tulajdonos visszatérő tokenje nem köt. (3. feladat, „az idegen linkjét…” teszt)
 2. A `ctx.access` megvan, de a `getIdentity()` üres vagy dob: `403`, nem kivétel. (4. feladat)
-3. Az e-mail törlése az `ALLOWED_EMAILS` listáról azonnal kizár, a kötés megmaradása mellett. (3. feladat)
+3. Az e-mail törlése az `TELEGRAM_ALLOWED_EMAILS` listáról azonnal kizár, a kötés megmaradása mellett. (3. feladat)
 4. A Telegram ugyanazt a `/start` frissítést kétszer küldi: második token és második üzenet nincs. (3. feladat)
 5. A `/link` frissítése a böngészőben (elhasznált linktoken) hibaoldalt ad, nem második visszatérő tokent. (3. feladat)
 
@@ -60,7 +60,7 @@ Az implementáció a `.worktrees/impl-telegram-kotes` worktree-n, az `impl-teleg
 **Interfaces:**
 - Produces: `Binding`, `LinkToken`, `JobRow.sub: string | null`, és a `JobStore` új metódusai: `bindingFor(telegramUserId)`, `bind(binding, chatId)`, `insertToken(token)`, `token(tokenHash)`, `saveToken(token)`. A `saveToken` csak a `pendingSub`, `pendingEmail` és `used` mezőt írja.
 
-- [ ] **Step 1: A migráció tesztje**
+- [x] **Step 1: A migráció tesztje**
 
 A `worker/src/entry.test.ts` „a wrangler percenként fut…” tesztjében a `expect(summary).toContain('seen_updates')` sor után:
 
@@ -71,12 +71,12 @@ A `worker/src/entry.test.ts` „a wrangler percenként fut…” tesztjében a `
     expect(bindings).toContain('CREATE TABLE link_tokens')
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/entry.test.ts`
 Expected: FAIL, `ENOENT … 0003_bindings.sql`
 
-- [ ] **Step 3: A migráció**
+- [x] **Step 3: A migráció**
 
 `worker/migrations/0003_bindings.sql`:
 
@@ -98,7 +98,7 @@ CREATE TABLE link_tokens (
 );
 ```
 
-- [ ] **Step 4: `worker/src/store.ts` teljes cseréje**
+- [x] **Step 4: `worker/src/store.ts` teljes cseréje**
 
 ```ts
 export type JobStatus = 'queued' | 'waiting' | 'accepted' | 'ready' | 'failed'
@@ -231,7 +231,7 @@ export function memoryStore(): JobStore {
 }
 ```
 
-- [ ] **Step 5: `worker/src/d1.ts` teljes cseréje**
+- [x] **Step 5: `worker/src/d1.ts` teljes cseréje**
 
 ```ts
 import type { Binding, JobRow, JobStatus, JobStore, LinkToken } from './store.js'
@@ -468,7 +468,7 @@ export function createD1Store(db: D1Like): JobStore {
 }
 ```
 
-- [ ] **Step 6: A `sub` a meglévő teszt-sorokban**
+- [x] **Step 6: A `sub` a meglévő teszt-sorokban**
 
 A `JobRow` literálok új kötelező mezőt kapnak. A tulajdonos `sub` értéke a tesztekben `sub-42`:
 
@@ -481,14 +481,14 @@ Ellenőrzés: a `handle.test.ts` fájlban három, a `plan.test.ts` fájlban egy 
 
 A `worker/src/handle.ts` `handleUpdate` sor-literáljában az `acceptedAt: null,` sor után egy új sor: `sub: null,`. A 3. feladat ezt a fájlt úgyis teljesen lecseréli, ez csak a köztes typecheckhez kell.
 
-- [ ] **Step 7: Zöld**
+- [x] **Step 7: Zöld**
 
 Run: `pnpm vitest run worker`
 Expected: PASS
 Run: `pnpm exec tsc -p worker/tsconfig.json`
 Expected: hibátlan
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add worker/migrations/0003_bindings.sql worker/src/store.ts worker/src/d1.ts worker/src/entry.test.ts worker/src/handle.test.ts worker/src/plan.test.ts
@@ -508,7 +508,7 @@ git commit -m "feat(worker): Store Telegram bindings and link tokens"
 - Consumes: `LinkToken`, `JobRow` (1. feladat)
 - Produces: `TOKEN_TTL: number`, `isAllowed(email: string, allowedEmails: string): boolean`, `isToken(value: string): boolean`, `newToken(): string`, `hashToken(raw: string): Promise<string>`, `decideStart(token: LinkToken | null, userId: string, now: number, allowedEmails: string): StartAction`, `StartAction = { type: 'invalid' } | { type: 'denied'; email: string } | { type: 'bind'; sub: string; email: string }`. A `plan.ts` újraexportálja: `BIND_FIRST`, `LINK_INVALID`, `LINK_INVALID_PAGE`, `linkLine`, `boundLine`, `alreadyBoundLine`, `notAllowedLine`.
 
-- [ ] **Step 1: A bukó teszt**
+- [x] **Step 1: A bukó teszt**
 
 A `worker/src/plan.test.ts` importja kiegészül (a meglévő `from './plan.js'` listába): `decideStart`, `hashToken`, `isAllowed`, `isToken`, `newToken`. A `./store.js` importba: `type LinkToken`. A fájl végére:
 
@@ -554,12 +554,12 @@ describe('kötési döntések', () => {
 })
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/plan.test.ts`
 Expected: FAIL, `isAllowed is not a function` (vagy hasonló import-hiba)
 
-- [ ] **Step 3: A mondatok**
+- [x] **Step 3: A mondatok**
 
 A `worker/src/messages.ts` végére:
 
@@ -585,7 +585,7 @@ export function notAllowedLine(email: string): string {
 }
 ```
 
-- [ ] **Step 4: A döntések a `plan.ts`-ben**
+- [x] **Step 4: A döntések a `plan.ts`-ben**
 
 A fájl eleje így változik: a `./store.js` import `import type { JobRow, LinkToken } from './store.js'`, az újraexport lista pedig:
 
@@ -660,12 +660,12 @@ export function decideStart(
 }
 ```
 
-- [ ] **Step 5: Zöld**
+- [x] **Step 5: Zöld**
 
 Run: `pnpm vitest run worker/src/plan.test.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/messages.ts worker/src/plan.ts worker/src/plan.test.ts
@@ -684,7 +684,7 @@ git commit -m "feat(worker): Decide Telegram binding from link tokens"
 - Consumes: az 1. és a 2. feladat minden exportja
 - Produces: `WorkerDeps` új alakja: `{ allowedEmails: string; botUsername: string; linkBase: string; store; now; newToken: () => string; knock; send: (chatId: string, text: string, button?) => Promise<boolean>; answerTap }`. `handleLink(raw: string, who: { sub: string; email: string }, deps: WorkerDeps): Promise<{ status: 302; location: string } | { status: 200 }>`. A `handleUpdate` frissítése `message.from?: { id: number }` mezőt kap, a `handleTap` `callback_query.from?: { id: number }` mezőt.
 
-- [ ] **Step 1: A meglévő tesztek átállítása a kötött felhasználóra**
+- [x] **Step 1: A meglévő tesztek átállítása a kötött felhasználóra**
 
 ```bash
 perl -pi -e 's/const (\w+) = memoryStore\(\)/const $1 = await boundStore()/g; s/chat: \{ id: (\d+) \}, text/chat: { id: $1 }, from: { id: $1 }, text/g; s/message: \{ chat: \{ id: (\d+) \} \} \}/from: { id: $1 }, message: { chat: { id: $1 } } }/g; s/\{ \.\.\.update\.message, chat: \{ id: 42 \} \}/{ ...update.message, chat: { id: 42 }, from: { id: 42 } }/; s/send: \(text\) =>/send: (_chatId, text) =>/g' worker/src/handle.test.ts
@@ -783,7 +783,7 @@ A `handleUpdate` első tesztjében a nem kötött 7-es felhasználó mostantól 
     expect(foreign.sent).toEqual(['Előbb kösd össze a Google-fiókoddal: /start'])
 ```
 
-- [ ] **Step 2: Az új tesztek**
+- [x] **Step 2: Az új tesztek**
 
 A `handle.test.ts` végére:
 
@@ -916,12 +916,12 @@ describe('kötés', () => {
 })
 ```
 
-- [ ] **Step 3: Fusson, bukjon**
+- [x] **Step 3: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/handle.test.ts`
 Expected: FAIL, `handleLink is not a function`, és a régi tesztek a `send` új aláírása miatt
 
-- [ ] **Step 4: `worker/src/handle.ts` teljes cseréje**
+- [x] **Step 4: `worker/src/handle.ts` teljes cseréje**
 
 ```ts
 import {
@@ -1232,12 +1232,12 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
 }
 ```
 
-- [ ] **Step 5: Zöld**
+- [x] **Step 5: Zöld**
 
 Run: `pnpm vitest run worker/src/handle.test.ts worker/src/plan.test.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/handle.ts worker/src/handle.test.ts
@@ -1254,12 +1254,12 @@ git commit -m "feat(worker): Bind Telegram users and authorize by e-mail"
 
 **Interfaces:**
 - Consumes: `handleLink`, `WorkerDeps` (3. feladat), `newToken`, `LINK_INVALID_PAGE` (2. feladat)
-- Produces: `Env` új alakja: `DB`, `ALLOWED_EMAILS`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `REFINERY_SERVE_SECRET`, `SERVE_URL`. `ExecutionContext.access?: { getIdentity(): Promise<{ email?: unknown; user_uuid?: unknown } | undefined> }`.
+- Produces: `Env` új alakja: `DB`, `TELEGRAM_ALLOWED_EMAILS`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `REFINERY_SERVE_SECRET`, `SERVE_URL`. `ExecutionContext.access?: { getIdentity(): Promise<{ email?: unknown; user_uuid?: unknown } | undefined> }`.
 
-- [ ] **Step 1: A belépési tesztek átállítása**
+- [x] **Step 1: A belépési tesztek átállítása**
 
 ```bash
-perl -0pi -e "s/TELEGRAM_OWNER_CHAT_ID: '42',/ALLOWED_EMAILS: 'en\@example.com',\n      TELEGRAM_BOT_USERNAME: 'refinery_bot',/g; s/message: \{ message_id: 1, chat: \{ id: 42 \}, text/message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, text/; s/message: \{ chat: \{ id: 7 \} \} \}/from: { id: 7 }, message: { chat: { id: 7 } } }/" worker/src/entry.test.ts
+perl -0pi -e "s/TELEGRAM_OWNER_CHAT_ID: '42',/TELEGRAM_ALLOWED_EMAILS: 'en\@example.com',\n      TELEGRAM_BOT_USERNAME: 'refinery_bot',/g; s/message: \{ message_id: 1, chat: \{ id: 42 \}, text/message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, text/; s/message: \{ chat: \{ id: 7 \} \} \}/from: { id: 7 }, message: { chat: { id: 7 } } }/" worker/src/entry.test.ts
 ```
 
 A `memoryDb` `first: <T>() => Promise.resolve(null as T | null),` sorát erre cseréld. A kötés-lekérdezés így mindig kötést ad vissza, tehát a 42-es felhasználó kötött. (A 7-es is, de az ő gombjához nincs sor, ezért a gombteszt változatlanul csak az `answerCallbackQuery` hívást várja.)
@@ -1280,7 +1280,7 @@ A „worker belépés” `describe` végére:
     globalThis.fetch = () => Promise.resolve(new Response(null, { status: 200 }))
     const env = {
       DB: memoryDb(),
-      ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
       TELEGRAM_BOT_TOKEN: 'token',
       TELEGRAM_BOT_USERNAME: 'refinery_bot',
       TELEGRAM_WEBHOOK_SECRET: 'hook',
@@ -1313,12 +1313,12 @@ A „worker belépés” `describe` végére:
   })
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/entry.test.ts`
 Expected: FAIL, a `/link` `404`-et ad a `403` helyett
 
-- [ ] **Step 3: `worker/src/index.ts` teljes cseréje**
+- [x] **Step 3: `worker/src/index.ts` teljes cseréje**
 
 ```ts
 import { createD1Store, type D1Like } from './d1.js'
@@ -1335,7 +1335,7 @@ import { LINK_INVALID_PAGE, newToken } from './plan.js'
 
 interface Env {
   DB: D1Like
-  ALLOWED_EMAILS: string
+  TELEGRAM_ALLOWED_EMAILS: string
   TELEGRAM_BOT_TOKEN: string
   TELEGRAM_BOT_USERNAME: string
   TELEGRAM_WEBHOOK_SECRET: string
@@ -1375,7 +1375,7 @@ async function identity(ctx: ExecutionContext): Promise<{ sub: string; email: st
 
 function deps(env: Env, linkBase = ''): WorkerDeps {
   return {
-    allowedEmails: env.ALLOWED_EMAILS,
+    allowedEmails: env.TELEGRAM_ALLOWED_EMAILS,
     botUsername: env.TELEGRAM_BOT_USERNAME,
     linkBase,
     store: createD1Store(env.DB),
@@ -1529,14 +1529,14 @@ const worker = {
 export default worker
 ```
 
-- [ ] **Step 4: Zöld, teljes ellenőrzés**
+- [x] **Step 4: Zöld, teljes ellenőrzés**
 
 Run: `pnpm vitest run worker`
 Expected: PASS
 Run: `pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: hibátlan
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/index.ts worker/src/entry.test.ts
@@ -1555,7 +1555,7 @@ git commit -m "feat(worker): Serve the Access-protected binding link"
 
 Helyben nincs Access, ezért a debug-script a saját Telegram-azonosítóhoz közvetlenül beír egy kötést a helyi D1-be. A `TELEGRAM_OWNER_CHAT_ID` az Infisicalban marad, de csak erre szolgál.
 
-- [ ] **Step 1: `.env.example`**
+- [x] **Step 1: `.env.example`**
 
 Ezt a blokkot:
 
@@ -1568,27 +1568,27 @@ erre cseréld:
 
 ```
 # Vesszővel elválasztott e-mailek. Csak az ezekhez kötött Telegram-felhasználó nyit sort.
-ALLOWED_EMAILS=
+TELEGRAM_ALLOWED_EMAILS=
 
 # A bot felhasználóneve `@` nélkül. A kötés a `t.me/<név>` címre irányít vissza.
 TELEGRAM_BOT_USERNAME=
 ```
 
-- [ ] **Step 2: `scripts/worker-dev-vars.sh`**
+- [x] **Step 2: `scripts/worker-dev-vars.sh`**
 
 ```bash
-perl -pi -e 's/keys="TELEGRAM_BOT_TOKEN TELEGRAM_OWNER_CHAT_ID /keys="TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME ALLOWED_EMAILS /; s/A Worker öt változó/A Worker hat változó/g' scripts/worker-dev-vars.sh
+perl -pi -e 's/keys="TELEGRAM_BOT_TOKEN TELEGRAM_OWNER_CHAT_ID /keys="TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME TELEGRAM_ALLOWED_EMAILS /; s/A Worker öt változó/A Worker hat változó/g' scripts/worker-dev-vars.sh
 ```
 
 Ellenőrzés: `grep -n 'keys=\|hat változó' scripts/worker-dev-vars.sh` két sort mutat, a `keys=` sorban hat név van.
 
-- [ ] **Step 3: `scripts/telegram-debug.sh`**
+- [x] **Step 3: `scripts/telegram-debug.sh`**
 
 A `.dev.vars` írásában a `printf 'TELEGRAM_OWNER_CHAT_ID=%s\n' "$owner"` sor helyére:
 
 ```sh
-  printf 'ALLOWED_EMAILS=%s\n' "debug@localhost"
-  printf 'TELEGRAM_BOT_USERNAME=%s\n' "debug"
+  printf 'TELEGRAM_ALLOWED_EMAILS=%s\n' "debug@localhost"
+  printf 'TELEGRAM_BOT_USERNAME=%s\n' "refinery_debug_bot"
 ```
 
 A hiányzó titkok ellenőrzése (`if [ "${#webhook_secret}" -lt 16 ] … fi`) után, új blokként:
@@ -1607,26 +1607,26 @@ npx wrangler d1 execute transcript-refinery --local --config worker/wrangler.tom
 
 Ellenőrzés: `bash -n scripts/telegram-debug.sh` hibátlan.
 
-- [ ] **Step 4: `docs/operations/telegram-worker-topology.md`**
+- [x] **Step 4: `docs/operations/telegram-worker-topology.md`**
 
 A debug-táblázat `| TELEGRAM_OWNER_CHAT_ID | TELEGRAM_OWNER_CHAT_ID |` sora helyére:
 
 ```
 | `TELEGRAM_OWNER_CHAT_ID` | — (a helyi D1 `bindings` sora, `debug@localhost`) |
-| — | `ALLOWED_EMAILS=debug@localhost` |
-| — | `TELEGRAM_BOT_USERNAME=debug` |
+| — | `TELEGRAM_ALLOWED_EMAILS=debug@localhost` |
+| — | `TELEGRAM_BOT_USERNAME=refinery_debug_bot` |
 ```
 
 A „Biztonsági szűrés” megjegyzés helyére:
 
 ```
 > [!NOTE]
-> **Biztonsági szűrés**: A bot csak attól a Telegram-felhasználótól (`from.id`) fogad parancsot, aki a `/start` után Google-belépéssel kötötte magát, és akinek a kötött e-mailje az `ALLOWED_EMAILS` listán van. Mindenki más a `Előbb kösd össze a Google-fiókoddal: /start` sort kapja, sor és kopogtatás nélkül. A kötés útvonala a `/link`, ezt Cloudflare Access védi.
+> **Biztonsági szűrés**: A bot csak attól a Telegram-felhasználótól (`from.id`) fogad parancsot, aki a `/start` után Google-belépéssel kötötte magát, és akinek a kötött e-mailje az `TELEGRAM_ALLOWED_EMAILS` listán van. Mindenki más a `Előbb kösd össze a Google-fiókoddal: /start` sort kapja, sor és kopogtatás nélkül. A kötés útvonala a `/link`, ezt Cloudflare Access védi.
 ```
 
 A szimulált frissítés `curl` példájában a `\"chat\": {\"id\": $TELEGRAM_OWNER_CHAT_ID}` után: `, \"from\": {\"id\": $TELEGRAM_OWNER_CHAT_ID}`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .env.example scripts/worker-dev-vars.sh scripts/telegram-debug.sh docs/operations/telegram-worker-topology.md
@@ -1639,10 +1639,10 @@ git commit -m "docs(worker): Describe binding variables and local binding"
 
 Kifelé ható lépések. Mindegyik előtt szólj, és várd meg az igent.
 
-- [ ] **Step 1: Infisical.** A `/peter-mbp` úton, `dev` környezetben: `ALLOWED_EMAILS` (a saját e-mail) és `TELEGRAM_BOT_USERNAME` (a bot neve `@` nélkül).
+- [ ] **Step 1: Infisical.** A `/peter-mbp` úton, `dev` környezetben: `TELEGRAM_ALLOWED_EMAILS` (a saját e-mail) és `TELEGRAM_BOT_USERNAME` (a bot neve `@` nélkül).
 - [ ] **Step 2: Access.** Zero Trust → Settings → Authentication: Google login method. Workers & Pages → `transcript-refinery` → Settings → Domains & Routes → `workers.dev` → Enable Cloudflare Access, majd Manage Cloudflare Access. Az alkalmazás célja a Worker hosztneve, `link` útvonallal. A szabály: Include → Emails → a saját e-mail. A fiókszintű „minden Worker védelme” kapcsoló ki marad.
 - [ ] **Step 3: Migráció.** `pnpm worker:migrate`
-- [ ] **Step 4: Titkok.** `npx wrangler secret put ALLOWED_EMAILS --config worker/wrangler.toml`, `npx wrangler secret put TELEGRAM_BOT_USERNAME --config worker/wrangler.toml`, `npx wrangler secret delete TELEGRAM_OWNER_CHAT_ID --config worker/wrangler.toml`
+- [ ] **Step 4: Titkok.** `npx wrangler secret put TELEGRAM_ALLOWED_EMAILS --config worker/wrangler.toml`, `npx wrangler secret put TELEGRAM_BOT_USERNAME --config worker/wrangler.toml`, `npx wrangler secret delete TELEGRAM_OWNER_CHAT_ID --config worker/wrangler.toml`
 - [ ] **Step 5: Telepítés.** `pnpm worker:deploy`
 - [ ] **Step 6: A siker.** Telegramon egy YouTube-cím → a bot az `Előbb kösd össze…` sort adja. Ez azt is igazolja, hogy az Access nem fedi a webhookot. Utána `/start` → a link a rendszer böngészőjében → Google-belépés → vissza a Telegramba → `Bekötve: <e-mail>.` Végül egy YouTube-cím → `Sorba került: …`.
 

@@ -16,6 +16,23 @@ export interface JobRow {
   notifiedReady: boolean
   noteNotified: boolean
   acceptedAt: number | null
+  sub: string | null
+}
+
+export interface Binding {
+  telegramUserId: string
+  sub: string
+  email: string
+  boundAt: number
+}
+
+export interface LinkToken {
+  tokenHash: string
+  telegramUserId: string
+  expiresAt: number
+  pendingSub: string | null
+  pendingEmail: string | null
+  used: boolean
 }
 
 export interface JobStore {
@@ -30,6 +47,11 @@ export interface JobStore {
     next: { phase: JobPhase; status: JobStatus },
   ): Promise<JobRow | null>
   rememberUpdate(updateId: number): Promise<boolean>
+  bindingFor(telegramUserId: string): Promise<Binding | null>
+  bind(binding: Binding, chatId: string): Promise<void>
+  insertToken(token: LinkToken): Promise<void>
+  token(tokenHash: string): Promise<LinkToken | null>
+  saveToken(token: LinkToken): Promise<void>
 }
 
 const OPEN: readonly JobStatus[] = ['queued', 'waiting', 'accepted']
@@ -38,6 +60,8 @@ const FIFTEEN_MINUTES = 15 * 60 * 1000
 export function memoryStore(): JobStore {
   const rows: JobRow[] = []
   const seen = new Set<number>()
+  const bindings = new Map<string, Binding>()
+  const tokens = new Map<string, LinkToken>()
   return {
     listByUpdate: (updateId) => Promise.resolve(rows.filter((row) => row.updateId === updateId)),
     activeByVideo: (videoId) =>
@@ -73,6 +97,32 @@ export function memoryStore(): JobStore {
       if (seen.has(updateId)) return Promise.resolve(false)
       seen.add(updateId)
       return Promise.resolve(true)
+    },
+    bindingFor: (telegramUserId) => {
+      const binding = bindings.get(telegramUserId)
+      return Promise.resolve(binding === undefined ? null : { ...binding })
+    },
+    bind: (binding, chatId) => {
+      bindings.set(binding.telegramUserId, { ...binding })
+      for (const row of rows) if (row.chatId === chatId) row.sub = binding.sub
+      return Promise.resolve()
+    },
+    insertToken: (token) => {
+      tokens.set(token.tokenHash, { ...token })
+      return Promise.resolve()
+    },
+    token: (tokenHash) => {
+      const token = tokens.get(tokenHash)
+      return Promise.resolve(token === undefined ? null : { ...token })
+    },
+    saveToken: (token) => {
+      const current = tokens.get(token.tokenHash)
+      if (current !== undefined) {
+        current.pendingSub = token.pendingSub
+        current.pendingEmail = token.pendingEmail
+        current.used = token.used
+      }
+      return Promise.resolve()
     },
   }
 }

@@ -24,6 +24,10 @@ describe('szállítási fájlok', () => {
     expect(summary).toContain('note_url')
     expect(summary).toContain('note_notified')
     expect(summary).toContain('seen_updates')
+    const bindings = await readFile('worker/migrations/0003_bindings.sql', 'utf8')
+    expect(bindings).toContain('ALTER TABLE jobs ADD COLUMN sub TEXT')
+    expect(bindings).toContain('CREATE TABLE bindings')
+    expect(bindings).toContain('CREATE TABLE link_tokens')
   })
 })
 
@@ -39,7 +43,12 @@ function memoryDb(): D1Like & { rows: unknown[] } {
           return statement
         },
         all: <T>() => Promise.resolve({ results: [] as T[] }),
-        first: <T>() => Promise.resolve(null as T | null),
+        first: <T>() =>
+          Promise.resolve(
+            (state.sql.includes('FROM bindings')
+              ? { telegram_user_id: '42', sub: 'sub-42', email: 'en@example.com', bound_at: 0 }
+              : null) as T | null,
+          ),
         run: () => {
           if (state.sql.includes('INSERT INTO jobs')) rows.push(state.values)
           return Promise.resolve({})
@@ -62,14 +71,15 @@ describe('worker belépés', () => {
     const env = {
       DB: db,
       TELEGRAM_BOT_TOKEN: 'token',
-      TELEGRAM_OWNER_CHAT_ID: '42',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
       TELEGRAM_WEBHOOK_SECRET: 'hook',
       REFINERY_SERVE_SECRET: 'titok',
       SERVE_URL: 'http://127.0.0.1:8787',
     }
     const update = {
       update_id: 5,
-      message: { message_id: 1, chat: { id: 42 }, text: 'abcdefghijk' },
+      message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, text: 'abcdefghijk' },
     }
     const request = (secret?: string) =>
       new Request('https://worker.test/telegram', {
@@ -96,7 +106,8 @@ describe('worker belépés', () => {
     const env = {
       DB: memoryDb(),
       TELEGRAM_BOT_TOKEN: 'token',
-      TELEGRAM_OWNER_CHAT_ID: '42',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
       TELEGRAM_WEBHOOK_SECRET: 'hook',
       REFINERY_SERVE_SECRET: 'titok',
       SERVE_URL: 'http://127.0.0.1:8787',
@@ -106,7 +117,7 @@ describe('worker belépés', () => {
       headers: { 'x-telegram-bot-api-secret-token': 'hook' },
       body: JSON.stringify({
         update_id: 50,
-        callback_query: { id: 'cq', data: 'summary:5:abcdefghijk', message: { chat: { id: 7 } } },
+        callback_query: { id: 'cq', data: 'summary:5:abcdefghijk', from: { id: 7 }, message: { chat: { id: 7 } } },
       }),
     })
     const response = await worker.fetch(request, env, {
@@ -119,5 +130,41 @@ describe('worker belépés', () => {
       'https://api.telegram.org/bottoken/answerCallbackQuery',
     ])
     expect(JSON.parse(calls[0]!.body)).toEqual({ callback_query_id: 'cq' })
+  })
+
+  it('a /link azonosító nélkül 403, a /Link és a //link 404, ismeretlen tokenre a hibaoldal', async () => {
+    globalThis.fetch = () => Promise.resolve(new Response(null, { status: 200 }))
+    const env = {
+      DB: memoryDb(),
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const link = `/link?t=${'A'.repeat(43)}`
+    const get = (path: string) => new Request(`https://worker.test${path}`)
+    const plain = { waitUntil: () => undefined }
+    const signed = {
+      waitUntil: () => undefined,
+      access: { getIdentity: () => Promise.resolve({ email: 'en@example.com', user_uuid: 'sub-42' }) },
+    }
+    const empty = { waitUntil: () => undefined, access: { getIdentity: () => Promise.resolve(undefined) } }
+    const broken = { waitUntil: () => undefined, access: { getIdentity: () => Promise.reject(new Error('nincs')) } }
+    const noUuid = {
+      waitUntil: () => undefined,
+      access: { getIdentity: () => Promise.resolve({ email: 'en@example.com', user_uuid: '' }) },
+    }
+    expect((await worker.fetch(get(link), env, plain)).status).toBe(403)
+    expect((await worker.fetch(get(link), env, empty)).status).toBe(403)
+    expect((await worker.fetch(get(link), env, broken)).status).toBe(403)
+    expect((await worker.fetch(get(link), env, noUuid)).status).toBe(403)
+    expect((await worker.fetch(get('/Link?t=x'), env, signed)).status).toBe(404)
+    expect((await worker.fetch(get('//link?t=x'), env, signed)).status).toBe(404)
+    const page = await worker.fetch(get(link), env, signed)
+    expect(page.status).toBe(200)
+    expect(page.headers.get('content-type')).toBe('text/html; charset=utf-8')
+    expect(await page.text()).toContain('A link lejárt vagy már nem érvényes. Kérj újat a botban: /start')
   })
 })

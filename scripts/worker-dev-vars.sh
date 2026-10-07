@@ -1,12 +1,12 @@
 #!/bin/sh
-# A Worker öt változóját tölti le az Infisicalból a worker/.dev.vars fájlba.
+# A Worker hat változóját tölti le az Infisicalból a worker/.dev.vars fájlba.
 # Az értékeket nem írja ki.
 set -eu
 
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 dest="$root/worker/.dev.vars"
 project_id="1c1c1853-c58b-401f-a414-2bca9076e16f"
-keys="TELEGRAM_BOT_TOKEN TELEGRAM_OWNER_CHAT_ID TELEGRAM_WEBHOOK_SECRET REFINERY_SERVE_SECRET SERVE_URL"
+keys="TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME TELEGRAM_ALLOWED_EMAILS TELEGRAM_WEBHOOK_SECRET REFINERY_SERVE_SECRET SERVE_URL"
 
 if ! command -v infisical >/dev/null 2>&1; then
   echo "Az infisical CLI hiányzik." >&2
@@ -34,4 +34,4 @@ done
 chmod 600 "$tmp"
 mv "$tmp" "$dest"
 trap - EXIT
-echo "A Worker öt változója a worker/.dev.vars fájlban van."
+echo "A Worker hat változója a worker/.dev.vars fájlban van."

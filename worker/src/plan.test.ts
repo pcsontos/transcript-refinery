@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { memoryStore, type JobRow } from './store.js'
+import { memoryStore, type JobRow, type LinkToken } from './store.js'
 import {
   MISSING_NOTE_URL,
   REJECTED_SECRET,
   alreadyLine,
+  decideStart,
   decideTap,
+  hashToken,
+  isAllowed,
+  isToken,
   linesForMessage,
+  newToken,
   noteReadyMessage,
   queuedLine,
   readyLine,
@@ -32,6 +37,7 @@ function row(partial: Partial<JobRow>): JobRow {
     notifiedReady: false,
     noteNotified: false,
     acceptedAt: null,
+    sub: null,
     ...partial,
   }
 }
@@ -157,5 +163,45 @@ describe('mondatok', () => {
     expect(decideTap(row({ status: 'ready', phase: 'summary', noteNotified: true }), true)).toEqual({ type: 'resend' })
     expect(decideTap(row({ status: 'failed', phase: 'summary' }), true)).toEqual({ type: 'retry' })
     expect(decideTap(row({ status: 'queued', phase: 'subtitle' }), true)).toEqual({ type: 'ignore' })
+  })
+})
+
+describe('kötési döntések', () => {
+  it('az engedélyezőlista vesszős, kis- és nagybetű nem számít, üres e-mail nem megy át', () => {
+    expect(isAllowed('En@Example.com', ' en@example.com , mas@example.com')).toBe(true)
+    expect(isAllowed('harmadik@example.com', 'en@example.com')).toBe(false)
+    expect(isAllowed('', 'en@example.com,')).toBe(false)
+    expect(isAllowed('en@example.com', '')).toBe(false)
+  })
+
+  it('a token 43 karakteres base64url, a hash 64 hexa', async () => {
+    const raw = newToken()
+    expect(raw).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    expect(isToken(raw)).toBe(true)
+    expect(newToken()).not.toBe(raw)
+    expect(await hashToken(raw)).toMatch(/^[0-9a-f]{64}$/)
+    expect(await hashToken(raw)).toBe(await hashToken(raw))
+    expect(isToken('rövid')).toBe(false)
+    expect(isToken(`${raw}x`)).toBe(false)
+  })
+
+  it('a decideStart csak egyező felhasználónál, élő, függő tokennel köt', () => {
+    const token: LinkToken = {
+      tokenHash: 'h',
+      telegramUserId: '42',
+      expiresAt: 100,
+      pendingSub: 'sub-42',
+      pendingEmail: 'en@example.com',
+      used: false,
+    }
+    expect(decideStart(token, '42', 99, 'en@example.com')).toEqual({ type: 'bind', sub: 'sub-42', email: 'en@example.com' })
+    expect(decideStart(token, '7', 99, 'en@example.com')).toEqual({ type: 'invalid' })
+    expect(decideStart(token, '42', 100, 'en@example.com')).toEqual({ type: 'invalid' })
+    expect(decideStart({ ...token, used: true }, '42', 99, 'en@example.com')).toEqual({ type: 'invalid' })
+    expect(decideStart({ ...token, pendingSub: null, pendingEmail: null }, '42', 99, 'en@example.com')).toEqual({
+      type: 'invalid',
+    })
+    expect(decideStart(null, '42', 99, 'en@example.com')).toEqual({ type: 'invalid' })
+    expect(decideStart(token, '42', 99, 'mas@example.com')).toEqual({ type: 'denied', email: 'en@example.com' })
   })
 })

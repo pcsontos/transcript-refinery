@@ -1,6 +1,6 @@
 import { classifyInput } from 'transcript-refinery/classify'
 import { NO_VIDEO_LINE, NOT_YOUTUBE_LINE, PLAYLIST_LINE, alreadyLine, queuedLine } from './messages.js'
-import type { JobRow } from './store.js'
+import type { JobRow, LinkToken } from './store.js'
 
 export {
   alreadyLine,
@@ -11,12 +11,19 @@ export {
   MISSING_NOTE_URL,
   noteReadyMessage,
   summaryButton,
+  BIND_FIRST,
+  LINK_INVALID,
+  LINK_INVALID_PAGE,
+  linkLine,
+  boundLine,
+  alreadyBoundLine,
+  notAllowedLine,
 } from './messages.js'
 
 export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
 
-export function decideTap(row: JobRow | null, owner: boolean): TapAction {
-  if (row === null || owner === false) return { type: 'ignore' }
+export function decideTap(row: JobRow | null, allowed: boolean): TapAction {
+  if (row === null || allowed === false) return { type: 'ignore' }
   if (row.phase === 'subtitle' && row.status === 'ready') return { type: 'start' }
   if (row.phase === 'summary' && (row.status === 'queued' || row.status === 'waiting' || row.status === 'accepted')) {
     return { type: 'busy' }
@@ -56,4 +63,44 @@ export function linesForMessage(
   }
   if (lines.length === 0 && jobs.length === 0) return { lines: [NO_VIDEO_LINE], jobs }
   return { lines, jobs }
+}
+
+export const TOKEN_TTL = 10 * 60 * 1000
+const TOKEN = /^[A-Za-z0-9_-]{43}$/
+
+export function isAllowed(email: string, allowedEmails: string): boolean {
+  const wanted = email.trim().toLowerCase()
+  if (wanted === '') return false
+  return allowedEmails.split(',').some((item) => item.trim().toLowerCase() === wanted)
+}
+
+export function isToken(value: string): boolean {
+  return TOKEN.test(value)
+}
+
+export function newToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+export async function hashToken(raw: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+export type StartAction = { type: 'invalid' } | { type: 'denied'; email: string } | { type: 'bind'; sub: string; email: string }
+
+export function decideStart(
+  token: LinkToken | null,
+  userId: string,
+  now: number,
+  allowedEmails: string,
+): StartAction {
+  if (token === null || token.used || token.expiresAt <= now || token.telegramUserId !== userId) return { type: 'invalid' }
+  if (token.pendingSub === null || token.pendingEmail === null) return { type: 'invalid' }
+  if (!isAllowed(token.pendingEmail, allowedEmails)) return { type: 'denied', email: token.pendingEmail }
+  return { type: 'bind', sub: token.pendingSub, email: token.pendingEmail }
 }

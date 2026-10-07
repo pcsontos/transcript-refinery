@@ -56,7 +56,7 @@ A `sub` ebben a specben az Access `user_uuid` értéke: a fiókon belül e-mail-
 
 ### Az engedélyezés
 
-Egy Telegram-frissítés akkor megy át, ha a küldő `from.id` értéke kötött, és a kötött e-mail szerepel az `ALLOWED_EMAILS` listán. A lista vesszővel elválasztott, a kis- és nagybetű nem számít. Ha egy e-mail lekerül a listáról, a hozzá kötött felhasználó azonnal kiesik, a kötés megmaradása mellett is.
+Egy Telegram-frissítés akkor megy át, ha a küldő `from.id` értéke kötött, és a kötött e-mail szerepel az `TELEGRAM_ALLOWED_EMAILS` listán. A lista vesszővel elválasztott, a kis- és nagybetű nem számít. Ha egy e-mail lekerül a listáról, a hozzá kötött felhasználó azonnal kiesik, a kötés megmaradása mellett is.
 
 A `TELEGRAM_OWNER_CHAT_ID` megszűnik. A `send` a sor saját `chat_id` értékére küld, nem egy rögzített chatre. A `decideTap` a „tulaj-e” helyett az „engedélyezett-e” jelzést kapja.
 
@@ -76,7 +76,7 @@ A `memoryStore` ugyanezeket a műveleteket tudja.
 
 | Változó | Rész | Szerep |
 |---|---|---|
-| `ALLOWED_EMAILS` | 3a | az engedélyezett e-mailek |
+| `TELEGRAM_ALLOWED_EMAILS` | 3a | az engedélyezett e-mailek |
 | `TELEGRAM_BOT_USERNAME` | 3a | a `t.me/<bot>` link |
 | `VAULT_GITHUB_TOKEN` | 3b | fine-grained token, csak olvasás, csak a vault-repóra |
 | `VAULT_REPO` | 3b | `<tulaj>/<repo>` |
@@ -103,7 +103,7 @@ A két token ugyanabban a `link_tokens` táblában él. A linktokenen nincs füg
 
 ### A nem kötött felhasználó
 
-Ide tartozik az is, akinek a kötött e-mailje már nincs az `ALLOWED_EMAILS` listán.
+Ide tartozik az is, akinek a kötött e-mailje már nincs az `TELEGRAM_ALLOWED_EMAILS` listán.
 
 | Bemenet | Eredmény |
 |---|---|
@@ -119,7 +119,7 @@ Ide tartozik az is, akinek a kötött e-mailje már nincs az `ALLOWED_EMAILS` li
 | A token ismeretlen, lejárt, elhasznált, vagy visszatérő token | HTML-oldal: `A link lejárt vagy már nem érvényes. Kérj újat a botban: /start` |
 | A token érvényes linktoken | A linktoken elhasználódik, a visszatérő token létrejön, majd `302` a `t.me` címre. |
 
-Ha a böngésző nem nyitja meg magától a Telegramot, a `t.me` oldal maga ad „megnyitás” gombot, ezért saját köztes oldal nincs. Az e-mailt a `/link` nem szűri az `ALLOWED_EMAILS` szerint. Ezt az Access teszi, és a következő lépésben a bot.
+Ha a böngésző nem nyitja meg magától a Telegramot, a `t.me` oldal maga ad „megnyitás” gombot, ezért saját köztes oldal nincs. Az e-mailt a `/link` nem szűri az `TELEGRAM_ALLOWED_EMAILS` szerint. Ezt az Access teszi, és a következő lépésben a bot.
 
 ### `/start <token>`
 
@@ -193,7 +193,7 @@ A meglévő Vitest fedi, hamis tárral, hamis `send` függvénnyel és hamis `fe
 - A nem kötött felhasználó címére a „kösd össze” sor jön, kopogtatás nincs. A `/start` linket ad, és a D1-ben a token hash-e van, nem maga a token.
 - `/link`: azonosító nélkül `403`. Lejárt, ismeretlen, elhasznált vagy visszatérő token esetén a hibaoldal. Érvényes linktoken esetén a visszatérő token, és `302` a `t.me` címre.
 - `/start <token>`: mind a négy eset. Köztük az idegen, aki a saját linktokenjét küldi be a tulajdonos belépése után, és a tulajdonos, aki az idegen kérte visszatérő tokent küldi be. Egyik sem köt.
-- A kötés után a régi sorok megkapják a `sub` értéket. Ha az e-mail lekerül az `ALLOWED_EMAILS` listáról, a felhasználó kiesik. A `send` a sor chatjére küld.
+- A kötés után a régi sorok megkapják a `sub` értéket. Ha az e-mail lekerül az `TELEGRAM_ALLOWED_EMAILS` listáról, a felhasználó kiesik. A `send` a sor chatjére küld.
 - A `/Link` és a `//link` `404`. A `/telegram` és az `/internal` a mai módon viselkedik.
 
 *3b:*
@@ -209,7 +209,7 @@ Kézi lépések, a tervek utolsó feladataként:
 
 1. Access-alkalmazás a Worker hosztnevén, a `/link` és a `/notes` útvonalra, Google-identitásszolgáltatóval, egy e-mailes szabállyal.
 2. A `0003` migráció.
-3. A változók és titkok. 3a: `ALLOWED_EMAILS`, `TELEGRAM_BOT_USERNAME`, a `TELEGRAM_OWNER_CHAT_ID` törlése. 3b: a három `VAULT_*` változó.
+3. A változók és titkok. 3a: `TELEGRAM_ALLOWED_EMAILS`, `TELEGRAM_BOT_USERNAME`, a `TELEGRAM_OWNER_CHAT_ID` törlése. 3b: a három `VAULT_*` változó.
 4. Telepítés.
 5. A tulajdonos `/start` üzenete és a kötés.
 

@@ -1,4 +1,4 @@
-import type { JobRow, JobStatus, JobStore } from './store.js'
+import type { Binding, JobRow, JobStatus, JobStore, LinkToken } from './store.js'
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement
@@ -26,6 +26,23 @@ interface JobRecord {
   notified_ready: number
   note_notified: number
   accepted_at: number | null
+  sub: string | null
+}
+
+interface BindingRecord {
+  telegram_user_id: string
+  sub: string
+  email: string
+  bound_at: number
+}
+
+interface TokenRecord {
+  token_hash: string
+  telegram_user_id: string
+  expires_at: number
+  pending_sub: string | null
+  pending_email: string | null
+  used: number
 }
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000
@@ -46,6 +63,27 @@ function toRow(record: JobRecord): JobRow {
     notifiedReady: record.notified_ready === 1,
     noteNotified: record.note_notified === 1,
     acceptedAt: record.accepted_at,
+    sub: record.sub,
+  }
+}
+
+function toBinding(record: BindingRecord): Binding {
+  return {
+    telegramUserId: record.telegram_user_id,
+    sub: record.sub,
+    email: record.email,
+    boundAt: record.bound_at,
+  }
+}
+
+function toToken(record: TokenRecord): LinkToken {
+  return {
+    tokenHash: record.token_hash,
+    telegramUserId: record.telegram_user_id,
+    expiresAt: record.expires_at,
+    pendingSub: record.pending_sub,
+    pendingEmail: record.pending_email,
+    used: record.used === 1,
   }
 }
 
@@ -69,8 +107,8 @@ export function createD1Store(db: D1Like): JobStore {
         .prepare(
           `INSERT INTO jobs (
             job_id, update_id, chat_id, message_id, video_id, url, status, phase, error, title,
-            note_url, notified_ready, note_notified, accepted_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            note_url, notified_ready, note_notified, accepted_at, sub
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           row.jobId,
@@ -87,6 +125,7 @@ export function createD1Store(db: D1Like): JobStore {
           row.notifiedReady ? 1 : 0,
           row.noteNotified ? 1 : 0,
           row.acceptedAt,
+          row.sub,
         )
         .run()
     },
@@ -95,7 +134,7 @@ export function createD1Store(db: D1Like): JobStore {
         .prepare(
           `UPDATE jobs SET
             update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?, phase = ?,
-            error = ?, title = ?, note_url = ?, notified_ready = ?, note_notified = ?, accepted_at = ?
+            error = ?, title = ?, note_url = ?, notified_ready = ?, note_notified = ?, accepted_at = ?, sub = ?
           WHERE job_id = ?`,
         )
         .bind(
@@ -112,6 +151,7 @@ export function createD1Store(db: D1Like): JobStore {
           row.notifiedReady ? 1 : 0,
           row.noteNotified ? 1 : 0,
           row.acceptedAt,
+          row.sub,
           row.jobId,
         )
         .run()
@@ -148,6 +188,45 @@ export function createD1Store(db: D1Like): JobStore {
       } catch {
         return false
       }
+    },
+    async bindingFor(telegramUserId) {
+      const record = await db
+        .prepare('SELECT * FROM bindings WHERE telegram_user_id = ?')
+        .bind(telegramUserId)
+        .first<BindingRecord>()
+      return record === null ? null : toBinding(record)
+    },
+    async bind(binding, chatId) {
+      await db
+        .prepare(
+          `INSERT INTO bindings (telegram_user_id, sub, email, bound_at) VALUES (?, ?, ?, ?)
+           ON CONFLICT(telegram_user_id) DO UPDATE SET sub = excluded.sub, email = excluded.email, bound_at = excluded.bound_at`,
+        )
+        .bind(binding.telegramUserId, binding.sub, binding.email, binding.boundAt)
+        .run()
+      await db.prepare('UPDATE jobs SET sub = ? WHERE chat_id = ?').bind(binding.sub, chatId).run()
+    },
+    async insertToken(token) {
+      await db
+        .prepare(
+          `INSERT INTO link_tokens (token_hash, telegram_user_id, expires_at, pending_sub, pending_email, used)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(token.tokenHash, token.telegramUserId, token.expiresAt, token.pendingSub, token.pendingEmail, token.used ? 1 : 0)
+        .run()
+    },
+    async token(tokenHash) {
+      const record = await db
+        .prepare('SELECT * FROM link_tokens WHERE token_hash = ?')
+        .bind(tokenHash)
+        .first<TokenRecord>()
+      return record === null ? null : toToken(record)
+    },
+    async saveToken(token) {
+      await db
+        .prepare('UPDATE link_tokens SET pending_sub = ?, pending_email = ?, used = ? WHERE token_hash = ?')
+        .bind(token.pendingSub, token.pendingEmail, token.used ? 1 : 0, token.tokenHash)
+        .run()
     },
   }
 }
