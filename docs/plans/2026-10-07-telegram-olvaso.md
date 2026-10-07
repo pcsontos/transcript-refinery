@@ -766,7 +766,7 @@ git commit -m "feat(worker): Link summary notes to the reader page"
 
 A `scripts/worker-dev-vars.sh` nem változik. Helyben nincs Access, ezért a `/notes` helyben mindig `403`, a `VAULT_*` változók ott fölöslegesek.
 
-- [ ] **Step 1: `.env.example`**
+- [x] **Step 1: `.env.example`**
 
 Ez után a blokk után:
 
@@ -790,7 +790,7 @@ VAULT_REPO=
 VAULT_BRANCH=
 ```
 
-- [ ] **Step 2: `docs/operations/telegram-worker-topology.md`**
+- [x] **Step 2: `docs/operations/telegram-worker-topology.md`**
 
 Az „Életciklus üzenetek a chaten:” lista `- **Hiba**: …` sora után új sor:
 
@@ -812,7 +812,7 @@ A kötés útvonala a `/link`, az olvasóé a `/notes`, mindkettőt Cloudflare A
 
 Ellenőrzés: `grep -n '/notes' docs/operations/telegram-worker-topology.md` két sort mutat.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .env.example docs/operations/telegram-worker-topology.md
