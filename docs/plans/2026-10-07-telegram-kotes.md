@@ -1555,7 +1555,7 @@ git commit -m "feat(worker): Serve the Access-protected binding link"
 
 Helyben nincs Access, ezért a debug-script a saját Telegram-azonosítóhoz közvetlenül beír egy kötést a helyi D1-be. A `TELEGRAM_OWNER_CHAT_ID` az Infisicalban marad, de csak erre szolgál.
 
-- [ ] **Step 1: `.env.example`**
+- [x] **Step 1: `.env.example`**
 
 Ezt a blokkot:
 
@@ -1574,7 +1574,7 @@ ALLOWED_EMAILS=
 TELEGRAM_BOT_USERNAME=
 ```
 
-- [ ] **Step 2: `scripts/worker-dev-vars.sh`**
+- [x] **Step 2: `scripts/worker-dev-vars.sh`**
 
 ```bash
 perl -pi -e 's/keys="TELEGRAM_BOT_TOKEN TELEGRAM_OWNER_CHAT_ID /keys="TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME ALLOWED_EMAILS /; s/A Worker öt változó/A Worker hat változó/g' scripts/worker-dev-vars.sh
@@ -1582,7 +1582,7 @@ perl -pi -e 's/keys="TELEGRAM_BOT_TOKEN TELEGRAM_OWNER_CHAT_ID /keys="TELEGRAM_B
 
 Ellenőrzés: `grep -n 'keys=\|hat változó' scripts/worker-dev-vars.sh` két sort mutat, a `keys=` sorban hat név van.
 
-- [ ] **Step 3: `scripts/telegram-debug.sh`**
+- [x] **Step 3: `scripts/telegram-debug.sh`**
 
 A `.dev.vars` írásában a `printf 'TELEGRAM_OWNER_CHAT_ID=%s\n' "$owner"` sor helyére:
 
@@ -1607,7 +1607,7 @@ npx wrangler d1 execute transcript-refinery --local --config worker/wrangler.tom
 
 Ellenőrzés: `bash -n scripts/telegram-debug.sh` hibátlan.
 
-- [ ] **Step 4: `docs/operations/telegram-worker-topology.md`**
+- [x] **Step 4: `docs/operations/telegram-worker-topology.md`**
 
 A debug-táblázat `| TELEGRAM_OWNER_CHAT_ID | TELEGRAM_OWNER_CHAT_ID |` sora helyére:
 
@@ -1626,7 +1626,7 @@ A „Biztonsági szűrés” megjegyzés helyére:
 
 A szimulált frissítés `curl` példájában a `\"chat\": {\"id\": $TELEGRAM_OWNER_CHAT_ID}` után: `, \"from\": {\"id\": $TELEGRAM_OWNER_CHAT_ID}`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .env.example scripts/worker-dev-vars.sh scripts/telegram-debug.sh docs/operations/telegram-worker-topology.md

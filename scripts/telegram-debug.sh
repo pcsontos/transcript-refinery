@@ -143,6 +143,16 @@ if [ "${#webhook_secret}" -lt 16 ] || [ -z "$owner" ] || [ -z "$serve_secret" ];
   exit 1
 fi
 
+# Helyben nincs Access. A saját Telegram-azonosító kötése közvetlenül a helyi D1-be kerül.
+case $owner in
+  ''|*[!0-9]*)
+    echo "A TELEGRAM_OWNER_CHAT_ID nem szám." >&2
+    exit 1
+    ;;
+esac
+npx wrangler d1 execute transcript-refinery --local --config worker/wrangler.toml --command \
+  "INSERT OR REPLACE INTO bindings (telegram_user_id, sub, email, bound_at) VALUES ('$owner', 'debug', 'debug@localhost', 0)"
+
 # A Wrangler a TELEGRAM_BOT_TOKEN nevet olvassa, ezért a debug-token ide kerül, nem a DEBUG_ néven.
 # A SERVE_URL a helyi serve. A Cloudflare-titok nem változik. Leállításkor a backup kerül vissza.
 backup=$(mktemp)
@@ -153,7 +163,8 @@ umask 077
 tmp=$(mktemp "$root/worker/.dev.vars.XXXXXX")
 {
   printf 'TELEGRAM_BOT_TOKEN=%s\n' "$token"
-  printf 'TELEGRAM_OWNER_CHAT_ID=%s\n' "$owner"
+  printf 'ALLOWED_EMAILS=%s\n' "debug@localhost"
+  printf 'TELEGRAM_BOT_USERNAME=%s\n' "debug"
   printf 'TELEGRAM_WEBHOOK_SECRET=%s\n' "$webhook_secret"
   printf 'REFINERY_SERVE_SECRET=%s\n' "$serve_secret"
   printf 'SERVE_URL=%s\n' "http://127.0.0.1:8787"

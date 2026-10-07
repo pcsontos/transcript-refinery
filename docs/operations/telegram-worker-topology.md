@@ -118,7 +118,9 @@ A script az Infisical `dev` környezetének `/peter-mbp` útjáról olvas. A deb
 | Infisical kulcs | A helyi `worker/.dev.vars` sora |
 |---|---|
 | `TELEGRAM_DEBUG_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN` |
-| `TELEGRAM_OWNER_CHAT_ID` | `TELEGRAM_OWNER_CHAT_ID` |
+| `TELEGRAM_OWNER_CHAT_ID` | — (a helyi D1 `bindings` sora, `debug@localhost`) |
+| — | `ALLOWED_EMAILS=debug@localhost` |
+| — | `TELEGRAM_BOT_USERNAME=debug` |
 | `TELEGRAM_DEBUG_WEBHOOK_SECRET` | `TELEGRAM_WEBHOOK_SECRET` |
 | `REFINERY_SERVE_SECRET` | `REFINERY_SERVE_SECRET` |
 | — | `SERVE_URL=http://127.0.0.1:8787` |
@@ -225,7 +227,7 @@ A botnak nincsenek hagyományos `/parancsai`; a beérkező üzenetet szóközök
 - **Hiba**: a démon által visszaküldött hibaüzenet (pl. `Nincs felirat` vagy `A konténer elutasította a hívást.`).
 
 > [!NOTE]
-> **Biztonsági szűrés**: A bot kizárólag a `TELEGRAM_OWNER_CHAT_ID` azonosítójú privát chatből fogad el parancsokat. Bármely más felhasználótól vagy csoportból érkező üzenetet a Worker válasz nélkül, csendben eldob (`HTTP 200`).
+> **Biztonsági szűrés**: A bot csak attól a Telegram-felhasználótól (`from.id`) fogad parancsot, aki a `/start` után Google-belépéssel kötötte magát, és akinek a kötött e-mailje az `ALLOWED_EMAILS` listán van. Mindenki más a `Előbb kösd össze a Google-fiókoddal: /start` sort kapja, sor és kopogtatás nélkül. A kötés útvonala a `/link`, ezt Cloudflare Access védi.
 
 ---
 
@@ -261,7 +263,7 @@ set -a; source worker/.dev.vars; set +a
 curl -i -X POST https://transcript-refinery.peteroncode.workers.dev/telegram \
   -H "Content-Type: application/json" \
   -H "X-Telegram-Bot-Api-Secret-Token: $TELEGRAM_WEBHOOK_SECRET" \
-  -d "{\"update_id\": $(date +%s), \"message\": {\"message_id\": 1, \"chat\": {\"id\": $TELEGRAM_OWNER_CHAT_ID}, \"text\": \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\"}}"
+  -d "{\"update_id\": $(date +%s), \"message\": {\"message_id\": 1, \"chat\": {\"id\": $TELEGRAM_OWNER_CHAT_ID}, \"from\": {\"id\": $TELEGRAM_OWNER_CHAT_ID}, \"text\": \"https://www.youtube.com/watch?v=dQw4w9WgXcQ\"}}"
 ```
 
 - **`update_id`**: Mindig egyedi számnak kell lennie (a fenti parancsban az aktuális epoch időbélyeg), mivel a Worker a már látott `update_id`-kat idempotensen eldobja.
