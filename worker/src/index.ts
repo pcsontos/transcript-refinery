@@ -12,7 +12,7 @@ import { LINK_INVALID_PAGE, newToken } from './plan.js'
 
 interface Env {
   DB: D1Like
-  ALLOWED_EMAILS: string
+  TELEGRAM_ALLOWED_EMAILS: string
   TELEGRAM_BOT_TOKEN: string
   TELEGRAM_BOT_USERNAME: string
   TELEGRAM_WEBHOOK_SECRET: string
@@ -52,7 +52,7 @@ async function identity(ctx: ExecutionContext): Promise<{ sub: string; email: st
 
 function deps(env: Env, linkBase = ''): WorkerDeps {
   return {
-    allowedEmails: env.ALLOWED_EMAILS,
+    allowedEmails: env.TELEGRAM_ALLOWED_EMAILS,
     botUsername: env.TELEGRAM_BOT_USERNAME,
     linkBase,
     store: createD1Store(env.DB),

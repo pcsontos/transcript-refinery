@@ -71,7 +71,7 @@ describe('worker belépés', () => {
     const env = {
       DB: db,
       TELEGRAM_BOT_TOKEN: 'token',
-      ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
       TELEGRAM_BOT_USERNAME: 'refinery_bot',
       TELEGRAM_WEBHOOK_SECRET: 'hook',
       REFINERY_SERVE_SECRET: 'titok',
@@ -106,7 +106,7 @@ describe('worker belépés', () => {
     const env = {
       DB: memoryDb(),
       TELEGRAM_BOT_TOKEN: 'token',
-      ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
       TELEGRAM_BOT_USERNAME: 'refinery_bot',
       TELEGRAM_WEBHOOK_SECRET: 'hook',
       REFINERY_SERVE_SECRET: 'titok',
@@ -136,7 +136,7 @@ describe('worker belépés', () => {
     globalThis.fetch = () => Promise.resolve(new Response(null, { status: 200 }))
     const env = {
       DB: memoryDb(),
-      ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
       TELEGRAM_BOT_TOKEN: 'token',
       TELEGRAM_BOT_USERNAME: 'refinery_bot',
       TELEGRAM_WEBHOOK_SECRET: 'hook',

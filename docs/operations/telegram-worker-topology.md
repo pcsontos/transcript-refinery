@@ -119,7 +119,7 @@ A script az Infisical `dev` környezetének `/peter-mbp` útjáról olvas. A deb
 |---|---|
 | `TELEGRAM_DEBUG_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN` |
 | `TELEGRAM_OWNER_CHAT_ID` | — (a helyi D1 `bindings` sora, `debug@localhost`) |
-| — | `ALLOWED_EMAILS=debug@localhost` |
+| — | `TELEGRAM_ALLOWED_EMAILS=debug@localhost` |
 | — | `TELEGRAM_BOT_USERNAME=debug` |
 | `TELEGRAM_DEBUG_WEBHOOK_SECRET` | `TELEGRAM_WEBHOOK_SECRET` |
 | `REFINERY_SERVE_SECRET` | `REFINERY_SERVE_SECRET` |
@@ -227,7 +227,7 @@ A botnak nincsenek hagyományos `/parancsai`; a beérkező üzenetet szóközök
 - **Hiba**: a démon által visszaküldött hibaüzenet (pl. `Nincs felirat` vagy `A konténer elutasította a hívást.`).
 
 > [!NOTE]
-> **Biztonsági szűrés**: A bot csak attól a Telegram-felhasználótól (`from.id`) fogad parancsot, aki a `/start` után Google-belépéssel kötötte magát, és akinek a kötött e-mailje az `ALLOWED_EMAILS` listán van. Mindenki más a `Előbb kösd össze a Google-fiókoddal: /start` sort kapja, sor és kopogtatás nélkül. A kötés útvonala a `/link`, ezt Cloudflare Access védi.
+> **Biztonsági szűrés**: A bot csak attól a Telegram-felhasználótól (`from.id`) fogad parancsot, aki a `/start` után Google-belépéssel kötötte magát, és akinek a kötött e-mailje az `TELEGRAM_ALLOWED_EMAILS` listán van. Mindenki más a `Előbb kösd össze a Google-fiókoddal: /start` sort kapja, sor és kopogtatás nélkül. A kötés útvonala a `/link`, ezt Cloudflare Access védi.
 
 ---
 

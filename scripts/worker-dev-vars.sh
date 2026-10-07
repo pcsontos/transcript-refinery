@@ -6,7 +6,7 @@ set -eu
 root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 dest="$root/worker/.dev.vars"
 project_id="1c1c1853-c58b-401f-a414-2bca9076e16f"
-keys="TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME ALLOWED_EMAILS TELEGRAM_WEBHOOK_SECRET REFINERY_SERVE_SECRET SERVE_URL"
+keys="TELEGRAM_BOT_TOKEN TELEGRAM_BOT_USERNAME TELEGRAM_ALLOWED_EMAILS TELEGRAM_WEBHOOK_SECRET REFINERY_SERVE_SECRET SERVE_URL"
 
 if ! command -v infisical >/dev/null 2>&1; then
   echo "Az infisical CLI hiányzik." >&2

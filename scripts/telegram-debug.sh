@@ -163,7 +163,7 @@ umask 077
 tmp=$(mktemp "$root/worker/.dev.vars.XXXXXX")
 {
   printf 'TELEGRAM_BOT_TOKEN=%s\n' "$token"
-  printf 'ALLOWED_EMAILS=%s\n' "debug@localhost"
+  printf 'TELEGRAM_ALLOWED_EMAILS=%s\n' "debug@localhost"
   printf 'TELEGRAM_BOT_USERNAME=%s\n' "debug"
   printf 'TELEGRAM_WEBHOOK_SECRET=%s\n' "$webhook_secret"
   printf 'REFINERY_SERVE_SECRET=%s\n' "$serve_secret"
