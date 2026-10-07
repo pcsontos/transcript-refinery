@@ -210,7 +210,7 @@ const worker = {
         return new Response(null, { status: 400 })
       }
       if (!isCallback(body)) return new Response(null, { status: 400 })
-      const status = await handleCallback(decodeURIComponent(match[1]), body, deps(env))
+      const status = await handleCallback(decodeURIComponent(match[1]), body, deps(env, url.origin))
       return new Response(null, { status })
     }
     return new Response(null, { status: 404 })

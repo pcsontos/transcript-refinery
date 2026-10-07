@@ -53,6 +53,10 @@ export async function findRow(store: JobStore, jobId: string): Promise<JobRow | 
   return rows.find((row) => row.jobId === jobId) ?? null
 }
 
+function readerLink(jobId: string, deps: WorkerDeps): string {
+  return `${deps.linkBase}/notes/${jobId}/summary`
+}
+
 async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Promise<Binding | null> {
   if (userId === undefined) return null
   const binding = await deps.store.bindingFor(userId)
@@ -238,7 +242,7 @@ export async function handleCallback(
     }
     row.title = body.title
     row.noteUrl = body.noteUrl
-    const sent = await deps.send(row.chatId, noteReadyMessage(body.title, body.noteUrl))
+    const sent = await deps.send(row.chatId, noteReadyMessage(body.title, readerLink(row.jobId, deps)))
     if (!sent) {
       row.status = 'accepted'
       row.noteNotified = false
@@ -285,7 +289,7 @@ export async function handleTap(
     return []
   }
   if (action.type === 'resend') {
-    if (row?.title && row.noteUrl) await deps.send(row.chatId, noteReadyMessage(row.title, row.noteUrl))
+    if (row?.title && row.noteUrl) await deps.send(row.chatId, noteReadyMessage(row.title, readerLink(row.jobId, deps)))
     return []
   }
   if (action.type === 'ignore') return []

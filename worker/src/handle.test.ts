@@ -293,7 +293,7 @@ describe('handleCallback', () => {
     const ok = deps(linked)
     const url = 'https://github.com/tulaj/repo/blob/main/a_summary.md'
     await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím', noteUrl: url }, ok)
-    expect(ok.sent).toEqual([`Cím. A jegyzet megvan.\n${url}`])
+    expect(ok.sent).toEqual([`Cím. A jegyzet megvan.\nhttps://worker.test/notes/5:${ID}/summary`])
     const row = (await linked.listByUpdate(5))[0]
     expect(row?.status).toBe('ready')
     expect(row?.noteNotified).toBe(true)
@@ -360,7 +360,7 @@ describe('handleTap', () => {
       update_id: 41,
       callback_query: { id: 'cq2', data: `summary:5:${ID}`, from: { id: 42 }, message: { chat: { id: 42 } } },
     }, own)
-    expect(own.sent).toEqual(['Cím. A jegyzet megvan.\nhttps://github.com/tulaj/repo/blob/main/a.md'])
+    expect(own.sent).toEqual([`Cím. A jegyzet megvan.\nhttps://worker.test/notes/5:${ID}/summary`])
     expect(own.knocked).toEqual([])
     const held = deps(store, { send: () => Promise.resolve(false) })
     await handleTap({

@@ -614,7 +614,7 @@ git commit -m "feat(worker): Serve the notes reader behind Access"
 - Consumes: `WorkerDeps.linkBase` (a 3a óta létezik, a kérés originje).
 - Produces: a summary kész üzenetének második sora `${linkBase}/notes/${jobId}/summary`, a visszahívásnál és a gomb `resend` ágán is.
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 A `worker/src/handle.test.ts` „a summary kész linkje kimegy…” tesztjében:
 
@@ -689,12 +689,12 @@ A `worker/src/entry.test.ts` `describe('worker belépés', …)` blokkjának vé
   })
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker`
 Expected: FAIL a három érintett tesztben, mert a második sor még a GitHub-cím.
 
-- [ ] **Step 3: A link**
+- [x] **Step 3: A link**
 
 A `worker/src/handle.ts`-ben a `findRow` függvény után:
 
@@ -742,14 +742,14 @@ erre:
 
 A `noteReadyMessage` és a `plan.test.ts` nem változik: a függvény bármilyen linket a második sorba tesz.
 
-- [ ] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
+- [x] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld.
 
 Mutációs próba: az `index.ts`-ben a `deps(env, url.origin)` helyére ideiglenesen `deps(env)` → az entry-teszt bukik (`/notes/…` origin nélkül), utána vissza.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/handle.ts worker/src/index.ts worker/src/handle.test.ts worker/src/entry.test.ts

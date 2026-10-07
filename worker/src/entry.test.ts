@@ -195,4 +195,48 @@ describe('worker belépés', () => {
     expect(await list.text()).toContain('Még nincs jegyzet. Küldj egy YouTube-címet a botnak.')
     expect((await worker.fetch(get('/notes/5:abcdefghijk/summary'), env, signed)).status).toBe(404)
   })
+  it('a summary visszahívása a kérés saját címére tett /notes linket küldi', async () => {
+    const bodies: string[] = []
+    globalThis.fetch = (_input, init) => {
+      const raw = init?.body
+      bodies.push(typeof raw === 'string' ? raw : '')
+      return Promise.resolve(new Response(null, { status: 200 }))
+    }
+    // A visszahívás csak ezeket a mezőket olvassa, a többit a toRow undefined-ként adja át.
+    const record = { job_id: '5:abcdefghijk', update_id: 5, chat_id: '42', phase: 'summary' }
+    const db: D1Like = {
+      prepare(sql: string): D1Statement {
+        const statement: D1Statement = {
+          bind: () => statement,
+          all: <T>() => Promise.resolve({ results: (sql.includes('WHERE update_id') ? [record] : []) as T[] }),
+          first: <T>() => Promise.resolve(null as T | null),
+          run: () => Promise.resolve({}),
+        }
+        return statement
+      },
+    }
+    const env = {
+      DB: db,
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const response = await worker.fetch(
+      new Request('https://worker.test/internal/jobs/5%3Aabcdefghijk', {
+        method: 'POST',
+        headers: { authorization: 'Bearer titok' },
+        body: JSON.stringify({ status: 'ready', title: 'Cím', noteUrl: 'https://github.com/tulaj/vault/blob/main/a.md' }),
+      }),
+      env,
+      { waitUntil: () => undefined },
+    )
+    expect(response.status).toBe(200)
+    expect(bodies).toHaveLength(1)
+    expect((JSON.parse(bodies[0]!) as { text: string }).text).toBe(
+      'Cím. A jegyzet megvan.\nhttps://worker.test/notes/5:abcdefghijk/summary',
+    )
+  })
 })
