@@ -59,6 +59,7 @@ function acceptedRow(partial: Partial<JobRow> = {}): JobRow {
     notifiedReady: false,
     noteNotified: false,
     acceptedAt: 1,
+    sub: 'sub-42',
     ...partial,
   }
 }
@@ -145,6 +146,7 @@ describe('handleCallback', () => {
       notifiedReady: false,
       noteNotified: false,
       acceptedAt: 1,
+      sub: 'sub-42',
     }
     await store.insert(row)
     const failedSend = deps(store, { send: () => Promise.resolve(false) })
@@ -205,6 +207,7 @@ describe('handleCallback', () => {
       notifiedReady: false,
       noteNotified: false,
       acceptedAt: 1,
+      sub: 'sub-42',
     })
     const failedSend = deps(store, { send: () => Promise.resolve(false) })
     expect(await handleCallback(`5:${ID}`, { status: 'failed', error: 'Nincs felirat' }, failedSend)).toBe(200)

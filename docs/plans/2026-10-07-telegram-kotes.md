@@ -60,7 +60,7 @@ Az implementáció a `.worktrees/impl-telegram-kotes` worktree-n, az `impl-teleg
 **Interfaces:**
 - Produces: `Binding`, `LinkToken`, `JobRow.sub: string | null`, és a `JobStore` új metódusai: `bindingFor(telegramUserId)`, `bind(binding, chatId)`, `insertToken(token)`, `token(tokenHash)`, `saveToken(token)`. A `saveToken` csak a `pendingSub`, `pendingEmail` és `used` mezőt írja.
 
-- [ ] **Step 1: A migráció tesztje**
+- [x] **Step 1: A migráció tesztje**
 
 A `worker/src/entry.test.ts` „a wrangler percenként fut…” tesztjében a `expect(summary).toContain('seen_updates')` sor után:
 
@@ -71,12 +71,12 @@ A `worker/src/entry.test.ts` „a wrangler percenként fut…” tesztjében a `
     expect(bindings).toContain('CREATE TABLE link_tokens')
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/entry.test.ts`
 Expected: FAIL, `ENOENT … 0003_bindings.sql`
 
-- [ ] **Step 3: A migráció**
+- [x] **Step 3: A migráció**
 
 `worker/migrations/0003_bindings.sql`:
 
@@ -98,7 +98,7 @@ CREATE TABLE link_tokens (
 );
 ```
 
-- [ ] **Step 4: `worker/src/store.ts` teljes cseréje**
+- [x] **Step 4: `worker/src/store.ts` teljes cseréje**
 
 ```ts
 export type JobStatus = 'queued' | 'waiting' | 'accepted' | 'ready' | 'failed'
@@ -231,7 +231,7 @@ export function memoryStore(): JobStore {
 }
 ```
 
-- [ ] **Step 5: `worker/src/d1.ts` teljes cseréje**
+- [x] **Step 5: `worker/src/d1.ts` teljes cseréje**
 
 ```ts
 import type { Binding, JobRow, JobStatus, JobStore, LinkToken } from './store.js'
@@ -468,7 +468,7 @@ export function createD1Store(db: D1Like): JobStore {
 }
 ```
 
-- [ ] **Step 6: A `sub` a meglévő teszt-sorokban**
+- [x] **Step 6: A `sub` a meglévő teszt-sorokban**
 
 A `JobRow` literálok új kötelező mezőt kapnak. A tulajdonos `sub` értéke a tesztekben `sub-42`:
 
@@ -481,14 +481,14 @@ Ellenőrzés: a `handle.test.ts` fájlban három, a `plan.test.ts` fájlban egy 
 
 A `worker/src/handle.ts` `handleUpdate` sor-literáljában az `acceptedAt: null,` sor után egy új sor: `sub: null,`. A 3. feladat ezt a fájlt úgyis teljesen lecseréli, ez csak a köztes typecheckhez kell.
 
-- [ ] **Step 7: Zöld**
+- [x] **Step 7: Zöld**
 
 Run: `pnpm vitest run worker`
 Expected: PASS
 Run: `pnpm exec tsc -p worker/tsconfig.json`
 Expected: hibátlan
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add worker/migrations/0003_bindings.sql worker/src/store.ts worker/src/d1.ts worker/src/entry.test.ts worker/src/handle.test.ts worker/src/plan.test.ts

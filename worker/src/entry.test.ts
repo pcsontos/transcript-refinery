@@ -24,6 +24,10 @@ describe('szállítási fájlok', () => {
     expect(summary).toContain('note_url')
     expect(summary).toContain('note_notified')
     expect(summary).toContain('seen_updates')
+    const bindings = await readFile('worker/migrations/0003_bindings.sql', 'utf8')
+    expect(bindings).toContain('ALTER TABLE jobs ADD COLUMN sub TEXT')
+    expect(bindings).toContain('CREATE TABLE bindings')
+    expect(bindings).toContain('CREATE TABLE link_tokens')
   })
 })
 

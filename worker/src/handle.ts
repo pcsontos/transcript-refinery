@@ -92,6 +92,7 @@ export async function handleUpdate(
       notifiedReady: false,
       noteNotified: false,
       acceptedAt: null,
+      sub: null,
     }
     await deps.store.insert(row)
     knocks.push({ jobId: row.jobId, videoId: row.videoId, url: row.url })

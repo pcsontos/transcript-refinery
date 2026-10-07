@@ -32,6 +32,7 @@ function row(partial: Partial<JobRow>): JobRow {
     notifiedReady: false,
     noteNotified: false,
     acceptedAt: null,
+    sub: null,
     ...partial,
   }
 }
