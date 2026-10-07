@@ -25,8 +25,6 @@ interface ExecutionContext {
   access?: { getIdentity(): Promise<{ email?: unknown; user_uuid?: unknown } | undefined> }
 }
 
-const INVALID_LINK_PAGE = `<!doctype html><html lang="hu"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Transcript Refinery</title><p>${LINK_INVALID_PAGE}</p></html>`
-
 function sameText(actual: string | undefined, expected: string | undefined): boolean {
   if (typeof actual !== 'string' || typeof expected !== 'string' || expected === '' || actual.length !== expected.length) {
     return false
@@ -179,7 +177,8 @@ const worker = {
       if (who === null) return new Response(null, { status: 403 })
       const result = await handleLink(url.searchParams.get('t') ?? '', who, deps(env, url.origin))
       if (result.status === 302) return Response.redirect(result.location, 302)
-      return new Response(INVALID_LINK_PAGE, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })
+      const page = `<!doctype html><html lang="hu"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Transcript Refinery</title><p>${LINK_INVALID_PAGE}</p></html>`
+      return new Response(page, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })
     }
     const match = /^\/internal\/jobs\/([^/]+)$/.exec(url.pathname)
     if (match?.[1] !== undefined && request.method === 'POST') {
