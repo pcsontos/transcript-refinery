@@ -508,7 +508,7 @@ git commit -m "feat(worker): Store Telegram bindings and link tokens"
 - Consumes: `LinkToken`, `JobRow` (1. feladat)
 - Produces: `TOKEN_TTL: number`, `isAllowed(email: string, allowedEmails: string): boolean`, `isToken(value: string): boolean`, `newToken(): string`, `hashToken(raw: string): Promise<string>`, `decideStart(token: LinkToken | null, userId: string, now: number, allowedEmails: string): StartAction`, `StartAction = { type: 'invalid' } | { type: 'denied'; email: string } | { type: 'bind'; sub: string; email: string }`. A `plan.ts` újraexportálja: `BIND_FIRST`, `LINK_INVALID`, `LINK_INVALID_PAGE`, `linkLine`, `boundLine`, `alreadyBoundLine`, `notAllowedLine`.
 
-- [ ] **Step 1: A bukó teszt**
+- [x] **Step 1: A bukó teszt**
 
 A `worker/src/plan.test.ts` importja kiegészül (a meglévő `from './plan.js'` listába): `decideStart`, `hashToken`, `isAllowed`, `isToken`, `newToken`. A `./store.js` importba: `type LinkToken`. A fájl végére:
 
@@ -554,12 +554,12 @@ describe('kötési döntések', () => {
 })
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/plan.test.ts`
 Expected: FAIL, `isAllowed is not a function` (vagy hasonló import-hiba)
 
-- [ ] **Step 3: A mondatok**
+- [x] **Step 3: A mondatok**
 
 A `worker/src/messages.ts` végére:
 
@@ -585,7 +585,7 @@ export function notAllowedLine(email: string): string {
 }
 ```
 
-- [ ] **Step 4: A döntések a `plan.ts`-ben**
+- [x] **Step 4: A döntések a `plan.ts`-ben**
 
 A fájl eleje így változik: a `./store.js` import `import type { JobRow, LinkToken } from './store.js'`, az újraexport lista pedig:
 
@@ -660,12 +660,12 @@ export function decideStart(
 }
 ```
 
-- [ ] **Step 5: Zöld**
+- [x] **Step 5: Zöld**
 
 Run: `pnpm vitest run worker/src/plan.test.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/messages.ts worker/src/plan.ts worker/src/plan.test.ts

@@ -39,3 +39,23 @@ export function noteReadyMessage(title: string, noteUrl: string): string {
 export function summaryButton(jobId: string): { text: 'summary'; data: string } {
   return { text: 'summary', data: `summary:${jobId}` }
 }
+
+export const BIND_FIRST = 'Előbb kösd össze a Google-fiókoddal: /start'
+export const LINK_INVALID = 'A link lejárt vagy már nem érvényes. Kérj újat: /start'
+export const LINK_INVALID_PAGE = 'A link lejárt vagy már nem érvényes. Kérj újat a botban: /start'
+
+export function linkLine(url: string): string {
+  return `Kösd össze a Google-fiókoddal (10 percig érvényes): ${url}`
+}
+
+export function boundLine(email: string): string {
+  return `Bekötve: ${email}.`
+}
+
+export function alreadyBoundLine(email: string): string {
+  return `Már be vagy kötve: ${email}.`
+}
+
+export function notAllowedLine(email: string): string {
+  return `Ez a Google-fiók nincs engedélyezve: ${email}.`
+}
