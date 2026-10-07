@@ -3,6 +3,47 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.11.0] — 2026-10-07
+
+Megérkezett a Telegram-integráció harmadik szeletének második fele: a boton át
+készült jegyzeteket mostantól egy belépéshez kötött oldalon olvashatod, a bot
+linkje pedig erre az oldalra visz.
+
+### 📖 Olvasó oldal a jegyzetekhez
+
+- **Jegyzetlista a `/notes` címen:** A belépett Google-fiókod jegyzetei
+  videónként, újak elöl, a cím és a dátum mellett `summary` és `transcript`
+  hivatkozással. Ha még nincs jegyzeted, az oldal megmondja, mit tegyél.
+- **Jegyzet megnyitása a `/notes/<jobId>/summary` és a
+  `/notes/<jobId>/transcript` címen:** Az oldal a jegyzetet a vaultból olvassa,
+  és a GitHub renderelt változatát mutatja, mellette „Megnyitás a GitHubon”
+  hivatkozással. A `transcript` a summary mellett létrejövő tisztított átirat.
+- **A bot linkje az olvasóra mutat:** A `summary` gomb után érkező üzenet
+  második sora már az olvasó oldal hivatkozása, nem a nyers GitHub-cím. A gomb
+  újabb megnyomása ugyanezt a linket küldi újra.
+- **Belépés nélkül nem nyílik meg:** Az oldal Google-belépéshez (Cloudflare
+  Access) kötött, és csak a saját jegyzeteidet mutatja. Más fiók jegyzete, a
+  nem létező jegyzet és az ismeretlen fajta ugyanazt a `404` választ kapja.
+- **Érthető hibák:** Ha a GitHub nem érhető el, a vault nem olvasható vagy a
+  jegyzet hiányzik a vaultból, az oldal ezt egy mondatban megmondja.
+
+### 🔒 Javítás
+
+- **A bot csak privát chatben válaszol:** Csoportban a bot mostantól hallgat.
+  Korábban egy csoportban kézzel beírt `/start <token>` a csoport többi sorát
+  is a kötő fiókjához írhatta volna.
+
+### ⚙️ Üzemeltetés
+
+- **Új Worker-változók:** Az olvasóhoz kell a `VAULT_GITHUB_TOKEN` (csak olvasási
+  jogú, a vault-repóra szűkített token), a `VAULT_REPO` (`<tulaj>/<repo>`) és a
+  `VAULT_BRANCH`. Amíg nincsenek beállítva, a jegyzetek megnyitása `404`-et ad.
+  A `wrangler secret put` viszi fel őket.
+- **Cloudflare Access a `/notes` útvonalon is:** A meglévő, hosztnév-alapú
+  Access-alkalmazáshoz a `notes` útvonalat is hozzá kell adni. Az egész Worker
+  védelme nem kapcsolható be, mert a Telegram webhookját is elzárná.
+- **Nincs migráció és nincs új konténerkép:** A változás csak a Workert érinti.
+
 ## [1.10.0] — 2026-10-07
 
 Megérkezett a Telegram-integráció harmadik szeletének első fele: a bot
@@ -476,6 +517,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.11.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.11.0
 [1.10.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.10.0
 [1.9.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.9.0
 [1.8.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.8.0
