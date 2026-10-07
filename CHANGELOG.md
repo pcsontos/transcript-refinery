@@ -3,6 +3,47 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.10.0] — 2026-10-07
+
+Megérkezett a Telegram-integráció harmadik szeletének első fele: a bot
+mostantól Google-belépéssel köti a Telegram-felhasználót egy fiókhoz, és csak a
+kötött, engedélyezett e-mail címhez tartozó felhasználó parancsát fogadja el.
+
+### 🔐 Google-kötés és e-mail alapú engedélyezés
+
+- **Kötés a `/start` paranccsal:** A bot a `/start` után egy 10 percig érvényes,
+  egyszer használható hivatkozást küld. A hivatkozás Google-belépésre visz
+  (Cloudflare Access), majd vissza a Telegramba, ahol a bot visszaigazolja a
+  kötést (`Bekötve: <e-mail>.`).
+- **Biztonságos kötés két tokennel:** A bot üzenetében utazó hivatkozás és a
+  belépés után készülő visszatérő token külön szerepet kap. Az idegen kérésére
+  kiadott hivatkozás sem az idegent, sem a belépő tulajdonost nem köti be, és a
+  már használt vagy lejárt hivatkozás hibaoldalt ad.
+- **Az engedélyt az e-mail adja:** Parancsot az a Telegram-felhasználó küldhet,
+  akinek van kötése, és a kötött e-mail szerepel a `TELEGRAM_ALLOWED_EMAILS`
+  vesszős listán. Aki nincs bekötve, a `Előbb kösd össze a Google-fiókoddal:
+  /start` üzenetet kapja, sor és kopogtatás nélkül.
+- **Az e-mail törlése azonnal kizár:** Ha egy címet leveszel a listáról, a
+  felhasználó a következő üzenetétől nem küldhet parancsot, a kötése megmarad.
+- **Az összefoglaló gomb a saját sorokra szól:** A `summary` gomb csak azt a
+  sort indítja, amely a koppintó fiókjához tartozik, és az üzenetek mindig a
+  sor saját chatjére mennek.
+
+### ⚙️ Üzemeltetés
+
+- **Új Worker-változók:** A `TELEGRAM_OWNER_CHAT_ID` megszűnt a Workerből.
+  Helyette kell a `TELEGRAM_ALLOWED_EMAILS` (vesszővel elválasztott e-mailek)
+  és a `TELEGRAM_BOT_USERNAME` (a bot neve `@` nélkül).
+- **Új D1 migráció:** A `0003_bindings.sql` a `jobs` táblához egy `sub`
+  oszlopot, valamint a `bindings` és a `link_tokens` táblát adja. Telepítés
+  előtt futtasd: `pnpm worker:migrate`.
+- **Cloudflare Access a `/link` útvonalon:** A kötés oldalát a Cloudflare Access
+  védi, Google-belépéssel. Csak a `/link` útvonalat szabad védeni, a Telegram
+  webhookját nem.
+- **Helyi hibakeresés kötéssel:** A `scripts/telegram-debug.sh` a saját
+  Telegram-azonosítódat közvetlenül köti be a helyi D1-be (Access helyben nincs),
+  a `scripts/worker-dev-vars.sh` pedig a hat új változót tölti le.
+
 ## [1.9.0] — 2026-10-06
 
 Megérkezett a Telegram-integráció második szelete: a letöltött feliratokból
@@ -435,6 +476,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.10.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.10.0
 [1.9.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.9.0
 [1.8.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.8.0
 [1.7.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.7.0
