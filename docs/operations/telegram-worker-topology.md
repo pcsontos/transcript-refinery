@@ -225,9 +225,10 @@ A botnak nincsenek hagyományos `/parancsai`; a beérkező üzenetet szóközök
 - **Ha a peter-mba nem érhető el**: `A gép ébredésére vár: <id>.` (a háttérben futó percenkénti Cloudflare Cron újra próbálkozik).
 - **Sikeres letöltés és R2 feltöltés**: `<cím>. A felirat megvan.`
 - **Hiba**: a démon által visszaküldött hibaüzenet (pl. `Nincs felirat` vagy `A konténer elutasította a hívást.`).
+- **Kész jegyzet** (a `summary` gomb után): `<cím>. A jegyzet megvan.` és a második sorban `https://<worker>/notes/<jobId>/summary`. Az oldal Cloudflare Access mögött van, és a jegyzetet a vault-repóból, a GitHub renderelt HTML-jével mutatja. A `/notes/<jobId>/transcript` ugyanígy a hozzá tartozó `_transcript.md`. A `https://<worker>/notes` a belépett fiók jegyzeteinek listája, videónként mindkét linkkel. A bot csak privát chatben válaszol.
 
 > [!NOTE]
-> **Biztonsági szűrés**: A bot csak attól a Telegram-felhasználótól (`from.id`) fogad parancsot, aki a `/start` után Google-belépéssel kötötte magát, és akinek a kötött e-mailje az `TELEGRAM_ALLOWED_EMAILS` listán van. Mindenki más a `Előbb kösd össze a Google-fiókoddal: /start` sort kapja, sor és kopogtatás nélkül. A kötés útvonala a `/link`, ezt Cloudflare Access védi.
+> **Biztonsági szűrés**: A bot csak attól a Telegram-felhasználótól (`from.id`) fogad parancsot, aki a `/start` után Google-belépéssel kötötte magát, és akinek a kötött e-mailje az `TELEGRAM_ALLOWED_EMAILS` listán van. Mindenki más a `Előbb kösd össze a Google-fiókoddal: /start` sort kapja, sor és kopogtatás nélkül. A kötés útvonala a `/link`, az olvasóé a `/notes`, mindkettőt Cloudflare Access védi. Csoportchatben a bot hallgat.
 
 ---
 

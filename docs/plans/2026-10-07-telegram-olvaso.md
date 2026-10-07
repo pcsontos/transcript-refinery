@@ -64,7 +64,7 @@ Migráció nincs: a `notesFor` a meglévő `sub`, `note_url` és `accepted_at` o
 **Interfaces:**
 - Produces: a `handleUpdate` csoportüzenetre `{ status: 200, knocks: [] }` választ ad, minden mellékhatás nélkül.
 
-- [ ] **Step 1: A bukó teszt**
+- [x] **Step 1: A bukó teszt**
 
 A `worker/src/handle.test.ts` `describe('kötés', …)` blokkjának végére, a „más fiók sorára a gomb nem indít” teszt után:
 
@@ -100,12 +100,12 @@ A `worker/src/handle.test.ts` `describe('kötés', …)` blokkjának végére, a
 
 A `flow` ugyanazzal a `newToken` számlálóval adja a linktokent (`TOKEN_A`) és a visszatérő tokent (`TOKEN_B`). A visszatérő token a `7`-es felhasználóé, engedélyezett e-maillel, tehát a javítás nélkül a csoportban kötne, és a `-100` chat sorát `sub-7`-re írná.
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/handle.test.ts -t "csoportban a bot hallgat"`
 Expected: FAIL. A `group.sent` értéke `['Bekötve: en@example.com.']`, nem `[]`.
 
-- [ ] **Step 3: A javítás**
+- [x] **Step 3: A javítás**
 
 A `worker/src/handle.ts` `handleUpdate` függvényében ezt a sort:
 
@@ -121,14 +121,14 @@ erre cseréld:
   if (message.chat.id !== message.from.id) return { status: 200, knocks: [] }
 ```
 
-- [ ] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
+- [x] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld. A meglévő tesztek mind privát chatet használnak (`chat.id` = `from.id`), ezért nem változnak.
 
 Mutációs próba: töröld ideiglenesen az új `if` sort, és futtasd újra a `-t "csoportban a bot hallgat"` szűrővel. FAIL kell, utána állítsd vissza.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/handle.ts worker/src/handle.test.ts
@@ -158,7 +158,7 @@ git commit -m "fix(worker): Ignore messages outside private chats"
   - `notesPage(sub: string, deps: ReaderDeps): Promise<Response>`
   - `notePage(jobId: string, kind: string, sub: string, deps: ReaderDeps): Promise<Response>`
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 Új fájl, `worker/src/reader.test.ts`:
 
@@ -328,12 +328,12 @@ describe('notePage', () => {
 })
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/reader.test.ts`
 Expected: FAIL, `Failed to resolve import "./reader.js"`
 
-- [ ] **Step 3: A tár olvasása**
+- [x] **Step 3: A tár olvasása**
 
 A `worker/src/store.ts` `JobStore` interfészében a `saveToken(token: LinkToken): Promise<void>` sor után:
 
@@ -364,7 +364,7 @@ A `worker/src/d1.ts` `createD1Store` visszaadott objektumában a `saveToken` ut�
     },
 ```
 
-- [ ] **Step 4: A mondatok**
+- [x] **Step 4: A mondatok**
 
 A `worker/src/messages.ts` végére:
 
@@ -376,7 +376,7 @@ export const GITHUB_DOWN = 'A GitHub nem érhető el.'
 export const OPEN_ON_GITHUB = 'Megnyitás a GitHubon'
 ```
 
-- [ ] **Step 5: A `findRow` exportja**
+- [x] **Step 5: A `findRow` exportja**
 
 A `worker/src/handle.ts`-ben:
 
@@ -390,7 +390,7 @@ erre:
 export async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
 ```
 
-- [ ] **Step 6: `worker/src/reader.ts`**
+- [x] **Step 6: `worker/src/reader.ts`**
 
 ```ts
 import { findRow } from './handle.js'
@@ -480,7 +480,7 @@ export async function notePage(jobId: string, kind: string, sub: string, deps: R
 
 A `vaultRepo: ''` esetben az előtag `https://github.com//blob/…`, ami egyetlen valódi `note_url` elejével sem egyezik, ezért külön feltétel nem kell. A csere csak az utolsó szakasz végén történik, ezért egy `_summary.md`-t tartalmazó mappanév nem változik. A jegyzet saját első címsora a GitHub HTML-jében van, ezért a Worker nem tesz elé `<h1>`-et (a spec 3. szakasza, 4. lépés).
 
-- [ ] **Step 7: Fusson, menjen át, és a teljes ellenőrzés**
+- [x] **Step 7: Fusson, menjen át, és a teljes ellenőrzés**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld.
@@ -491,7 +491,7 @@ Mutációs próbák, egyenként, mindegyik után FAIL kell, utána vissza:
 - a `vaultPath` első sorát (a fajta-ellenőrzést) töröld → a `qa` fajta tesztje bukik;
 - a `notesPage` `items` sorában az első `escapeHtml(…)` hívást cseréld a puszta `row.title ?? row.videoId` értékre → a lista tesztje bukik.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add worker/src/store.ts worker/src/d1.ts worker/src/messages.ts worker/src/handle.ts worker/src/reader.ts worker/src/reader.test.ts
@@ -510,7 +510,7 @@ git commit -m "feat(worker): Render vault notes for the signed-in account"
 - Consumes: `notesPage`, `notePage`, `ReaderDeps` a `reader.ts`-ből; a meglévő `identity(ctx)` és `createD1Store`.
 - Produces: `GET /notes` és `GET /notes/<jobId>/<fajta>` a Workerben.
 
-- [ ] **Step 1: A bukó teszt**
+- [x] **Step 1: A bukó teszt**
 
 A `worker/src/entry.test.ts` `describe('worker belépés', …)` blokkjának végére, a „/link azonosító nélkül 403…” teszt után:
 
@@ -547,12 +547,12 @@ A `worker/src/entry.test.ts` `describe('worker belépés', …)` blokkjának vé
 
 A `memoryDb` minden `all` hívásra üres listát ad, ezért a lista üres, és a jegyzet sora nem létezik. Az `env`-ből szándékosan hiányoznak a `VAULT_*` változók.
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/entry.test.ts -t "a /notes azonosító nélkül"`
 Expected: FAIL, az első `expect` `404`-et kap `403` helyett.
 
-- [ ] **Step 3: Az útvonalak**
+- [x] **Step 3: Az útvonalak**
 
 A `worker/src/index.ts`-ben az importok után, az `import { LINK_INVALID_PAGE, newToken } from './plan.js'` sor alá:
 
@@ -587,14 +587,14 @@ A `fetch` metódusban a `/link` blokk záró `}` jele után, a `const match = /^
     }
 ```
 
-- [ ] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
+- [x] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld.
 
 Mutációs próba: a `if (who === null) return new Response(null, { status: 403 })` sort töröld ideiglenesen. A teszt bukjon (a `plain` kontextus `200`-at vagy `404`-et kap), utána vissza.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/index.ts worker/src/entry.test.ts
@@ -614,7 +614,7 @@ git commit -m "feat(worker): Serve the notes reader behind Access"
 - Consumes: `WorkerDeps.linkBase` (a 3a óta létezik, a kérés originje).
 - Produces: a summary kész üzenetének második sora `${linkBase}/notes/${jobId}/summary`, a visszahívásnál és a gomb `resend` ágán is.
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 A `worker/src/handle.test.ts` „a summary kész linkje kimegy…” tesztjében:
 
@@ -689,12 +689,12 @@ A `worker/src/entry.test.ts` `describe('worker belépés', …)` blokkjának vé
   })
 ```
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker`
 Expected: FAIL a három érintett tesztben, mert a második sor még a GitHub-cím.
 
-- [ ] **Step 3: A link**
+- [x] **Step 3: A link**
 
 A `worker/src/handle.ts`-ben a `findRow` függvény után:
 
@@ -742,14 +742,14 @@ erre:
 
 A `noteReadyMessage` és a `plan.test.ts` nem változik: a függvény bármilyen linket a második sorba tesz.
 
-- [ ] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
+- [x] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld.
 
 Mutációs próba: az `index.ts`-ben a `deps(env, url.origin)` helyére ideiglenesen `deps(env)` → az entry-teszt bukik (`/notes/…` origin nélkül), utána vissza.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/handle.ts worker/src/index.ts worker/src/handle.test.ts worker/src/entry.test.ts
@@ -766,7 +766,7 @@ git commit -m "feat(worker): Link summary notes to the reader page"
 
 A `scripts/worker-dev-vars.sh` nem változik. Helyben nincs Access, ezért a `/notes` helyben mindig `403`, a `VAULT_*` változók ott fölöslegesek.
 
-- [ ] **Step 1: `.env.example`**
+- [x] **Step 1: `.env.example`**
 
 Ez után a blokk után:
 
@@ -790,7 +790,7 @@ VAULT_REPO=
 VAULT_BRANCH=
 ```
 
-- [ ] **Step 2: `docs/operations/telegram-worker-topology.md`**
+- [x] **Step 2: `docs/operations/telegram-worker-topology.md`**
 
 Az „Életciklus üzenetek a chaten:” lista `- **Hiba**: …` sora után új sor:
 
@@ -812,7 +812,7 @@ A kötés útvonala a `/link`, az olvasóé a `/notes`, mindkettőt Cloudflare A
 
 Ellenőrzés: `grep -n '/notes' docs/operations/telegram-worker-topology.md` két sort mutat.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .env.example docs/operations/telegram-worker-topology.md

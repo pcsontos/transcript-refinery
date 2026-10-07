@@ -167,4 +167,76 @@ describe('worker belépés', () => {
     expect(page.headers.get('content-type')).toBe('text/html; charset=utf-8')
     expect(await page.text()).toContain('A link lejárt vagy már nem érvényes. Kérj újat a botban: /start')
   })
+  it('a /notes azonosító nélkül 403, a pontatlan útvonal 404, belépve lista, az ismeretlen jegyzet 404', async () => {
+    globalThis.fetch = () => Promise.reject(new Error('a GitHub nem hívható'))
+    const env = {
+      DB: memoryDb(),
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const get = (path: string) => new Request(`https://worker.test${path}`)
+    const plain = { waitUntil: () => undefined }
+    const signed = {
+      waitUntil: () => undefined,
+      access: { getIdentity: () => Promise.resolve({ email: 'en@example.com', user_uuid: 'sub-42' }) },
+    }
+    expect((await worker.fetch(get('/notes'), env, plain)).status).toBe(403)
+    expect((await worker.fetch(get('/notes/5:abcdefghijk/summary'), env, plain)).status).toBe(403)
+    for (const path of ['/Notes', '/notes/', '//notes', '/notes/5:abcdefghijk', '/notes/a/b/c']) {
+      expect((await worker.fetch(get(path), env, signed)).status).toBe(404)
+    }
+    expect((await worker.fetch(new Request('https://worker.test/notes', { method: 'POST' }), env, signed)).status).toBe(404)
+    const list = await worker.fetch(get('/notes'), env, signed)
+    expect(list.status).toBe(200)
+    expect(await list.text()).toContain('Még nincs jegyzet. Küldj egy YouTube-címet a botnak.')
+    expect((await worker.fetch(get('/notes/5:abcdefghijk/summary'), env, signed)).status).toBe(404)
+  })
+  it('a summary visszahívása a kérés saját címére tett /notes linket küldi', async () => {
+    const bodies: string[] = []
+    globalThis.fetch = (_input, init) => {
+      const raw = init?.body
+      bodies.push(typeof raw === 'string' ? raw : '')
+      return Promise.resolve(new Response(null, { status: 200 }))
+    }
+    // A visszahívás csak ezeket a mezőket olvassa, a többit a toRow undefined-ként adja át.
+    const record = { job_id: '5:abcdefghijk', update_id: 5, chat_id: '42', phase: 'summary' }
+    const db: D1Like = {
+      prepare(sql: string): D1Statement {
+        const statement: D1Statement = {
+          bind: () => statement,
+          all: <T>() => Promise.resolve({ results: (sql.includes('WHERE update_id') ? [record] : []) as T[] }),
+          first: <T>() => Promise.resolve(null as T | null),
+          run: () => Promise.resolve({}),
+        }
+        return statement
+      },
+    }
+    const env = {
+      DB: db,
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const response = await worker.fetch(
+      new Request('https://worker.test/internal/jobs/5%3Aabcdefghijk', {
+        method: 'POST',
+        headers: { authorization: 'Bearer titok' },
+        body: JSON.stringify({ status: 'ready', title: 'Cím', noteUrl: 'https://github.com/tulaj/vault/blob/main/a.md' }),
+      }),
+      env,
+      { waitUntil: () => undefined },
+    )
+    expect(response.status).toBe(200)
+    expect(bodies).toHaveLength(1)
+    expect((JSON.parse(bodies[0]!) as { text: string }).text).toBe(
+      'Cím. A jegyzet megvan.\nhttps://worker.test/notes/5:abcdefghijk/summary',
+    )
+  })
 })

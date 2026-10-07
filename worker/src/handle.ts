@@ -46,11 +46,15 @@ type KnockResult = 202 | 409 | 401 | 'down'
 
 const START = /^\/start(?:\s+(\S+))?\s*$/
 
-async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
+export async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
   const head = jobId.split(':')[0]
   if (head === undefined || !/^\d+$/.test(head)) return null
   const rows = await store.listByUpdate(Number(head))
   return rows.find((row) => row.jobId === jobId) ?? null
+}
+
+function readerLink(jobId: string, deps: WorkerDeps): string {
+  return `${deps.linkBase}/notes/${jobId}/summary`
 }
 
 async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Promise<Binding | null> {
@@ -154,6 +158,8 @@ export async function handleUpdate(
 ): Promise<{ status: number; knocks: PlannedKnock[] }> {
   const message = update.message
   if (!message?.from) return { status: 200, knocks: [] }
+  // A bot csak privát chatre készült: csoportban a kötés a többi tag sorait is átírná.
+  if (message.chat.id !== message.from.id) return { status: 200, knocks: [] }
   const userId = String(message.from.id)
   const chatId = String(message.chat.id)
   const start = START.exec(message.text ?? '')
@@ -236,7 +242,7 @@ export async function handleCallback(
     }
     row.title = body.title
     row.noteUrl = body.noteUrl
-    const sent = await deps.send(row.chatId, noteReadyMessage(body.title, body.noteUrl))
+    const sent = await deps.send(row.chatId, noteReadyMessage(body.title, readerLink(row.jobId, deps)))
     if (!sent) {
       row.status = 'accepted'
       row.noteNotified = false
@@ -283,7 +289,7 @@ export async function handleTap(
     return []
   }
   if (action.type === 'resend') {
-    if (row?.title && row.noteUrl) await deps.send(row.chatId, noteReadyMessage(row.title, row.noteUrl))
+    if (row?.title && row.noteUrl) await deps.send(row.chatId, noteReadyMessage(row.title, readerLink(row.jobId, deps)))
     return []
   }
   if (action.type === 'ignore') return []
