@@ -120,7 +120,7 @@ A script az Infisical `dev` környezetének `/peter-mbp` útjáról olvas. A deb
 | `TELEGRAM_DEBUG_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN` |
 | `TELEGRAM_OWNER_CHAT_ID` | — (a helyi D1 `bindings` sora, `debug@localhost`) |
 | — | `TELEGRAM_ALLOWED_EMAILS=debug@localhost` |
-| — | `TELEGRAM_BOT_USERNAME=debug` |
+| — | `TELEGRAM_BOT_USERNAME=refinery_debug_bot` |
 | `TELEGRAM_DEBUG_WEBHOOK_SECRET` | `TELEGRAM_WEBHOOK_SECRET` |
 | `REFINERY_SERVE_SECRET` | `REFINERY_SERVE_SECRET` |
 | — | `SERVE_URL=http://127.0.0.1:8787` |

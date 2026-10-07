@@ -164,7 +164,7 @@ tmp=$(mktemp "$root/worker/.dev.vars.XXXXXX")
 {
   printf 'TELEGRAM_BOT_TOKEN=%s\n' "$token"
   printf 'TELEGRAM_ALLOWED_EMAILS=%s\n' "debug@localhost"
-  printf 'TELEGRAM_BOT_USERNAME=%s\n' "debug"
+  printf 'TELEGRAM_BOT_USERNAME=%s\n' "refinery_debug_bot"
   printf 'TELEGRAM_WEBHOOK_SECRET=%s\n' "$webhook_secret"
   printf 'REFINERY_SERVE_SECRET=%s\n' "$serve_secret"
   printf 'SERVE_URL=%s\n' "http://127.0.0.1:8787"

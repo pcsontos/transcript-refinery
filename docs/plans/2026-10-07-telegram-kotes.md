@@ -1588,7 +1588,7 @@ A `.dev.vars` írásában a `printf 'TELEGRAM_OWNER_CHAT_ID=%s\n' "$owner"` sor 
 
 ```sh
   printf 'TELEGRAM_ALLOWED_EMAILS=%s\n' "debug@localhost"
-  printf 'TELEGRAM_BOT_USERNAME=%s\n' "debug"
+  printf 'TELEGRAM_BOT_USERNAME=%s\n' "refinery_debug_bot"
 ```
 
 A hiányzó titkok ellenőrzése (`if [ "${#webhook_secret}" -lt 16 ] … fi`) után, új blokként:
@@ -1614,7 +1614,7 @@ A debug-táblázat `| TELEGRAM_OWNER_CHAT_ID | TELEGRAM_OWNER_CHAT_ID |` sora he
 ```
 | `TELEGRAM_OWNER_CHAT_ID` | — (a helyi D1 `bindings` sora, `debug@localhost`) |
 | — | `TELEGRAM_ALLOWED_EMAILS=debug@localhost` |
-| — | `TELEGRAM_BOT_USERNAME=debug` |
+| — | `TELEGRAM_BOT_USERNAME=refinery_debug_bot` |
 ```
 
 A „Biztonsági szűrés” megjegyzés helyére:
