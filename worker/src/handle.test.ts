@@ -537,4 +537,31 @@ describe('kötés', () => {
     expect(await handleTap(tap, own)).toEqual([])
     expect(own.sent).toEqual([])
   })
+  it('csoportban a bot hallgat: a /start <token> nem köt, más sorának sub-ja marad, és a cím nem nyit sort', async () => {
+    const store = memoryStore()
+    await store.insert(acceptedRow({ chatId: '-100', sub: 'sub-42' }))
+    const flow = deps(store)
+    await handleUpdate(message(1, 7, '/start'), flow)
+    await handleLink(TOKEN_A, { sub: 'sub-7', email: 'en@example.com' }, flow)
+    const group = deps(store)
+    const result = await handleUpdate(
+      { update_id: 2, message: { message_id: 1, chat: { id: -100 }, from: { id: 7 }, text: `/start ${TOKEN_B}` } },
+      group,
+    )
+    expect(result).toEqual({ status: 200, knocks: [] })
+    expect(group.sent).toEqual([])
+    expect(await store.bindingFor('7')).toBeNull()
+    expect((await store.listByUpdate(5))[0]?.sub).toBe('sub-42')
+
+    const bound = await boundStore()
+    const groupUrl = deps(bound)
+    expect(
+      await handleUpdate(
+        { update_id: 3, message: { message_id: 1, chat: { id: -100 }, from: { id: 42 }, text: ID } },
+        groupUrl,
+      ),
+    ).toEqual({ status: 200, knocks: [] })
+    expect(groupUrl.sent).toEqual([])
+    expect(await bound.listByUpdate(3)).toEqual([])
+  })
 })

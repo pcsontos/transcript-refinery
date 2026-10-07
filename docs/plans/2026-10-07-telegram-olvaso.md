@@ -64,7 +64,7 @@ Migráció nincs: a `notesFor` a meglévő `sub`, `note_url` és `accepted_at` o
 **Interfaces:**
 - Produces: a `handleUpdate` csoportüzenetre `{ status: 200, knocks: [] }` választ ad, minden mellékhatás nélkül.
 
-- [ ] **Step 1: A bukó teszt**
+- [x] **Step 1: A bukó teszt**
 
 A `worker/src/handle.test.ts` `describe('kötés', …)` blokkjának végére, a „más fiók sorára a gomb nem indít” teszt után:
 
@@ -100,12 +100,12 @@ A `worker/src/handle.test.ts` `describe('kötés', …)` blokkjának végére, a
 
 A `flow` ugyanazzal a `newToken` számlálóval adja a linktokent (`TOKEN_A`) és a visszatérő tokent (`TOKEN_B`). A visszatérő token a `7`-es felhasználóé, engedélyezett e-maillel, tehát a javítás nélkül a csoportban kötne, és a `-100` chat sorát `sub-7`-re írná.
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/handle.test.ts -t "csoportban a bot hallgat"`
 Expected: FAIL. A `group.sent` értéke `['Bekötve: en@example.com.']`, nem `[]`.
 
-- [ ] **Step 3: A javítás**
+- [x] **Step 3: A javítás**
 
 A `worker/src/handle.ts` `handleUpdate` függvényében ezt a sort:
 
@@ -121,14 +121,14 @@ erre cseréld:
   if (message.chat.id !== message.from.id) return { status: 200, knocks: [] }
 ```
 
-- [ ] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
+- [x] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld. A meglévő tesztek mind privát chatet használnak (`chat.id` = `from.id`), ezért nem változnak.
 
 Mutációs próba: töröld ideiglenesen az új `if` sort, és futtasd újra a `-t "csoportban a bot hallgat"` szűrővel. FAIL kell, utána állítsd vissza.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/handle.ts worker/src/handle.test.ts

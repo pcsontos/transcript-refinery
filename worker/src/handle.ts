@@ -154,6 +154,8 @@ export async function handleUpdate(
 ): Promise<{ status: number; knocks: PlannedKnock[] }> {
   const message = update.message
   if (!message?.from) return { status: 200, knocks: [] }
+  // A bot csak privát chatre készült: csoportban a kötés a többi tag sorait is átírná.
+  if (message.chat.id !== message.from.id) return { status: 200, knocks: [] }
   const userId = String(message.from.id)
   const chatId = String(message.chat.id)
   const start = START.exec(message.text ?? '')
