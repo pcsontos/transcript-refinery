@@ -9,6 +9,7 @@ import {
   type WorkerDeps,
 } from './handle.js'
 import { LINK_INVALID_PAGE, newToken } from './plan.js'
+import { notePage, notesPage, type ReaderDeps } from './reader.js'
 
 interface Env {
   DB: D1Like
@@ -18,6 +19,9 @@ interface Env {
   TELEGRAM_WEBHOOK_SECRET: string
   REFINERY_SERVE_SECRET: string
   SERVE_URL: string
+  VAULT_GITHUB_TOKEN?: string
+  VAULT_REPO?: string
+  VAULT_BRANCH?: string
 }
 
 interface ExecutionContext {
@@ -179,6 +183,20 @@ const worker = {
       if (result.status === 302) return Response.redirect(result.location, 302)
       const page = `<!doctype html><html lang="hu"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Transcript Refinery</title><p>${LINK_INVALID_PAGE}</p></html>`
       return new Response(page, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8' } })
+    }
+    const note = /^\/notes\/([^/]+)\/([^/]+)$/.exec(url.pathname)
+    if ((url.pathname === '/notes' || note !== null) && request.method === 'GET') {
+      const who = await identity(ctx)
+      if (who === null) return new Response(null, { status: 403 })
+      const reader: ReaderDeps = {
+        store: createD1Store(env.DB),
+        vaultRepo: env.VAULT_REPO ?? '',
+        vaultBranch: env.VAULT_BRANCH ?? '',
+        vaultToken: env.VAULT_GITHUB_TOKEN ?? '',
+      }
+      return note?.[1] === undefined || note[2] === undefined
+        ? notesPage(who.sub, reader)
+        : notePage(note[1], note[2], who.sub, reader)
     }
     const match = /^\/internal\/jobs\/([^/]+)$/.exec(url.pathname)
     if (match?.[1] !== undefined && request.method === 'POST') {

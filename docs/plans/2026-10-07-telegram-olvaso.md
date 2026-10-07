@@ -510,7 +510,7 @@ git commit -m "feat(worker): Render vault notes for the signed-in account"
 - Consumes: `notesPage`, `notePage`, `ReaderDeps` a `reader.ts`-ből; a meglévő `identity(ctx)` és `createD1Store`.
 - Produces: `GET /notes` és `GET /notes/<jobId>/<fajta>` a Workerben.
 
-- [ ] **Step 1: A bukó teszt**
+- [x] **Step 1: A bukó teszt**
 
 A `worker/src/entry.test.ts` `describe('worker belépés', …)` blokkjának végére, a „/link azonosító nélkül 403…” teszt után:
 
@@ -547,12 +547,12 @@ A `worker/src/entry.test.ts` `describe('worker belépés', …)` blokkjának vé
 
 A `memoryDb` minden `all` hívásra üres listát ad, ezért a lista üres, és a jegyzet sora nem létezik. Az `env`-ből szándékosan hiányoznak a `VAULT_*` változók.
 
-- [ ] **Step 2: Fusson, bukjon**
+- [x] **Step 2: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/entry.test.ts -t "a /notes azonosító nélkül"`
 Expected: FAIL, az első `expect` `404`-et kap `403` helyett.
 
-- [ ] **Step 3: Az útvonalak**
+- [x] **Step 3: Az útvonalak**
 
 A `worker/src/index.ts`-ben az importok után, az `import { LINK_INVALID_PAGE, newToken } from './plan.js'` sor alá:
 
@@ -587,14 +587,14 @@ A `fetch` metódusban a `/link` blokk záró `}` jele után, a `const match = /^
     }
 ```
 
-- [ ] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
+- [x] **Step 4: Fusson, menjen át, és a teljes ellenőrzés**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld.
 
 Mutációs próba: a `if (who === null) return new Response(null, { status: 403 })` sort töröld ideiglenesen. A teszt bukjon (a `plain` kontextus `200`-at vagy `404`-et kap), utána vissza.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/index.ts worker/src/entry.test.ts
