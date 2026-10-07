@@ -684,7 +684,7 @@ git commit -m "feat(worker): Decide Telegram binding from link tokens"
 - Consumes: az 1. és a 2. feladat minden exportja
 - Produces: `WorkerDeps` új alakja: `{ allowedEmails: string; botUsername: string; linkBase: string; store; now; newToken: () => string; knock; send: (chatId: string, text: string, button?) => Promise<boolean>; answerTap }`. `handleLink(raw: string, who: { sub: string; email: string }, deps: WorkerDeps): Promise<{ status: 302; location: string } | { status: 200 }>`. A `handleUpdate` frissítése `message.from?: { id: number }` mezőt kap, a `handleTap` `callback_query.from?: { id: number }` mezőt.
 
-- [ ] **Step 1: A meglévő tesztek átállítása a kötött felhasználóra**
+- [x] **Step 1: A meglévő tesztek átállítása a kötött felhasználóra**
 
 ```bash
 perl -pi -e 's/const (\w+) = memoryStore\(\)/const $1 = await boundStore()/g; s/chat: \{ id: (\d+) \}, text/chat: { id: $1 }, from: { id: $1 }, text/g; s/message: \{ chat: \{ id: (\d+) \} \} \}/from: { id: $1 }, message: { chat: { id: $1 } } }/g; s/\{ \.\.\.update\.message, chat: \{ id: 42 \} \}/{ ...update.message, chat: { id: 42 }, from: { id: 42 } }/; s/send: \(text\) =>/send: (_chatId, text) =>/g' worker/src/handle.test.ts
@@ -783,7 +783,7 @@ A `handleUpdate` első tesztjében a nem kötött 7-es felhasználó mostantól 
     expect(foreign.sent).toEqual(['Előbb kösd össze a Google-fiókoddal: /start'])
 ```
 
-- [ ] **Step 2: Az új tesztek**
+- [x] **Step 2: Az új tesztek**
 
 A `handle.test.ts` végére:
 
@@ -916,12 +916,12 @@ describe('kötés', () => {
 })
 ```
 
-- [ ] **Step 3: Fusson, bukjon**
+- [x] **Step 3: Fusson, bukjon**
 
 Run: `pnpm vitest run worker/src/handle.test.ts`
 Expected: FAIL, `handleLink is not a function`, és a régi tesztek a `send` új aláírása miatt
 
-- [ ] **Step 4: `worker/src/handle.ts` teljes cseréje**
+- [x] **Step 4: `worker/src/handle.ts` teljes cseréje**
 
 ```ts
 import {
@@ -1232,12 +1232,12 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
 }
 ```
 
-- [ ] **Step 5: Zöld**
+- [x] **Step 5: Zöld**
 
 Run: `pnpm vitest run worker/src/handle.test.ts worker/src/plan.test.ts`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/handle.ts worker/src/handle.test.ts
