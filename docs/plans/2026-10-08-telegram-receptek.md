@@ -2197,7 +2197,7 @@ git commit -m "feat(worker): Offer every recipe and translation in the bot"
   - `notesFor(sub)`: a fiók azon `jobs`-sorai, amelyeknek van `ready` futása, az `acceptedAt` szerint csökkenő sorrendben.
   - `vaultPath(noteUrl, repo, branch, kind)`: a `_transcript.md`-re végződő címből a fajta szakaszai.
 
-- [ ] **Step 1: A bukó tesztek, `worker/src/reader.test.ts`, az egész fájl**
+- [x] **Step 1: A bukó tesztek, `worker/src/reader.test.ts`, az egész fájl**
 
 ```ts
 import { afterEach, describe, expect, it } from 'vitest'
@@ -2403,12 +2403,12 @@ describe('notePage', () => {
 
 `worker/src/plan.test.ts`: a `row` függvényben ugyanez a három sor törlődik.
 
-- [ ] **Step 2: A bukás ellenőrzése**
+- [x] **Step 2: A bukás ellenőrzése**
 
 Run: `pnpm vitest run worker/src/reader.test.ts`
 Expected: FAIL. A `vaultPath` `_summary.md` véget vár, és a lista a `noteUrl` alapján szűr.
 
-- [ ] **Step 3: `worker/src/reader.ts`, az egész fájl**
+- [x] **Step 3: `worker/src/reader.ts`, az egész fájl**
 
 ```ts
 import { findRow } from './handle.js'
@@ -2506,7 +2506,7 @@ export async function notePage(jobId: string, kind: string, sub: string, deps: R
 }
 ```
 
-- [ ] **Step 4: `worker/src/store.ts`**
+- [x] **Step 4: `worker/src/store.ts`**
 
 - `export type JobPhase = 'subtitle' | 'summary'` törlődik.
 - A `JobRow`-ból a `phase: JobPhase`, a `noteUrl: string | null` és a `noteNotified: boolean` mező törlődik.
@@ -2521,7 +2521,7 @@ export async function notePage(jobId: string, kind: string, sub: string, deps: R
       ),
 ```
 
-- [ ] **Step 5: `worker/src/d1.ts`**
+- [x] **Step 5: `worker/src/d1.ts`**
 
 - A `JobRecord`-ból a `phase`, a `note_url` és a `note_notified` mező, a `toRow`-ból a `phase`, a `noteUrl` és a `noteNotified` sor törlődik.
 - Az `insert`:
@@ -2599,16 +2599,16 @@ export async function notePage(jobId: string, kind: string, sub: string, deps: R
 
 A `jobs` tábla `phase`, `note_url` és `note_notified` oszlopa marad: a D1-en a `DROP COLUMN` felesleges kockázat, és az új sor a régi alapértéket kapja.
 
-- [ ] **Step 6: `worker/src/handle.ts`**
+- [x] **Step 6: `worker/src/handle.ts`**
 
 A `handleUpdate` `const row: JobRow = { … }` literáljából a `phase: 'subtitle',`, a `noteUrl: null,` és a `noteNotified: false,` sor törlődik.
 
-- [ ] **Step 7: A teszt zöld**
+- [x] **Step 7: A teszt zöld**
 
 Run: `pnpm vitest run worker`
 Expected: PASS.
 
-- [ ] **Step 8: Ellenőrzés és commit**
+- [x] **Step 8: Ellenőrzés és commit**
 
 Run: `pnpm test && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 

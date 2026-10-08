@@ -19,12 +19,9 @@ interface JobRecord {
   video_id: string
   url: string
   status: JobStatus
-  phase: JobRow['phase']
   error: string | null
   title: string | null
-  note_url: string | null
   notified_ready: number
-  note_notified: number
   accepted_at: number | null
   sub: string | null
 }
@@ -87,12 +84,9 @@ function toRow(record: JobRecord): JobRow {
     videoId: record.video_id,
     url: record.url,
     status: record.status,
-    phase: record.phase,
     error: record.error,
     title: record.title,
-    noteUrl: record.note_url,
     notifiedReady: record.notified_ready === 1,
-    noteNotified: record.note_notified === 1,
     acceptedAt: record.accepted_at,
     sub: record.sub,
   }
@@ -137,9 +131,9 @@ export function createD1Store(db: D1Like): JobStore {
       await db
         .prepare(
           `INSERT INTO jobs (
-            job_id, update_id, chat_id, message_id, video_id, url, status, phase, error, title,
-            note_url, notified_ready, note_notified, accepted_at, sub
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            job_id, update_id, chat_id, message_id, video_id, url, status, error, title,
+            notified_ready, accepted_at, sub
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           row.jobId,
@@ -149,12 +143,9 @@ export function createD1Store(db: D1Like): JobStore {
           row.videoId,
           row.url,
           row.status,
-          row.phase,
           row.error,
           row.title,
-          row.noteUrl,
           row.notifiedReady ? 1 : 0,
-          row.noteNotified ? 1 : 0,
           row.acceptedAt,
           row.sub,
         )
@@ -164,8 +155,8 @@ export function createD1Store(db: D1Like): JobStore {
       await db
         .prepare(
           `UPDATE jobs SET
-            update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?, phase = ?,
-            error = ?, title = ?, note_url = ?, notified_ready = ?, note_notified = ?, accepted_at = ?, sub = ?
+            update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?,
+            error = ?, title = ?, notified_ready = ?, accepted_at = ?, sub = ?
           WHERE job_id = ?`,
         )
         .bind(
@@ -175,12 +166,9 @@ export function createD1Store(db: D1Like): JobStore {
           row.videoId,
           row.url,
           row.status,
-          row.phase,
           row.error,
           row.title,
-          row.noteUrl,
           row.notifiedReady ? 1 : 0,
-          row.noteNotified ? 1 : 0,
           row.acceptedAt,
           row.sub,
           row.jobId,
@@ -246,7 +234,10 @@ export function createD1Store(db: D1Like): JobStore {
     },
     async notesFor(sub) {
       const result = await db
-        .prepare('SELECT * FROM jobs WHERE sub = ? AND note_url IS NOT NULL ORDER BY accepted_at DESC')
+        .prepare(
+          `SELECT * FROM jobs WHERE sub = ? AND job_id IN (SELECT job_id FROM runs WHERE status = 'ready')
+           ORDER BY accepted_at DESC`,
+        )
         .bind(sub)
         .all<JobRecord>()
       return result.results.map(toRow)

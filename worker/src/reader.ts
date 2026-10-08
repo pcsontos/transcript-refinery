@@ -1,6 +1,7 @@
 import { findRow } from './handle.js'
 import { GITHUB_DOWN, NO_NOTES, NOTE_MISSING, OPEN_ON_GITHUB, VAULT_LOCKED } from './messages.js'
-import type { JobStore } from './store.js'
+import { runKinds } from './plan.js'
+import type { JobStore, RunRow } from './store.js'
 
 export interface ReaderDeps {
   store: JobStore
@@ -9,8 +10,7 @@ export interface ReaderDeps {
   vaultToken: string
 }
 
-export const NOTE_KINDS = ['summary', 'transcript'] as const
-const SUMMARY_END = '_summary.md'
+const TRANSCRIPT_END = '_transcript.md'
 
 const STYLE =
   ':root{color-scheme:light dark}body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:0 auto;padding:1rem}' +
@@ -26,35 +26,45 @@ function page(title: string, body: string, status = 200): Response {
   return new Response(html, { status, headers: { 'content-type': 'text/html; charset=utf-8' } })
 }
 
+/** A fajta fájlja az átirat mellett: a `_transcript.md` vég cseréje. A fajtát a hívó a kész futásokból ellenőrzi. */
 export function vaultPath(noteUrl: string, repo: string, branch: string, kind: string): string[] | null {
-  if (!(NOTE_KINDS as readonly string[]).includes(kind)) return null
   const prefix = `https://github.com/${repo}/blob/${encodeURIComponent(branch)}/`
   if (!noteUrl.startsWith(prefix)) return null
   try {
     const segments = noteUrl.slice(prefix.length).split('/').map((segment) => decodeURIComponent(segment))
     const last = segments.pop() ?? ''
-    if (!last.endsWith(SUMMARY_END)) return null
-    return [...segments, `${last.slice(0, -SUMMARY_END.length)}_${kind}.md`]
+    if (!last.endsWith(TRANSCRIPT_END)) return null
+    return [...segments, `${last.slice(0, -TRANSCRIPT_END.length)}_${kind}.md`]
   } catch {
     return null
   }
 }
 
+function readyRuns(runs: readonly RunRow[]): RunRow[] {
+  return runs.filter((run) => run.status === 'ready' && run.noteUrl !== null)
+}
+
 export async function notesPage(sub: string, deps: ReaderDeps): Promise<Response> {
   const rows = await deps.store.notesFor(sub)
   if (rows.length === 0) return page('Jegyzetek', `<h1>Jegyzetek</h1><p>${NO_NOTES}</p>`)
-  const items = rows.map((row) => {
-    const links = NOTE_KINDS.map((kind) => `<a href="/notes/${escapeHtml(row.jobId)}/${kind}">${kind}</a>`).join(' · ')
+  const items: string[] = []
+  // ponytail: videónként egy runsFor-lekérés; egy fióknál néhány tucat sor, JOIN, ha a lista lassú lesz.
+  for (const row of rows) {
+    const kinds = [...new Set(readyRuns(await deps.store.runsFor(row.jobId)).flatMap(runKinds)), 'transcript']
+    const links = kinds.map((kind) => `<a href="/notes/${escapeHtml(row.jobId)}/${escapeHtml(kind)}">${escapeHtml(kind)}</a>`).join(' · ')
     const day = row.acceptedAt === null ? '' : new Date(row.acceptedAt).toISOString().slice(0, 10)
-    return `<li>${escapeHtml(row.title ?? row.videoId)} · ${day} — ${links}</li>`
-  })
+    items.push(`<li>${escapeHtml(row.title ?? row.videoId)} · ${day} — ${links}</li>`)
+  }
   return page('Jegyzetek', `<h1>Jegyzetek</h1><ul>${items.join('')}</ul>`)
 }
 
 export async function notePage(jobId: string, kind: string, sub: string, deps: ReaderDeps): Promise<Response> {
   const row = await findRow(deps.store, jobId)
-  if (row === null || row.sub !== sub || row.noteUrl === null) return new Response(null, { status: 404 })
-  const segments = vaultPath(row.noteUrl, deps.vaultRepo, deps.vaultBranch, kind)
+  if (row === null || row.sub !== sub) return new Response(null, { status: 404 })
+  const runs = readyRuns(await deps.store.runsFor(jobId))
+  const run = kind === 'transcript' ? runs[0] : runs.find((item) => runKinds(item).includes(kind))
+  if (run === undefined || run.noteUrl === null) return new Response(null, { status: 404 })
+  const segments = vaultPath(run.noteUrl, deps.vaultRepo, deps.vaultBranch, kind)
   if (segments === null) return new Response(null, { status: 404 })
   const title = `${row.title ?? row.videoId} · ${kind}`
   const path = segments.map((segment) => encodeURIComponent(segment)).join('/')

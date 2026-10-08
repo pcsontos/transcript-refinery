@@ -1,5 +1,4 @@
 export type JobStatus = 'queued' | 'waiting' | 'accepted' | 'ready' | 'failed'
-export type JobPhase = 'subtitle' | 'summary'
 
 export interface JobRow {
   jobId: string
@@ -9,12 +8,9 @@ export interface JobRow {
   videoId: string
   url: string
   status: JobStatus
-  phase: JobPhase
   error: string | null
   title: string | null
-  noteUrl: string | null
   notifiedReady: boolean
-  noteNotified: boolean
   acceptedAt: number | null
   sub: string | null
 }
@@ -131,7 +127,7 @@ export function memoryStore(): JobStore {
     notesFor: (sub) =>
       Promise.resolve(
         rows
-          .filter((row) => row.sub === sub && row.noteUrl !== null)
+          .filter((row) => row.sub === sub && runs.some((run) => run.jobId === row.jobId && run.status === 'ready'))
           .sort((a, b) => (b.acceptedAt ?? 0) - (a.acceptedAt ?? 0)),
       ),
     run: (runId) => Promise.resolve(runs.find((item) => item.runId === runId) ?? null),
