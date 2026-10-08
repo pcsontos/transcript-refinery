@@ -2748,3 +2748,50 @@ describe('fetch a CLI-ben', () => {
     await expect(main(['run', '--out', '/tmp/felirat'])).rejects.toThrow(/out/)
   })
 })
+
+describe('commandRun — több recept egy futásban', () => {
+  it('a recipes lista receptenként egy egységet ad', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const hivasok = { generate: 0 }
+    await commandRun(
+      cfg,
+      raw,
+      { recipes: ['summary', 'qa'], dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+
+    expect(hivasok.generate).toBe(2)
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const store = openState(cfg.statePath)
+    expect(store.artifactOf(item!.itemId, 'summary')?.status).toBe('done')
+    expect(store.artifactOf(item!.itemId, 'qa')).not.toBeNull()
+    store.close()
+  })
+
+  it('a két recept egy közös plafon alatt fut: ami nem fér, el sem indul', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
+    const words = (await normalizeItem(item!)).wordsNormalized
+    const egy = estimateItemUsd(words, getRecipe('summary').maxIterations, modelConfig)
+
+    // A plafon egy receptre elég, kettőre nem: a qa marad.
+    const limited = rawWithVault(egy * 1.5)
+    const hivasok = { generate: 0 }
+    await commandRun(
+      loadConfig(limited, '/p/refinery.config.yaml'),
+      limited,
+      { recipes: ['summary', 'qa'], dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens(hivasok) },
+    )
+
+    expect(hivasok.generate).toBe(1)
+    const store = openState(cfg.statePath)
+    expect(store.artifactOf(item!.itemId, 'qa')).toBeNull()
+    store.close()
+  })
+})

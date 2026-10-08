@@ -410,6 +410,8 @@ export async function commandRun(
     limit?: number
     /** Queue nélkül a futás receptje; queue-módban szűrő a kipipált párokra. */
     recipe?: string
+    /** Queue nélkül több recept egy futásban, egy közös plafon alatt (a `serve` hívja). */
+    recipes?: string[]
     /** A vault `_queue.md` sorának kipipált (videó, recept) párjait dolgozza fel. */
     queue?: boolean
     dryRun: boolean
@@ -429,6 +431,7 @@ export async function commandRun(
   const commit = flags.commit && !flags.dryRun
   const registry = recipesFor(cfg)
   const recipe = flags.recipe ? recipeFrom(registry, flags.recipe) : null
+  const listed = (flags.recipes ?? []).map((id) => recipeFrom(registry, id))
 
   // Egy költségőr az egész indításra: a plafon így nem receptenként, hanem
   // együtt vonatkozik minden egységre. A kliens a receptre szabott nézetből
@@ -438,7 +441,7 @@ export async function commandRun(
   // A jelzés célja a lenti `printing`; addig modellhívás nem történik, tehát
   // nincs mit elveszíteni.
   let reportFallback: (name: string) => void = () => undefined
-  if (recipe || queueMode) {
+  if (recipe || queueMode || listed.length > 0) {
     const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
     assertRecipeModels(modelConfig, Object.keys(registry))
     const fallback = toolChoiceFallback((name) => reportFallback(name))
@@ -675,9 +678,10 @@ export async function commandRun(
     }
 
     const summary = summarize(events)
-    const kinds = queueMode
-      ? Object.keys(registry).filter((recipeId) => selected.some((unit) => unitKind(unit) === recipeId))
-      : [artifactKind]
+    const kinds =
+      queueMode || listed.length > 0
+        ? Object.keys(registry).filter((recipeId) => selected.some((unit) => unitKind(unit) === recipeId))
+        : [artifactKind]
     const corpora = kinds.map((kind) => ({ kind, status: store.corpusStatus(discovered, kind) }))
     const queue = queueStatus()
     const remaining = queue
@@ -766,7 +770,10 @@ export async function commandRun(
       let items = filterItems(discovered, flags)
       if (flags.retryFailed) items = store.listFailed(items, artifactKind)
       if (flags.limit !== undefined) items = items.slice(0, flags.limit)
-      units = items.map((item) => ({ item, recipe }))
+      units =
+        listed.length > 0
+          ? items.flatMap((item) => listed.map((unitRecipe) => ({ item, recipe: unitRecipe })))
+          : items.map((item) => ({ item, recipe }))
     }
     // A fordítás a forrása után fut: a sor kézi átrendezése ezt nem fordíthatja meg.
     units = sourcesFirst(units)

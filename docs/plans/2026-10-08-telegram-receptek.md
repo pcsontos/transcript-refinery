@@ -63,7 +63,7 @@ Az implementáció az `impl-telegram-receptek` ágon indul, a `main` ágról, mi
 **Interfaces:**
 - Produces: `commandRun(cfg, raw, { recipes: string[], dryRun, force, commit, command? }, runtime)`. A `recipes` minden eleme a regiszter azonosítója (`recipeFrom`), a fordítás is (`summary-de`), ha a `cfg.translate` kéri. A `recipes` a nem-queue ágban `items × recipes` egységet ad, egy `guard` alatt.
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 A `src/cli.test.ts` végére, új `describe` blokként:
 
@@ -116,12 +116,12 @@ describe('commandRun — több recept egy futásban', () => {
 })
 ```
 
-- [ ] **Step 2: A bukás ellenőrzése**
+- [x] **Step 2: A bukás ellenőrzése**
 
 Run: `pnpm vitest run src/cli.test.ts -t "több recept"`
 Expected: FAIL. A `tsc` a `recipes` mezőt nem ismeri, a futás pedig recept nélkül csak átiratot ír, ezért `hivasok.generate` `0`.
 
-- [ ] **Step 3: A megvalósítás**
+- [x] **Step 3: A megvalósítás**
 
 A `commandRun` `flags` típusában, a `recipe?: string` mező után:
 
@@ -160,12 +160,12 @@ A riport `kinds` sora:
         : [artifactKind]
 ```
 
-- [ ] **Step 4: A teszt zöld**
+- [x] **Step 4: A teszt zöld**
 
 Run: `pnpm vitest run src/cli.test.ts`
 Expected: PASS, a régi tesztek is.
 
-- [ ] **Step 5: Ellenőrzés és commit**
+- [x] **Step 5: Ellenőrzés és commit**
 
 Run: `pnpm typecheck && pnpm lint`
 
