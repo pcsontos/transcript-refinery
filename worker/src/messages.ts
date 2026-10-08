@@ -12,7 +12,7 @@ export function waitingLine(videoId: string): string {
   return `A gép ébredésére vár: ${videoId}.`
 }
 
-function flatTitle(title: string): string {
+export function flatTitle(title: string): string {
   const flat = [...title]
     .map((char) => {
       const code = char.codePointAt(0) ?? 0
@@ -65,3 +65,58 @@ export const NOTE_MISSING = 'A jegyzet nincs a vaultban.'
 export const VAULT_LOCKED = 'A vault nem olvasható.'
 export const GITHUB_DOWN = 'A GitHub nem érhető el.'
 export const OPEN_ON_GITHUB = 'Megnyitás a GitHubon'
+
+export const RECIPES = [
+  'summary',
+  'notes',
+  'qa',
+  'flashcards',
+  'bloom',
+  'clean-mild',
+  'clean-moderate',
+  'clean-deep',
+] as const
+export const LANGS = ['en', 'hu', 'nl', 'de', 'es', 'fr', 'it'] as const
+
+export interface Key {
+  text: string
+  data: string
+}
+
+function inRows(keys: readonly Key[], size: number): Key[][] {
+  const rows: Key[][] = []
+  for (let index = 0; index < keys.length; index += size) rows.push(keys.slice(index, index + size))
+  return rows
+}
+
+export function recipeKeyboard(jobId: string): Key[][] {
+  const keys = RECIPES.map((recipe) => ({ text: recipe, data: `r:${recipe}:${jobId}` }))
+  return inRows([...keys, { text: 'fordítás', data: `f:${jobId}` }], 3)
+}
+
+/** A kapcsoló adata a koppintás utáni maszk, ezért a Workernek nem kell emlékeznie a kijelölésre. */
+export function pickKeyboard(mask: number, ready: readonly string[], jobId: string): Key[][] {
+  const keys = ready.map((recipe) => {
+    const bit = 1 << (RECIPES as readonly string[]).indexOf(recipe)
+    return {
+      text: (mask & bit) !== 0 ? `✓ ${recipe}` : recipe,
+      data: `t:${(mask ^ bit).toString(16)}:${jobId}`,
+    }
+  })
+  return [...inRows(keys, 3), [{ text: 'tovább', data: `n:${mask.toString(16)}:${jobId}` }]]
+}
+
+export function langKeyboard(mask: number, jobId: string): Key[][] {
+  return inRows(
+    LANGS.map((lang) => ({ text: lang, data: `l:${mask.toString(16)}:${lang}:${jobId}` })),
+    4,
+  )
+}
+
+export const PICK_LINE = 'Melyik jegyzetet fordítsam?'
+export const LANG_LINE = 'Melyik nyelvre?'
+export const NOTHING_TO_TRANSLATE = 'Előbb készíts egy jegyzetet.'
+
+export function runQueuedLine(recipes: readonly string[], lang: string | null): string {
+  return `Sorba került: ${recipes.join(', ')}${lang === null ? '' : ` → ${lang}`}`
+}

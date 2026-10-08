@@ -756,7 +756,7 @@ Ez a feladat csak hozzáad: a mai `summary`-út változatlanul fut tovább, amí
   runReadyMessage(title: string, run: Pick<RunRow, 'jobId' | 'recipes' | 'lang'>, linkBase: string): string
   ```
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 `worker/src/plan.test.ts`: az importok közé `memoryStore, type JobRow, type LinkToken` mellé `type RunRow`, a `plan.js` importjába `decideRun`, `langKeyboard`, `maskRecipes`, `parseTap`, `pickKeyboard`, `readyBases`, `recipeKeyboard`, `runId`, `runKinds`, `runQueuedLine`, `runReadyMessage`. A `row` függvény után:
 
@@ -904,12 +904,12 @@ describe('a bot listái', () => {
 
 (Ha a `RECIPE_IDS` vagy a `describe` még nincs importálva a fájlban, az importsorba kerül: `RECIPE_IDS` a `./registry.js`-ből, `describe` a `vitest`-ből.)
 
-- [ ] **Step 2: A bukás ellenőrzése**
+- [x] **Step 2: A bukás ellenőrzése**
 
 Run: `pnpm vitest run worker src/recipe/registry.test.ts`
 Expected: FAIL. Az új függvények, a `runs` hívások és a `0004_runs.sql` még nem léteznek.
 
-- [ ] **Step 3: `worker/migrations/0004_runs.sql`**
+- [x] **Step 3: `worker/migrations/0004_runs.sql`**
 
 ```sql
 CREATE TABLE runs (
@@ -931,7 +931,7 @@ INSERT INTO runs (run_id, job_id, recipes, lang, status, error, note_url, notifi
 UPDATE jobs SET status = 'ready', phase = 'subtitle' WHERE phase = 'summary';
 ```
 
-- [ ] **Step 4: `worker/src/store.ts`**
+- [x] **Step 4: `worker/src/store.ts`**
 
 A `Binding` interfész elé:
 
@@ -1002,7 +1002,7 @@ A `notesFor` után:
     dueRuns: (now) => Promise.resolve(runs.filter((item) => isDue(item, now))),
 ```
 
-- [ ] **Step 5: `worker/src/d1.ts`**
+- [x] **Step 5: `worker/src/d1.ts`**
 
 Az import: `import type { Binding, JobRow, JobStatus, JobStore, LinkToken, RunRow } from './store.js'`. A `TokenRecord` után:
 
@@ -1108,7 +1108,7 @@ A `createD1Store` visszaadott objektumának végére, a `notesFor` után:
     },
 ```
 
-- [ ] **Step 6: `worker/src/messages.ts`**
+- [x] **Step 6: `worker/src/messages.ts`**
 
 A `function flatTitle` elé `export` kerül (`export function flatTitle`). A fájl végére:
 
@@ -1169,7 +1169,7 @@ export function runQueuedLine(recipes: readonly string[], lang: string | null): 
 }
 ```
 
-- [ ] **Step 7: `worker/src/plan.ts`**
+- [x] **Step 7: `worker/src/plan.ts`**
 
 Az importok:
 
@@ -1275,17 +1275,17 @@ export function runReadyMessage(
 }
 ```
 
-- [ ] **Step 8: A teszt zöld**
+- [x] **Step 8: A teszt zöld**
 
 Run: `pnpm vitest run worker src/recipe/registry.test.ts`
 Expected: PASS, a régi tesztek is.
 
-- [ ] **Step 9: A migráció próbája a helyi D1-en**
+- [x] **Step 9: A migráció próbája a helyi D1-en**
 
 Run: `pnpm worker:migrate:local`, utána `npx wrangler d1 execute transcript-refinery --local --config worker/wrangler.toml --command "SELECT run_id, recipes, status, note_url FROM runs; SELECT job_id, phase, status FROM jobs WHERE job_id IN (SELECT job_id FROM runs)"`
 Expected: a `0004_runs.sql` hiba nélkül lefut. Ha a helyi D1-ben volt summary-sor, a `runs`-ban a `<jobId>:summary` sora áll `_transcript.md`-re végződő `note_url`-lel, a `jobs`-sora pedig `subtitle` és `ready`. Üres helyi D1-nél a két lekérdezés üres.
 
-- [ ] **Step 10: Ellenőrzés és commit**
+- [x] **Step 10: Ellenőrzés és commit**
 
 Run: `pnpm test && pnpm typecheck && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 

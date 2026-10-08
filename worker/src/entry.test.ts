@@ -28,6 +28,9 @@ describe('szállítási fájlok', () => {
     expect(bindings).toContain('ALTER TABLE jobs ADD COLUMN sub TEXT')
     expect(bindings).toContain('CREATE TABLE bindings')
     expect(bindings).toContain('CREATE TABLE link_tokens')
+    const runs = await readFile('worker/migrations/0004_runs.sql', 'utf8')
+    expect(runs).toContain('CREATE TABLE runs')
+    expect(runs).toContain("WHERE phase = 'summary'")
   })
 })
 

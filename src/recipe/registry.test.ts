@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { LANGS, RECIPES as BOT_RECIPES } from '../../worker/src/messages.js'
+import { LANGUAGE_NAMES } from '../lang/identify.js'
 import { cleanRecipeFor } from './clean.js'
 import { RECIPES, RECIPE_IDS, getRecipe, recipeFrom, recipesFor } from './registry.js'
 import type { Recipe } from './types.js'
@@ -89,5 +91,12 @@ describe('recipeFrom', () => {
 
   it('a régi clean azonosító ismeretlen, és a hiba felsorolja a szinteket', () => {
     expect(() => recipeFrom(RECIPES, 'clean')).toThrow(/clean-mild, clean-moderate, clean-deep/)
+  })
+})
+
+describe('a bot listái', () => {
+  it('a bot receptlistája és nyelvlistája a mag listája', () => {
+    expect([...BOT_RECIPES].sort()).toEqual([...RECIPE_IDS].sort())
+    expect([...LANGS].sort()).toEqual(Object.keys(LANGUAGE_NAMES).sort())
   })
 })

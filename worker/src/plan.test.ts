@@ -1,19 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { memoryStore, type JobRow, type LinkToken } from './store.js'
+import { memoryStore, type JobRow, type LinkToken, type RunRow } from './store.js'
 import {
   MISSING_NOTE_URL,
   REJECTED_SECRET,
   alreadyLine,
+  decideRun,
   decideStart,
   decideTap,
   hashToken,
   isAllowed,
   isToken,
+  langKeyboard,
   linesForMessage,
+  maskRecipes,
   newToken,
   noteReadyMessage,
+  parseTap,
+  pickKeyboard,
   queuedLine,
+  readyBases,
   readyLine,
+  recipeKeyboard,
+  runId,
+  runKinds,
+  runQueuedLine,
+  runReadyMessage,
   summaryButton,
   waitingLine,
 } from './plan.js'
@@ -38,6 +49,21 @@ function row(partial: Partial<JobRow>): JobRow {
     noteNotified: false,
     acceptedAt: null,
     sub: null,
+    ...partial,
+  }
+}
+
+function run(partial: Partial<RunRow>): RunRow {
+  return {
+    runId: `1:${ID}:summary`,
+    jobId: `1:${ID}`,
+    recipes: ['summary'],
+    lang: null,
+    status: 'queued',
+    error: null,
+    noteUrl: null,
+    notified: false,
+    acceptedAt: null,
     ...partial,
   }
 }
@@ -203,5 +229,100 @@ describe('kötési döntések', () => {
     })
     expect(decideStart(null, '42', 99, 'en@example.com')).toEqual({ type: 'invalid' })
     expect(decideStart(token, '42', 99, 'mas@example.com')).toEqual({ type: 'denied', email: 'en@example.com' })
+  })
+})
+
+describe('futások', () => {
+  it('a gombadat öt alakja és a régi summary gomb, a rossz recept, maszk és nyelv null', () => {
+    expect(parseTap(`r:notes:5:${ID}`)).toEqual({ type: 'recipe', recipe: 'notes', jobId: `5:${ID}` })
+    expect(parseTap(`summary:5:${ID}`)).toEqual({ type: 'recipe', recipe: 'summary', jobId: `5:${ID}` })
+    expect(parseTap(`f:5:${ID}`)).toEqual({ type: 'translate', jobId: `5:${ID}` })
+    expect(parseTap(`t:3:5:${ID}`)).toEqual({ type: 'toggle', mask: 3, jobId: `5:${ID}` })
+    expect(parseTap(`n:ff:5:${ID}`)).toEqual({ type: 'next', mask: 255, jobId: `5:${ID}` })
+    expect(parseTap(`l:3:de:5:${ID}`)).toEqual({ type: 'lang', mask: 3, lang: 'de', jobId: `5:${ID}` })
+    for (const bad of [`r:toString:5:${ID}`, `t:g:5:${ID}`, `t:100:5:${ID}`, `l:3:pl:5:${ID}`, `l:3:__proto__:5:${ID}`, `x:5:${ID}`, '']) {
+      expect(parseTap(bad)).toBeNull()
+    }
+  })
+
+  it('a maszk a receptlista bitjei, az azonosító és a fajták a kérésből', () => {
+    expect(maskRecipes(0b101)).toEqual(['summary', 'qa'])
+    expect(maskRecipes(0)).toEqual([])
+    expect(runId(`5:${ID}`, ['notes'], null)).toBe(`5:${ID}:notes`)
+    expect(runId(`5:${ID}`, ['summary', 'notes'], 'de')).toBe(`5:${ID}:de:summary+notes`)
+    expect(runKinds({ recipes: ['summary', 'notes'], lang: 'de' })).toEqual(['summary-de', 'notes-de'])
+    expect(runKinds({ recipes: ['qa'], lang: null })).toEqual(['qa'])
+  })
+
+  it('a futás döntése az állapot szerint', () => {
+    expect(decideRun(null)).toEqual({ type: 'start' })
+    for (const status of ['queued', 'waiting', 'accepted'] as const) {
+      expect(decideRun(run({ status }))).toEqual({ type: 'busy' })
+    }
+    expect(decideRun(run({ status: 'failed' }))).toEqual({ type: 'retry' })
+    expect(decideRun(run({ status: 'ready', notified: true }))).toEqual({ type: 'resend' })
+    expect(decideRun(run({ status: 'ready', notified: false }))).toEqual({ type: 'ignore' })
+  })
+
+  it('a kész alaprecept a lista sorrendjében, a fordítás és a nem kész nem', () => {
+    expect(
+      readyBases([
+        run({ recipes: ['notes'], status: 'ready' }),
+        run({ recipes: ['summary'], status: 'ready' }),
+        run({ recipes: ['qa'], status: 'failed' }),
+        run({ recipes: ['bloom'], lang: 'de', status: 'ready' }),
+      ]),
+    ).toEqual(['summary', 'notes'])
+  })
+
+  it('a gombsorok: kilenc gomb hármasával, a kapcsoló a saját bitjét fordítja, a nyelvek négyesével, 64 bájt alatt', () => {
+    const keys = recipeKeyboard(`5:${ID}`)
+    expect(keys.map((line) => line.length)).toEqual([3, 3, 3])
+    expect(keys[0]?.[1]).toEqual({ text: 'notes', data: `r:notes:5:${ID}` })
+    expect(keys[2]?.[2]).toEqual({ text: 'fordítás', data: `f:5:${ID}` })
+    expect(pickKeyboard(1, ['summary', 'notes'], `5:${ID}`)).toEqual([
+      [
+        { text: '✓ summary', data: `t:0:5:${ID}` },
+        { text: 'notes', data: `t:3:5:${ID}` },
+      ],
+      [{ text: 'tovább', data: `n:1:5:${ID}` }],
+    ])
+    const langs = langKeyboard(3, `5:${ID}`)
+    expect(langs.map((line) => line.length)).toEqual([4, 3])
+    expect(langs[0]?.[3]).toEqual({ text: 'de', data: `l:3:de:5:${ID}` })
+    const longest = [...recipeKeyboard(`9999999999:${ID}`), ...langKeyboard(255, `9999999999:${ID}`)]
+      .flat()
+      .map((key) => new TextEncoder().encode(key.data).length)
+    expect(Math.max(...longest)).toBeLessThanOrEqual(64)
+  })
+
+  it('a futás mondatai', () => {
+    expect(runQueuedLine(['notes'], null)).toBe('Sorba került: notes')
+    expect(runQueuedLine(['summary', 'notes'], 'de')).toBe('Sorba került: summary, notes → de')
+    expect(runReadyMessage('Cím\n', run({ recipes: ['notes'] }), 'https://w.test')).toBe(
+      `Cím · notes. A jegyzet megvan.\nhttps://w.test/notes/1:${ID}/notes`,
+    )
+    expect(runReadyMessage('Cím', run({ recipes: ['summary', 'notes'], lang: 'de' }), 'https://w.test')).toBe(
+      `Cím · de. A fordítás megvan.\nhttps://w.test/notes/1:${ID}/summary-de\nhttps://w.test/notes/1:${ID}/notes-de`,
+    )
+  })
+
+  it('a futás egyszer szúrható be, a claimRun csak a várt állapotból ír, a dueRuns a due szabálya', async () => {
+    const store = memoryStore()
+    expect(await store.insertRun(run({ status: 'failed', error: 'x', acceptedAt: 5 }))).toBe(true)
+    expect(await store.insertRun(run({}))).toBe(false)
+    expect(await store.claimRun(`1:${ID}:summary`, 'queued', 'accepted')).toBe(false)
+    expect(await store.claimRun(`1:${ID}:summary`, 'failed', 'queued')).toBe(true)
+    expect(await store.run(`1:${ID}:summary`)).toMatchObject({ status: 'queued', error: null, acceptedAt: null })
+    await store.insertRun(run({ runId: `1:${ID}:qa`, recipes: ['qa'], status: 'accepted', acceptedAt: 1 }))
+    await store.insertRun(run({ runId: `1:${ID}:notes`, recipes: ['notes'], status: 'accepted', acceptedAt: 999_999 }))
+    await store.insertRun(run({ runId: `2:${ID}:qa`, jobId: `2:${ID}`, recipes: ['qa'], status: 'ready' }))
+    expect((await store.dueRuns(1_000_000)).map((item) => item.runId)).toEqual([`1:${ID}:summary`, `1:${ID}:qa`])
+    expect((await store.runsFor(`1:${ID}`)).map((item) => item.runId)).toEqual([
+      `1:${ID}:summary`,
+      `1:${ID}:qa`,
+      `1:${ID}:notes`,
+    ])
+    expect(await store.run('nincs')).toBeNull()
   })
 })

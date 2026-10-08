@@ -19,6 +19,18 @@ export interface JobRow {
   sub: string | null
 }
 
+export interface RunRow {
+  runId: string
+  jobId: string
+  recipes: string[]
+  lang: string | null
+  status: JobStatus
+  error: string | null
+  noteUrl: string | null
+  notified: boolean
+  acceptedAt: number | null
+}
+
 export interface Binding {
   telegramUserId: string
   sub: string
@@ -53,16 +65,28 @@ export interface JobStore {
   token(tokenHash: string): Promise<LinkToken | null>
   saveToken(token: LinkToken): Promise<void>
   notesFor(sub: string): Promise<JobRow[]>
+  run(runId: string): Promise<RunRow | null>
+  insertRun(run: RunRow): Promise<boolean>
+  saveRun(run: RunRow): Promise<void>
+  claimRun(runId: string, expect: JobStatus, next: JobStatus): Promise<boolean>
+  runsFor(jobId: string): Promise<RunRow[]>
+  dueRuns(now: number): Promise<RunRow[]>
 }
 
 const OPEN: readonly JobStatus[] = ['queued', 'waiting', 'accepted']
 const FIFTEEN_MINUTES = 15 * 60 * 1000
+
+function isDue(item: { status: JobStatus; acceptedAt: number | null }, now: number): boolean {
+  if (item.status === 'queued' || item.status === 'waiting') return true
+  return item.status === 'accepted' && item.acceptedAt !== null && item.acceptedAt < now - FIFTEEN_MINUTES
+}
 
 export function memoryStore(): JobStore {
   const rows: JobRow[] = []
   const seen = new Set<number>()
   const bindings = new Map<string, Binding>()
   const tokens = new Map<string, LinkToken>()
+  const runs: RunRow[] = []
   return {
     listByUpdate: (updateId) => Promise.resolve(rows.filter((row) => row.updateId === updateId)),
     activeByVideo: (videoId) =>
@@ -77,14 +101,7 @@ export function memoryStore(): JobStore {
       else rows[index] = row
       return Promise.resolve()
     },
-    due: (now) =>
-      Promise.resolve(
-        rows.filter((row) => {
-          if (row.status === 'queued' || row.status === 'waiting') return true
-          if (row.status !== 'accepted' || row.acceptedAt === null) return false
-          return row.acceptedAt < now - FIFTEEN_MINUTES
-        }),
-      ),
+    due: (now) => Promise.resolve(rows.filter((row) => isDue(row, now))),
     claim: (jobId, expect, next) => {
       const row = rows.find((item) => item.jobId === jobId)
       if (row === undefined || row.phase !== expect.phase || row.status !== expect.status) return Promise.resolve(null)
@@ -131,5 +148,27 @@ export function memoryStore(): JobStore {
           .filter((row) => row.sub === sub && row.noteUrl !== null)
           .sort((a, b) => (b.acceptedAt ?? 0) - (a.acceptedAt ?? 0)),
       ),
+    run: (runId) => Promise.resolve(runs.find((item) => item.runId === runId) ?? null),
+    insertRun: (run) => {
+      if (runs.some((item) => item.runId === run.runId)) return Promise.resolve(false)
+      runs.push(run)
+      return Promise.resolve(true)
+    },
+    saveRun: (run) => {
+      const index = runs.findIndex((item) => item.runId === run.runId)
+      if (index === -1) runs.push(run)
+      else runs[index] = run
+      return Promise.resolve()
+    },
+    claimRun: (runId, expect, next) => {
+      const run = runs.find((item) => item.runId === runId)
+      if (run === undefined || run.status !== expect) return Promise.resolve(false)
+      run.status = next
+      run.error = null
+      run.acceptedAt = null
+      return Promise.resolve(true)
+    },
+    runsFor: (jobId) => Promise.resolve(runs.filter((item) => item.jobId === jobId)),
+    dueRuns: (now) => Promise.resolve(runs.filter((item) => isDue(item, now))),
   }
 }

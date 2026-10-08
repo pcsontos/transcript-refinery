@@ -1,4 +1,4 @@
-import type { Binding, JobRow, JobStatus, JobStore, LinkToken } from './store.js'
+import type { Binding, JobRow, JobStatus, JobStore, LinkToken, RunRow } from './store.js'
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement
@@ -43,6 +43,37 @@ interface TokenRecord {
   pending_sub: string | null
   pending_email: string | null
   used: number
+}
+
+interface RunRecord {
+  run_id: string
+  job_id: string
+  recipes: string
+  lang: string | null
+  status: JobStatus
+  error: string | null
+  note_url: string | null
+  notified: number
+  accepted_at: number | null
+}
+
+function toRun(record: RunRecord): RunRow {
+  return {
+    runId: record.run_id,
+    jobId: record.job_id,
+    recipes: record.recipes.split(' '),
+    lang: record.lang,
+    status: record.status,
+    error: record.error,
+    noteUrl: record.note_url,
+    notified: record.notified === 1,
+    acceptedAt: record.accepted_at,
+  }
+}
+
+function changed(result: unknown): boolean {
+  const changes = (result as { meta?: { changes?: number } }).meta?.changes
+  return changes === undefined || changes === 1
 }
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000
@@ -182,9 +213,7 @@ export function createD1Store(db: D1Like): JobStore {
     },
     async rememberUpdate(updateId) {
       try {
-        const result = await db.prepare('INSERT INTO seen_updates (update_id) VALUES (?)').bind(updateId).run()
-        const changes = (result as { meta?: { changes?: number } }).meta?.changes
-        return changes === undefined || changes === 1
+        return changed(await db.prepare('INSERT INTO seen_updates (update_id) VALUES (?)').bind(updateId).run())
       } catch {
         return false
       }
@@ -234,6 +263,58 @@ export function createD1Store(db: D1Like): JobStore {
         .bind(sub)
         .all<JobRecord>()
       return result.results.map(toRow)
+    },
+    async run(runId) {
+      const record = await db.prepare('SELECT * FROM runs WHERE run_id = ?').bind(runId).first<RunRecord>()
+      return record === null ? null : toRun(record)
+    },
+    async insertRun(run) {
+      const result = await db
+        .prepare(
+          `INSERT INTO runs (run_id, job_id, recipes, lang, status, error, note_url, notified, accepted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(run_id) DO NOTHING`,
+        )
+        .bind(
+          run.runId,
+          run.jobId,
+          run.recipes.join(' '),
+          run.lang,
+          run.status,
+          run.error,
+          run.noteUrl,
+          run.notified ? 1 : 0,
+          run.acceptedAt,
+        )
+        .run()
+      return changed(result)
+    },
+    async saveRun(run) {
+      await db
+        .prepare('UPDATE runs SET status = ?, error = ?, note_url = ?, notified = ?, accepted_at = ? WHERE run_id = ?')
+        .bind(run.status, run.error, run.noteUrl, run.notified ? 1 : 0, run.acceptedAt, run.runId)
+        .run()
+    },
+    async claimRun(runId, expect, next) {
+      const result = await db
+        .prepare('UPDATE runs SET status = ?, error = NULL, accepted_at = NULL WHERE run_id = ? AND status = ?')
+        .bind(next, runId, expect)
+        .run()
+      return changed(result)
+    },
+    async runsFor(jobId) {
+      const result = await db.prepare('SELECT * FROM runs WHERE job_id = ? ORDER BY rowid').bind(jobId).all<RunRecord>()
+      return result.results.map(toRun)
+    },
+    async dueRuns(now) {
+      const result = await db
+        .prepare(
+          `SELECT * FROM runs
+           WHERE status IN ('queued', 'waiting')
+              OR (status = 'accepted' AND accepted_at IS NOT NULL AND accepted_at < ?)`,
+        )
+        .bind(now - FIFTEEN_MINUTES)
+        .all<RunRecord>()
+      return result.results.map(toRun)
     },
   }
 }
