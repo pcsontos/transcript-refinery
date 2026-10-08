@@ -1,6 +1,6 @@
 # Spec — A negyedik szelet: a többi recept és a fordítás a boton át
 
-**Dátum:** 2026-10-08 · **Státusz:** tervezet
+**Dátum:** 2026-10-08 · **Státusz:** jóváhagyva
 
 Ez a dokumentum a [`2026-10-04-telegram-cloudflare-brief.md`](./2026-10-04-telegram-cloudflare-brief.md) negyedik szeletéből és a 2026-10-08-i tervezésből készült. Az előző szeletek spece a [`2026-10-04-telegram-cloudflare-spec.md`](./2026-10-04-telegram-cloudflare-spec.md), a [`2026-10-05-telegram-summary-spec.md`](./2026-10-05-telegram-summary-spec.md) és a [`2026-10-07-telegram-olvaso-spec.md`](./2026-10-07-telegram-olvaso-spec.md). Ahol ez a spec nem mond mást, az ottani viselkedés marad.
 
@@ -87,8 +87,7 @@ INSERT INTO runs (run_id, job_id, recipes, lang, status, error, note_url, notifi
   SELECT job_id || ':summary', job_id, 'summary', NULL, status, error,
          replace(note_url, '_summary.md', '_transcript.md'), note_notified, accepted_at
   FROM jobs WHERE phase = 'summary';
-UPDATE jobs SET status = 'ready' WHERE phase = 'summary';
-UPDATE jobs SET phase = 'subtitle' WHERE phase = 'summary';
+UPDATE jobs SET status = 'ready', phase = 'subtitle' WHERE phase = 'summary';
 ```
 
 - `run_id`: `<jobId>:<recept>`, vagy fordításnál `<jobId>:<nyelv>:<recept>+<recept>`, a receptek a lista sorrendjében. A determinisztikus azonosító miatt ugyanaz a kérés ugyanarra a sorra fut.
@@ -98,7 +97,7 @@ UPDATE jobs SET phase = 'subtitle' WHERE phase = 'summary';
 
 ### A tár
 
-A `JobStore` kap egy `RunRow` típust és öt hívást: `run(runId)`, `insertRun(row)`, `saveRun(row)`, `claimRun(runId, expect, next)` és `runsFor(jobId)`. A `due(now)` a `runs` esedékes sorait is visszaadja, ugyanazzal a feltétellel, mint a `jobs`-ét. A `notesFor(sub)` a `runs` kész sorait adja, a `jobs`-szal összekapcsolva. A `claim` régi, `phase`-es alakja megszűnik.
+A `JobStore` kap egy `RunRow` típust és hat hívást: `run(runId)`, `insertRun(row)`, `saveRun(row)`, `claimRun(runId, expect, next)`, `runsFor(jobId)` és `dueRuns(now)`. A `dueRuns` a `runs` esedékes sorait adja, ugyanazzal a feltétellel, mint a `due` a `jobs`-ét. A `notesFor(sub)` a `runs` kész sorait adja, a `jobs`-szal összekapcsolva. A `claim` régi, `phase`-es alakja megszűnik.
 
 ### A kopogtatás
 
@@ -119,7 +118,7 @@ A `jobs`-ág `summary`-része megszűnik, a felirat-ág változatlan.
 
 ### A cron
 
-A `handleCron` a `due` minden sorát a meglévő `settle` szerint kopogtatja újra: a `jobs`-sort felirat-munkaként, a `runs`-sort a `recipes` és a `lang` értékével.
+A `handleCron` a `due` és a `dueRuns` minden sorát a meglévő `settle` szerint kopogtatja újra: a `jobs`-sort felirat-munkaként, a `runs`-sort a `recipes` és a `lang` értékével.
 
 ### Listák
 
