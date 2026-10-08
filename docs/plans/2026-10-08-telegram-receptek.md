@@ -2657,7 +2657,7 @@ git commit -m "docs(worker): Describe the recipe buttons and translation"
 
 Kifelé ható lépések. Mindegyik előtt szólj, és várd meg az igent. A kód-PR merge-e és a kiadás (`chore/release-v1.12.0`, changelog, tag) után.
 
-A sorrend számít. A régi Worker a régi `recipe` mezőt küldi, amit az új konténer `400`-zal elutasít. Ha a migráció és az új Worker között valaki a régi `summary` gombra koppint, a sor `summary` fázisban ragad. **A 2–4. lépés alatt ne koppints a botban.**
+A sorrend számít. A régi Worker a régi `recipe` mezőt küldi, amit az új konténer `400`-zal elutasít. Ha a migráció és az új Worker között valaki a régi `summary` gombra koppint, a sor `summary` fázisban ragad. **A 2–4. lépés alatt ne koppints a botban.** Ha mégis megtörtént, a 3. lépés után még egyszer: `npx wrangler d1 execute transcript-refinery --remote --config worker/wrangler.toml --command "UPDATE jobs SET status='ready', phase='subtitle' WHERE phase='summary'"`.
 
 - [ ] **Step 1: Konténerkép.** `pnpm docker:publish`. Utána a `peter-mba`-n a `~/homelab/services/refinery/docker-compose.yml` `image:` sora `ghcr.io/pcsontos/transcript-refinery:1.12.0` lesz (ma `1.9.0`), és `ssh peter-mba 'cd ~/homelab/services/refinery && docker compose pull && docker compose up -d'`. Ellenőrzés: `ssh peter-mba 'docker logs --tail 5 homelab-refinery'` a `[serve] Refinery daemon elindult` sort mutatja.
 - [ ] **Step 2: Migráció.** `pnpm worker:migrate`. Ellenőrzés: `npx wrangler d1 execute transcript-refinery --remote --config worker/wrangler.toml --command "SELECT run_id, status, note_url FROM runs"` a korábbi summary-jegyzetek sorait mutatja, `_transcript.md`-re végződő `note_url`-lel.

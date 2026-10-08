@@ -291,7 +291,14 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
     await deps.store.save(row)
     return 200
   }
-  if (row.notifiedReady) return 200
+  if (row.notifiedReady) {
+    // Az újrakopogtatott, már értesített sor is ready, különben a cron örökké kopogtatja.
+    if (row.status !== 'ready') {
+      row.status = 'ready'
+      await deps.store.save(row)
+    }
+    return 200
+  }
   row.title = body.title
   const sent = await deps.send(row.chatId, readyLine(body.title), recipeKeyboard(row.jobId))
   if (!sent) {

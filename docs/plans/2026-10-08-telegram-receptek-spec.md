@@ -196,7 +196,7 @@ A `NOTE_KINDS` megszűnik: a fajtát az adat dönti el.
 3. Worker: `wrangler deploy`.
 4. Éles próba egy rövid videón: `notes`, utána `fordítás` → `summary` + `notes` → `de`. A becsült költés néhány tized dollár, a plafon 5 $.
 
-A 2. és a 3. lépés közti percekben a régi Worker `recipe` mezős kopogtatását a konténer elutasítja. Ilyenkor a Worker telepítése után újra kell koppintani.
+A 2. és a 3. lépés közti percekben a régi Worker `recipe` mezős kopogtatását a konténer elutasítja, és a koppintott sor `phase='summary'` marad. Ezért a Worker telepítése után a migráció utolsó sorát még egyszer le kell futtatni az éles D1-en (`UPDATE jobs SET status='ready', phase='subtitle' WHERE phase='summary';`), és utána újra kell koppintani.
 
 ## Siker
 

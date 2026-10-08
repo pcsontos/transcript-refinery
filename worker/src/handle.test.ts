@@ -226,6 +226,15 @@ describe('handleCallback', () => {
     expect(repeat.sent).toEqual([])
   })
 
+  it('a már értesített, de újrakopogtatott sor a kész visszahívásra ready lesz, üzenet nélkül', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ notifiedReady: true, title: 'Cím' }))
+    const repeat = deps(store)
+    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, repeat)
+    expect(repeat.sent).toEqual([])
+    expect((await store.listByUpdate(5))[0]?.status).toBe('ready')
+  })
+
   it('sikertelen ébredős vagy 401-es küldésnél a sor kopogtatható marad', async () => {
     const store = await boundStore()
     const down = deps(store, {
