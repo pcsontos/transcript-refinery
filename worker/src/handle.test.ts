@@ -9,8 +9,8 @@ import {
   type PlannedKnock,
   type WorkerDeps,
 } from './handle.js'
-import { hashToken } from './plan.js'
-import { memoryStore, type JobRow } from './store.js'
+import { langKeyboard, pickKeyboard, recipeKeyboard, runId, hashToken, type Key } from './plan.js'
+import { memoryStore, type JobRow, type RunRow } from './store.js'
 
 const ID = 'abcdefghijk'
 const TOKEN_A = 'A'.repeat(43)
@@ -22,14 +22,16 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
   chats: string[]
   knocked: string[]
   knocks: PlannedKnock[]
-  buttons: { text: string; data: string }[]
+  keyboards: Key[][][]
+  edits: { chatId: string; messageId: number; text: string; keyboard: Key[][] }[]
   answered: string[]
 } {
   const sent: string[] = []
   const chats: string[] = []
   const knocked: string[] = []
   const knocks: PlannedKnock[] = []
-  const buttons: { text: string; data: string }[] = []
+  const keyboards: Key[][][] = []
+  const edits: { chatId: string; messageId: number; text: string; keyboard: Key[][] }[] = []
   const answered: string[] = []
   let next = 0
   return {
@@ -43,7 +45,8 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
     chats,
     knocked,
     knocks,
-    buttons,
+    keyboards,
+    edits,
     answered,
     answerTap: (callbackQueryId) => {
       answered.push(callbackQueryId)
@@ -54,10 +57,14 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
       knocks.push(job)
       return Promise.resolve(202)
     },
-    send: (chatId, text, button) => {
+    send: (chatId, text, keyboard) => {
       chats.push(chatId)
       sent.push(text)
-      if (button) buttons.push(button)
+      if (keyboard) keyboards.push(keyboard)
+      return Promise.resolve(true)
+    },
+    edit: (chatId, messageId, text, keyboard) => {
+      edits.push({ chatId, messageId, text, keyboard })
       return Promise.resolve(true)
     },
     ...over,
@@ -88,6 +95,40 @@ function acceptedRow(partial: Partial<JobRow> = {}): JobRow {
     acceptedAt: 1,
     sub: 'sub-42',
     ...partial,
+  }
+}
+
+const VIDEO_URL = `https://www.youtube.com/watch?v=${ID}`
+const TRANSCRIPT_URL = 'https://github.com/tulaj/repo/blob/main/a_transcript.md'
+
+function readyRow(partial: Partial<JobRow> = {}): JobRow {
+  return acceptedRow({ status: 'ready', notifiedReady: true, title: 'Cím', ...partial })
+}
+
+function readyRun(recipes: string[], lang: string | null = null, partial: Partial<RunRow> = {}): RunRow {
+  return {
+    runId: runId(`5:${ID}`, recipes, lang),
+    jobId: `5:${ID}`,
+    recipes,
+    lang,
+    status: 'ready',
+    error: null,
+    noteUrl: TRANSCRIPT_URL,
+    notified: true,
+    acceptedAt: 1,
+    ...partial,
+  }
+}
+
+function tap(updateId: number, data: string, from = 42, messageId?: number) {
+  return {
+    update_id: updateId,
+    callback_query: {
+      id: `cq${updateId}`,
+      data,
+      from: { id: from },
+      message: messageId === undefined ? { chat: { id: from } } : { message_id: messageId, chat: { id: from } },
+    },
   }
 }
 
@@ -256,146 +297,163 @@ describe('handleCallback', () => {
     expect(cron.knocked).toEqual([])
   })
 
-  it('a felirat kész üzenete summary gombot kap', async () => {
+  it('a felirat kész üzenete a kilenc gombot kapja', async () => {
     const store = await boundStore()
     await store.insert(acceptedRow())
     const ok = deps(store)
     await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, ok)
     expect(ok.sent).toEqual(['Cím. A felirat megvan.'])
-    expect(ok.buttons).toEqual([{ text: 'summary', data: `summary:5:${ID}` }])
+    expect(ok.keyboards).toEqual([recipeKeyboard(`5:${ID}`)])
   })
 
-  it('a summary kész linkje kimegy, noteUrl nélkül a mondat failed', async () => {
+  it('a futás kész linkje kimegy, noteUrl nélkül failed, küldési hibánál accepted, az ismétlés nem küld', async () => {
     const store = await boundStore()
-    await store.insert(acceptedRow({ phase: 'summary' }))
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['notes'], null, { status: 'accepted', noteUrl: null, notified: false }))
     const missing = deps(store)
-    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, missing)
+    await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím' }, missing)
     expect(missing.sent).toEqual(['A jegyzet linkje hiányzik.'])
-    expect((await store.listByUpdate(5))[0]?.status).toBe('failed')
+    expect((await store.run(`5:${ID}:notes`))?.status).toBe('failed')
 
-    const quiet = await boundStore()
-    await quiet.insert(acceptedRow({ phase: 'summary' }))
-    const held = deps(quiet, { send: () => Promise.resolve(false) })
-    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, held)
-    expect((await quiet.listByUpdate(5))[0]?.status).toBe('accepted')
+    await store.saveRun(readyRun(['notes'], null, { status: 'accepted', noteUrl: null, notified: false }))
+    const dropped = deps(store, { send: () => Promise.resolve(false) })
+    await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, dropped)
+    expect(await store.run(`5:${ID}:notes`)).toMatchObject({ status: 'accepted', noteUrl: TRANSCRIPT_URL, notified: false })
 
-    const unsent = await boundStore()
-    await unsent.insert(acceptedRow({ phase: 'summary' }))
-    const dropped = deps(unsent, { send: () => Promise.resolve(false) })
-    const keptUrl = 'https://github.com/tulaj/repo/blob/main/a_summary.md'
-    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím', noteUrl: keptUrl }, dropped)
-    expect((await unsent.listByUpdate(5))[0]?.status).toBe('accepted')
-    expect((await unsent.listByUpdate(5))[0]?.noteUrl).toBe(keptUrl)
-    expect((await unsent.listByUpdate(5))[0]?.noteNotified).toBe(false)
-
-    const linked = await boundStore()
-    await linked.insert(acceptedRow({ phase: 'summary' }))
-    const ok = deps(linked)
-    const url = 'https://github.com/tulaj/repo/blob/main/a_summary.md'
-    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím', noteUrl: url }, ok)
-    expect(ok.sent).toEqual([`Cím. A jegyzet megvan.\nhttps://worker.test/notes/5:${ID}/summary`])
-    const row = (await linked.listByUpdate(5))[0]
-    expect(row?.status).toBe('ready')
-    expect(row?.noteNotified).toBe(true)
-    expect(row?.noteUrl).toBe(url)
-
-    const repeat = deps(linked)
-    await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím', noteUrl: url }, repeat)
+    const ok = deps(store)
+    await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, ok)
+    expect(ok.sent).toEqual([`Cím · notes. A jegyzet megvan.\nhttps://worker.test/notes/5:${ID}/notes`])
+    expect(await store.run(`5:${ID}:notes`)).toMatchObject({ status: 'ready', notified: true })
+    const repeat = deps(store)
+    await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, repeat)
     expect(repeat.sent).toEqual([])
+  })
+
+  it('a futás hibasora a chatbe megy, a futás failed, a felirat sora marad', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['qa'], null, { status: 'accepted', notified: false }))
+    const own = deps(store)
+    await handleCallback(`5:${ID}:qa`, { status: 'failed', error: 'A futás megállt.' }, own)
+    expect(own.sent).toEqual(['A futás megállt.'])
+    expect(await store.run(`5:${ID}:qa`)).toMatchObject({ status: 'failed', error: 'A futás megállt.' })
+    expect((await store.listByUpdate(5))[0]?.status).toBe('ready')
   })
 })
 
 describe('handleTap', () => {
-  it('két ready koppintásból egy summary kopogtatás indul', async () => {
+  it('a receptgomb futást nyit és kopogtat, a második koppintás már sorban, az ismételt update hallgat', async () => {
     const store = await boundStore()
-    await store.insert(acceptedRow({ status: 'ready', phase: 'subtitle', notifiedReady: true, title: 'Cím' }))
+    await store.insert(readyRow())
     const first = deps(store)
+    const knocks = await handleTap(tap(20, `r:notes:5:${ID}`), first)
+    expect(knocks).toEqual([{ jobId: `5:${ID}:notes`, videoId: ID, url: VIDEO_URL, recipes: ['notes'] }])
+    expect(first.answered).toEqual(['cq20'])
+    expect(first.sent).toEqual(['Sorba került: notes'])
+    expect(await store.run(`5:${ID}:notes`)).toMatchObject({ status: 'queued', recipes: ['notes'], lang: null })
+    await applyKnocks(knocks, first)
+    expect((await store.run(`5:${ID}:notes`))?.status).toBe('accepted')
+
     const second = deps(store)
-    const tap = {
-      update_id: 20,
-      callback_query: { id: 'cq', data: `summary:5:${ID}`, from: { id: 42 }, message: { chat: { id: 42 } } },
-    }
-    expect(await handleTap(tap, first)).toEqual([
-      { jobId: `5:${ID}`, videoId: ID, url: `https://www.youtube.com/watch?v=${ID}`, recipe: 'summary' },
-    ])
-    expect(first.answered).toEqual(['cq'])
-    expect(await handleTap({ ...tap, update_id: 21, callback_query: { ...tap.callback_query, id: 'cq2' } }, second)).toEqual([])
+    expect(await handleTap(tap(21, `r:notes:5:${ID}`), second)).toEqual([])
     expect(second.sent).toEqual([`Már sorban van: ${ID}.`])
+    const repeated = deps(store)
+    expect(await handleTap(tap(20, `r:notes:5:${ID}`), repeated)).toEqual([])
+    expect(repeated.sent).toEqual([])
   })
 
-  it('az ismételt update_id nem kopogtat, a failed gomb újra queued', async () => {
+  it('a régi summary gomb a summary futás, a bukott futás újraindul, a kész újraküldi a linket', async () => {
     const store = await boundStore()
-    await store.insert(acceptedRow({ status: 'failed', phase: 'summary', error: 'A vault frissítése nem sikerült.' }))
-    const depsOnce = deps(store)
-    const tap = {
-      update_id: 30,
-      callback_query: { id: 'cq', data: `summary:5:${ID}`, from: { id: 42 }, message: { chat: { id: 42 } } },
-    }
-    expect(await handleTap(tap, depsOnce)).toHaveLength(1)
-    expect(await handleTap(tap, depsOnce)).toEqual([])
-    expect((await store.listByUpdate(5))[0]?.status).toBe('queued')
-    expect((await store.listByUpdate(5))[0]?.phase).toBe('summary')
+    await store.insert(readyRow())
+    expect(await handleTap(tap(30, `summary:5:${ID}`), deps(store))).toEqual([
+      { jobId: `5:${ID}:summary`, videoId: ID, url: VIDEO_URL, recipes: ['summary'] },
+    ])
+    await store.saveRun(readyRun(['summary'], null, { status: 'failed', error: 'x' }))
+    expect(await handleTap(tap(31, `r:summary:5:${ID}`), deps(store))).toHaveLength(1)
+    expect(await store.run(`5:${ID}:summary`)).toMatchObject({ status: 'queued', error: null })
+    await store.saveRun(readyRun(['summary']))
+    const again = deps(store)
+    expect(await handleTap(tap(32, `r:summary:5:${ID}`), again)).toEqual([])
+    expect(again.sent).toEqual([`Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/5:${ID}/summary`])
   })
 
-  it('idegen chat és a kiment link nem kopogtat', async () => {
+  it('idegen fiók, idegen sor, a még nem kész felirat sora és az ismeretlen recept nem indít', async () => {
     const store = await boundStore()
-    await store.insert(acceptedRow({
-      status: 'ready',
-      phase: 'summary',
-      title: 'Cím',
-      noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md',
-      noteNotified: true,
-    }))
+    await store.insert(readyRow())
+    await store.insert(readyRow({ jobId: `6:${ID}`, updateId: 6, sub: 'sub-9' }))
+    await store.insert(readyRow({ jobId: `7:${ID}`, updateId: 7, status: 'accepted' }))
     const foreign = deps(store)
-    await handleTap({
-      update_id: 40,
-      callback_query: { id: 'cq', data: `summary:5:${ID}`, from: { id: 7 }, message: { chat: { id: 7 } } },
-    }, foreign)
-    expect(foreign.knocked).toEqual([])
-    expect(foreign.sent).toEqual([])
-    expect(foreign.answered).toEqual(['cq'])
-
+    expect(await handleTap(tap(40, `r:qa:5:${ID}`, 7), foreign)).toEqual([])
+    expect(foreign.answered).toEqual(['cq40'])
     const own = deps(store)
-    await handleTap({
-      update_id: 41,
-      callback_query: { id: 'cq2', data: `summary:5:${ID}`, from: { id: 42 }, message: { chat: { id: 42 } } },
-    }, own)
-    expect(own.sent).toEqual([`Cím. A jegyzet megvan.\nhttps://worker.test/notes/5:${ID}/summary`])
-    expect(own.knocked).toEqual([])
-    const held = deps(store, { send: () => Promise.resolve(false) })
-    await handleTap({
-      update_id: 42,
-      callback_query: { id: 'cq3', data: `summary:5:${ID}`, from: { id: 42 }, message: { chat: { id: 42 } } },
-    }, held)
-    expect((await store.listByUpdate(5))[0]?.noteNotified).toBe(true)
+    expect(await handleTap(tap(41, `r:qa:6:${ID}`), own)).toEqual([])
+    expect(await handleTap(tap(42, `r:qa:7:${ID}`), own)).toEqual([])
+    expect(await handleTap(tap(43, `r:toString:5:${ID}`), own)).toEqual([])
+    expect(own.sent).toEqual([])
+    expect(await store.runsFor(`5:${ID}`)).toEqual([])
   })
 
-  it('a cron a summary fázist recepttel ébreszti, a felirat fázist anélkül', async () => {
+  it('a fordítás: kész jegyzet nélkül a mondat, utána a választó, a kapcsoló és a tovább szerkeszt, a nyelv indít', async () => {
     const store = await boundStore()
-    await store.insert(acceptedRow({ status: 'queued', phase: 'subtitle' }))
-    await store.insert(acceptedRow({
-      jobId: `6:${ID}`,
-      updateId: 6,
-      status: 'queued',
-      phase: 'summary',
-    }))
+    await store.insert(readyRow())
+    const empty = deps(store)
+    expect(await handleTap(tap(50, `f:5:${ID}`), empty)).toEqual([])
+    expect(empty.sent).toEqual(['Előbb készíts egy jegyzetet.'])
+
+    await store.insertRun(readyRun(['notes']))
+    await store.insertRun(readyRun(['summary']))
+    const picker = deps(store)
+    await handleTap(tap(51, `f:5:${ID}`), picker)
+    expect(picker.sent).toEqual(['Melyik jegyzetet fordítsam?'])
+    expect(picker.keyboards).toEqual([pickKeyboard(0, ['summary', 'notes'], `5:${ID}`)])
+
+    const toggled = deps(store)
+    expect(await handleTap(tap(52, `t:3:5:${ID}`, 42, 9), toggled)).toEqual([])
+    expect(toggled.edits).toEqual([
+      { chatId: '42', messageId: 9, text: 'Melyik jegyzetet fordítsam?', keyboard: pickKeyboard(3, ['summary', 'notes'], `5:${ID}`) },
+    ])
+    const blank = deps(store)
+    await handleTap(tap(53, `n:0:5:${ID}`, 42, 9), blank)
+    expect(blank.edits).toEqual([])
+    const next = deps(store)
+    await handleTap(tap(54, `n:3:5:${ID}`, 42, 9), next)
+    expect(next.edits).toEqual([{ chatId: '42', messageId: 9, text: 'Melyik nyelvre?', keyboard: langKeyboard(3, `5:${ID}`) }])
+    const noMessage = deps(store)
+    await handleTap(tap(55, `n:3:5:${ID}`), noMessage)
+    expect(noMessage.edits).toEqual([])
+
+    const lang = deps(store)
+    expect(await handleTap(tap(56, `l:3:de:5:${ID}`, 42, 9), lang)).toEqual([
+      { jobId: `5:${ID}:de:summary+notes`, videoId: ID, url: VIDEO_URL, recipes: ['summary', 'notes'], lang: 'de' },
+    ])
+    expect(lang.sent).toEqual(['Sorba került: summary, notes → de'])
+  })
+
+  it('a cron a felirat sorát recept nélkül, a futást a recipes és a lang mezővel ébreszti, a 401 failed', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued' }))
+    await store.insert(readyRow({ jobId: `6:${ID}`, updateId: 6 }))
+    await store.insertRun(
+      readyRun(['summary', 'notes'], 'de', {
+        jobId: `6:${ID}`,
+        runId: `6:${ID}:de:summary+notes`,
+        status: 'queued',
+        notified: false,
+      }),
+    )
     const clock = deps(store)
     await handleCron(clock)
     expect(clock.knocks).toEqual([
-      { jobId: `5:${ID}`, videoId: ID, url: `https://www.youtube.com/watch?v=${ID}` },
-      { jobId: `6:${ID}`, videoId: ID, url: `https://www.youtube.com/watch?v=${ID}`, recipe: 'summary' },
+      { jobId: `5:${ID}`, videoId: ID, url: VIDEO_URL },
+      { jobId: `6:${ID}:de:summary+notes`, videoId: ID, url: VIDEO_URL, recipes: ['summary', 'notes'], lang: 'de' },
     ])
-  })
+    expect((await store.run(`6:${ID}:de:summary+notes`))?.status).toBe('accepted')
 
-  it('a 401 a summary fázist failedre teszi, a fázis summary marad', async () => {
-    const store = await boundStore()
-    await store.insert(acceptedRow({ status: 'queued', phase: 'summary' }))
-    const rejected = deps(store, { knock: () => Promise.resolve(401) })
-    await handleCron(rejected)
-    const row = (await store.listByUpdate(5))[0]
-    expect(row?.status).toBe('failed')
-    expect(row?.phase).toBe('summary')
-    expect(row?.error).toBe('A konténer elutasította a hívást.')
+    const rejected = await boundStore()
+    await rejected.insert(readyRow())
+    await rejected.insertRun(readyRun(['qa'], null, { status: 'queued', notified: false }))
+    await handleCron(deps(rejected, { knock: () => Promise.resolve(401) }))
+    expect(await rejected.run(`5:${ID}:qa`)).toMatchObject({ status: 'failed', error: 'A konténer elutasította a hívást.' })
   })
 })
 

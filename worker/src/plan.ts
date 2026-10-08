@@ -9,8 +9,6 @@ export {
   waitingLine,
   REJECTED_SECRET,
   MISSING_NOTE_URL,
-  noteReadyMessage,
-  summaryButton,
   BIND_FIRST,
   LINK_INVALID,
   LINK_INVALID_PAGE,
@@ -31,17 +29,6 @@ export {
 } from './messages.js'
 
 export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
-
-export function decideTap(row: JobRow | null, allowed: boolean): TapAction {
-  if (row === null || allowed === false) return { type: 'ignore' }
-  if (row.phase === 'subtitle' && row.status === 'ready') return { type: 'start' }
-  if (row.phase === 'summary' && (row.status === 'queued' || row.status === 'waiting' || row.status === 'accepted')) {
-    return { type: 'busy' }
-  }
-  if (row.phase === 'summary' && row.status === 'ready' && row.noteNotified) return { type: 'resend' }
-  if (row.phase === 'summary' && row.status === 'failed') return { type: 'retry' }
-  return { type: 'ignore' }
-}
 
 export function decideRun(run: RunRow | null): TapAction {
   if (run === null) return { type: 'start' }

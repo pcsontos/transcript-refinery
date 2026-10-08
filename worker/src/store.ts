@@ -53,11 +53,6 @@ export interface JobStore {
   insert(row: JobRow): Promise<void>
   save(row: JobRow): Promise<void>
   due(now: number): Promise<JobRow[]>
-  claim(
-    jobId: string,
-    expect: { phase: JobPhase; status: JobStatus },
-    next: { phase: JobPhase; status: JobStatus },
-  ): Promise<JobRow | null>
   rememberUpdate(updateId: number): Promise<boolean>
   bindingFor(telegramUserId: string): Promise<Binding | null>
   bind(binding: Binding, chatId: string): Promise<void>
@@ -102,15 +97,6 @@ export function memoryStore(): JobStore {
       return Promise.resolve()
     },
     due: (now) => Promise.resolve(rows.filter((row) => isDue(row, now))),
-    claim: (jobId, expect, next) => {
-      const row = rows.find((item) => item.jobId === jobId)
-      if (row === undefined || row.phase !== expect.phase || row.status !== expect.status) return Promise.resolve(null)
-      row.phase = next.phase
-      row.status = next.status
-      row.error = null
-      row.acceptedAt = null
-      return Promise.resolve(row)
-    },
     rememberUpdate: (updateId) => {
       if (seen.has(updateId)) return Promise.resolve(false)
       seen.add(updateId)

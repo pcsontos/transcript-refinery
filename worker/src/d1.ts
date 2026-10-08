@@ -198,19 +198,6 @@ export function createD1Store(db: D1Like): JobStore {
         .all<JobRecord>()
       return result.results.map(toRow)
     },
-    async claim(jobId, expect, next) {
-      const result = await db
-        .prepare(
-          `UPDATE jobs SET phase = ?, status = ?, error = NULL, accepted_at = NULL
-           WHERE job_id = ? AND phase = ? AND status = ?`,
-        )
-        .bind(next.phase, next.status, jobId, expect.phase, expect.status)
-        .run()
-      const changes = (result as { meta?: { changes?: number } }).meta?.changes
-      if (changes !== 1) return null
-      const record = await db.prepare('SELECT * FROM jobs WHERE job_id = ?').bind(jobId).first<JobRecord>()
-      return record === null ? null : toRow(record)
-    },
     async rememberUpdate(updateId) {
       try {
         return changed(await db.prepare('INSERT INTO seen_updates (update_id) VALUES (?)').bind(updateId).run())

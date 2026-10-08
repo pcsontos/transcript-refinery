@@ -1314,7 +1314,7 @@ git commit -m "feat(worker): Add the runs table and recipe buttons"
   - `handleTap(update: { update_id: number; callback_query: { id: string; data?: string; from?: { id: number }; message?: { message_id?: number; chat: { id: number } } } }, deps)`.
   - `handleCallback(id, body, deps)`: az `id` futás vagy felirat-sor.
 
-- [ ] **Step 1: A teszt-segédek és a bukó tesztek, `worker/src/handle.test.ts`**
+- [x] **Step 1: A teszt-segédek és a bukó tesztek, `worker/src/handle.test.ts`**
 
 Az importok:
 
@@ -1703,12 +1703,12 @@ describe('handleTap', () => {
   })
 ```
 
-- [ ] **Step 2: A bukás ellenőrzése**
+- [x] **Step 2: A bukás ellenőrzése**
 
 Run: `pnpm vitest run worker`
 Expected: FAIL. A `handleTap` a `r:` adatot nem ismeri, a felirat üzenete még egy `summary` gombot küld, és a `deps` `edit` mezőjét a típus nem ismeri.
 
-- [ ] **Step 3: `worker/src/handle.ts`, az egész fájl**
+- [x] **Step 3: `worker/src/handle.ts`, az egész fájl**
 
 ```ts
 import {
@@ -2107,7 +2107,7 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
 }
 ```
 
-- [ ] **Step 4: `worker/src/index.ts`**
+- [x] **Step 4: `worker/src/index.ts`**
 
 Az import: `import { LINK_INVALID_PAGE, newToken, type Key } from './plan.js'`. Az `identity` függvény után:
 
@@ -2158,19 +2158,19 @@ Az `answerTap` is ezt a segédet hívja:
 
 Az `isTap` típusőrében a `message?: { chat: { id: number } }` helyett `message?: { message_id?: number; chat: { id: number } }`.
 
-- [ ] **Step 5: A régi `summary`-út törlése**
+- [x] **Step 5: A régi `summary`-út törlése**
 
 - `worker/src/messages.ts`: a `noteReadyMessage` és a `summaryButton` függvény törlődik.
 - `worker/src/plan.ts`: az újraexport-listából a `noteReadyMessage` és a `summaryButton` kimarad. A `decideTap` függvény törlődik (a `TapAction` típus marad, a `decideRun` használja).
 - `worker/src/store.ts`: a `JobStore` `claim` hívása és a `memoryStore` `claim` megvalósítása törlődik.
 - `worker/src/d1.ts`: a `claim` megvalósítása törlődik.
 
-- [ ] **Step 6: A teszt zöld**
+- [x] **Step 6: A teszt zöld**
 
 Run: `pnpm vitest run worker`
 Expected: PASS.
 
-- [ ] **Step 7: Ellenőrzés és commit**
+- [x] **Step 7: Ellenőrzés és commit**
 
 Run: `pnpm test && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 
