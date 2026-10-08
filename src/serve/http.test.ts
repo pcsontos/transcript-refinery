@@ -51,13 +51,13 @@ describe('createServeServer', () => {
     release()
   })
 
-  it('a summary recept 202 és az onJob látja, a szám recept 400', async () => {
+  it('a receptlista 202 és az onJob látja, a rossz lista, a rossz nyelv és a régi recipe mező 400', async () => {
     const seen: unknown[] = []
     server = createServeServer({
       secret: 'titok',
       gate,
       onJob: (job) => {
-        seen.push(job.recipe)
+        seen.push([job.recipes, job.lang])
         return Promise.resolve()
       },
     })
@@ -68,11 +68,16 @@ describe('createServeServer', () => {
       jobId: 'job-1',
       videoId: 'abcdefghijk',
       url: 'https://www.youtube.com/watch?v=abcdefghijk',
-      recipe: 'summary',
+      recipes: ['summary', 'notes'],
+      lang: 'de',
     }
     expect(await post(port, 'titok', job)).toBe(202)
-    expect(seen).toEqual(['summary'])
-    expect(await post(port, 'titok', { ...job, jobId: 'job-2', recipe: 1 })).toBe(400)
+    expect(seen).toEqual([[['summary', 'notes'], 'de']])
+    expect(await post(port, 'titok', { ...job, jobId: 'job-2', recipes: 'summary' })).toBe(400)
+    expect(await post(port, 'titok', { ...job, jobId: 'job-2', recipes: [] })).toBe(400)
+    expect(await post(port, 'titok', { ...job, jobId: 'job-2', recipes: [1] })).toBe(400)
+    expect(await post(port, 'titok', { ...job, jobId: 'job-2', lang: 1 })).toBe(400)
+    expect(await post(port, 'titok', { jobId: 'job-2', videoId: job.videoId, url: job.url, recipe: 'summary' })).toBe(400)
   })
 })
 

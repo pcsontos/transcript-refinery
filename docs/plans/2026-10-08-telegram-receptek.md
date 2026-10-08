@@ -63,7 +63,7 @@ Az implementáció az `impl-telegram-receptek` ágon indul, a `main` ágról, mi
 **Interfaces:**
 - Produces: `commandRun(cfg, raw, { recipes: string[], dryRun, force, commit, command? }, runtime)`. A `recipes` minden eleme a regiszter azonosítója (`recipeFrom`), a fordítás is (`summary-de`), ha a `cfg.translate` kéri. A `recipes` a nem-queue ágban `items × recipes` egységet ad, egy `guard` alatt.
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 A `src/cli.test.ts` végére, új `describe` blokként:
 
@@ -116,12 +116,12 @@ describe('commandRun — több recept egy futásban', () => {
 })
 ```
 
-- [ ] **Step 2: A bukás ellenőrzése**
+- [x] **Step 2: A bukás ellenőrzése**
 
 Run: `pnpm vitest run src/cli.test.ts -t "több recept"`
 Expected: FAIL. A `tsc` a `recipes` mezőt nem ismeri, a futás pedig recept nélkül csak átiratot ír, ezért `hivasok.generate` `0`.
 
-- [ ] **Step 3: A megvalósítás**
+- [x] **Step 3: A megvalósítás**
 
 A `commandRun` `flags` típusában, a `recipe?: string` mező után:
 
@@ -160,12 +160,12 @@ A riport `kinds` sora:
         : [artifactKind]
 ```
 
-- [ ] **Step 4: A teszt zöld**
+- [x] **Step 4: A teszt zöld**
 
 Run: `pnpm vitest run src/cli.test.ts`
 Expected: PASS, a régi tesztek is.
 
-- [ ] **Step 5: Ellenőrzés és commit**
+- [x] **Step 5: Ellenőrzés és commit**
 
 Run: `pnpm typecheck && pnpm lint`
 
@@ -194,7 +194,7 @@ git commit -m "feat(run): Run several recipes under one cost guard"
   - `JobEffects.refine?: (videoId: string, recipes: readonly string[], lang?: LanguageTag) => Promise<RecipesOutcome>` (a `summarize` új neve).
   - `serveEffects({ ..., runRecipes? })`.
 
-- [ ] **Step 1: A meglévő tesztek átírása az új nevekre**
+- [x] **Step 1: A meglévő tesztek átírása az új nevekre**
 
 `src/serve/summary.test.ts`:
 - Az import: `import { runRecipes } from './summary.js'`. A `describe('runSummary', …)` neve `describe('runRecipes', …)`.
@@ -305,7 +305,7 @@ git commit -m "feat(run): Run several recipes under one cost guard"
   })
 ```
 
-- [ ] **Step 2: Az új `runRecipes` tesztek**
+- [x] **Step 2: Az új `runRecipes` tesztek**
 
 A `src/serve/summary.test.ts` `client` függvénye után:
 
@@ -388,12 +388,12 @@ A `describe('runRecipes', …)` végére:
   })
 ```
 
-- [ ] **Step 3: A bukás ellenőrzése**
+- [x] **Step 3: A bukás ellenőrzése**
 
 Run: `pnpm vitest run src/serve`
 Expected: FAIL. A `runRecipes`, a `refine`, a `recipes` mező és az `Ismeretlen nyelv.` még nem létezik.
 
-- [ ] **Step 4: `src/serve/summary.ts`, az egész fájl**
+- [x] **Step 4: `src/serve/summary.ts`, az egész fájl**
 
 ```ts
 import { execFile } from 'node:child_process'
@@ -579,7 +579,7 @@ export async function runRecipes(input: {
 }
 ```
 
-- [ ] **Step 5: `src/serve/job.ts`**
+- [x] **Step 5: `src/serve/job.ts`**
 
 Importok a fájl elejére:
 
@@ -648,7 +648,7 @@ export async function runJob(job: ServeJob, effects: JobEffects): Promise<void> 
   }
 ```
 
-- [ ] **Step 6: `src/serve/http.ts`, `isJob`**
+- [x] **Step 6: `src/serve/http.ts`, `isJob`**
 
 ```ts
 function isJob(value: unknown): value is ServeJob {
@@ -665,7 +665,7 @@ function isJob(value: unknown): value is ServeJob {
 }
 ```
 
-- [ ] **Step 7: `src/serve/command.ts`**
+- [x] **Step 7: `src/serve/command.ts`**
 
 Az importok: `type SummaryOutcome` helyett `type RecipesOutcome`, a `runSummary as defaultRunSummary` helyett `runRecipes as defaultRunRecipes`, és új import: `import type { LanguageTag } from '../lang/identify.js'`.
 
@@ -696,12 +696,12 @@ A törzsben:
     refine: (videoId, recipes, lang) => refineWith({ videoId, outDir: input.outDir, recipes, lang }),
 ```
 
-- [ ] **Step 8: A teszt zöld**
+- [x] **Step 8: A teszt zöld**
 
 Run: `pnpm vitest run src/serve`
 Expected: PASS. Ha a fordítás tesztje a nyelvkapun bukik (a `GERMAN` szöveget a nyelvfelismerő nem ismeri fel németnek), a `GERMAN` mondatát kell bővíteni német funkciószavakkal. A kód nem változik.
 
-- [ ] **Step 9: Ellenőrzés és commit**
+- [x] **Step 9: Ellenőrzés és commit**
 
 Run: `pnpm test && pnpm typecheck && pnpm lint`
 
@@ -756,7 +756,7 @@ Ez a feladat csak hozzáad: a mai `summary`-út változatlanul fut tovább, amí
   runReadyMessage(title: string, run: Pick<RunRow, 'jobId' | 'recipes' | 'lang'>, linkBase: string): string
   ```
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 `worker/src/plan.test.ts`: az importok közé `memoryStore, type JobRow, type LinkToken` mellé `type RunRow`, a `plan.js` importjába `decideRun`, `langKeyboard`, `maskRecipes`, `parseTap`, `pickKeyboard`, `readyBases`, `recipeKeyboard`, `runId`, `runKinds`, `runQueuedLine`, `runReadyMessage`. A `row` függvény után:
 
@@ -904,12 +904,12 @@ describe('a bot listái', () => {
 
 (Ha a `RECIPE_IDS` vagy a `describe` még nincs importálva a fájlban, az importsorba kerül: `RECIPE_IDS` a `./registry.js`-ből, `describe` a `vitest`-ből.)
 
-- [ ] **Step 2: A bukás ellenőrzése**
+- [x] **Step 2: A bukás ellenőrzése**
 
 Run: `pnpm vitest run worker src/recipe/registry.test.ts`
 Expected: FAIL. Az új függvények, a `runs` hívások és a `0004_runs.sql` még nem léteznek.
 
-- [ ] **Step 3: `worker/migrations/0004_runs.sql`**
+- [x] **Step 3: `worker/migrations/0004_runs.sql`**
 
 ```sql
 CREATE TABLE runs (
@@ -931,7 +931,7 @@ INSERT INTO runs (run_id, job_id, recipes, lang, status, error, note_url, notifi
 UPDATE jobs SET status = 'ready', phase = 'subtitle' WHERE phase = 'summary';
 ```
 
-- [ ] **Step 4: `worker/src/store.ts`**
+- [x] **Step 4: `worker/src/store.ts`**
 
 A `Binding` interfész elé:
 
@@ -1002,7 +1002,7 @@ A `notesFor` után:
     dueRuns: (now) => Promise.resolve(runs.filter((item) => isDue(item, now))),
 ```
 
-- [ ] **Step 5: `worker/src/d1.ts`**
+- [x] **Step 5: `worker/src/d1.ts`**
 
 Az import: `import type { Binding, JobRow, JobStatus, JobStore, LinkToken, RunRow } from './store.js'`. A `TokenRecord` után:
 
@@ -1108,7 +1108,7 @@ A `createD1Store` visszaadott objektumának végére, a `notesFor` után:
     },
 ```
 
-- [ ] **Step 6: `worker/src/messages.ts`**
+- [x] **Step 6: `worker/src/messages.ts`**
 
 A `function flatTitle` elé `export` kerül (`export function flatTitle`). A fájl végére:
 
@@ -1169,7 +1169,7 @@ export function runQueuedLine(recipes: readonly string[], lang: string | null): 
 }
 ```
 
-- [ ] **Step 7: `worker/src/plan.ts`**
+- [x] **Step 7: `worker/src/plan.ts`**
 
 Az importok:
 
@@ -1275,17 +1275,17 @@ export function runReadyMessage(
 }
 ```
 
-- [ ] **Step 8: A teszt zöld**
+- [x] **Step 8: A teszt zöld**
 
 Run: `pnpm vitest run worker src/recipe/registry.test.ts`
 Expected: PASS, a régi tesztek is.
 
-- [ ] **Step 9: A migráció próbája a helyi D1-en**
+- [x] **Step 9: A migráció próbája a helyi D1-en**
 
 Run: `pnpm worker:migrate:local`, utána `npx wrangler d1 execute transcript-refinery --local --config worker/wrangler.toml --command "SELECT run_id, recipes, status, note_url FROM runs; SELECT job_id, phase, status FROM jobs WHERE job_id IN (SELECT job_id FROM runs)"`
 Expected: a `0004_runs.sql` hiba nélkül lefut. Ha a helyi D1-ben volt summary-sor, a `runs`-ban a `<jobId>:summary` sora áll `_transcript.md`-re végződő `note_url`-lel, a `jobs`-sora pedig `subtitle` és `ready`. Üres helyi D1-nél a két lekérdezés üres.
 
-- [ ] **Step 10: Ellenőrzés és commit**
+- [x] **Step 10: Ellenőrzés és commit**
 
 Run: `pnpm test && pnpm typecheck && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 
@@ -1314,7 +1314,7 @@ git commit -m "feat(worker): Add the runs table and recipe buttons"
   - `handleTap(update: { update_id: number; callback_query: { id: string; data?: string; from?: { id: number }; message?: { message_id?: number; chat: { id: number } } } }, deps)`.
   - `handleCallback(id, body, deps)`: az `id` futás vagy felirat-sor.
 
-- [ ] **Step 1: A teszt-segédek és a bukó tesztek, `worker/src/handle.test.ts`**
+- [x] **Step 1: A teszt-segédek és a bukó tesztek, `worker/src/handle.test.ts`**
 
 Az importok:
 
@@ -1703,12 +1703,12 @@ describe('handleTap', () => {
   })
 ```
 
-- [ ] **Step 2: A bukás ellenőrzése**
+- [x] **Step 2: A bukás ellenőrzése**
 
 Run: `pnpm vitest run worker`
 Expected: FAIL. A `handleTap` a `r:` adatot nem ismeri, a felirat üzenete még egy `summary` gombot küld, és a `deps` `edit` mezőjét a típus nem ismeri.
 
-- [ ] **Step 3: `worker/src/handle.ts`, az egész fájl**
+- [x] **Step 3: `worker/src/handle.ts`, az egész fájl**
 
 ```ts
 import {
@@ -2107,7 +2107,7 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
 }
 ```
 
-- [ ] **Step 4: `worker/src/index.ts`**
+- [x] **Step 4: `worker/src/index.ts`**
 
 Az import: `import { LINK_INVALID_PAGE, newToken, type Key } from './plan.js'`. Az `identity` függvény után:
 
@@ -2158,19 +2158,19 @@ Az `answerTap` is ezt a segédet hívja:
 
 Az `isTap` típusőrében a `message?: { chat: { id: number } }` helyett `message?: { message_id?: number; chat: { id: number } }`.
 
-- [ ] **Step 5: A régi `summary`-út törlése**
+- [x] **Step 5: A régi `summary`-út törlése**
 
 - `worker/src/messages.ts`: a `noteReadyMessage` és a `summaryButton` függvény törlődik.
 - `worker/src/plan.ts`: az újraexport-listából a `noteReadyMessage` és a `summaryButton` kimarad. A `decideTap` függvény törlődik (a `TapAction` típus marad, a `decideRun` használja).
 - `worker/src/store.ts`: a `JobStore` `claim` hívása és a `memoryStore` `claim` megvalósítása törlődik.
 - `worker/src/d1.ts`: a `claim` megvalósítása törlődik.
 
-- [ ] **Step 6: A teszt zöld**
+- [x] **Step 6: A teszt zöld**
 
 Run: `pnpm vitest run worker`
 Expected: PASS.
 
-- [ ] **Step 7: Ellenőrzés és commit**
+- [x] **Step 7: Ellenőrzés és commit**
 
 Run: `pnpm test && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 
@@ -2197,7 +2197,7 @@ git commit -m "feat(worker): Offer every recipe and translation in the bot"
   - `notesFor(sub)`: a fiók azon `jobs`-sorai, amelyeknek van `ready` futása, az `acceptedAt` szerint csökkenő sorrendben.
   - `vaultPath(noteUrl, repo, branch, kind)`: a `_transcript.md`-re végződő címből a fajta szakaszai.
 
-- [ ] **Step 1: A bukó tesztek, `worker/src/reader.test.ts`, az egész fájl**
+- [x] **Step 1: A bukó tesztek, `worker/src/reader.test.ts`, az egész fájl**
 
 ```ts
 import { afterEach, describe, expect, it } from 'vitest'
@@ -2403,12 +2403,12 @@ describe('notePage', () => {
 
 `worker/src/plan.test.ts`: a `row` függvényben ugyanez a három sor törlődik.
 
-- [ ] **Step 2: A bukás ellenőrzése**
+- [x] **Step 2: A bukás ellenőrzése**
 
 Run: `pnpm vitest run worker/src/reader.test.ts`
 Expected: FAIL. A `vaultPath` `_summary.md` véget vár, és a lista a `noteUrl` alapján szűr.
 
-- [ ] **Step 3: `worker/src/reader.ts`, az egész fájl**
+- [x] **Step 3: `worker/src/reader.ts`, az egész fájl**
 
 ```ts
 import { findRow } from './handle.js'
@@ -2506,7 +2506,7 @@ export async function notePage(jobId: string, kind: string, sub: string, deps: R
 }
 ```
 
-- [ ] **Step 4: `worker/src/store.ts`**
+- [x] **Step 4: `worker/src/store.ts`**
 
 - `export type JobPhase = 'subtitle' | 'summary'` törlődik.
 - A `JobRow`-ból a `phase: JobPhase`, a `noteUrl: string | null` és a `noteNotified: boolean` mező törlődik.
@@ -2521,7 +2521,7 @@ export async function notePage(jobId: string, kind: string, sub: string, deps: R
       ),
 ```
 
-- [ ] **Step 5: `worker/src/d1.ts`**
+- [x] **Step 5: `worker/src/d1.ts`**
 
 - A `JobRecord`-ból a `phase`, a `note_url` és a `note_notified` mező, a `toRow`-ból a `phase`, a `noteUrl` és a `noteNotified` sor törlődik.
 - Az `insert`:
@@ -2599,16 +2599,16 @@ export async function notePage(jobId: string, kind: string, sub: string, deps: R
 
 A `jobs` tábla `phase`, `note_url` és `note_notified` oszlopa marad: a D1-en a `DROP COLUMN` felesleges kockázat, és az új sor a régi alapértéket kapja.
 
-- [ ] **Step 6: `worker/src/handle.ts`**
+- [x] **Step 6: `worker/src/handle.ts`**
 
 A `handleUpdate` `const row: JobRow = { … }` literáljából a `phase: 'subtitle',`, a `noteUrl: null,` és a `noteNotified: false,` sor törlődik.
 
-- [ ] **Step 7: A teszt zöld**
+- [x] **Step 7: A teszt zöld**
 
 Run: `pnpm vitest run worker`
 Expected: PASS.
 
-- [ ] **Step 8: Ellenőrzés és commit**
+- [x] **Step 8: Ellenőrzés és commit**
 
 Run: `pnpm test && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 
@@ -2625,7 +2625,7 @@ git commit -m "feat(worker): Open every finished note kind in the reader"
 - Modify: `docs/operations/telegram-worker-topology.md` (a „Kész jegyzet” sor)
 - Modify: `docs/plans/2026-10-04-telegram-cloudflare-brief.md` (a „Receptválasztás” állapotsora)
 
-- [ ] **Step 1: A topológia leírása**
+- [x] **Step 1: A topológia leírása**
 
 A `docs/operations/telegram-worker-topology.md` `- **Kész jegyzet** (a `summary` gomb után): …` kezdetű sora helyére:
 
@@ -2634,7 +2634,7 @@ A `docs/operations/telegram-worker-topology.md` `- **Kész jegyzet** (a `summary
 - **Kész jegyzet:** `<cím> · <recept>. A jegyzet megvan.`, fordításnál `<cím> · <nyelv>. A fordítás megvan.`, és jegyzetenként egy sor: `https://<worker>/notes/<jobId>/<fajta>` (például `notes`, `summary-de`). Az oldal Cloudflare Access mögött van, és a jegyzetet a vault-repóból, a GitHub renderelt HTML-jével mutatja. A `/notes/<jobId>/transcript` a hozzá tartozó `_transcript.md`. A `https://<worker>/notes` a belépett fiók jegyzeteinek listája, videónként a kész fajtákkal. A bot csak privát chatben válaszol.
 ```
 
-- [ ] **Step 2: A brief állapotsora**
+- [x] **Step 2: A brief állapotsora**
 
 A `docs/plans/2026-10-04-telegram-cloudflare-brief.md` `**Állapot:** javaslat, 2026-10-04. A brainstorming ne vegye lezártnak.` sora helyére:
 
@@ -2642,7 +2642,7 @@ A `docs/plans/2026-10-04-telegram-cloudflare-brief.md` `**Állapot:** javaslat, 
 **Állapot:** lezárva 2026-10-08-án: csak gombbal, receptnév gépelése nélkül. Lásd [`2026-10-08-telegram-receptek-spec.md`](./2026-10-08-telegram-receptek-spec.md). Az alábbi javaslat a döntés előzménye.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Run: `pnpm lint`
 
@@ -2657,7 +2657,7 @@ git commit -m "docs(worker): Describe the recipe buttons and translation"
 
 Kifelé ható lépések. Mindegyik előtt szólj, és várd meg az igent. A kód-PR merge-e és a kiadás (`chore/release-v1.12.0`, changelog, tag) után.
 
-A sorrend számít. A régi Worker a régi `recipe` mezőt küldi, amit az új konténer `400`-zal elutasít. Ha a migráció és az új Worker között valaki a régi `summary` gombra koppint, a sor `summary` fázisban ragad. **A 2–4. lépés alatt ne koppints a botban.**
+A sorrend számít. A régi Worker a régi `recipe` mezőt küldi, amit az új konténer `400`-zal elutasít. Ha a migráció és az új Worker között valaki a régi `summary` gombra koppint, a sor `summary` fázisban ragad. **A 2–4. lépés alatt ne koppints a botban.** Ha mégis megtörtént, a 3. lépés után még egyszer: `npx wrangler d1 execute transcript-refinery --remote --config worker/wrangler.toml --command "UPDATE jobs SET status='ready', phase='subtitle' WHERE phase='summary'"`.
 
 - [ ] **Step 1: Konténerkép.** `pnpm docker:publish`. Utána a `peter-mba`-n a `~/homelab/services/refinery/docker-compose.yml` `image:` sora `ghcr.io/pcsontos/transcript-refinery:1.12.0` lesz (ma `1.9.0`), és `ssh peter-mba 'cd ~/homelab/services/refinery && docker compose pull && docker compose up -d'`. Ellenőrzés: `ssh peter-mba 'docker logs --tail 5 homelab-refinery'` a `[serve] Refinery daemon elindult` sort mutatja.
 - [ ] **Step 2: Migráció.** `pnpm worker:migrate`. Ellenőrzés: `npx wrangler d1 execute transcript-refinery --remote --config worker/wrangler.toml --command "SELECT run_id, status, note_url FROM runs"` a korábbi summary-jegyzetek sorait mutatja, `_transcript.md`-re végződő `note_url`-lel.

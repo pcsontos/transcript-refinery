@@ -1,33 +1,45 @@
 import {
   BIND_FIRST,
+  LANG_LINE,
   LINK_INVALID,
   MISSING_NOTE_URL,
+  NOTHING_TO_TRANSLATE,
+  PICK_LINE,
   REJECTED_SECRET,
   TOKEN_TTL,
   alreadyBoundLine,
   alreadyLine,
   boundLine,
+  decideRun,
   decideStart,
-  decideTap,
   hashToken,
   isAllowed,
   isToken,
+  langKeyboard,
   linesForMessage,
   linkLine,
+  maskRecipes,
   notAllowedLine,
-  noteReadyMessage,
+  parseTap,
+  pickKeyboard,
   queuedLine,
+  readyBases,
   readyLine,
-  summaryButton,
+  recipeKeyboard,
+  runId,
+  runQueuedLine,
+  runReadyMessage,
   waitingLine,
+  type Key,
 } from './plan.js'
-import type { Binding, JobRow, JobStore } from './store.js'
+import type { Binding, JobRow, JobStatus, JobStore, RunRow } from './store.js'
 
 export interface PlannedKnock {
   jobId: string
   videoId: string
   url: string
-  recipe?: 'summary'
+  recipes?: string[]
+  lang?: string
 }
 
 export interface WorkerDeps {
@@ -38,7 +50,8 @@ export interface WorkerDeps {
   now: () => number
   newToken: () => string
   knock: (job: PlannedKnock) => Promise<202 | 409 | 401 | 'down'>
-  send: (chatId: string, text: string, button?: { text: string; data: string }) => Promise<boolean>
+  send: (chatId: string, text: string, keyboard?: Key[][]) => Promise<boolean>
+  edit: (chatId: string, messageId: number, text: string, keyboard: Key[][]) => Promise<boolean>
   answerTap: (callbackQueryId: string) => Promise<void>
 }
 
@@ -53,10 +66,6 @@ export async function findRow(store: JobStore, jobId: string): Promise<JobRow | 
   return rows.find((row) => row.jobId === jobId) ?? null
 }
 
-function readerLink(jobId: string, deps: WorkerDeps): string {
-  return `${deps.linkBase}/notes/${jobId}/summary`
-}
-
 async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Promise<Binding | null> {
   if (userId === undefined) return null
   const binding = await deps.store.bindingFor(userId)
@@ -64,27 +73,40 @@ async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Pro
   return binding
 }
 
-async function settle(row: JobRow, result: KnockResult, deps: WorkerDeps): Promise<void> {
+/** A felirat sora és a futás sora is így áll be a kopogtatás eredménye szerint. */
+async function settle(
+  target: { status: JobStatus; acceptedAt: number | null; error: string | null },
+  row: JobRow,
+  save: () => Promise<void>,
+  result: KnockResult,
+  deps: WorkerDeps,
+): Promise<void> {
   if (result === 409) return
   if (result === 202) {
-    row.status = 'accepted'
-    row.acceptedAt = deps.now()
-    await deps.store.save(row)
+    target.status = 'accepted'
+    target.acceptedAt = deps.now()
+    await save()
     return
   }
   if (result === 401) {
     const sent = await deps.send(row.chatId, REJECTED_SECRET)
     if (!sent) return
-    row.status = 'failed'
-    row.error = REJECTED_SECRET
-    await deps.store.save(row)
+    target.status = 'failed'
+    target.error = REJECTED_SECRET
+    await save()
     return
   }
-  if (row.status === 'waiting') return
+  if (target.status === 'waiting') return
   const sent = await deps.send(row.chatId, waitingLine(row.videoId))
   if (!sent) return
-  row.status = 'waiting'
-  await deps.store.save(row)
+  target.status = 'waiting'
+  await save()
+}
+
+function knockFor(run: RunRow, row: JobRow): PlannedKnock {
+  const knock: PlannedKnock = { jobId: run.runId, videoId: row.videoId, url: row.url, recipes: run.recipes }
+  if (run.lang !== null) knock.lang = run.lang
+  return knock
 }
 
 async function handleStart(
@@ -191,12 +213,9 @@ export async function handleUpdate(
       videoId: job.videoId,
       url: job.url,
       status: 'queued',
-      phase: 'subtitle',
       error: null,
       title: null,
-      noteUrl: null,
       notifiedReady: false,
-      noteNotified: false,
       acceptedAt: null,
       sub: binding.sub,
     }
@@ -209,18 +228,60 @@ export async function handleUpdate(
 
 export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerDeps): Promise<void> {
   for (const knock of knocks) {
+    if (knock.recipes !== undefined) {
+      const run = await deps.store.run(knock.jobId)
+      const row = run === null ? null : await findRow(deps.store, run.jobId)
+      if (run === null || row === null) continue
+      await settle(run, row, () => deps.store.saveRun(run), await deps.knock(knock), deps)
+      continue
+    }
     const row = await findRow(deps.store, knock.jobId)
     if (!row) continue
-    await settle(row, await deps.knock(knock), deps)
+    await settle(row, row, () => deps.store.save(row), await deps.knock(knock), deps)
   }
 }
 
-export async function handleCallback(
-  jobId: string,
-  body: { status: 'ready'; title: string; noteUrl?: string } | { status: 'failed'; error: string },
-  deps: WorkerDeps,
-): Promise<number> {
-  const row = await findRow(deps.store, jobId)
+type CallbackBody = { status: 'ready'; title: string; noteUrl?: string } | { status: 'failed'; error: string }
+
+async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): Promise<void> {
+  const row = await findRow(deps.store, run.jobId)
+  if (row === null) return
+  if (body.status === 'failed') {
+    const sent = await deps.send(row.chatId, body.error)
+    if (!sent) return
+    run.status = 'failed'
+    run.error = body.error
+    await deps.store.saveRun(run)
+    return
+  }
+  if (run.notified) return
+  if (body.noteUrl === undefined || body.noteUrl === '') {
+    const sent = await deps.send(row.chatId, MISSING_NOTE_URL)
+    if (!sent) return
+    run.status = 'failed'
+    run.error = MISSING_NOTE_URL
+    await deps.store.saveRun(run)
+    return
+  }
+  run.noteUrl = body.noteUrl
+  const sent = await deps.send(row.chatId, runReadyMessage(body.title, run, deps.linkBase))
+  if (!sent) {
+    run.status = 'accepted'
+    await deps.store.saveRun(run)
+    return
+  }
+  run.status = 'ready'
+  run.notified = true
+  await deps.store.saveRun(run)
+}
+
+export async function handleCallback(id: string, body: CallbackBody, deps: WorkerDeps): Promise<number> {
+  const run = await deps.store.run(id)
+  if (run !== null) {
+    await runCallback(run, body, deps)
+    return 200
+  }
+  const row = await findRow(deps.store, id)
   if (!row) return 200
   if (body.status === 'failed') {
     const sent = await deps.send(row.chatId, body.error)
@@ -230,33 +291,16 @@ export async function handleCallback(
     await deps.store.save(row)
     return 200
   }
-  if (row.phase === 'summary') {
-    if (row.noteNotified) return 200
-    if (body.noteUrl === undefined || body.noteUrl === '') {
-      const sent = await deps.send(row.chatId, MISSING_NOTE_URL)
-      if (!sent) return 200
-      row.status = 'failed'
-      row.error = MISSING_NOTE_URL
+  if (row.notifiedReady) {
+    // Az újrakopogtatott, már értesített sor is ready, különben a cron örökké kopogtatja.
+    if (row.status !== 'ready') {
+      row.status = 'ready'
       await deps.store.save(row)
-      return 200
     }
-    row.title = body.title
-    row.noteUrl = body.noteUrl
-    const sent = await deps.send(row.chatId, noteReadyMessage(body.title, readerLink(row.jobId, deps)))
-    if (!sent) {
-      row.status = 'accepted'
-      row.noteNotified = false
-      await deps.store.save(row)
-      return 200
-    }
-    row.status = 'ready'
-    row.noteNotified = true
-    await deps.store.save(row)
     return 200
   }
-  if (row.notifiedReady) return 200
   row.title = body.title
-  const sent = await deps.send(row.chatId, readyLine(body.title), summaryButton(row.jobId))
+  const sent = await deps.send(row.chatId, readyLine(body.title), recipeKeyboard(row.jobId))
   if (!sent) {
     await deps.store.save(row)
     return 200
@@ -267,10 +311,49 @@ export async function handleCallback(
   return 200
 }
 
+async function requestRun(row: JobRow, recipes: string[], lang: string | null, deps: WorkerDeps): Promise<PlannedKnock[]> {
+  const id = runId(row.jobId, recipes, lang)
+  const run = await deps.store.run(id)
+  const action = decideRun(run)
+  if (action.type === 'ignore') return []
+  if (action.type === 'busy') {
+    await deps.send(row.chatId, alreadyLine(row.videoId))
+    return []
+  }
+  if (action.type === 'resend') {
+    if (run !== null) await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase))
+    return []
+  }
+  const fresh: RunRow = {
+    runId: id,
+    jobId: row.jobId,
+    recipes,
+    lang,
+    status: 'queued',
+    error: null,
+    noteUrl: null,
+    notified: false,
+    acceptedAt: null,
+  }
+  const claimed =
+    action.type === 'start' ? await deps.store.insertRun(fresh) : await deps.store.claimRun(id, 'failed', 'queued')
+  if (!claimed) {
+    await deps.send(row.chatId, alreadyLine(row.videoId))
+    return []
+  }
+  await deps.send(row.chatId, runQueuedLine(recipes, lang))
+  return [knockFor(fresh, row)]
+}
+
 export async function handleTap(
   update: {
     update_id: number
-    callback_query: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } }
+    callback_query: {
+      id: string
+      data?: string
+      from?: { id: number }
+      message?: { message_id?: number; chat: { id: number } }
+    }
   },
   deps: WorkerDeps,
 ): Promise<PlannedKnock[]> {
@@ -279,35 +362,37 @@ export async function handleTap(
   const from = update.callback_query.from
   const binding = await allowedBinding(from === undefined ? undefined : String(from.id), deps)
   if (binding === null) return []
-  const data = update.callback_query.data ?? ''
-  if (!data.startsWith('summary:')) return []
-  const jobId = data.slice('summary:'.length)
-  const row = await findRow(deps.store, jobId)
-  const action = decideTap(row, row?.sub === binding.sub)
-  if (action.type === 'busy') {
-    if (row) await deps.send(row.chatId, alreadyLine(row.videoId))
+  const tap = parseTap(update.callback_query.data ?? '')
+  if (tap === null) return []
+  const row = await findRow(deps.store, tap.jobId)
+  if (row === null || row.sub !== binding.sub || row.status !== 'ready') return []
+  if (tap.type === 'recipe') return requestRun(row, [tap.recipe], null, deps)
+  if (tap.type === 'lang') {
+    const recipes = maskRecipes(tap.mask)
+    return recipes.length === 0 ? [] : requestRun(row, recipes, tap.lang, deps)
+  }
+  const ready = readyBases(await deps.store.runsFor(row.jobId))
+  if (tap.type === 'translate') {
+    if (ready.length === 0) await deps.send(row.chatId, NOTHING_TO_TRANSLATE)
+    else await deps.send(row.chatId, PICK_LINE, pickKeyboard(0, ready, row.jobId))
     return []
   }
-  if (action.type === 'resend') {
-    if (row?.title && row.noteUrl) await deps.send(row.chatId, noteReadyMessage(row.title, readerLink(row.jobId, deps)))
-    return []
-  }
-  if (action.type === 'ignore') return []
-  const claimed =
-    action.type === 'start'
-      ? await deps.store.claim(jobId, { phase: 'subtitle', status: 'ready' }, { phase: 'summary', status: 'queued' })
-      : await deps.store.claim(jobId, { phase: 'summary', status: 'failed' }, { phase: 'summary', status: 'queued' })
-  if (claimed === null) {
-    if (row) await deps.send(row.chatId, alreadyLine(row.videoId))
-    return []
-  }
-  return [{ jobId: claimed.jobId, videoId: claimed.videoId, url: claimed.url, recipe: 'summary' }]
+  // A Telegram a régi üzenetnél elhagyhatja a message mezőt: ilyenkor nincs mit szerkeszteni.
+  const messageId = update.callback_query.message?.message_id
+  if (typeof messageId !== 'number') return []
+  if (tap.type === 'toggle') await deps.edit(row.chatId, messageId, PICK_LINE, pickKeyboard(tap.mask, ready, row.jobId))
+  else if (tap.mask !== 0) await deps.edit(row.chatId, messageId, LANG_LINE, langKeyboard(tap.mask, row.jobId))
+  return []
 }
 
 export async function handleCron(deps: WorkerDeps): Promise<void> {
   for (const row of await deps.store.due(deps.now())) {
     const knock: PlannedKnock = { jobId: row.jobId, videoId: row.videoId, url: row.url }
-    if (row.phase === 'summary') knock.recipe = 'summary'
-    await settle(row, await deps.knock(knock), deps)
+    await settle(row, row, () => deps.store.save(row), await deps.knock(knock), deps)
+  }
+  for (const run of await deps.store.dueRuns(deps.now())) {
+    const row = await findRow(deps.store, run.jobId)
+    if (row === null) continue
+    await settle(run, row, () => deps.store.saveRun(run), await deps.knock(knockFor(run, row)), deps)
   }
 }

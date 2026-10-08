@@ -209,7 +209,7 @@ különben egy üzenet órákig tart.
 
 ## Receptválasztás
 
-**Állapot:** javaslat, 2026-10-04. A brainstorming ne vegye lezártnak.
+**Állapot:** lezárva 2026-10-08-án: csak gombbal, receptnév gépelése nélkül. Lásd [`2026-10-08-telegram-receptek-spec.md`](./2026-10-08-telegram-receptek-spec.md). Az alábbi javaslat a döntés előzménye.
 
 A kérdés: a bot honnan tudja, hogy egy videóra a `summary` készüljön, a `notes`,
 vagy mind a kettő. Ma ezt a [`0010`](../decisions/0010-videonkenti-receptvalasztas.md)

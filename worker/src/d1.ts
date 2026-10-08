@@ -1,4 +1,4 @@
-import type { Binding, JobRow, JobStatus, JobStore, LinkToken } from './store.js'
+import type { Binding, JobRow, JobStatus, JobStore, LinkToken, RunRow } from './store.js'
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement
@@ -19,12 +19,9 @@ interface JobRecord {
   video_id: string
   url: string
   status: JobStatus
-  phase: JobRow['phase']
   error: string | null
   title: string | null
-  note_url: string | null
   notified_ready: number
-  note_notified: number
   accepted_at: number | null
   sub: string | null
 }
@@ -45,6 +42,37 @@ interface TokenRecord {
   used: number
 }
 
+interface RunRecord {
+  run_id: string
+  job_id: string
+  recipes: string
+  lang: string | null
+  status: JobStatus
+  error: string | null
+  note_url: string | null
+  notified: number
+  accepted_at: number | null
+}
+
+function toRun(record: RunRecord): RunRow {
+  return {
+    runId: record.run_id,
+    jobId: record.job_id,
+    recipes: record.recipes.split(' '),
+    lang: record.lang,
+    status: record.status,
+    error: record.error,
+    noteUrl: record.note_url,
+    notified: record.notified === 1,
+    acceptedAt: record.accepted_at,
+  }
+}
+
+function changed(result: unknown): boolean {
+  const changes = (result as { meta?: { changes?: number } }).meta?.changes
+  return changes === undefined || changes === 1
+}
+
 const FIFTEEN_MINUTES = 15 * 60 * 1000
 
 function toRow(record: JobRecord): JobRow {
@@ -56,12 +84,9 @@ function toRow(record: JobRecord): JobRow {
     videoId: record.video_id,
     url: record.url,
     status: record.status,
-    phase: record.phase,
     error: record.error,
     title: record.title,
-    noteUrl: record.note_url,
     notifiedReady: record.notified_ready === 1,
-    noteNotified: record.note_notified === 1,
     acceptedAt: record.accepted_at,
     sub: record.sub,
   }
@@ -106,9 +131,9 @@ export function createD1Store(db: D1Like): JobStore {
       await db
         .prepare(
           `INSERT INTO jobs (
-            job_id, update_id, chat_id, message_id, video_id, url, status, phase, error, title,
-            note_url, notified_ready, note_notified, accepted_at, sub
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            job_id, update_id, chat_id, message_id, video_id, url, status, error, title,
+            notified_ready, accepted_at, sub
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           row.jobId,
@@ -118,12 +143,9 @@ export function createD1Store(db: D1Like): JobStore {
           row.videoId,
           row.url,
           row.status,
-          row.phase,
           row.error,
           row.title,
-          row.noteUrl,
           row.notifiedReady ? 1 : 0,
-          row.noteNotified ? 1 : 0,
           row.acceptedAt,
           row.sub,
         )
@@ -133,8 +155,8 @@ export function createD1Store(db: D1Like): JobStore {
       await db
         .prepare(
           `UPDATE jobs SET
-            update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?, phase = ?,
-            error = ?, title = ?, note_url = ?, notified_ready = ?, note_notified = ?, accepted_at = ?, sub = ?
+            update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?,
+            error = ?, title = ?, notified_ready = ?, accepted_at = ?, sub = ?
           WHERE job_id = ?`,
         )
         .bind(
@@ -144,12 +166,9 @@ export function createD1Store(db: D1Like): JobStore {
           row.videoId,
           row.url,
           row.status,
-          row.phase,
           row.error,
           row.title,
-          row.noteUrl,
           row.notifiedReady ? 1 : 0,
-          row.noteNotified ? 1 : 0,
           row.acceptedAt,
           row.sub,
           row.jobId,
@@ -167,24 +186,9 @@ export function createD1Store(db: D1Like): JobStore {
         .all<JobRecord>()
       return result.results.map(toRow)
     },
-    async claim(jobId, expect, next) {
-      const result = await db
-        .prepare(
-          `UPDATE jobs SET phase = ?, status = ?, error = NULL, accepted_at = NULL
-           WHERE job_id = ? AND phase = ? AND status = ?`,
-        )
-        .bind(next.phase, next.status, jobId, expect.phase, expect.status)
-        .run()
-      const changes = (result as { meta?: { changes?: number } }).meta?.changes
-      if (changes !== 1) return null
-      const record = await db.prepare('SELECT * FROM jobs WHERE job_id = ?').bind(jobId).first<JobRecord>()
-      return record === null ? null : toRow(record)
-    },
     async rememberUpdate(updateId) {
       try {
-        const result = await db.prepare('INSERT INTO seen_updates (update_id) VALUES (?)').bind(updateId).run()
-        const changes = (result as { meta?: { changes?: number } }).meta?.changes
-        return changes === undefined || changes === 1
+        return changed(await db.prepare('INSERT INTO seen_updates (update_id) VALUES (?)').bind(updateId).run())
       } catch {
         return false
       }
@@ -230,10 +234,65 @@ export function createD1Store(db: D1Like): JobStore {
     },
     async notesFor(sub) {
       const result = await db
-        .prepare('SELECT * FROM jobs WHERE sub = ? AND note_url IS NOT NULL ORDER BY accepted_at DESC')
+        .prepare(
+          `SELECT * FROM jobs WHERE sub = ? AND job_id IN (SELECT job_id FROM runs WHERE status = 'ready')
+           ORDER BY accepted_at DESC`,
+        )
         .bind(sub)
         .all<JobRecord>()
       return result.results.map(toRow)
+    },
+    async run(runId) {
+      const record = await db.prepare('SELECT * FROM runs WHERE run_id = ?').bind(runId).first<RunRecord>()
+      return record === null ? null : toRun(record)
+    },
+    async insertRun(run) {
+      const result = await db
+        .prepare(
+          `INSERT INTO runs (run_id, job_id, recipes, lang, status, error, note_url, notified, accepted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(run_id) DO NOTHING`,
+        )
+        .bind(
+          run.runId,
+          run.jobId,
+          run.recipes.join(' '),
+          run.lang,
+          run.status,
+          run.error,
+          run.noteUrl,
+          run.notified ? 1 : 0,
+          run.acceptedAt,
+        )
+        .run()
+      return changed(result)
+    },
+    async saveRun(run) {
+      await db
+        .prepare('UPDATE runs SET status = ?, error = ?, note_url = ?, notified = ?, accepted_at = ? WHERE run_id = ?')
+        .bind(run.status, run.error, run.noteUrl, run.notified ? 1 : 0, run.acceptedAt, run.runId)
+        .run()
+    },
+    async claimRun(runId, expect, next) {
+      const result = await db
+        .prepare('UPDATE runs SET status = ?, error = NULL, accepted_at = NULL WHERE run_id = ? AND status = ?')
+        .bind(next, runId, expect)
+        .run()
+      return changed(result)
+    },
+    async runsFor(jobId) {
+      const result = await db.prepare('SELECT * FROM runs WHERE job_id = ? ORDER BY rowid').bind(jobId).all<RunRecord>()
+      return result.results.map(toRun)
+    },
+    async dueRuns(now) {
+      const result = await db
+        .prepare(
+          `SELECT * FROM runs
+           WHERE status IN ('queued', 'waiting')
+              OR (status = 'accepted' AND accepted_at IS NOT NULL AND accepted_at < ?)`,
+        )
+        .bind(now - FIFTEEN_MINUTES)
+        .all<RunRecord>()
+      return result.results.map(toRun)
     },
   }
 }

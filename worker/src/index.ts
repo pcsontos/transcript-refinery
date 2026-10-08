@@ -8,7 +8,7 @@ import {
   handleUpdate,
   type WorkerDeps,
 } from './handle.js'
-import { LINK_INVALID_PAGE, newToken } from './plan.js'
+import { LINK_INVALID_PAGE, newToken, type Key } from './plan.js'
 import { notePage, notesPage, type ReaderDeps } from './reader.js'
 
 interface Env {
@@ -52,6 +52,23 @@ async function identity(ctx: ExecutionContext): Promise<{ sub: string; email: st
   }
 }
 
+function markup(keyboard: Key[][]): { inline_keyboard: { text: string; callback_data: string }[][] } {
+  return { inline_keyboard: keyboard.map((row) => row.map((key) => ({ text: key.text, callback_data: key.data }))) }
+}
+
+async function telegram(token: string, method: string, payload: unknown): Promise<boolean> {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
 function deps(env: Env, linkBase = ''): WorkerDeps {
   return {
     allowedEmails: env.TELEGRAM_ALLOWED_EMAILS,
@@ -76,34 +93,21 @@ function deps(env: Env, linkBase = ''): WorkerDeps {
         return 'down'
       }
     },
-    send: async (chatId, text, button) => {
-      const payload: {
-        chat_id: string
-        text: string
-        reply_markup?: { inline_keyboard: { text: string; callback_data: string }[][] }
-      } = { chat_id: chatId, text }
-      if (button) payload.reply_markup = { inline_keyboard: [[{ text: button.text, callback_data: button.data }]] }
-      try {
-        const response = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        return response.ok
-      } catch {
-        return false
-      }
-    },
+    send: (chatId, text, keyboard) =>
+      telegram(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
+        chat_id: chatId,
+        text,
+        ...(keyboard === undefined ? {} : { reply_markup: markup(keyboard) }),
+      }),
+    edit: (chatId, messageId, text, keyboard) =>
+      telegram(env.TELEGRAM_BOT_TOKEN, 'editMessageText', {
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        reply_markup: markup(keyboard),
+      }),
     answerTap: async (callbackQueryId) => {
-      try {
-        await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ callback_query_id: callbackQueryId }),
-        })
-      } catch {
-        return undefined
-      }
+      await telegram(env.TELEGRAM_BOT_TOKEN, 'answerCallbackQuery', { callback_query_id: callbackQueryId })
     },
   }
 }
@@ -114,7 +118,7 @@ function hasNumericId(value: unknown): boolean {
 
 function isTap(value: unknown): value is {
   update_id: number
-  callback_query: { id: string; data?: string; from?: { id: number }; message?: { chat: { id: number } } }
+  callback_query: { id: string; data?: string; from?: { id: number }; message?: { message_id?: number; chat: { id: number } } }
 } {
   if (typeof value !== 'object' || value === null) return false
   const update = value as { update_id?: unknown; callback_query?: unknown }

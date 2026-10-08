@@ -1,6 +1,6 @@
 import { classifyInput } from 'transcript-refinery/classify'
-import { NO_VIDEO_LINE, NOT_YOUTUBE_LINE, PLAYLIST_LINE, alreadyLine, queuedLine } from './messages.js'
-import type { JobRow, LinkToken } from './store.js'
+import { LANGS, NO_VIDEO_LINE, NOT_YOUTUBE_LINE, PLAYLIST_LINE, RECIPES, alreadyLine, flatTitle, queuedLine } from './messages.js'
+import type { JobRow, LinkToken, RunRow } from './store.js'
 
 export {
   alreadyLine,
@@ -9,8 +9,6 @@ export {
   waitingLine,
   REJECTED_SECRET,
   MISSING_NOTE_URL,
-  noteReadyMessage,
-  summaryButton,
   BIND_FIRST,
   LINK_INVALID,
   LINK_INVALID_PAGE,
@@ -18,19 +16,95 @@ export {
   boundLine,
   alreadyBoundLine,
   notAllowedLine,
+  RECIPES,
+  LANGS,
+  type Key,
+  recipeKeyboard,
+  pickKeyboard,
+  langKeyboard,
+  PICK_LINE,
+  LANG_LINE,
+  NOTHING_TO_TRANSLATE,
+  runQueuedLine,
 } from './messages.js'
 
 export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
 
-export function decideTap(row: JobRow | null, allowed: boolean): TapAction {
-  if (row === null || allowed === false) return { type: 'ignore' }
-  if (row.phase === 'subtitle' && row.status === 'ready') return { type: 'start' }
-  if (row.phase === 'summary' && (row.status === 'queued' || row.status === 'waiting' || row.status === 'accepted')) {
-    return { type: 'busy' }
-  }
-  if (row.phase === 'summary' && row.status === 'ready' && row.noteNotified) return { type: 'resend' }
-  if (row.phase === 'summary' && row.status === 'failed') return { type: 'retry' }
+export function decideRun(run: RunRow | null): TapAction {
+  if (run === null) return { type: 'start' }
+  if (OPEN.has(run.status)) return { type: 'busy' }
+  if (run.status === 'failed') return { type: 'retry' }
+  if (run.status === 'ready' && run.notified) return { type: 'resend' }
   return { type: 'ignore' }
+}
+
+export type Tap =
+  | { type: 'recipe'; recipe: string; jobId: string }
+  | { type: 'translate'; jobId: string }
+  | { type: 'toggle' | 'next'; mask: number; jobId: string }
+  | { type: 'lang'; mask: number; lang: string; jobId: string }
+
+const MASK = /^[0-9a-f]{1,2}$/
+
+function maskOf(hex: string | undefined): number | null {
+  return hex !== undefined && MASK.test(hex) ? parseInt(hex, 16) : null
+}
+
+/** A gomb adata. A `jobId` maga is `:`-ot tartalmaz, ezért a maradék egyben a `jobId`. */
+export function parseTap(data: string): Tap | null {
+  const [head, ...rest] = data.split(':')
+  if (head === 'summary') return { type: 'recipe', recipe: 'summary', jobId: rest.join(':') }
+  if (head === 'f') return { type: 'translate', jobId: rest.join(':') }
+  if (head === 'r') {
+    const [recipe, ...job] = rest
+    if (recipe === undefined || !(RECIPES as readonly string[]).includes(recipe)) return null
+    return { type: 'recipe', recipe, jobId: job.join(':') }
+  }
+  if (head === 't' || head === 'n') {
+    const [hex, ...job] = rest
+    const mask = maskOf(hex)
+    if (mask === null) return null
+    return { type: head === 't' ? 'toggle' : 'next', mask, jobId: job.join(':') }
+  }
+  if (head === 'l') {
+    const [hex, lang, ...job] = rest
+    const mask = maskOf(hex)
+    if (mask === null || lang === undefined || !(LANGS as readonly string[]).includes(lang)) return null
+    return { type: 'lang', mask, lang, jobId: job.join(':') }
+  }
+  return null
+}
+
+export function maskRecipes(mask: number): string[] {
+  return RECIPES.filter((_, index) => (mask & (1 << index)) !== 0)
+}
+
+export function runId(jobId: string, recipes: readonly string[], lang: string | null): string {
+  return lang === null ? `${jobId}:${recipes.join('+')}` : `${jobId}:${lang}:${recipes.join('+')}`
+}
+
+/** A futás jegyzetfajtái: a fordítás `<recept>-<nyelv>`, ahogy a vault fájlneve. */
+export function runKinds(run: Pick<RunRow, 'recipes' | 'lang'>): string[] {
+  const lang = run.lang
+  return lang === null ? [...run.recipes] : run.recipes.map((recipe) => `${recipe}-${lang}`)
+}
+
+export function readyBases(runs: readonly RunRow[]): string[] {
+  return RECIPES.filter((recipe) =>
+    runs.some((run) => run.status === 'ready' && run.lang === null && run.recipes.includes(recipe)),
+  )
+}
+
+export function runReadyMessage(
+  title: string,
+  run: Pick<RunRow, 'jobId' | 'recipes' | 'lang'>,
+  linkBase: string,
+): string {
+  const head =
+    run.lang === null
+      ? `${flatTitle(title)} · ${run.recipes.join(', ')}. A jegyzet megvan.`
+      : `${flatTitle(title)} · ${run.lang}. A fordítás megvan.`
+  return [head, ...runKinds(run).map((kind) => `${linkBase}/notes/${run.jobId}/${kind}`)].join('\n')
 }
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
