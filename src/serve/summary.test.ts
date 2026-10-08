@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { loadConfig } from '../config.js'
 import type { RunRuntime } from '../cli.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
-import { runSummary } from './summary.js'
+import { runRecipes } from './summary.js'
 
 const execFileAsync = promisify(execFile)
 const ID = 'abcdefghijk'
@@ -26,6 +26,24 @@ function client(calls: { generate: number }): ReturnType<RunRuntime['createClien
       return Promise.resolve({
         value: { score: 1, gaps: [] } as T,
         usage: { inputTokens: 5, outputTokens: 2 },
+      })
+    },
+  }
+}
+
+const GERMAN = '## Zusammenfassung\n\nDas ist ein Satz aus der Notiz, und er ist für die Zusammenfassung nicht schlecht.\n'
+const HUNGARIAN =
+  '## Összefoglaló\n\nEz a videó arról szól, hogy a figyelem és a türelem hogyan segít a tanulásban, és a tanító azt mondja, hogy nem kell sietni.\n'
+
+/** A summary-hívásra a `summaryText`-et, a német fordítás kérésére a német szöveget adja. */
+function writer(calls: { generate: number }, summaryText: string): ReturnType<RunRuntime['createClient'] & object> {
+  return {
+    ...client(calls),
+    generate(_role, prompt) {
+      calls.generate += 1
+      return Promise.resolve({
+        value: prompt.startsWith('Translate the note below into German') ? GERMAN : summaryText,
+        usage: { inputTokens: 10, outputTokens: 5 },
       })
     },
   }
@@ -87,7 +105,7 @@ async function scene(costLimitUsd = 5) {
   return { root, vault, outDir, load }
 }
 
-describe('runSummary', () => {
+describe('runRecipes', () => {
   const previous = process.env.LITELLM_API_KEY
   const roots: string[] = []
 
@@ -97,13 +115,14 @@ describe('runSummary', () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
   })
 
-  it('a jegyzet a vaultba kerül, a commit csak a két fájlt viszi, a link a summaryra mutat', async () => {
+  it('a jegyzet a vaultba kerül, a commit csak a két fájlt viszi, a link az átiratra mutat', async () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()
     roots.push(root)
     const calls = { generate: 0 }
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => client(calls),
       load,
@@ -112,7 +131,7 @@ describe('runSummary', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.noteUrl).toBe(
-      'https://github.com/tulaj/repo/blob/main/Inbox/transcript-refinery/telegram/Besz%C3%A9d%20%5Babcdefghijk%5D_summary.md',
+      'https://github.com/tulaj/repo/blob/main/Inbox/transcript-refinery/telegram/Besz%C3%A9d%20%5Babcdefghijk%5D_transcript.md',
     )
     const names = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], { cwd: vault, encoding: 'utf8' })
     expect(names.trim().split('\n').sort()).toEqual([
@@ -120,8 +139,9 @@ describe('runSummary', () => {
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
     ].sort())
     const second = { generate: 0 }
-    const again = await runSummary({
+    const again = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => client(second),
       load,
@@ -144,8 +164,9 @@ describe('runSummary', () => {
       JSON.stringify({ id: 'zzzzzzzzzzz', title: 'Más', language: 'hu' }),
     )
     const calls = { generate: 0 }
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => client(calls),
       load,
@@ -168,8 +189,9 @@ describe('runSummary', () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, outDir, load } = await scene()
     roots.push(root)
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => client({ generate: 0 }),
       load,
@@ -178,7 +200,7 @@ describe('runSummary', () => {
     expect(result).toEqual({
       ok: true,
       noteUrl:
-        'https://github.com/tulaj/repo/blob/main/Inbox/transcript-refinery/telegram/Besz%C3%A9d%20%5Babcdefghijk%5D_summary.md',
+        'https://github.com/tulaj/repo/blob/main/Inbox/transcript-refinery/telegram/Besz%C3%A9d%20%5Babcdefghijk%5D_transcript.md',
     })
   })
 
@@ -186,8 +208,9 @@ describe('runSummary', () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, outDir, load } = await scene()
     roots.push(root)
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => client({ generate: 0 }),
       load,
@@ -201,8 +224,9 @@ describe('runSummary', () => {
     const { root, outDir, load } = await scene()
     roots.push(root)
     const calls = { generate: 0 }
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => client(calls),
       load,
@@ -216,8 +240,9 @@ describe('runSummary', () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()
     roots.push(root)
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => client({ generate: 0 }),
       load,
@@ -236,8 +261,9 @@ describe('runSummary', () => {
     const { root, outDir, load } = await scene(0.0001)
     roots.push(root)
     const calls = { generate: 0 }
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => client(calls),
       load,
@@ -253,8 +279,9 @@ describe('runSummary', () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()
     roots.push(root)
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => ({
         generate: () => Promise.reject(new Error('szimulált hiba')),
@@ -272,8 +299,9 @@ describe('runSummary', () => {
     const { root, outDir } = await scene()
     roots.push(root)
     let created = 0
-    const result = await runSummary({
+    const result = await runRecipes({
       videoId: ID,
+      recipes: ['summary'],
       outDir,
       createClient: () => {
         created += 1
@@ -284,5 +312,59 @@ describe('runSummary', () => {
     })
     expect(result).toEqual({ ok: false, error: 'Nincs konfigurációs fájl: x' })
     expect(created).toBe(0)
+  })
+
+  it('két recept egy futásban: mindkét jegyzet és az átirat egy commitban', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const calls = { generate: 0 }
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['summary', 'qa'],
+      createClient: () => client(calls),
+      load,
+      git: gitFor('https://github.com/tulaj/repo.git'),
+    })
+    expect(result).toEqual({
+      ok: true,
+      noteUrl:
+        'https://github.com/tulaj/repo/blob/main/Inbox/transcript-refinery/telegram/Besz%C3%A9d%20%5Babcdefghijk%5D_transcript.md',
+    })
+    expect(calls.generate).toBe(2)
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    expect(names.trim().split('\n').sort()).toEqual([
+      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_qa.md',
+      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
+      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
+    ].sort())
+  })
+
+  it('a fordítás a kért nyelvre a kész forrásból, a config fordítása nélkül', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const git = gitFor('https://github.com/tulaj/repo.git')
+    const first = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
+    expect(first.ok).toBe(true)
+    const german = { generate: 0 }
+    const result = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', createClient: () => writer(german, HUNGARIAN), load, git })
+    expect(result.ok).toBe(true)
+    expect(german.generate).toBe(1)
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    expect(names).toContain('Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary-de.md')
+  })
+
+  it('a videó saját nyelvére kért fordítás a kihagyás okát adja', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, outDir, load } = await scene()
+    roots.push(root)
+    const git = gitFor('https://github.com/tulaj/repo.git')
+    await runRecipes({ videoId: ID, outDir, recipes: ['summary'], createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
+    const calls = { generate: 0 }
+    const result = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'hu', createClient: () => writer(calls, HUNGARIAN), load, git })
+    expect(result).toEqual({ ok: false, error: 'a forrás már magyar' })
+    expect(calls.generate).toBe(0)
   })
 })

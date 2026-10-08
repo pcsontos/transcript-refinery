@@ -40,23 +40,23 @@ describe('commandServe környezeti változók ellenőrzése', () => {
     expect(code).toBe(1)
   })
 
-  it('a summary hatás a SERVE_OUT mappát és a videóazonosítót adja tovább', async () => {
+  it('a recept hatás a SERVE_OUT mappát, a videót, a recepteket és a nyelvet adja tovább', async () => {
     const outDir = await mkdtemp(join(tmpdir(), 'refinery-serve-'))
-    const seen: { videoId: string; outDir: string }[] = []
+    const seen: unknown[] = []
     const effects = serveEffects({
       outDir,
       languages: ['hu'],
       store: fakeStore,
       fetchSubtitle: () => Promise.resolve({ code: 0, stdout: '', stderr: '' }),
       callback: () => Promise.resolve(),
-      runSummary: (input) => {
-        seen.push({ videoId: input.videoId, outDir: input.outDir })
-        return Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' })
+      runRecipes: (input) => {
+        seen.push(input)
+        return Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a_transcript.md' })
       },
     })
     await effects.writeFile(join(outDir, 'a.vtt'), new Uint8Array([1]))
-    await effects.summarize('abcdefghijk')
-    expect(seen).toEqual([{ videoId: 'abcdefghijk', outDir }])
+    await effects.refine('abcdefghijk', ['summary'], 'de')
+    expect(seen).toEqual([{ videoId: 'abcdefghijk', outDir, recipes: ['summary'], lang: 'de' }])
     await rm(outDir, { recursive: true })
   })
 })

@@ -2,13 +2,19 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { loadCliConfig } from '../config.js'
 import { commandFetch } from '../fetch/command.js'
+import type { LanguageTag } from '../lang/identify.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
-import { runJob, subtitleArgv, type JobEffects, type ServeJob, type SummaryOutcome } from './job.js'
+import { runJob, subtitleArgv, type JobEffects, type RecipesOutcome, type ServeJob } from './job.js'
 import { createR2Store, type R2Config } from './r2.js'
 import { createServeServer, type ServeGate } from './http.js'
-import { runSummary as defaultRunSummary } from './summary.js'
+import { runRecipes as defaultRunRecipes } from './summary.js'
 
-type SummaryRun = (input: { videoId: string; outDir: string }) => Promise<SummaryOutcome>
+type RecipesRun = (input: {
+  videoId: string
+  outDir: string
+  recipes: readonly string[]
+  lang?: LanguageTag
+}) => Promise<RecipesOutcome>
 
 export function serveEffects(input: {
   outDir: string
@@ -19,12 +25,12 @@ export function serveEffects(input: {
   readPair?: JobEffects['readPair']
   deletePair?: JobEffects['deletePair']
   readFile?: JobEffects['readFile']
-  runSummary?: SummaryRun
+  runRecipes?: RecipesRun
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
-  summarize: (videoId: string) => Promise<SummaryOutcome>
+  refine: (videoId: string, recipes: readonly string[], lang?: LanguageTag) => Promise<RecipesOutcome>
 } {
-  const summarizeWith = input.runSummary ?? defaultRunSummary
+  const refineWith = input.runRecipes ?? defaultRunRecipes
   return {
     store: input.store,
     languages: input.languages,
@@ -38,7 +44,7 @@ export function serveEffects(input: {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, body)
     },
-    summarize: (videoId) => summarizeWith({ videoId, outDir: input.outDir }),
+    refine: (videoId, recipes, lang) => refineWith({ videoId, outDir: input.outDir, recipes, lang }),
   }
 }
 

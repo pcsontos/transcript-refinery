@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import type { LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
-import { runJob, subtitleArgv, type CallbackBody, type JobEffects } from './job.js'
+import { runJob, subtitleArgv, type CallbackBody, type JobEffects, type ServeJob } from './job.js'
 
 const ID = 'abcdefghijk'
 const job = { jobId: 'job-1', videoId: ID, url: `https://www.youtube.com/watch?v=${ID}` }
@@ -30,7 +30,7 @@ function emptyEffects(store: ReturnType<typeof memoryStore>): JobEffects {
     readFile: () => Promise.resolve(new Uint8Array()),
     writeFile: () => Promise.resolve(),
     fetchSubtitle: () => Promise.reject(new Error('fetch')),
-    summarize: () => Promise.reject(new Error('summary')),
+    refine: () => Promise.reject(new Error('summary')),
     callback: () => Promise.resolve(),
   }
 }
@@ -42,7 +42,7 @@ function effectsWith(store: ReturnType<typeof memoryStore>, paths: string[]): Jo
       paths.push(path)
       return Promise.resolve()
     },
-    summarize: () => Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' }),
+    refine: () => Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' }),
   }
 }
 
@@ -243,7 +243,7 @@ describe('runJob', () => {
     const written: { path: string; body: Uint8Array }[] = []
     const callbacks: CallbackBody[] = []
     let summarized = 0
-    await runJob({ ...job, recipe: 'summary' }, {
+    await runJob({ ...job, recipes: ['summary'] }, {
       store,
       languages: ['hu', 'en'],
       outDir: '/data/telegram',
@@ -260,7 +260,7 @@ describe('runJob', () => {
       fetchSubtitle: () => {
         throw new Error('fetch')
       },
-      summarize: () => {
+      refine: () => {
         summarized += 1
         return Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a_summary.md' })
       },
@@ -287,7 +287,7 @@ describe('runJob', () => {
       [`videos/${ID}/info.json`]: info,
     })
     const paths: string[] = []
-    await runJob({ ...job, recipe: 'summary' }, effectsWith(store, paths))
+    await runJob({ ...job, recipes: ['summary'] }, effectsWith(store, paths))
     expect(paths).toContain('/data/telegram/A⧸B [abcdefghijk].hu.vtt')
     expect(paths).toContain('/data/telegram/A⧸B [abcdefghijk].info.json')
   })
@@ -295,7 +295,7 @@ describe('runJob', () => {
   it('hiányos R2-nél nincs fetch és nincs summary', async () => {
     const store = memoryStore()
     const callbacks: CallbackBody[] = []
-    await runJob({ ...job, recipe: 'summary' }, {
+    await runJob({ ...job, recipes: ['summary'] }, {
       ...emptyEffects(store),
       callback: (_id, body) => {
         callbacks.push(body)
@@ -310,7 +310,7 @@ describe('runJob', () => {
     const store = memoryStore({ [`videos/${ID}/info.json`]: info, [`videos/${ID}/hu.vtt`]: new Uint8Array([1]) })
     store.get = () => Promise.resolve(null)
     const callbacks: CallbackBody[] = []
-    await runJob({ ...job, recipe: 'summary' }, {
+    await runJob({ ...job, recipes: ['summary'] }, {
       ...emptyEffects(store),
       callback: (_id, body) => {
         callbacks.push(body)
@@ -327,9 +327,9 @@ describe('runJob', () => {
       [`videos/${ID}/info.json`]: info,
     })
     const callbacks: CallbackBody[] = []
-    await runJob({ ...job, recipe: 'summary' }, {
+    await runJob({ ...job, recipes: ['summary'] }, {
       ...emptyEffects(store),
-      summarize: () => Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' }),
+      refine: () => Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' }),
       deletePair: () => Promise.reject(new Error('a lemez tele')),
       callback: (_id, body) => {
         callbacks.push(body)
@@ -341,15 +341,40 @@ describe('runJob', () => {
     ])
   })
 
-  it('a más recept failed, fetch nélkül', async () => {
-    const callbacks: CallbackBody[] = []
-    await runJob({ ...job, recipe: 'qa' }, {
-      ...emptyEffects(memoryStore()),
-      callback: (_id, body) => {
-        callbacks.push(body)
-        return Promise.resolve()
+  it('az ismeretlen recept és nyelv failed, fetch és modell nélkül', async () => {
+    const cases: [ServeJob, string][] = [
+      [{ ...job, recipes: ['toString'] }, 'Ismeretlen recept.'],
+      [{ ...job, recipes: ['summary', 'nincs'] }, 'Ismeretlen recept.'],
+      [{ ...job, recipes: ['summary'], lang: 'pl' }, 'Ismeretlen nyelv.'],
+      [{ ...job, recipes: ['summary'], lang: '__proto__' }, 'Ismeretlen nyelv.'],
+    ]
+    for (const [request, error] of cases) {
+      const callbacks: CallbackBody[] = []
+      await runJob(request, {
+        ...emptyEffects(memoryStore()),
+        callback: (_id, body) => {
+          callbacks.push(body)
+          return Promise.resolve()
+        },
+      })
+      expect(callbacks).toEqual([{ status: 'failed', error }])
+    }
+  })
+
+  it('a recept-út a recepteket és a nyelvet adja a refine-nak', async () => {
+    const info = new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' }))
+    const store = memoryStore({
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: info,
+    })
+    const seen: unknown[] = []
+    await runJob({ ...job, recipes: ['summary', 'notes'], lang: 'de' }, {
+      ...effectsWith(store, []),
+      refine: (videoId, recipes, lang) => {
+        seen.push({ videoId, recipes, lang })
+        return Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a_transcript.md' })
       },
     })
-    expect(callbacks).toEqual([{ status: 'failed', error: 'Ismeretlen recept.' }])
+    expect(seen).toEqual([{ videoId: ID, recipes: ['summary', 'notes'], lang: 'de' }])
   })
 })

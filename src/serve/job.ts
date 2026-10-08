@@ -1,5 +1,7 @@
 import { join } from 'node:path'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
+import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
+import { RECIPES } from '../recipe/registry.js'
 import { sanitizeSegment } from '../vault/sanitize.js'
 import { infoKey, languageMatches, subtitleKey, type LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
@@ -8,14 +10,15 @@ export interface ServeJob {
   jobId: string
   videoId: string
   url: string
-  recipe?: string
+  recipes?: string[]
+  lang?: string
 }
 
 export type CallbackBody =
   | { status: 'ready'; title: string; noteUrl?: string }
   | { status: 'failed'; error: string }
 
-export type SummaryOutcome = { ok: true; noteUrl: string } | { ok: false; error: string }
+export type RecipesOutcome ={ ok: true; noteUrl: string } | { ok: false; error: string }
 
 export interface JobEffects {
   store: ObjectStore
@@ -27,7 +30,7 @@ export interface JobEffects {
   callback: (jobId: string, body: CallbackBody) => Promise<void>
   outDir?: string
   writeFile?: (path: string, body: Uint8Array) => Promise<void>
-  summarize?: (videoId: string) => Promise<SummaryOutcome>
+  refine?: (videoId: string, recipes: readonly string[], lang?: LanguageTag) => Promise<RecipesOutcome>
 }
 
 const UPLOAD_FAILED = 'A feltöltés nem sikerült.'
@@ -35,6 +38,7 @@ const NO_SUBTITLE = 'Nincs felirat'
 const MISSING_PAIR = 'A felirat nincs az R2-ben.'
 const UNREADABLE_PAIR = 'A felirat nem olvasható az R2-ből.'
 const UNKNOWN_RECIPE = 'Ismeretlen recept.'
+const UNKNOWN_LANGUAGE = 'Ismeretlen nyelv.'
 const SUB_NAME = /^([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
 
 export function subtitleArgv(url: string, outDir: string): string[] {
@@ -179,18 +183,24 @@ async function loadSummaryPair(
   return { ok: false, error: MISSING_PAIR }
 }
 
-async function runSummaryRecipe(job: ServeJob, effects: JobEffects): Promise<void> {
-  if (job.recipe !== 'summary') {
+async function runRecipeJob(job: ServeJob & { recipes: string[] }, effects: JobEffects): Promise<void> {
+  // Object.hasOwn: az `in` a `toString`-et is receptnek látná.
+  if (!job.recipes.every((id) => Object.hasOwn(RECIPES, id))) {
     await report(effects, job.jobId, { status: 'failed', error: UNKNOWN_RECIPE })
     return
   }
+  if (job.lang !== undefined && !Object.hasOwn(LANGUAGE_NAMES, job.lang)) {
+    await report(effects, job.jobId, { status: 'failed', error: UNKNOWN_LANGUAGE })
+    return
+  }
+  const lang = job.lang as LanguageTag | undefined
   const loaded = await loadSummaryPair(effects, job.videoId)
   if (!loaded.ok) {
     await forgetWork(effects, job.videoId)
     await report(effects, job.jobId, { status: 'failed', error: loaded.error })
     return
   }
-  if (effects.outDir === undefined || effects.writeFile === undefined || effects.summarize === undefined) {
+  if (effects.outDir === undefined || effects.writeFile === undefined || effects.refine === undefined) {
     await forgetWork(effects, job.videoId)
     await report(effects, job.jobId, { status: 'failed', error: UNREADABLE_PAIR })
     return
@@ -204,9 +214,9 @@ async function runSummaryRecipe(job: ServeJob, effects: JobEffects): Promise<voi
     await report(effects, job.jobId, { status: 'failed', error: UNREADABLE_PAIR })
     return
   }
-  let outcome: SummaryOutcome
+  let outcome: RecipesOutcome
   try {
-    outcome = await effects.summarize(job.videoId)
+    outcome = await effects.refine(job.videoId, job.recipes, lang)
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await forgetWork(effects, job.videoId)
@@ -222,8 +232,8 @@ async function runSummaryRecipe(job: ServeJob, effects: JobEffects): Promise<voi
 }
 
 export async function runJob(job: ServeJob, effects: JobEffects): Promise<void> {
-  if (job.recipe !== undefined) {
-    await runSummaryRecipe(job, effects)
+  if (job.recipes !== undefined) {
+    await runRecipeJob({ ...job, recipes: job.recipes }, effects)
     return
   }
   try {

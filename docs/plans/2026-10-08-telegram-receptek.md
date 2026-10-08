@@ -194,7 +194,7 @@ git commit -m "feat(run): Run several recipes under one cost guard"
   - `JobEffects.refine?: (videoId: string, recipes: readonly string[], lang?: LanguageTag) => Promise<RecipesOutcome>` (a `summarize` új neve).
   - `serveEffects({ ..., runRecipes? })`.
 
-- [ ] **Step 1: A meglévő tesztek átírása az új nevekre**
+- [x] **Step 1: A meglévő tesztek átírása az új nevekre**
 
 `src/serve/summary.test.ts`:
 - Az import: `import { runRecipes } from './summary.js'`. A `describe('runSummary', …)` neve `describe('runRecipes', …)`.
@@ -305,7 +305,7 @@ git commit -m "feat(run): Run several recipes under one cost guard"
   })
 ```
 
-- [ ] **Step 2: Az új `runRecipes` tesztek**
+- [x] **Step 2: Az új `runRecipes` tesztek**
 
 A `src/serve/summary.test.ts` `client` függvénye után:
 
@@ -388,12 +388,12 @@ A `describe('runRecipes', …)` végére:
   })
 ```
 
-- [ ] **Step 3: A bukás ellenőrzése**
+- [x] **Step 3: A bukás ellenőrzése**
 
 Run: `pnpm vitest run src/serve`
 Expected: FAIL. A `runRecipes`, a `refine`, a `recipes` mező és az `Ismeretlen nyelv.` még nem létezik.
 
-- [ ] **Step 4: `src/serve/summary.ts`, az egész fájl**
+- [x] **Step 4: `src/serve/summary.ts`, az egész fájl**
 
 ```ts
 import { execFile } from 'node:child_process'
@@ -579,7 +579,7 @@ export async function runRecipes(input: {
 }
 ```
 
-- [ ] **Step 5: `src/serve/job.ts`**
+- [x] **Step 5: `src/serve/job.ts`**
 
 Importok a fájl elejére:
 
@@ -648,7 +648,7 @@ export async function runJob(job: ServeJob, effects: JobEffects): Promise<void> 
   }
 ```
 
-- [ ] **Step 6: `src/serve/http.ts`, `isJob`**
+- [x] **Step 6: `src/serve/http.ts`, `isJob`**
 
 ```ts
 function isJob(value: unknown): value is ServeJob {
@@ -665,7 +665,7 @@ function isJob(value: unknown): value is ServeJob {
 }
 ```
 
-- [ ] **Step 7: `src/serve/command.ts`**
+- [x] **Step 7: `src/serve/command.ts`**
 
 Az importok: `type SummaryOutcome` helyett `type RecipesOutcome`, a `runSummary as defaultRunSummary` helyett `runRecipes as defaultRunRecipes`, és új import: `import type { LanguageTag } from '../lang/identify.js'`.
 
@@ -696,12 +696,12 @@ A törzsben:
     refine: (videoId, recipes, lang) => refineWith({ videoId, outDir: input.outDir, recipes, lang }),
 ```
 
-- [ ] **Step 8: A teszt zöld**
+- [x] **Step 8: A teszt zöld**
 
 Run: `pnpm vitest run src/serve`
 Expected: PASS. Ha a fordítás tesztje a nyelvkapun bukik (a `GERMAN` szöveget a nyelvfelismerő nem ismeri fel németnek), a `GERMAN` mondatát kell bővíteni német funkciószavakkal. A kód nem változik.
 
-- [ ] **Step 9: Ellenőrzés és commit**
+- [x] **Step 9: Ellenőrzés és commit**
 
 Run: `pnpm test && pnpm typecheck && pnpm lint`
 
