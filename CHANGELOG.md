@@ -3,6 +3,60 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.12.0] — 2026-10-08
+
+Megérkezett a Telegram-integráció negyedik szelete: a bot mostantól minden
+receptet felkínál, nem csak a `summary`-t, és a kész jegyzeteket le is
+fordíttathatod. Minden jegyzet megnyílik az olvasó oldalon.
+
+### 🤖 Minden recept a botban
+
+- **Kilenc gomb a felirat után:** A „felirat megvan” üzenet alatt a `summary`,
+  `notes`, `qa`, `flashcards`, `bloom`, `clean-mild`, `clean-moderate`,
+  `clean-deep` és `fordítás` gomb áll. Egy koppintás egy receptet futtat, a
+  konténer meglévő `cost_limit_usd` plafonja alatt.
+- **Jegyzetenként külön állapot:** Egy videóhoz több recept is futhat egymás
+  után. A második koppintás ugyanarra a receptre „már sorban van” választ kap,
+  a kész recept gombja a linket küldi újra, a bukott recept gombja újraindítja.
+- **Kész üzenet linkkel:** `<cím> · <recept>. A jegyzet megvan.`, alatta az
+  olvasó oldal hivatkozása.
+- **A régi üzenetek gombja is működik:** A korábbi üzenetek `summary` gombja a
+  `summary` receptet indítja.
+
+### 🌍 Fordítás a botból
+
+- **Választó a kész jegyzetekből:** A `fordítás` gomb a videó kész jegyzeteit
+  kínálja kapcsolható gombként. A `tovább` után hét nyelvből (`en`, `hu`, `nl`,
+  `de`, `es`, `fr`, `it`) választhatsz egyet.
+- **Egy kérés, egy futás:** A kijelölt jegyzetek fordítása egy futásban, egy
+  közös költségplafon alatt készül.
+- **Érthető kihagyás:** Ha a videó már a kért nyelven szól, a bot a kihagyás
+  okát írja meg (például `a forrás már magyar`), nem az általános hibát.
+
+### 📖 Olvasó oldal
+
+- **Minden kész fajta:** A `/notes` lista videónként az összes kész jegyzetet
+  mutatja (például `notes · notes-de · transcript`), és mindegyik megnyílik a
+  `/notes/<jobId>/<fajta>` címen.
+- **A régi jegyzetek megmaradnak:** A korábbi `summary` jegyzetek linkje és
+  listája ugyanúgy működik, mint eddig.
+
+### 🔧 Javítás
+
+- **A megfelelő napló hibaüzenete:** Ha ugyanarra a videóra egy másodpercen
+  belül két futás indult, a konténer a korábbi futás naplójából olvashatta a
+  hiba okát. Mostantól mindig a saját futásáét.
+
+### ⚙️ Üzemeltetés
+
+- **Új migráció:** A `0004_runs` létrehozza a `runs` táblát, és ebbe viszi át
+  a korábbi `summary` jegyzeteket.
+- **Új konténerkép kell:** A Worker és a konténer együtt változott. A régi
+  Worker kérését az új konténer elutasítja, ezért a kettőt egymás után kell
+  telepíteni, és közben ne koppints a botban. Ha mégis megtörtént, a Worker
+  telepítése után futtasd le még egyszer:
+  `UPDATE jobs SET status='ready', phase='subtitle' WHERE phase='summary'`.
+
 ## [1.11.0] — 2026-10-07
 
 Megérkezett a Telegram-integráció harmadik szeletének második fele: a boton át
@@ -517,6 +571,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.12.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.12.0
 [1.11.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.11.0
 [1.10.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.10.0
 [1.9.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.9.0
