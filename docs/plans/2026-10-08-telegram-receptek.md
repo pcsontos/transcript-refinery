@@ -2625,7 +2625,7 @@ git commit -m "feat(worker): Open every finished note kind in the reader"
 - Modify: `docs/operations/telegram-worker-topology.md` (a „Kész jegyzet” sor)
 - Modify: `docs/plans/2026-10-04-telegram-cloudflare-brief.md` (a „Receptválasztás” állapotsora)
 
-- [ ] **Step 1: A topológia leírása**
+- [x] **Step 1: A topológia leírása**
 
 A `docs/operations/telegram-worker-topology.md` `- **Kész jegyzet** (a `summary` gomb után): …` kezdetű sora helyére:
 
@@ -2634,7 +2634,7 @@ A `docs/operations/telegram-worker-topology.md` `- **Kész jegyzet** (a `summary
 - **Kész jegyzet:** `<cím> · <recept>. A jegyzet megvan.`, fordításnál `<cím> · <nyelv>. A fordítás megvan.`, és jegyzetenként egy sor: `https://<worker>/notes/<jobId>/<fajta>` (például `notes`, `summary-de`). Az oldal Cloudflare Access mögött van, és a jegyzetet a vault-repóból, a GitHub renderelt HTML-jével mutatja. A `/notes/<jobId>/transcript` a hozzá tartozó `_transcript.md`. A `https://<worker>/notes` a belépett fiók jegyzeteinek listája, videónként a kész fajtákkal. A bot csak privát chatben válaszol.
 ```
 
-- [ ] **Step 2: A brief állapotsora**
+- [x] **Step 2: A brief állapotsora**
 
 A `docs/plans/2026-10-04-telegram-cloudflare-brief.md` `**Állapot:** javaslat, 2026-10-04. A brainstorming ne vegye lezártnak.` sora helyére:
 
@@ -2642,7 +2642,7 @@ A `docs/plans/2026-10-04-telegram-cloudflare-brief.md` `**Állapot:** javaslat, 
 **Állapot:** lezárva 2026-10-08-án: csak gombbal, receptnév gépelése nélkül. Lásd [`2026-10-08-telegram-receptek-spec.md`](./2026-10-08-telegram-receptek-spec.md). Az alábbi javaslat a döntés előzménye.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 Run: `pnpm lint`
 
