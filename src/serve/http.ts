@@ -16,6 +16,15 @@ export function acceptJob(gate: ServeGate, jobId: string): 202 | 409 {
   return 409
 }
 
+/** Lefoglalja a kaput egy nem-job munkának (a lista pullja); `null`, ha már foglalt. */
+export function claimGate(gate: ServeGate, label: string): (() => void) | null {
+  if (gate.current !== null) return null
+  gate.current = label
+  return () => {
+    gate.current = null
+  }
+}
+
 function authorized(header: string | undefined, secret: string): boolean {
   const actual = Buffer.from(header ?? '')
   const expected = Buffer.from(`Bearer ${secret}`)

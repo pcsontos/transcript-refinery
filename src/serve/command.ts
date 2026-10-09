@@ -8,7 +8,7 @@ import { VERSION } from '../meta.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
 import { runJob, subtitleArgv, type JobEffects, type RecipesOutcome, type ServeJob } from './job.js'
 import { createR2Store, type R2Config } from './r2.js'
-import { createServeServer, type ServeGate } from './http.js'
+import { claimGate, createServeServer, type ServeGate } from './http.js'
 import { createNotesSource } from './notes.js'
 import { firstLine, runRecipes as defaultRunRecipes } from './summary.js'
 
@@ -155,7 +155,7 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     gate,
     version: VERSION,
     // A config kérésenként töltődik, mint a receptfuttatásnál: a vault-config szerkesztése újraindítás nélkül hat.
-    notes: createNotesSource({ load: () => loadCliConfig(configArg), busy: () => gate.current !== null }),
+    notes: createNotesSource({ load: () => loadCliConfig(configArg), claim: () => claimGate(gate, 'notes') }),
     onJob: async (job: ServeJob) => {
       console.log(`[serve] Munka végrehajtása indult: ${job.jobId} (${job.url})`)
       try {

@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Config } from '../config.js'
 import { createNotesSource, NotesUnavailable, originOf } from './notes.js'
 
@@ -24,17 +24,25 @@ async function note(path: string, fields: Record<string, string>, body = '# Cím
   await writeFile(join(root, path), `---\n${head}\n---\n${body}`)
 }
 
-function source(options: { busy?: boolean; pull?: (repo: string) => Promise<void> } = {}) {
+function source(options: { claimed?: boolean; pull?: (repo: string) => Promise<void> } = {}) {
   const pulls: string[] = []
+  const gate = { held: false, claims: 0 }
   const notes = createNotesSource({
     load: () => Promise.resolve({ cfg: { vaultPath: root, notesRoot: root } as Config }),
-    busy: () => options.busy ?? false,
+    claim: () => {
+      gate.claims += 1
+      if (options.claimed) return null
+      gate.held = true
+      return () => {
+        gate.held = false
+      }
+    },
     pull: (repo) => {
       pulls.push(repo)
       return options.pull ? options.pull(repo) : Promise.resolve()
     },
   })
-  return { notes, pulls }
+  return { notes, pulls, gate }
 }
 
 describe('originOf', () => {
@@ -108,24 +116,43 @@ describe('createNotesSource.list', () => {
 
   it('amíg a serve dolgozik, nem pullol, és stale: true', async () => {
     await note('jo_transcript.md', { item_id: ID, title: 'Jó', source: 'youtube' })
-    const busy = source({ busy: true })
+    const busy = source({ claimed: true })
     const list = await busy.notes.list()
     expect(busy.pulls).toEqual([])
     expect(list.stale).toBe(true)
     expect(list.items).toHaveLength(1)
   })
 
+  it('a pull alatt a kapu foglalt (egy job sem indulhat), utána felszabadul', async () => {
+    await note('jo_transcript.md', { item_id: ID, title: 'Jó', source: 'youtube' })
+    let finish: () => void = () => undefined
+    const slow = source({ pull: () => new Promise<void>((resolve) => (finish = resolve)) })
+    const pending = slow.notes.list()
+    await vi.waitFor(() => expect(slow.pulls).toHaveLength(1))
+    expect(slow.gate.held).toBe(true)
+    finish()
+    expect((await pending).stale).toBe(false)
+    expect(slow.gate.held).toBe(false)
+  })
+
+  it('a pull hibájánál is felszabadul a kapu', async () => {
+    await note('jo_transcript.md', { item_id: ID, title: 'Jó', source: 'youtube' })
+    const failing = source({ pull: () => Promise.reject(new Error('timeout')) })
+    await failing.notes.list()
+    expect(failing.gate.held).toBe(false)
+  })
+
   it('hiányzó jegyzetmappánál üres lista', async () => {
     const notes = createNotesSource({
       load: () => Promise.resolve({ cfg: { vaultPath: root, notesRoot: join(root, 'nincs') } as Config }),
-      busy: () => false,
+      claim: () => () => undefined,
       pull: () => Promise.resolve(),
     })
     expect(await notes.list()).toEqual({ stale: false, items: [] })
   })
 
   it('a config hibája NotesUnavailable', async () => {
-    const notes = createNotesSource({ load: () => Promise.reject(new Error('nincs config')), busy: () => false })
+    const notes = createNotesSource({ load: () => Promise.reject(new Error('nincs config')), claim: () => () => undefined })
     await expect(notes.list()).rejects.toBeInstanceOf(NotesUnavailable)
     await expect(notes.note(ID, 'summary')).rejects.toBeInstanceOf(NotesUnavailable)
   })

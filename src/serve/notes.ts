@@ -153,8 +153,12 @@ function latest(item: ScannedItem): NoteFile {
 
 export function createNotesSource(input: {
   load: () => Promise<{ cfg: Config }>
-  /** Igaz, amíg a `serve` munkát végez: ilyenkor a lista nem pullol, hogy ne ütközzön a futás commitjával. */
-  busy: () => boolean
+  /**
+   * Lefoglalja a `serve` kapuját a pull idejére, és a felszabadítót adja; `null`, ha a `serve` épp
+   * dolgozik (vagy másik lista pullol). A foglalás alatt `POST /jobs` 409-et kap, így a lista és
+   * egy futás pullja nem fut egyszerre ugyanazon a klónon.
+   */
+  claim: () => (() => void) | null
   pull?: (repo: string) => Promise<void>
 }): NotesSource {
   const pull = input.pull ?? ((repo: string) => gitPullFfOnly(repo, PULL_TIMEOUT_MS))
@@ -170,12 +174,17 @@ export function createNotesSource(input: {
   return {
     async list() {
       const cfg = await config()
-      let stale = input.busy()
-      if (!stale) {
+      let stale = false
+      const release = input.claim()
+      if (release === null) {
+        stale = true
+      } else {
         try {
           await pull(cfg.vaultPath)
         } catch {
           stale = true
+        } finally {
+          release()
         }
       }
       const items = [...(await scanNotes(cfg.notesRoot)).values()].map((item): NoteListItem => {

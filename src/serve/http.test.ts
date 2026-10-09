@@ -3,7 +3,7 @@ import type { Server } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { main } from '../cli.js'
 import { overview } from '../help.js'
-import { createServeServer, type ServeGate } from './http.js'
+import { acceptJob, claimGate, createServeServer, type ServeGate } from './http.js'
 import { NotesUnavailable, type NotesSource } from './notes.js'
 
 const gate: ServeGate = { current: null }
@@ -216,5 +216,20 @@ describe('createServeServer /notes', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     expect((await get(broken, '/notes')).status).toBe(500)
     spy.mockRestore()
+  })
+})
+
+describe('claimGate', () => {
+  it('a foglalt kapu alatt a job 409, a második foglalás null, a felszabadítás után újra 202', () => {
+    const local: ServeGate = { current: null }
+    const release = claimGate(local, 'notes')
+    expect(release).not.toBeNull()
+    expect(local.current).toBe('notes')
+    expect(acceptJob(local, 'job-1')).toBe(409)
+    expect(claimGate(local, 'notes')).toBeNull()
+    release?.()
+    expect(local.current).toBeNull()
+    expect(acceptJob(local, 'job-1')).toBe(202)
+    expect(claimGate(local, 'notes')).toBeNull()
   })
 })
