@@ -3,6 +3,26 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.12.1] — 2026-10-09
+
+Javítások a Telegram-botban: a bukott recept üzenete megnevezi a receptet, és
+az újrapróbált recept linkje biztosan megérkezik.
+
+### 🐛 Javítások
+
+- **A hibaüzenet megmondja, mi bukott:** Ha egy recept vagy fordítás hibára
+  fut, a bot üzenete elöl megnevezi, például `qa: A futás megállt.` vagy
+  `summary, notes → de: …`. Eddig csak a puszta hiba jött, így több
+  párhuzamos futásnál nem derült ki, melyik bukott (#172).
+- **Az újrapróbált recept linkje megérkezik:** Ha egy már kész recept később
+  mégis hibát jelzett, az újrapróbálás után a kész link csendben elmaradhatott.
+  Mostantól kimegy (#172).
+
+### 📚 Dokumentáció
+
+- A `docs/usage.md` kimondja, hogy a `refinery list --channels` összesítő
+  mellett a `--limit` nem hat (#71).
+
 ## [1.12.0] — 2026-10-08
 
 Megérkezett a Telegram-integráció negyedik szelete: a bot mostantól minden
@@ -571,6 +591,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.12.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.12.1
 [1.12.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.12.0
 [1.11.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.11.0
 [1.10.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.10.0
