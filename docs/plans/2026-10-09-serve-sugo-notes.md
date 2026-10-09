@@ -64,7 +64,7 @@ Az implementáció a `feat/kor-177-182-cli-serve-telegram` ágon indul a friss `
 - Consumes: `VERSION` (`src/meta.ts`), meglévő `authorized`, `ServeGate`.
 - Produces: `createServeServer(input: ServeServerInput): Server`, ahol `interface ServeServerInput { secret: string; gate: ServeGate; version: string; onJob: (job: ServeJob) => Promise<void> }`.
 
-- [ ] **Step 1: A meglévő tesztek `version`-t kapnak, és új teszt az útvonalakra**
+- [x] **Step 1: A meglévő tesztek `version`-t kapnak, és új teszt az útvonalakra**
 
 A `src/serve/http.test.ts` két meglévő `createServeServer({...})` hívásába tegyél `version: '9.9.9',` sort a `gate,` után. Az importsorba vedd fel a `vi`-t: `import { afterEach, describe, expect, it, vi } from 'vitest'`. A `describe('createServeServer', …)` blokk végére (a második `it` után, a blokk záró `})` elé) írd:
 
@@ -115,12 +115,12 @@ A `src/serve/http.test.ts` két meglévő `createServeServer({...})` hívásába
   })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy elbukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy elbukik**
 
 Run: `pnpm exec vitest run src/serve/http.test.ts`
 Expected: FAIL — a `/ping` 404-et ad 200 helyett (és a typecheck a `version` mezőt még nem ismeri).
 
-- [ ] **Step 3: Implementáció a `src/serve/http.ts`-ben**
+- [x] **Step 3: Implementáció a `src/serve/http.ts`-ben**
 
 A `send` függvény után add hozzá:
 
@@ -184,7 +184,7 @@ async function handle(request: IncomingMessage, response: ServerResponse, input:
 
 A `handle` többi része (a `let body: unknown` sortól) változatlan. A régi, inline 401-naplózó blokk törlődik (a `rejectUnauthorized` váltja).
 
-- [ ] **Step 4: A `commandServe` átadja a verziót**
+- [x] **Step 4: A `commandServe` átadja a verziót**
 
 `src/serve/command.ts`: az importok közé:
 
@@ -198,7 +198,7 @@ import { VERSION } from '../meta.js'
     version: VERSION,
 ```
 
-- [ ] **Step 5: README**
+- [x] **Step 5: README**
 
 `README.md`, a „A `refinery serve` egy videó feliratát és `info.json` fájlját az R2-be tölti. A Telegram-ajtó a `worker/` csomag.” bekezdés után új bekezdés:
 
@@ -209,14 +209,14 @@ a `REFINERY_SERVE_SECRET` Bearer-tokenjével a verziót és az éppen futó munk
 azonosítóját adja (`{"version": …, "busy": <jobId> | null}`).
 ```
 
-- [ ] **Step 6: Ellenőrzés**
+- [x] **Step 6: Ellenőrzés**
 
 Run: `pnpm exec vitest run src/serve/http.test.ts src/serve/command.test.ts && pnpm typecheck && pnpm lint`
 Expected: PASS, hibátlan typecheck és lint.
 
 Mutációs próba: a `/status` ágban kommenteld ki az `authorized`-ellenőrzést → a tesztnek el kell buknia (`anonymous.status` 200). Állítsd vissza.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/serve/http.ts src/serve/command.ts src/serve/http.test.ts README.md
@@ -238,7 +238,7 @@ git commit -m "feat(serve): Add ping, version and status endpoints"
 - Consumes: `loadCliConfig(configArg, cwd?)` (`src/config.ts`), `firstLine(text: string): string` (`src/serve/summary.ts`, ebben a feladatban exportálva), `runRecipes` `load?: () => Promise<{ cfg: Config; raw: unknown }>` paramétere (`src/serve/summary.ts`, már létezik).
 - Produces: `commandServe(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number>`; `serveEffects({ …, configArg?: string })`, amely a `refine`-nál mindig `load: () => loadCliConfig(configArg)`-ot ad a `runRecipes`-nek (`undefined`-dal ez a munkakönyvtár configja, mint a `runRecipes` alapértéke).
 
-- [ ] **Step 1: Failing tesztek**
+- [x] **Step 1: Failing tesztek**
 
 `src/serve/command.test.ts`: az első sor importja legyen `import { mkdtemp, rm } from 'node:fs/promises'` (változatlan), a vitest-import:
 
@@ -313,12 +313,12 @@ A `describe` blokk végére:
   })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy elbukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy elbukik**
 
 Run: `pnpm exec vitest run src/serve/command.test.ts`
 Expected: FAIL — a `commandServe` két argumentumot még nem fogad (a `['--port', '1']` futás a szervert indítaná: a teszt itt timeoutolhat, ez is FAIL), a `configArg`-os tesztben a `load` `undefined`.
 
-- [ ] **Step 3: Implementáció a `src/serve/command.ts`-ben**
+- [x] **Step 3: Implementáció a `src/serve/command.ts`-ben**
 
 `src/serve/summary.ts:42`: a `function firstLine(text: string)` elé `export` kerül (a törzse változatlan).
 
@@ -401,7 +401,7 @@ A `serveEffects({` hívásban az `outDir,` után:
 
 Megjegyzés: a `--config` betöltése a `missing(env)` és a `SERVE_PORT`-ellenőrzés **után** fut (a fenti blokk a `SERVE_PORT`-ellenőrzés után áll, ahol ma a `let languages` volt). A config mostantól akkor is betöltődik, ha a `REFINERY_SUB_LANG` meg van adva (ma ilyenkor nem); a mellette lévő `.env` a már beállított környezeti változókat nem írja felül.
 
-- [ ] **Step 4: A `main()` átadja az argv-t**
+- [x] **Step 4: A `main()` átadja az argv-t**
 
 `src/cli.ts`, a `serve` elágazás:
 
@@ -409,7 +409,7 @@ Megjegyzés: a `--config` betöltése a `missing(env)` és a `SERVE_PORT`-ellen�
   if (command === 'serve') return commandServe(argv.slice(1), process.env)
 ```
 
-- [ ] **Step 5: README**
+- [x] **Step 5: README**
 
 A Task 1-ben írt végpont-bekezdés után:
 
@@ -420,14 +420,14 @@ feliratnyelvekhez és a receptfuttatásokhoz is; ha a fájl nem tölthető be, a
 `refinery.config.yaml`-ja érvényes, ha van.
 ```
 
-- [ ] **Step 6: Ellenőrzés**
+- [x] **Step 6: Ellenőrzés**
 
 Run: `pnpm exec vitest run src/serve && pnpm typecheck && pnpm lint`
 Expected: PASS, hibátlan.
 
 Mutációs próba: a `refine`-ban a `loadCliConfig(input.configArg)`-ot írd `loadCliConfig(undefined)`-ra → a „megadott configArg mellett…” tesztnek el kell buknia. Állítsd vissza.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/serve/command.ts src/serve/summary.ts src/serve/command.test.ts src/cli.ts README.md
@@ -453,7 +453,7 @@ git commit -m "fix(serve): Honour --config and fail fast on a broken file"
   - `function overview(): string`
   - `function helpText(name: string): string | undefined`
 
-- [ ] **Step 1: A `src/help.ts` létrehozása**
+- [x] **Step 1: A `src/help.ts` létrehozása**
 
 ```ts
 /**
@@ -647,7 +647,7 @@ export function helpText(name: string): string | undefined {
 }
 ```
 
-- [ ] **Step 2: A tesztek átírása és az újak (failing)**
+- [x] **Step 2: A tesztek átírása és az újak (failing)**
 
 `src/cli.test.ts`:
 
@@ -853,12 +853,12 @@ import { VERSION } from './meta.js'
 
 (A szimlinkes teszt `'refinery <parancs>'` elvárása változatlanul igaz.)
 
-- [ ] **Step 3: Futtasd, és nézd meg, hogy elbukik**
+- [x] **Step 3: Futtasd, és nézd meg, hogy elbukik**
 
 Run: `pnpm exec vitest run src/cli.test.ts src/cli.entrypoint.test.ts src/serve/http.test.ts`
 Expected: FAIL — a `main` még a régi `USAGE`-t írja (a `helpText`/`overview` elvárások nem teljesülnek, a `version` ismeretlen parancs).
 
-- [ ] **Step 4: A `main()` átírása (`src/cli.ts`)**
+- [x] **Step 4: A `main()` átírása (`src/cli.ts`)**
 
 - Töröld a teljes `export const USAGE = \`…\`` konstanst.
 - Import: `import { helpText, overview } from './help.js'`.
@@ -914,7 +914,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   return 1
 ```
 
-- [ ] **Step 5: A `fetch` súgója (`src/fetch/command.ts`)**
+- [x] **Step 5: A `fetch` súgója (`src/fetch/command.ts`)**
 
 Töröld a `const USAGE = \`Használat: refinery fetch subtitle …\`` konstanst. Import: `import { helpText } from '../help.js'`. A `--help` ág:
 
@@ -925,7 +925,7 @@ Töröld a `const USAGE = \`Használat: refinery fetch subtitle …\`` konstanst
   }
 ```
 
-- [ ] **Step 6: README**
+- [x] **Step 6: README**
 
 A Task 2-ben írt `--config`-bekezdés után:
 
@@ -935,14 +935,14 @@ A súgó parancsonként is elérhető: `refinery help <parancs>` vagy
 A verziót a `refinery version` (vagy `refinery --version`) írja ki.
 ```
 
-- [ ] **Step 7: Ellenőrzés**
+- [x] **Step 7: Ellenőrzés**
 
 Run: `pnpm test && pnpm typecheck && pnpm lint && grep -rn "USAGE" src --include=*.ts`
 Expected: minden teszt zöld, hibátlan typecheck és lint; a `grep` üres.
 
 Mutációs próba: a `main`-ben cseréld meg a `--help` és a `--version` ág sorrendjét → a „--help elsőbbséget élvez…” tesztnek el kell buknia. Állítsd vissza.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/help.ts src/cli.ts src/fetch/command.ts src/cli.test.ts src/cli.entrypoint.test.ts src/serve/http.test.ts README.md
@@ -962,7 +962,7 @@ git commit -m "feat(cli): Add per-command help and the version command"
 - Consumes: meglévő `runLabel` (`messages.ts`, nem exportált), `settle`, `knockFor`.
 - Produces: `runStartedLine(recipes: readonly string[], lang: string | null): string`; `settle(…, started?: string)`.
 
-- [ ] **Step 1: Failing tesztek**
+- [x] **Step 1: Failing tesztek**
 
 `worker/src/handle.test.ts` végére:
 
@@ -1025,12 +1025,12 @@ describe('indulási üzenet', () => {
 
 Megjegyzés: a `l:<maszk>:<nyelv>:<jobId>` gombadat maszkja kisbetűs hexa, a 0. bit a `summary`, az 1. a `notes`; a `3` = `summary` + `notes`. A nyelvgomb nem követel meg kész alapreceptet (`handleTap` → `maskRecipes` → `requestRun`), a cron pedig minden `queued` futást kopogtat (`isDue`).
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy elbukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy elbukik**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts`
 Expected: FAIL — az `own.sent` csak a `Sorba került: notes` sort tartalmazza.
 
-- [ ] **Step 3: Az üzenet (`worker/src/messages.ts`)**
+- [x] **Step 3: Az üzenet (`worker/src/messages.ts`)**
 
 A `runQueuedLine` után:
 
@@ -1046,7 +1046,7 @@ export function runStartedLine(recipes: readonly string[], lang: string | null):
   runStartedLine,
 ```
 
-- [ ] **Step 4: A `settle()` és hívói (`worker/src/handle.ts`)**
+- [x] **Step 4: A `settle()` és hívói (`worker/src/handle.ts`)**
 
 Az import-listába (`from './plan.js'`) a `runReadyMessage,` után: `runStartedLine,`.
 
@@ -1105,14 +1105,14 @@ A `handleCron` futás-ciklusa:
     )
 ```
 
-- [ ] **Step 5: Ellenőrzés**
+- [x] **Step 5: Ellenőrzés**
 
 Run: `pnpm exec vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: PASS, hibátlan.
 
 Mutációs próba: a `settle`-ben a `fresh &&` feltételt töröld → az „újrakopogtatása nem” elvárásnak el kell buknia. Állítsd vissza.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/messages.ts worker/src/plan.ts worker/src/handle.ts worker/src/handle.test.ts
@@ -1131,7 +1131,7 @@ git commit -m "feat(worker): Tell the user when a recipe run starts"
 - Consumes: `RECIPES`, `LANGS` (`worker/src/messages.ts`), `runKinds` (`plan.ts`), `JobStore.notesFor` (a sorok `accepted_at` szerint csökkenőek), `JobRow.url`.
 - Produces: `notesPage(sub, deps)` változatlan aláírással, új HTML-lel.
 
-- [ ] **Step 1: Failing teszt**
+- [x] **Step 1: Failing teszt**
 
 `worker/src/reader.test.ts`, a `describe('notesPage', …)` első tesztje helyett:
 
@@ -1194,12 +1194,12 @@ git commit -m "feat(worker): Tell the user when a recipe run starts"
 
 Megjegyzés: a `Régi` cím azért nem jelenik meg, mert a videó címe a legfrissebb jobé. A `qa` az `5:`-re linkel, mert a 6-os job `qa` futása bukott.
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy elbukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy elbukik**
 
 Run: `pnpm exec vitest run worker/src/reader.test.ts`
 Expected: FAIL — a mai kimenet jobonként egy `<li>`-t ír, `—`-vel elválasztott linkekkel.
 
-- [ ] **Step 3: Implementáció (`worker/src/reader.ts`)**
+- [x] **Step 3: Implementáció (`worker/src/reader.ts`)**
 
 Az importsor a `./messages.js`-ből:
 
@@ -1249,14 +1249,14 @@ export async function notesPage(sub: string, deps: ReaderDeps): Promise<Response
 
 A `JobRow` típust importáld a `./store.js`-ből, ha még nincs: `import type { JobRow, JobStore, RunRow } from './store.js'`.
 
-- [ ] **Step 4: Ellenőrzés**
+- [x] **Step 4: Ellenőrzés**
 
 Run: `pnpm exec vitest run worker && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: PASS, hibátlan.
 
 Mutációs próba: a `if (!video.jobOf.has(kind))` feltételt töröld (így a régebbi job írná felül a linket) → a tesztnek el kell buknia (`summary` az `5:`-re mutatna). Állítsd vissza.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/reader.ts worker/src/reader.test.ts
@@ -1267,12 +1267,12 @@ git commit -m "feat(worker): Group the notes page by video"
 
 ### Task 6: Záró ellenőrzés
 
-- [ ] **Step 1: Teljes kör**
+- [x] **Step 1: Teljes kör**
 
 Run: `pnpm test && pnpm typecheck && pnpm exec tsc -p worker/tsconfig.json && pnpm lint`
 Expected: minden zöld.
 
-- [ ] **Step 2: Kézi próba a CLI-n (költség nélkül)**
+- [x] **Step 2: Kézi próba a CLI-n (költség nélkül)**
 
 ```bash
 pnpm exec tsx src/cli.ts --version
