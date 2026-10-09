@@ -3,6 +3,64 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.14.0] — 2026-10-09
+
+A `/notes` oldal minden jegyzetet mutat, akkor is, ha a feldolgozást a
+parancssorból indítottad, és a jegyzetek olvasásához már nem kell a GitHub.
+
+### 📚 Minden jegyzet egy helyen
+
+- **A `refinery run` jegyzetei is megjelennek:** Eddig a `/notes` csak a
+  Telegramról indított feldolgozásokat listázta. Mostantól a vault összes
+  jegyzete látszik, bárhonnan készült: a peter-mbp-ről, a peter-mba
+  gazdagépéről vagy a konténerből. Ha ugyanarra a videóra több helyen is
+  készült jegyzet, egy bejegyzés lesz, fajtánként a legfrissebb változattal
+  (#180).
+- **Látszik, honnan indult:** Minden bejegyzés mellett `telegram` vagy `cli`
+  címke áll. A jegyzetek frontmatterében új `origin` mező rögzíti ugyanezt; a
+  régi jegyzeteknél a `serve-out` mappa jelzi a Telegramot (#180).
+- **A jegyzetet a `serve` adja:** A `serve` két új, `REFINERY_SERVE_SECRET`
+  Bearer-tokenes végpontot kapott: a `GET /notes` a listát, a
+  `GET /notes/<azonosító>/<fajta>` a jegyzet renderelt HTML-jét adja. A Worker
+  innen olvas, a belépés továbbra is a Cloudflare Access (#180).
+- **A régi linkek élnek:** A Telegramban már kiküldött
+  `/notes/<szám>:<videóazonosító>/<fajta>` linkek ugyanazt a jegyzetet nyitják
+  meg. Az új üzenetek `/notes/<videóazonosító>/<fajta>` linket küldenek (#180).
+- **Jelzi, ha a peter-mba alszik:** Ha a gép nem érhető el, az oldal erről szól,
+  és külön mondatot ad, ha a titkok nem egyeznek vagy a `serve` nem éri el a
+  vaultot. Ha a vault frissítése nem sikerült, a lista tetején ott a
+  figyelmeztetés (#180).
+
+### 🔌 Nem függ a GitHubtól
+
+- **Forge-független vault:** A jegyzet olvasása és a visszaadott hivatkozás nem
+  használ GitHub-címet. A `serve` a vault-relatív útvonalat küldi vissza, így
+  nem GitHub távoli címmel (például egy Forgejo-val) is működnek a
+  Telegram-receptek. Eddig a nem GitHub vault minden receptet hibára futtatott
+  (#180).
+- **Kikerül a „Megnyitás a GitHubon” link,** és vele a GitHub-hívás (#180).
+
+### 🛠 Gyorsabb és stabilabb olvasás
+
+- **Gyors lista:** A `serve` csak a jegyzetek elejét (a frontmattert) olvassa be,
+  és megjegyzi az eredményt, amíg a fájl nem változik. A valódi vaulton a második
+  beolvasás ezredmásodpercekben mérhető (#180).
+- **Egy rossz fájl nem buktatja a listát:** Az olvashatatlan vagy közben eltűnt
+  fájl egyszerűen kimarad (#180).
+- **Beragadt hálózatnál sem ragad be a git:** A lista előtti `git pull` legfeljebb
+  10 másodpercig tart, lejáratkor a háttérfolyamatai is leállnak. A lista pullja
+  és egy futás pullja nem ütközik: közben a `serve` új munkát nem fogad el, a
+  Worker később újrapróbálja (#180).
+
+### ⚙️ Üzemeltetés
+
+- **Telepítési sorrend:** Előbb a konténerkép, utána a Worker, különben a
+  `/notes` a két telepítés között hibát ad, és a közben készült Telegram-jegyzetek
+  a régi Workeren 404-et.
+- **Megszűnt Worker-változók:** A `VAULT_GITHUB_TOKEN`, a `VAULT_REPO` és a
+  `VAULT_BRANCH` többé nem kell. A `wrangler secret delete` törli őket, a
+  GitHub-token pedig visszavonható.
+
 ## [1.13.0] — 2026-10-09
 
 A `serve` démon lekérdezhető lett, a CLI parancsonkénti súgót és verziókiírást
@@ -628,6 +686,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.14.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.14.0
 [1.13.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.13.0
 [1.12.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.12.1
 [1.12.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.12.0
