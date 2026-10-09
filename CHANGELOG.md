@@ -3,6 +3,43 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.13.0] — 2026-10-09
+
+A `serve` démon lekérdezhető lett, a CLI parancsonkénti súgót és verziókiírást
+kapott, a bot szól, amikor egy recept ténylegesen elindul, a `/notes` oldalon
+pedig egy videó egyszer szerepel.
+
+### 🩺 A `serve` lekérdezhető
+
+- **Él-e, melyik verzió fut:** A `serve` három új végpontot kapott. A
+  `GET /ping` (`ok`) és a `GET /version` (`{"version": …}`) hitelesítés nélkül
+  válaszol, a `GET /status` a `REFINERY_SERVE_SECRET` Bearer-tokenjével a
+  verziót és az éppen futó munka azonosítóját adja (#177).
+- **A `--config` végre számít:** A `refinery serve --config <út>` a megadott
+  konfigurációt használja a feliratnyelvekhez és a receptfuttatásokhoz is. Ha a
+  fájl nem tölthető be, a `serve` `Hibás konfiguráció: …` üzenettel, 1-es
+  kóddal leáll, és el sem indul (#182).
+
+### 🧭 CLI: súgó és verzió
+
+- **Parancsonkénti súgó:** A `refinery help <parancs>` és a
+  `refinery <parancs> --help` az adott parancs leírását, kapcsolóit és példáit
+  adja. A `refinery help` a parancsok áttekintése. A `serve` súgója a
+  környezeti változókat is felsorolja (#178).
+- **Verzió:** A `refinery version` és a `refinery --version` kiírja a
+  verziószámot, config betöltése nélkül (#177).
+
+### 🤖 Telegram-bot
+
+- **Szól, amikor elindul:** A „Sorba került” üzenet után egy második is jön,
+  amint a feldolgozás ténylegesen elindul: „Elkezdődött a feldolgozás: …”.
+  Foglalt konténernél akkor érkezik, amikor az újrapróbálás elfogadtatja a
+  futást (#179).
+- **Videónként egy bejegyzés a `/notes` oldalon:** Ha egy videóra több
+  feldolgozás készült, már egyszer szerepel, a címe a YouTube-ra mutat, alatta
+  a kész fajták rögzített sorrendben. Minden fajta a legfrissebb kész változatra
+  linkel (#181).
+
 ## [1.12.1] — 2026-10-09
 
 Javítások a Telegram-botban: a bukott recept üzenete megnevezi a receptet, és
@@ -591,6 +628,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.13.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.13.0
 [1.12.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.12.1
 [1.12.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.12.0
 [1.11.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.11.0
