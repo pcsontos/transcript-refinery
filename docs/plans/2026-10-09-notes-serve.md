@@ -1539,7 +1539,7 @@ git commit -m "feat(worker): Read the notes page from serve instead of GitHub"
 - Modify: `.env.example` (a vault-változók blokkja)
 - Modify: `docs/operations/telegram-worker-topology.md:229`
 
-- [ ] **Step 1: `.env.example`**
+- [x] **Step 1: `.env.example`**
 
 Töröld ezt a blokkot (a sorok közti üres sorral együtt):
 
@@ -1556,7 +1556,7 @@ VAULT_BRANCH=
 
 ```
 
-- [ ] **Step 2: Az üzemeltetési leírás**
+- [x] **Step 2: Az üzemeltetési leírás**
 
 `docs/operations/telegram-worker-topology.md`, a „**Kész jegyzet:**” kezdetű sor helyére:
 
@@ -1564,7 +1564,7 @@ VAULT_BRANCH=
 - **Kész jegyzet:** `<cím> · <recept>. A jegyzet megvan.`, fordításnál `<cím> · <nyelv>. A fordítás megvan.`, és jegyzetenként egy sor: `https://<worker>/notes/<videóazonosító>/<fajta>` (például `notes`, `summary-de`). Az oldal Cloudflare Access mögött van; a Worker a jegyzetet a peter-mba `serve`-étől kéri (`GET /notes/<itemId>/<fajta>`), az a vaultból olvassa és rendereli. A régi, `/notes/<update_id>:<videóazonosító>/<fajta>` alakú linkek is működnek. A `https://<worker>/notes` a vault összes jegyzetének listája, bárhonnan indult a futás, elemenként `telegram`/`cli` címkével és a kész fajtákkal. Ha a peter-mba alszik, az oldal ezt jelzi. A bot csak privát chatben válaszol.
 ```
 
-- [ ] **Step 3: Záró ellenőrzés**
+- [x] **Step 3: Záró ellenőrzés**
 
 Run:
 
@@ -1579,7 +1579,7 @@ grep -rni "github" src worker/src --include='*.ts' | grep -v '\.test\.ts'
 
 Expected: minden zöld; a `grep` nem ad találatot.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .env.example docs/operations/telegram-worker-topology.md
