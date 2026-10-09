@@ -274,7 +274,7 @@ export function createD1Store(db: D1Like): JobStore {
     },
     async claimRun(runId, expect, next) {
       const result = await db
-        .prepare('UPDATE runs SET status = ?, error = NULL, accepted_at = NULL WHERE run_id = ? AND status = ?')
+        .prepare('UPDATE runs SET status = ?, error = NULL, notified = 0, accepted_at = NULL WHERE run_id = ? AND status = ?')
         .bind(next, runId, expect)
         .run()
       return changed(result)

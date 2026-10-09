@@ -18,7 +18,7 @@ export type CallbackBody =
   | { status: 'ready'; title: string; noteUrl?: string }
   | { status: 'failed'; error: string }
 
-export type RecipesOutcome ={ ok: true; noteUrl: string } | { ok: false; error: string }
+export type RecipesOutcome = { ok: true; noteUrl: string } | { ok: false; error: string }
 
 export interface JobEffects {
   store: ObjectStore

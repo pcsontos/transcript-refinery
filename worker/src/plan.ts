@@ -26,6 +26,7 @@ export {
   LANG_LINE,
   NOTHING_TO_TRANSLATE,
   runQueuedLine,
+  runFailedLine,
 } from './messages.js'
 
 export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }

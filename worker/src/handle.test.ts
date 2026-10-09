@@ -312,7 +312,7 @@ describe('handleCallback', () => {
     await store.insertRun(readyRun(['notes'], null, { status: 'accepted', noteUrl: null, notified: false }))
     const missing = deps(store)
     await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím' }, missing)
-    expect(missing.sent).toEqual(['A jegyzet linkje hiányzik.'])
+    expect(missing.sent).toEqual(['notes: A jegyzet linkje hiányzik.'])
     expect((await store.run(`5:${ID}:notes`))?.status).toBe('failed')
 
     await store.saveRun(readyRun(['notes'], null, { status: 'accepted', noteUrl: null, notified: false }))
@@ -335,7 +335,7 @@ describe('handleCallback', () => {
     await store.insertRun(readyRun(['qa'], null, { status: 'accepted', notified: false }))
     const own = deps(store)
     await handleCallback(`5:${ID}:qa`, { status: 'failed', error: 'A futás megállt.' }, own)
-    expect(own.sent).toEqual(['A futás megállt.'])
+    expect(own.sent).toEqual(['qa: A futás megállt.'])
     expect(await store.run(`5:${ID}:qa`)).toMatchObject({ status: 'failed', error: 'A futás megállt.' })
     expect((await store.listByUpdate(5))[0]?.status).toBe('ready')
   })
@@ -412,6 +412,9 @@ describe('handleTap', () => {
     expect(toggled.edits).toEqual([
       { chatId: '42', messageId: 9, text: 'Melyik jegyzetet fordítsam?', keyboard: pickKeyboard(3, ['summary', 'notes'], `5:${ID}`) },
     ])
+    const toggledNoMessage = deps(store)
+    expect(await handleTap(tap(57, `t:3:5:${ID}`), toggledNoMessage)).toEqual([])
+    expect(toggledNoMessage.edits).toEqual([])
     const blank = deps(store)
     await handleTap(tap(53, `n:0:5:${ID}`, 42, 9), blank)
     expect(blank.edits).toEqual([])

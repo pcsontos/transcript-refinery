@@ -147,6 +147,7 @@ export function memoryStore(): JobStore {
       if (run === undefined || run.status !== expect) return Promise.resolve(false)
       run.status = next
       run.error = null
+      run.notified = false
       run.acceptedAt = null
       return Promise.resolve(true)
     },
