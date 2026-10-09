@@ -1,21 +1,27 @@
-import { findRow } from './handle.js'
-import { GITHUB_DOWN, LANGS, NO_NOTES, NOTE_MISSING, OPEN_ON_GITHUB, RECIPES, VAULT_LOCKED } from './messages.js'
-import { runKinds } from './plan.js'
-import type { JobRow, JobStore, RunRow } from './store.js'
+import {
+  LANGS,
+  NO_NOTES,
+  NOTE_MISSING,
+  NOTES_STALE,
+  RECIPES,
+  SERVE_BAD_REPLY,
+  SERVE_DOWN,
+  SERVE_NO_VAULT,
+  SERVE_SECRET_MISMATCH,
+} from './messages.js'
+import { videoIdOf } from './plan.js'
 
 export interface ReaderDeps {
-  store: JobStore
-  vaultRepo: string
-  vaultBranch: string
-  vaultToken: string
+  serveUrl: string
+  secret: string
 }
 
-const TRANSCRIPT_END = '_transcript.md'
+const TIMEOUT_MS = 10_000
 
 const STYLE =
   ':root{color-scheme:light dark}body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:0 auto;padding:1rem}' +
   'table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid #8886;padding:.25rem .5rem;text-align:left;vertical-align:top}' +
-  'img{max-width:100%}.anchor{display:none}'
+  'img{max-width:100%}.meta,.origin{opacity:.7}'
 
 export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`)
@@ -26,86 +32,124 @@ function page(title: string, body: string, status = 200): Response {
   return new Response(html, { status, headers: { 'content-type': 'text/html; charset=utf-8' } })
 }
 
-/** A fajta fájlja az átirat mellett: a `_transcript.md` vég cseréje. A fajtát a hívó a kész futásokból ellenőrzi. */
-export function vaultPath(noteUrl: string, repo: string, branch: string, kind: string): string[] | null {
-  const prefix = `https://github.com/${repo}/blob/${encodeURIComponent(branch)}/`
-  if (!noteUrl.startsWith(prefix)) return null
+interface ListItem {
+  itemId: string
+  title: string
+  url: string | null
+  origin: string
+  generatedAt: string | null
+  kinds: string[]
+}
+
+interface NoteView {
+  title: string
+  url: string | null
+  origin: string
+  generatedAt: string | null
+  html: string
+}
+
+const nullableText = (value: unknown): value is string | null => value === null || typeof value === 'string'
+
+function isItem(value: unknown): value is ListItem {
+  if (typeof value !== 'object' || value === null) return false
+  const item = value as Record<string, unknown>
+  return (
+    typeof item.itemId === 'string' &&
+    typeof item.title === 'string' &&
+    nullableText(item.url) &&
+    typeof item.origin === 'string' &&
+    nullableText(item.generatedAt) &&
+    Array.isArray(item.kinds) &&
+    item.kinds.every((kind) => typeof kind === 'string')
+  )
+}
+
+function isList(value: unknown): value is { stale: boolean; items: ListItem[] } {
+  if (typeof value !== 'object' || value === null) return false
+  const list = value as { stale?: unknown; items?: unknown }
+  return typeof list.stale === 'boolean' && Array.isArray(list.items) && list.items.every(isItem)
+}
+
+function isView(value: unknown): value is NoteView {
+  if (typeof value !== 'object' || value === null) return false
+  const view = value as Record<string, unknown>
+  return (
+    typeof view.title === 'string' &&
+    nullableText(view.url) &&
+    typeof view.origin === 'string' &&
+    nullableText(view.generatedAt) &&
+    typeof view.html === 'string'
+  )
+}
+
+/** A `serve` válasza: siker esetén a JSON-törzs (hibás JSON-nál `undefined`), különben a státusz (hálózati hibánál 0). */
+async function ask(path: string, deps: ReaderDeps): Promise<{ ok: true; body: unknown } | { ok: false; status: number }> {
+  let response: Response
   try {
-    const segments = noteUrl.slice(prefix.length).split('/').map((segment) => decodeURIComponent(segment))
-    const last = segments.pop() ?? ''
-    if (!last.endsWith(TRANSCRIPT_END)) return null
-    return [...segments, `${last.slice(0, -TRANSCRIPT_END.length)}_${kind}.md`]
+    response = await fetch(`${deps.serveUrl.replace(/\/$/, '')}${path}`, {
+      headers: { authorization: `Bearer ${deps.secret}` },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    })
   } catch {
-    return null
+    return { ok: false, status: 0 }
+  }
+  if (!response.ok) return { ok: false, status: response.status }
+  try {
+    const body: unknown = await response.json()
+    return { ok: true, body }
+  } catch {
+    return { ok: true, body: undefined }
   }
 }
 
-function readyRuns(runs: readonly RunRow[]): RunRow[] {
-  return runs.filter((run) => run.status === 'ready' && run.noteUrl !== null)
+function failure(title: string, status: number): Response {
+  if (status === 404) return page(title, `<p>${NOTE_MISSING}</p>`, 404)
+  const line = status === 401 ? SERVE_SECRET_MISMATCH : status === 503 ? SERVE_NO_VAULT : SERVE_DOWN
+  return page(title, `<p>${line}</p>`, 502)
 }
+
+const day = (generatedAt: string | null) => (generatedAt === null ? '' : generatedAt.slice(0, 10))
+
+/** Csak `http(s)` címből lesz link: a frontmatter `url` mezője nem kerülhet `javascript:`-tal `href`-be. */
+const linkable = (url: string | null): url is string => url !== null && /^https?:\/\//.test(url)
 
 /** A receptek a gombok sorrendjében, mindegyik után a fordításai a nyelvek sorrendjében; az ismeretlen fajta a végén. */
 const KIND_ORDER: readonly string[] = RECIPES.flatMap((recipe) => [recipe, ...LANGS.map((lang) => `${recipe}-${lang}`)])
 const rank = (kind: string) => KIND_ORDER.indexOf(kind) + 1 || KIND_ORDER.length + 1
 
-export async function notesPage(sub: string, deps: ReaderDeps): Promise<Response> {
-  const rows = await deps.store.notesFor(sub)
-  if (rows.length === 0) return page('Jegyzetek', `<h1>Jegyzetek</h1><p>${NO_NOTES}</p>`)
-  // A sorok `accepted_at` szerint csökkenőek: egy videó első sora a legfrissebb
-  // job, és egy fajta első előfordulása a legfrissebb kész változata.
-  const videos = new Map<string, { latest: JobRow; jobOf: Map<string, string> }>()
-  // ponytail: jobonként egy runsFor-lekérés; egy fióknál néhány tucat sor, JOIN, ha a lista lassú lesz.
-  for (const row of rows) {
-    let video = videos.get(row.videoId)
-    if (video === undefined) {
-      video = { latest: row, jobOf: new Map() }
-      videos.set(row.videoId, video)
-    }
-    for (const kind of readyRuns(await deps.store.runsFor(row.jobId)).flatMap(runKinds)) {
-      if (!video.jobOf.has(kind)) video.jobOf.set(kind, row.jobId)
-    }
-  }
-  const items = [...videos.values()].map(({ latest, jobOf }) => {
-    const links = [...[...jobOf].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)), ['transcript', latest.jobId] as const]
-      .map(([kind, jobId]) => `<li><a href="/notes/${escapeHtml(jobId)}/${escapeHtml(kind)}">${escapeHtml(kind)}</a></li>`)
-      .join('')
-    const day = latest.acceptedAt === null ? '' : new Date(latest.acceptedAt).toISOString().slice(0, 10)
-    const title = `<a href="${escapeHtml(latest.url)}">${escapeHtml(latest.title ?? latest.videoId)}</a>`
-    return `<li>${title} · ${day}<ul>${links}</ul></li>`
-  })
-  return page('Jegyzetek', `<h1>Jegyzetek</h1><ul>${items.join('')}</ul>`)
+function ordered(kinds: readonly string[]): string[] {
+  const rest = kinds.filter((kind) => kind !== 'transcript').sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+  return kinds.includes('transcript') ? [...rest, 'transcript'] : rest
 }
 
-export async function notePage(jobId: string, kind: string, sub: string, deps: ReaderDeps): Promise<Response> {
-  const row = await findRow(deps.store, jobId)
-  if (row === null || row.sub !== sub) return new Response(null, { status: 404 })
-  const runs = readyRuns(await deps.store.runsFor(jobId))
-  const run = kind === 'transcript' ? runs[0] : runs.find((item) => runKinds(item).includes(kind))
-  if (run === undefined || run.noteUrl === null) return new Response(null, { status: 404 })
-  const segments = vaultPath(run.noteUrl, deps.vaultRepo, deps.vaultBranch, kind)
-  if (segments === null) return new Response(null, { status: 404 })
-  const title = `${row.title ?? row.videoId} · ${kind}`
-  const path = segments.map((segment) => encodeURIComponent(segment)).join('/')
-  const branch = encodeURIComponent(deps.vaultBranch)
-  const url = `https://api.github.com/repos/${deps.vaultRepo}/contents/${path}?ref=${branch}`
-  let line = GITHUB_DOWN
-  try {
-    const response = await fetch(url, {
-      headers: {
-        accept: 'application/vnd.github.html+json',
-        authorization: `Bearer ${deps.vaultToken}`,
-        'user-agent': 'transcript-refinery',
-      },
-    })
-    if (response.ok) {
-      const github = `https://github.com/${deps.vaultRepo}/blob/${branch}/${path}`
-      const link = `<p><a href="${escapeHtml(github)}">${OPEN_ON_GITHUB}</a></p>`
-      return page(title, `${link}${await response.text()}`)
-    }
-    if (response.status === 404) line = NOTE_MISSING
-    if (response.status === 401 || response.status === 403) line = VAULT_LOCKED
-  } catch {
-    // Hálózati hiba: a GITHUB_DOWN marad.
-  }
-  return page(title, `<p>${line}</p>`, 502)
+export async function notesPage(deps: ReaderDeps): Promise<Response> {
+  const asked = await ask('/notes', deps)
+  // A listára adott 404 régi, `/notes` útvonal nélküli serve-et jelent: az elérhetetlen eset.
+  if (!asked.ok) return failure('Jegyzetek', asked.status === 404 ? 0 : asked.status)
+  if (!isList(asked.body)) return page('Jegyzetek', `<p>${SERVE_BAD_REPLY}</p>`, 502)
+  const { stale, items } = asked.body
+  const warning = stale ? `<p>${NOTES_STALE}</p>` : ''
+  if (items.length === 0) return page('Jegyzetek', `<h1>Jegyzetek</h1>${warning}<p>${NO_NOTES}</p>`)
+  const rows = items.map((item) => {
+    const id = escapeHtml(encodeURIComponent(item.itemId))
+    const links = ordered(item.kinds)
+      .map((kind) => `<li><a href="/notes/${id}/${escapeHtml(encodeURIComponent(kind))}">${escapeHtml(kind)}</a></li>`)
+      .join('')
+    const title = escapeHtml(item.title)
+    const name = linkable(item.url) ? `<a href="${escapeHtml(item.url)}">${title}</a>` : title
+    return `<li>${name} · ${day(item.generatedAt)} · <span class="origin">${escapeHtml(item.origin)}</span><ul>${links}</ul></li>`
+  })
+  return page('Jegyzetek', `<h1>Jegyzetek</h1>${warning}<ul>${rows.join('')}</ul>`)
+}
+
+/** Az `id` videó- vagy elemazonosító, vagy egy régi bot-link `jobId`-ja (`<update_id>:<videóazonosító>`). */
+export async function notePage(id: string, kind: string, deps: ReaderDeps): Promise<Response> {
+  const asked = await ask(`/notes/${encodeURIComponent(videoIdOf(id))}/${encodeURIComponent(kind)}`, deps)
+  if (!asked.ok) return failure('Jegyzet', asked.status)
+  if (!isView(asked.body)) return page('Jegyzet', `<p>${SERVE_BAD_REPLY}</p>`, 502)
+  const view = asked.body
+  // A cím és a YouTube-link a jegyzet saját `# cím` és `🌐 <url>` sorából látszik.
+  const meta = `<p class="meta">${escapeHtml(kind)} · ${escapeHtml(view.origin)} · ${day(view.generatedAt)}</p>`
+  return page(`${view.title} · ${kind}`, `${meta}${view.html}`)
 }

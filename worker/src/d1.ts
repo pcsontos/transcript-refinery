@@ -232,16 +232,6 @@ export function createD1Store(db: D1Like): JobStore {
         .bind(token.pendingSub, token.pendingEmail, token.used ? 1 : 0, token.tokenHash)
         .run()
     },
-    async notesFor(sub) {
-      const result = await db
-        .prepare(
-          `SELECT * FROM jobs WHERE sub = ? AND job_id IN (SELECT job_id FROM runs WHERE status = 'ready')
-           ORDER BY accepted_at DESC`,
-        )
-        .bind(sub)
-        .all<JobRecord>()
-      return result.results.map(toRow)
-    },
     async run(runId) {
       const record = await db.prepare('SELECT * FROM runs WHERE run_id = ?').bind(runId).first<RunRecord>()
       return record === null ? null : toRun(record)

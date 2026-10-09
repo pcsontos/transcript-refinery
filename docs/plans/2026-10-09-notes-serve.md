@@ -70,7 +70,7 @@ Az implementáció a `feat/notes-serve` ágon indul a friss `main`-ről, miután
 **Interfaces:**
 - Produces: `export type NoteOrigin = 'telegram' | 'cli'` (`src/vault/render.ts`); `renderTranscriptNote(item, transcript, generatorVersion, origin: NoteOrigin = 'cli')`; `renderRecipeNote(item, transcript, content, meta, generatorVersion, origin: NoteOrigin = 'cli')`; `PipelineDeps.origin?: NoteOrigin`.
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 `src/vault/render.test.ts` végére:
 
@@ -103,12 +103,12 @@ describe('origin', () => {
   })
 ```
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run src/vault/render.test.ts src/pipeline.test.ts`
 Expected: FAIL — a render-tesztekben nincs `origin:` sor, a pipeline-tesztben a TypeScript-hiba (`origin` nem ismert mező) vagy a hiányzó sor.
 
-- [ ] **Step 3: `render.ts`**
+- [x] **Step 3: `render.ts`**
 
 A `baseFields` elé:
 
@@ -166,7 +166,7 @@ export function renderRecipeNote(
 
 (A `renderRecipeNote` többi sora változatlan.)
 
-- [ ] **Step 4: `pipeline.ts`**
+- [x] **Step 4: `pipeline.ts`**
 
 Az import:
 
@@ -193,12 +193,12 @@ A `processItem`-ben a `renderTranscriptNote(item, transcript, version),` sor hel
         renderTranscriptNote(item, transcript, version, deps.origin),
 ```
 
-- [ ] **Step 5: Futtasd, legyen zöld**
+- [x] **Step 5: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run src/vault/render.test.ts src/pipeline.test.ts && pnpm typecheck`
 Expected: PASS, típushiba nincs.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/vault/render.ts src/vault/render.test.ts src/pipeline.ts src/pipeline.test.ts
@@ -219,7 +219,7 @@ git commit -m "feat(vault): Record the run origin in note frontmatter"
 - Consumes: `NoteOrigin`, `PipelineDeps.origin` (Task 1).
 - Produces: `commandRun` `flags.origin?: NoteOrigin`; a `runRecipes` sikeres eredménye `{ ok: true, noteUrl: '<vault-relatív út>' }`, például `Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md`.
 
-- [ ] **Step 1: A tesztek átírása**
+- [x] **Step 1: A tesztek átírása**
 
 `src/serve/summary.test.ts`:
 
@@ -285,12 +285,12 @@ sed -i '' "s#'https://github.com/tulaj/repo/blob/main/Inbox/transcript-refinery/
 
 5. Ellenőrzés: `grep -n "github\|gitFor\|execFileAsync" src/serve/summary.test.ts` — nincs találat.
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run src/serve/summary.test.ts`
 Expected: FAIL — a `noteUrl` még GitHub-URL, az alapértelmezett gittel a helyi origin „nem GitHub-cím” hibát ad, és a jegyzetben `origin: cli` áll.
 
-- [ ] **Step 3: `cli.ts`**
+- [x] **Step 3: `cli.ts`**
 
 Az importok közé:
 
@@ -311,7 +311,7 @@ A `processItem(unit.item, { … })` hívásban a `commit,` sor után:
         origin: flags.origin,
 ```
 
-- [ ] **Step 4: `summary.ts`**
+- [x] **Step 4: `summary.ts`**
 
 1. A fejlécből töröld: `import { execFile } from 'node:child_process'`, `import { promisify } from 'node:util'`, `import { githubNoteUrl } from './note-url.js'` és a `const exec = promisify(execFile)` sort.
 
@@ -352,12 +352,12 @@ const defaultGit: SummaryGit = {
 git rm src/serve/note-url.ts src/serve/note-url.test.ts
 ```
 
-- [ ] **Step 5: Futtasd, legyen zöld**
+- [x] **Step 5: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run src/serve && pnpm typecheck && pnpm lint`
 Expected: PASS; `grep -rn "githubNoteUrl\|note-url" src` — nincs találat.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/cli.ts src/serve/summary.ts src/serve/summary.test.ts
@@ -382,7 +382,7 @@ git commit -m "fix(serve): Send a forge-neutral note path and mark Telegram runs
   - `export const FRONTMATTER` (`src/vault/lint.ts`)
   - `src/serve/notes.ts`: `KIND`, `NoteListItem`, `NoteList`, `NoteView`, `NotesSource { list(): Promise<NoteList>; note(itemId: string, kind: string): Promise<NoteView | null> }`, `class NotesUnavailable extends Error`, `originOf(fields)`, `scanNotes(notesRoot)`, `createNotesSource({ load, busy, pull? })`.
 
-- [ ] **Step 1: Függőség, git-időkorlát, export**
+- [x] **Step 1: Függőség, git-időkorlát, export**
 
 ```bash
 pnpm add -w markdown-it@^15.0.2
@@ -406,7 +406,7 @@ export async function gitPullFfOnly(repo: string, timeoutMs?: number): Promise<v
 export const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/
 ```
 
-- [ ] **Step 2: A bukó tesztek**
+- [x] **Step 2: A bukó tesztek**
 
 `src/serve/notes.test.ts`:
 
@@ -569,12 +569,12 @@ describe('createNotesSource.note', () => {
 })
 ```
 
-- [ ] **Step 3: Futtasd, bukjon**
+- [x] **Step 3: Futtasd, bukjon**
 
 Run: `pnpm vitest run src/serve/notes.test.ts`
 Expected: FAIL — `Cannot find module './notes.js'`.
 
-- [ ] **Step 4: `src/serve/notes.ts`**
+- [x] **Step 4: `src/serve/notes.ts`**
 
 ```ts
 import { readdir, readFile } from 'node:fs/promises'
@@ -792,12 +792,12 @@ export function createNotesSource(input: {
 }
 ```
 
-- [ ] **Step 5: Futtasd, legyen zöld**
+- [x] **Step 5: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run src/serve/notes.test.ts src/vault && pnpm typecheck && pnpm lint`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add package.json pnpm-lock.yaml src/vault/git.ts src/vault/lint.ts src/serve/notes.ts src/serve/notes.test.ts
@@ -817,7 +817,7 @@ git commit -m "feat(serve): Read and render vault notes for the notes page"
 - Consumes: `NotesSource`, `NotesUnavailable` (Task 3); `createNotesSource` (Task 3).
 - Produces: `ServeServerInput.notes?: NotesSource`. HTTP: `GET /notes` → `200` JSON (`NoteList`); `GET /notes/<itemId>/<fajta>` → `200` JSON (`NoteView`) vagy `404`; titok nélkül `401`; `notes` nélkül vagy `NotesUnavailable`-nél `503`; más hibánál `500`.
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 `src/serve/http.test.ts`: az importokhoz:
 
@@ -908,12 +908,12 @@ describe('createServeServer /notes', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run src/serve/http.test.ts`
 Expected: FAIL — a `/notes` ma `404` (és a `notes` mező ismeretlen a bemenetben).
 
-- [ ] **Step 3: `http.ts`**
+- [x] **Step 3: `http.ts`**
 
 Az importokhoz:
 
@@ -998,7 +998,7 @@ A `handle`-ben, a `GET /status` blokk után, a `if (request.method !== 'POST' ||
   }
 ```
 
-- [ ] **Step 4: `command.ts`**
+- [x] **Step 4: `command.ts`**
 
 Az importokhoz:
 
@@ -1013,12 +1013,12 @@ A `createServeServer({ … })` hívásban a `version: VERSION,` sor után:
     notes: createNotesSource({ load: () => loadCliConfig(configArg), busy: () => gate.current !== null }),
 ```
 
-- [ ] **Step 5: Futtasd, legyen zöld**
+- [x] **Step 5: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run src/serve && pnpm typecheck && pnpm lint`
 Expected: PASS.
 
-- [ ] **Step 6: README**
+- [x] **Step 6: README**
 
 `README.md`, a „A `serve` három lekérdező végpontot is ad: …” bekezdés után új bekezdés:
 
@@ -1031,7 +1031,7 @@ lista előtt a `serve` `git pull`-t futtat a vaulton; ha ez nem sikerül, vagy
 épp munka fut, a válasz `stale: true`.
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/serve/http.ts src/serve/http.test.ts src/serve/command.ts README.md
@@ -1049,7 +1049,7 @@ git commit -m "feat(serve): Serve the notes list and note pages from the vault"
 **Interfaces:**
 - Produces: `export function videoIdOf(jobId: string): string` — a `jobId` utolsó kettőspontja utáni rész; kettőspont nélkül maga a bemenet. A `runReadyMessage` linkjei: `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`.
 
-- [ ] **Step 1: A tesztek átírása (bukjanak)**
+- [x] **Step 1: A tesztek átírása (bukjanak)**
 
 `worker/src/plan.test.ts`: az importlistába `videoIdOf`; a `/notes/1:${ID}/` szakaszok cseréje:
 
@@ -1081,12 +1081,12 @@ sed -i '' 's#/notes/5:\${ID}/#/notes/\${ID}/#g' worker/src/handle.test.ts
 
 Ellenőrzés: `grep -n "notes/[0-9]*:" worker/src/plan.test.ts worker/src/handle.test.ts worker/src/entry.test.ts` — csak az `entry.test.ts` `/notes`-tesztjének `get('/notes/5:abcdefghijk/summary')` sorai maradnak (ezeket a 6. feladat kezeli).
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run worker/src/plan.test.ts worker/src/handle.test.ts worker/src/entry.test.ts`
 Expected: FAIL — `videoIdOf` nincs exportálva, a linkek még `1:`/`5:` előtagúak.
 
-- [ ] **Step 3: `plan.ts`**
+- [x] **Step 3: `plan.ts`**
 
 A `runReadyMessage` elé:
 
@@ -1103,12 +1103,12 @@ A `runReadyMessage` utolsó sora:
   return [head, ...runKinds(run).map((kind) => `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`)].join('\n')
 ```
 
-- [ ] **Step 4: Futtasd, legyen zöld**
+- [x] **Step 4: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json --noEmit`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/plan.ts worker/src/plan.test.ts worker/src/handle.test.ts worker/src/entry.test.ts
@@ -1130,7 +1130,7 @@ git commit -m "feat(worker): Link notes by video id in bot messages"
 - Consumes: `videoIdOf` (Task 5); a `serve` JSON-alakjai (Task 3–4): lista `{ stale: boolean, items: { itemId, title, url: string|null, origin, generatedAt: string|null, kinds: string[] }[] }`, jegyzet `{ title, url, origin, generatedAt, html }`.
 - Produces: `ReaderDeps { serveUrl: string; secret: string }`; `notesPage(deps): Promise<Response>`; `notePage(id: string, kind: string, deps): Promise<Response>` (az `id` lehet régi `jobId` is).
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 `worker/src/reader.test.ts` teljes tartalma:
 
@@ -1302,12 +1302,12 @@ describe('notePage', () => {
     expect((await worker.fetch(get('/notes/%E0/summary'), env, signed)).status).toBe(404)
 ```
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run worker/src/reader.test.ts worker/src/entry.test.ts`
 Expected: FAIL — a `ReaderDeps` alakja más, a `notesPage` a D1-et olvassa.
 
-- [ ] **Step 3: `messages.ts`**
+- [x] **Step 3: `messages.ts`**
 
 A `VAULT_LOCKED`, `GITHUB_DOWN` és `OPEN_ON_GITHUB` sor helyére:
 
@@ -1319,7 +1319,7 @@ export const SERVE_BAD_REPLY = 'A serve hibás választ adott.'
 export const NOTES_STALE = 'A vault most nem frissült, a lista régebbi lehet.'
 ```
 
-- [ ] **Step 4: `reader.ts` (teljes csere)**
+- [x] **Step 4: `reader.ts` (teljes csere)**
 
 ```ts
 import {
@@ -1479,7 +1479,7 @@ export async function notePage(id: string, kind: string, deps: ReaderDeps): Prom
 }
 ```
 
-- [ ] **Step 5: `index.ts`**
+- [x] **Step 5: `index.ts`**
 
 Az `Env`-ből töröld a `VAULT_GITHUB_TOKEN?`, `VAULT_REPO?` és `VAULT_BRANCH?` sort.
 
@@ -1511,7 +1511,7 @@ A `/notes` blokk:
     }
 ```
 
-- [ ] **Step 6: `store.ts` és `d1.ts`**
+- [x] **Step 6: `store.ts` és `d1.ts`**
 
 `worker/src/store.ts`: töröld a `notesFor(sub: string): Promise<JobRow[]>` sort a `JobStore` interfészből, és a `notesFor: (sub) => …` bejegyzést (6 sor) a `memoryStore`-ból.
 
@@ -1519,12 +1519,12 @@ A `/notes` blokk:
 
 Ellenőrzés: `grep -rn "notesFor\|VAULT_\|GITHUB\|github" worker/src` — nincs találat.
 
-- [ ] **Step 7: Futtasd, legyen zöld**
+- [x] **Step 7: Futtasd, legyen zöld**
 
 Run: `pnpm test && pnpm exec tsc -p worker/tsconfig.json --noEmit && pnpm lint`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add worker/src
@@ -1539,7 +1539,7 @@ git commit -m "feat(worker): Read the notes page from serve instead of GitHub"
 - Modify: `.env.example` (a vault-változók blokkja)
 - Modify: `docs/operations/telegram-worker-topology.md:229`
 
-- [ ] **Step 1: `.env.example`**
+- [x] **Step 1: `.env.example`**
 
 Töröld ezt a blokkot (a sorok közti üres sorral együtt):
 
@@ -1556,7 +1556,7 @@ VAULT_BRANCH=
 
 ```
 
-- [ ] **Step 2: Az üzemeltetési leírás**
+- [x] **Step 2: Az üzemeltetési leírás**
 
 `docs/operations/telegram-worker-topology.md`, a „**Kész jegyzet:**” kezdetű sor helyére:
 
@@ -1564,7 +1564,7 @@ VAULT_BRANCH=
 - **Kész jegyzet:** `<cím> · <recept>. A jegyzet megvan.`, fordításnál `<cím> · <nyelv>. A fordítás megvan.`, és jegyzetenként egy sor: `https://<worker>/notes/<videóazonosító>/<fajta>` (például `notes`, `summary-de`). Az oldal Cloudflare Access mögött van; a Worker a jegyzetet a peter-mba `serve`-étől kéri (`GET /notes/<itemId>/<fajta>`), az a vaultból olvassa és rendereli. A régi, `/notes/<update_id>:<videóazonosító>/<fajta>` alakú linkek is működnek. A `https://<worker>/notes` a vault összes jegyzetének listája, bárhonnan indult a futás, elemenként `telegram`/`cli` címkével és a kész fajtákkal. Ha a peter-mba alszik, az oldal ezt jelzi. A bot csak privát chatben válaszol.
 ```
 
-- [ ] **Step 3: Záró ellenőrzés**
+- [x] **Step 3: Záró ellenőrzés**
 
 Run:
 
@@ -1579,7 +1579,7 @@ grep -rni "github" src worker/src --include='*.ts' | grep -v '\.test\.ts'
 
 Expected: minden zöld; a `grep` nem ad találatot.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .env.example docs/operations/telegram-worker-topology.md

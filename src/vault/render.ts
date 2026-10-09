@@ -38,10 +38,14 @@ function mergeTags(
   return merged.length > 0 ? merged : undefined
 }
 
+/** Honnan indult a jegyzetet író futás: a `serve` (Telegram) vagy a parancssor. */
+export type NoteOrigin = 'telegram' | 'cli'
+
 function baseFields(
   item: SourceItem,
   transcript: NormalizedTranscript,
   generatorVersion: string,
+  origin: NoteOrigin,
   extraTags?: readonly string[],
   /** A jegyzet nyelve, ha eltér az elemétől — fordításnál a célnyelv. */
   language?: string,
@@ -53,6 +57,7 @@ function baseFields(
     ['item_id', item.itemId],
     ['title', item.title],
     ['source', item.source],
+    ['origin', origin],
     ['source_file', item.sourceFile],
     ['language', language ?? item.language ?? undefined],
     ['video_id', item.metadata.videoId],
@@ -82,8 +87,9 @@ export function renderTranscriptNote(
   item: SourceItem,
   transcript: NormalizedTranscript,
   generatorVersion: string,
+  origin: NoteOrigin = 'cli',
 ): string {
-  const frontmatter = renderFrontmatter(baseFields(item, transcript, generatorVersion))
+  const frontmatter = renderFrontmatter(baseFields(item, transcript, generatorVersion, origin))
   return frontmatter + body(item, toParagraphs(transcript.lines))
 }
 
@@ -140,9 +146,10 @@ export function renderRecipeNote(
   content: string,
   meta: RecipeNoteMeta,
   generatorVersion: string,
+  origin: NoteOrigin = 'cli',
 ): string {
   const frontmatter = renderFrontmatter([
-    ...baseFields(item, transcript, generatorVersion, meta.tags, meta.translation?.language),
+    ...baseFields(item, transcript, generatorVersion, origin, meta.tags, meta.translation?.language),
     ['recipe', meta.recipe],
     ['model', meta.model],
     ['iterations', meta.iterations],

@@ -171,7 +171,14 @@ describe('worker belépés', () => {
     expect(await page.text()).toContain('A link lejárt vagy már nem érvényes. Kérj újat a botban: /start')
   })
   it('a /notes azonosító nélkül 403, a pontatlan útvonal 404, belépve lista, az ismeretlen jegyzet 404', async () => {
-    globalThis.fetch = () => Promise.reject(new Error('a GitHub nem hívható'))
+    const asked: string[] = []
+    globalThis.fetch = (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      asked.push(url)
+      return Promise.resolve(
+        url.endsWith('/notes') ? new Response(JSON.stringify({ stale: false, items: [] })) : new Response(null, { status: 404 }),
+      )
+    }
     const env = {
       DB: memoryDb(),
       TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
@@ -197,6 +204,8 @@ describe('worker belépés', () => {
     expect(list.status).toBe(200)
     expect(await list.text()).toContain('Még nincs jegyzet. Küldj egy YouTube-címet a botnak.')
     expect((await worker.fetch(get('/notes/5:abcdefghijk/summary'), env, signed)).status).toBe(404)
+    expect(asked).toContain('http://127.0.0.1:8787/notes/abcdefghijk/summary')
+    expect((await worker.fetch(get('/notes/%E0/summary'), env, signed)).status).toBe(404)
   })
   it('a futás visszahívása a kérés saját címére tett /notes linket küldi', async () => {
     const bodies: string[] = []
@@ -232,7 +241,7 @@ describe('worker belépés', () => {
       new Request('https://worker.test/internal/jobs/5%3Aabcdefghijk%3Asummary', {
         method: 'POST',
         headers: { authorization: 'Bearer titok' },
-        body: JSON.stringify({ status: 'ready', title: 'Cím', noteUrl: 'https://github.com/tulaj/vault/blob/main/a_transcript.md' }),
+        body: JSON.stringify({ status: 'ready', title: 'Cím', noteUrl: 'Inbox/a_transcript.md' }),
       }),
       env,
       { waitUntil: () => undefined },
@@ -240,7 +249,7 @@ describe('worker belépés', () => {
     expect(response.status).toBe(200)
     expect(bodies).toHaveLength(1)
     expect((JSON.parse(bodies[0]!) as { text: string }).text).toBe(
-      'Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/5:abcdefghijk/summary',
+      'Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/abcdefghijk/summary',
     )
   })
 

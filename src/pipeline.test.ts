@@ -188,6 +188,15 @@ describe('processItem', () => {
     const second = await processItem(item(), deps)
     expect(second.status).toBe('skipped')
   })
+
+  it('a deps.origin a jegyzet frontmatterébe kerül, hiányában cli', async () => {
+    const { sink } = collectEvents()
+    const telegram = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {}, origin: 'telegram' })
+    expect(await readFile(telegram.path!, 'utf8')).toContain('origin: telegram\n')
+    const other = item({ itemId: 'd4e5f6', baseName: 'Másik', sourceFile: 'csatorna/Másik.en.srt' })
+    const cli = await processItem(other, { notesRoot, store, sink, version: '0.1.0', options: {} })
+    expect(await readFile(cli.path!, 'utf8')).toContain('origin: cli\n')
+  })
 })
 
 function alapDeps(): PipelineDeps {

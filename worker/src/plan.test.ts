@@ -24,6 +24,7 @@ import {
   runQueuedLine,
   runFailedLine,
   runReadyMessage,
+  videoIdOf,
   waitingLine,
 } from './plan.js'
 
@@ -144,7 +145,7 @@ describe('mondatok', () => {
 
   it('a cím újsora és vezérlőkaraktere egy szóköz, a link marad a második sor', () => {
     expect(runReadyMessage('Cím\nhttps://evil.example\u0007', run({ recipes: ['notes'] }), 'https://w.test')).toBe(
-      `Cím https://evil.example · notes. A jegyzet megvan.\nhttps://w.test/notes/1:${ID}/notes`,
+      `Cím https://evil.example · notes. A jegyzet megvan.\nhttps://w.test/notes/${ID}/notes`,
     )
     expect(readyLine('Cím\r\nmásodik')).toBe('Cím második. A felirat megvan.')
   })
@@ -260,11 +261,17 @@ describe('futások', () => {
     expect(runFailedLine(['qa'], null, 'A futás megállt.')).toBe('qa: A futás megállt.')
     expect(runFailedLine(['summary', 'notes'], 'de', 'x')).toBe('summary, notes → de: x')
     expect(runReadyMessage('Cím\n', run({ recipes: ['notes'] }), 'https://w.test')).toBe(
-      `Cím · notes. A jegyzet megvan.\nhttps://w.test/notes/1:${ID}/notes`,
+      `Cím · notes. A jegyzet megvan.\nhttps://w.test/notes/${ID}/notes`,
     )
     expect(runReadyMessage('Cím', run({ recipes: ['summary', 'notes'], lang: 'de' }), 'https://w.test')).toBe(
-      `Cím · de. A fordítás megvan.\nhttps://w.test/notes/1:${ID}/summary-de\nhttps://w.test/notes/1:${ID}/notes-de`,
+      `Cím · de. A fordítás megvan.\nhttps://w.test/notes/${ID}/summary-de\nhttps://w.test/notes/${ID}/notes-de`,
     )
+  })
+
+  it('a videoIdOf az utolsó kettőspont utáni rész, kettőspont nélkül maga a bemenet', () => {
+    expect(videoIdOf(`123:${ID}`)).toBe(ID)
+    expect(videoIdOf(ID)).toBe(ID)
+    expect(videoIdOf('a1b2c3d4e5f6a7b8')).toBe('a1b2c3d4e5f6a7b8')
   })
 
   it('a futás egyszer szúrható be, a claimRun csak a várt állapotból ír, a dueRuns a due szabálya', async () => {

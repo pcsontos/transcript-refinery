@@ -97,6 +97,11 @@ export function readyBases(runs: readonly RunRow[]): string[] {
   )
 }
 
+/** A `jobId` (`<update_id>:<videóazonosító>`) videóazonosító része; kettőspont nélkül maga a bemenet. */
+export function videoIdOf(jobId: string): string {
+  return jobId.slice(jobId.lastIndexOf(':') + 1)
+}
+
 export function runReadyMessage(
   title: string,
   run: Pick<RunRow, 'jobId' | 'recipes' | 'lang'>,
@@ -106,7 +111,7 @@ export function runReadyMessage(
     run.lang === null
       ? `${flatTitle(title)} · ${run.recipes.join(', ')}. A jegyzet megvan.`
       : `${flatTitle(title)} · ${run.lang}. A fordítás megvan.`
-  return [head, ...runKinds(run).map((kind) => `${linkBase}/notes/${run.jobId}/${kind}`)].join('\n')
+  return [head, ...runKinds(run).map((kind) => `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`)].join('\n')
 }
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/

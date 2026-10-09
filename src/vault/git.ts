@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
@@ -11,9 +11,42 @@ export interface PushResult {
 /**
  * Futás előtti frissítés. Szándékosan `--ff-only`: ha a történet divergált,
  * inkább hasaljon el itt, mint hogy a publisher egy elavult fára írjon.
+ * `timeoutMs` után a git folyamat a gyerekeivel (fetch, ssh) együtt leáll, és a
+ * hívás hibát dob.
  */
-export async function gitPullFfOnly(repo: string): Promise<void> {
-  await run('git', ['pull', '--ff-only'], { cwd: repo })
+export async function gitPullFfOnly(repo: string, timeoutMs?: number): Promise<void> {
+  if (timeoutMs === undefined) {
+    await run('git', ['pull', '--ff-only'], { cwd: repo })
+    return
+  }
+  await new Promise<void>((resolve, reject) => {
+    // Külön folyamatcsoport (az `execFile` a `detached` kapcsolót nem veszi át): lejáratkor
+    // a pull alatt futó fetch és ssh is leáll, nem csak a pull maga.
+    const child = spawn('git', ['pull', '--ff-only'], { cwd: repo, detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8')
+    })
+    let expired = false
+    const timer = setTimeout(() => {
+      expired = true
+      if (child.pid === undefined) return
+      try {
+        process.kill(-child.pid, 'SIGKILL')
+      } catch {
+        child.kill('SIGKILL')
+      }
+    }, timeoutMs)
+    child.once('error', (error) => {
+      clearTimeout(timer)
+      reject(error)
+    })
+    child.once('close', (code) => {
+      clearTimeout(timer)
+      if (code === 0) resolve()
+      else reject(new Error(expired ? `git pull: időtúllépés (${timeoutMs} ms)` : `git pull: ${stderr.trim() || `kilépési kód ${code}`}`))
+    })
+  })
 }
 
 /** Van-e bármilyen követetlen vagy módosított fájl a munkafában? */

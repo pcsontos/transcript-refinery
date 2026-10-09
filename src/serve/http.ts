@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { ServeJob } from './job.js'
+import { NotesUnavailable, type NotesSource } from './notes.js'
 
 export interface ServeGate {
   current: string | null
@@ -13,6 +14,15 @@ export function acceptJob(gate: ServeGate, jobId: string): 202 | 409 {
   }
   if (gate.current === jobId) return 202
   return 409
+}
+
+/** Lefoglalja a kaput egy nem-job munkának (a lista pullja); `null`, ha már foglalt. */
+export function claimGate(gate: ServeGate, label: string): (() => void) | null {
+  if (gate.current !== null) return null
+  gate.current = label
+  return () => {
+    gate.current = null
+  }
 }
 
 function authorized(header: string | undefined, secret: string): boolean {
@@ -69,7 +79,60 @@ export interface ServeServerInput {
   secret: string
   gate: ServeGate
   version: string
+  /** A `/notes` útvonalak forrása; hiányában a két útvonal `503`. */
+  notes?: NotesSource
   onJob: (job: ServeJob) => Promise<void>
+}
+
+const NOTE_PATH = /^\/notes\/([^/]+)\/([^/]+)$/
+
+function decoded(segment: string | undefined): string | null {
+  if (segment === undefined) return null
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return null
+  }
+}
+
+async function notesRoute(
+  path: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+  input: ServeServerInput,
+): Promise<void> {
+  if (!authorized(request.headers.authorization, input.secret)) {
+    rejectUnauthorized(request, response)
+    return
+  }
+  if (input.notes === undefined) {
+    send(response, 503)
+    return
+  }
+  try {
+    if (path === '/notes') {
+      sendBody(response, 200, 'application/json', JSON.stringify(await input.notes.list()))
+      return
+    }
+    // Az útvonalból soha nem lesz fájlút: a forrás a beolvasott jegyzetek közül választ.
+    const match = NOTE_PATH.exec(path)
+    const itemId = decoded(match?.[1])
+    const kind = decoded(match?.[2])
+    const view = itemId === null || kind === null ? null : await input.notes.note(itemId, kind)
+    if (view === null) {
+      send(response, 404)
+      return
+    }
+    sendBody(response, 200, 'application/json', JSON.stringify(view))
+  } catch (cause) {
+    if (cause instanceof NotesUnavailable) {
+      console.warn(`[serve] 503 A vault nem érhető el: ${cause.message}`)
+      send(response, 503)
+      return
+    }
+    console.error('[serve] /notes hiba:', cause)
+    send(response, 500)
+  }
 }
 
 export function createServeServer(input: ServeServerInput): Server {
@@ -94,6 +157,10 @@ async function handle(request: IncomingMessage, response: ServerResponse, input:
       return
     }
     sendBody(response, 200, 'application/json', JSON.stringify({ version: input.version, busy: input.gate.current }))
+    return
+  }
+  if (request.method === 'GET' && (path === '/notes' || path.startsWith('/notes/'))) {
+    await notesRoute(path, request, response, input)
     return
   }
   if (request.method !== 'POST' || path !== '/jobs') {

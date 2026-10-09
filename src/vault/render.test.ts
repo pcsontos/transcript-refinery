@@ -208,3 +208,17 @@ describe('renderRecipeNote', () => {
     expect(note).not.toContain('translation_of')
   })
 })
+
+describe('origin', () => {
+  const meta = { recipe: 'summary', model: 'm', iterations: 1, score: 1, costUsd: 0 }
+
+  it('az átiratban a source után áll, alapból cli', () => {
+    const note = renderTranscriptNote(item(), transcript, '0.1.0')
+    expect(note).toContain('source: youtube\norigin: cli\nsource_file:')
+  })
+
+  it('a megadott origin a receptjegyzetbe is bekerül', () => {
+    const note = renderRecipeNote(item(), transcript, 'A törzs.', meta, '0.1.0', 'telegram')
+    expect(note).toContain('source: youtube\norigin: telegram\nsource_file:')
+  })
+})

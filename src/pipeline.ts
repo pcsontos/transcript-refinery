@@ -20,7 +20,7 @@ import { lintVaultMarkdown } from './vault/lint.js'
 import { noteBody, type NoteBody } from './vault/note-body.js'
 import { noteFile } from './vault/paths.js'
 import { exists, publishNote, type PublishOptions } from './vault/publish.js'
-import { renderRecipeNote, renderTranscriptNote } from './vault/render.js'
+import { renderRecipeNote, renderTranscriptNote, type NoteOrigin } from './vault/render.js'
 
 export interface RecipeDeps {
   recipe: Recipe
@@ -47,6 +47,8 @@ export interface PipelineDeps {
    * akár egy megszakadt vagy elhasalt korábbi futásból maradt ott.
    */
   commit?: boolean
+  /** Honnan indult a futás; a jegyzet frontmatterének `origin` mezője. Hiányában `cli`. */
+  origin?: NoteOrigin
 }
 
 export interface ItemOutcome {
@@ -290,7 +292,7 @@ async function runRecipe(
             sourceGeneratedAt: source.generatedAt,
           }
         : undefined,
-  }, deps.version)
+  }, deps.version, deps.origin)
 
   const lintErrors = lintVaultMarkdown(markdown)
   if (lintErrors.length > 0) {
@@ -390,7 +392,7 @@ export async function processItem(
     if (kellAtirat) {
       outcome = await publishRendered(
         noteFile(deps.notesRoot, item, '_transcript.md'),
-        renderTranscriptNote(item, transcript, version),
+        renderTranscriptNote(item, transcript, version, deps.origin),
         item,
         ARTIFACT_KIND,
         deps,
