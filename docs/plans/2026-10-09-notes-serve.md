@@ -1049,7 +1049,7 @@ git commit -m "feat(serve): Serve the notes list and note pages from the vault"
 **Interfaces:**
 - Produces: `export function videoIdOf(jobId: string): string` — a `jobId` utolsó kettőspontja utáni rész; kettőspont nélkül maga a bemenet. A `runReadyMessage` linkjei: `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`.
 
-- [ ] **Step 1: A tesztek átírása (bukjanak)**
+- [x] **Step 1: A tesztek átírása (bukjanak)**
 
 `worker/src/plan.test.ts`: az importlistába `videoIdOf`; a `/notes/1:${ID}/` szakaszok cseréje:
 
@@ -1081,12 +1081,12 @@ sed -i '' 's#/notes/5:\${ID}/#/notes/\${ID}/#g' worker/src/handle.test.ts
 
 Ellenőrzés: `grep -n "notes/[0-9]*:" worker/src/plan.test.ts worker/src/handle.test.ts worker/src/entry.test.ts` — csak az `entry.test.ts` `/notes`-tesztjének `get('/notes/5:abcdefghijk/summary')` sorai maradnak (ezeket a 6. feladat kezeli).
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run worker/src/plan.test.ts worker/src/handle.test.ts worker/src/entry.test.ts`
 Expected: FAIL — `videoIdOf` nincs exportálva, a linkek még `1:`/`5:` előtagúak.
 
-- [ ] **Step 3: `plan.ts`**
+- [x] **Step 3: `plan.ts`**
 
 A `runReadyMessage` elé:
 
@@ -1103,12 +1103,12 @@ A `runReadyMessage` utolsó sora:
   return [head, ...runKinds(run).map((kind) => `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`)].join('\n')
 ```
 
-- [ ] **Step 4: Futtasd, legyen zöld**
+- [x] **Step 4: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run worker && pnpm exec tsc -p worker/tsconfig.json --noEmit`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/plan.ts worker/src/plan.test.ts worker/src/handle.test.ts worker/src/entry.test.ts

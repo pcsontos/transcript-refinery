@@ -232,7 +232,7 @@ describe('worker belépés', () => {
       new Request('https://worker.test/internal/jobs/5%3Aabcdefghijk%3Asummary', {
         method: 'POST',
         headers: { authorization: 'Bearer titok' },
-        body: JSON.stringify({ status: 'ready', title: 'Cím', noteUrl: 'https://github.com/tulaj/vault/blob/main/a_transcript.md' }),
+        body: JSON.stringify({ status: 'ready', title: 'Cím', noteUrl: 'Inbox/a_transcript.md' }),
       }),
       env,
       { waitUntil: () => undefined },
@@ -240,7 +240,7 @@ describe('worker belépés', () => {
     expect(response.status).toBe(200)
     expect(bodies).toHaveLength(1)
     expect((JSON.parse(bodies[0]!) as { text: string }).text).toBe(
-      'Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/5:abcdefghijk/summary',
+      'Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/abcdefghijk/summary',
     )
   })
 

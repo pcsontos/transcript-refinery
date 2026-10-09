@@ -322,7 +322,7 @@ describe('handleCallback', () => {
 
     const ok = deps(store)
     await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, ok)
-    expect(ok.sent).toEqual([`Cím · notes. A jegyzet megvan.\nhttps://worker.test/notes/5:${ID}/notes`])
+    expect(ok.sent).toEqual([`Cím · notes. A jegyzet megvan.\nhttps://worker.test/notes/${ID}/notes`])
     expect(await store.run(`5:${ID}:notes`)).toMatchObject({ status: 'ready', notified: true })
     const repeat = deps(store)
     await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, repeat)
@@ -374,7 +374,7 @@ describe('handleTap', () => {
     await store.saveRun(readyRun(['summary']))
     const again = deps(store)
     expect(await handleTap(tap(32, `r:summary:5:${ID}`), again)).toEqual([])
-    expect(again.sent).toEqual([`Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/5:${ID}/summary`])
+    expect(again.sent).toEqual([`Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/${ID}/summary`])
   })
 
   it('idegen fiók, idegen sor, a még nem kész felirat sora és az ismeretlen recept nem indít', async () => {
