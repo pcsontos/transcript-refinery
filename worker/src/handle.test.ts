@@ -680,4 +680,25 @@ describe('indulási üzenet', () => {
     await applyKnocks(knocks, mute)
     expect((await store.run(`6:${ID}:bloom`))?.status).toBe('accepted')
   })
+
+  it('a gomb és a cron egyszerre kopogtat ugyanarra a futásra: egyetlen indulási üzenet megy', async () => {
+    const base = await boundStore()
+    // A D1 másolatot ad vissza, a memóriás tár közös hivatkozást: klónozva kapjuk a versenyhelyzetet.
+    const store: ReturnType<typeof memoryStore> = {
+      ...base,
+      run: async (id) => structuredClone(await base.run(id)),
+      dueRuns: async (now) => structuredClone(await base.dueRuns(now)),
+    }
+    await store.insert(readyRow())
+    let release: (code: 202) => void = () => {}
+    const gate = new Promise<202>((resolve) => {
+      release = resolve
+    })
+    const own = deps(store, { knock: () => gate })
+    const knocks = await handleTap(tap(70, `r:notes:5:${ID}`), own)
+    const both = Promise.all([applyKnocks(knocks, own), handleCron(own)])
+    release(202)
+    await both
+    expect(own.sent.filter((line) => line.startsWith('Elkezdődött'))).toHaveLength(1)
+  })
 })

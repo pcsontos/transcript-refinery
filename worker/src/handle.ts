@@ -78,7 +78,9 @@ async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Pro
 /**
  * A felirat sora és a futás sora is így áll be a kopogtatás eredménye szerint.
  * A `started` üzenet csak az első elfogadáskor megy: a cron a régóta elfogadott
- * futást újra kopogtatja, és arra a konténer megint 202-t ad.
+ * futást újra kopogtatja, és arra a konténer megint 202-t ad. A gomb és a cron
+ * egyszerre is kopogtathat: a `claimRun` dönti el, melyikük küldi az üzenetet;
+ * a vesztes nem ír és nem küld.
  */
 async function settle(
   target: { status: JobStatus; acceptedAt: number | null; error: string | null },
@@ -86,15 +88,17 @@ async function settle(
   save: () => Promise<void>,
   result: KnockResult,
   deps: WorkerDeps,
-  started?: string,
+  started?: { runId: string; text: string },
 ): Promise<void> {
   if (result === 409) return
   if (result === 202) {
     const fresh = target.status !== 'accepted'
+    const won = fresh && started !== undefined && (await deps.store.claimRun(started.runId, target.status, 'accepted'))
+    if (fresh && started !== undefined && !won) return
     target.status = 'accepted'
     target.acceptedAt = deps.now()
     await save()
-    if (fresh && started !== undefined) await deps.send(row.chatId, started)
+    if (won) await deps.send(row.chatId, started.text)
     return
   }
   if (result === 401) {
@@ -247,7 +251,7 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
         () => deps.store.saveRun(run),
         await deps.knock(knock),
         deps,
-        runStartedLine(run.recipes, run.lang),
+        { runId: run.runId, text: runStartedLine(run.recipes, run.lang) },
       )
       continue
     }
@@ -415,7 +419,7 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
       () => deps.store.saveRun(run),
       await deps.knock(knockFor(run, row)),
       deps,
-      runStartedLine(run.recipes, run.lang),
+      { runId: run.runId, text: runStartedLine(run.recipes, run.lang) },
     )
   }
 }
