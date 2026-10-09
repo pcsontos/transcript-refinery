@@ -84,6 +84,20 @@ mappába a `yt-dlp` segítségével. Ami már ott van, azt átugorja. A `run` é
 A `refinery serve` egy videó feliratát és `info.json` fájlját az R2-be tölti. A
 Telegram-ajtó a `worker/` csomag.
 
+A `serve` három lekérdező végpontot is ad: a `GET /ping` és a `GET /version`
+hitelesítés nélkül válaszol (`ok`, illetve `{"version": …}`), a `GET /status`
+a `REFINERY_SERVE_SECRET` Bearer-tokenjével a verziót és az éppen futó munka
+azonosítóját adja (`{"version": …, "busy": <jobId> | null}`).
+
+A `refinery serve --config <út>` a megadott konfigurációt használja a
+feliratnyelvekhez és a receptfuttatásokhoz is; ha a fájl nem tölthető be, a
+`serve` el sem indul. A `--config` nélkül a munkakönyvtár
+`refinery.config.yaml`-ja érvényes, ha van.
+
+A súgó parancsonként is elérhető: `refinery help <parancs>` vagy
+`refinery <parancs> --help`; a `refinery help` a parancsok áttekintése.
+A verziót a `refinery version` (vagy `refinery --version`) írja ki.
+
 A `run --recipe summary` a normalizált átiratból összefoglaló jegyzetet
 készít, korlátos evaluator–optimizer loopban: a modell generál, egy rubrika
 pontoz **és konkrét hiányokat nevez meg**, a modell eddig javít, amíg átmegy

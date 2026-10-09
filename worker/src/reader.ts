@@ -1,7 +1,7 @@
 import { findRow } from './handle.js'
-import { GITHUB_DOWN, NO_NOTES, NOTE_MISSING, OPEN_ON_GITHUB, VAULT_LOCKED } from './messages.js'
+import { GITHUB_DOWN, LANGS, NO_NOTES, NOTE_MISSING, OPEN_ON_GITHUB, RECIPES, VAULT_LOCKED } from './messages.js'
 import { runKinds } from './plan.js'
-import type { JobStore, RunRow } from './store.js'
+import type { JobRow, JobStore, RunRow } from './store.js'
 
 export interface ReaderDeps {
   store: JobStore
@@ -44,17 +44,35 @@ function readyRuns(runs: readonly RunRow[]): RunRow[] {
   return runs.filter((run) => run.status === 'ready' && run.noteUrl !== null)
 }
 
+/** A receptek a gombok sorrendjében, mindegyik után a fordításai a nyelvek sorrendjében; az ismeretlen fajta a végén. */
+const KIND_ORDER: readonly string[] = RECIPES.flatMap((recipe) => [recipe, ...LANGS.map((lang) => `${recipe}-${lang}`)])
+const rank = (kind: string) => KIND_ORDER.indexOf(kind) + 1 || KIND_ORDER.length + 1
+
 export async function notesPage(sub: string, deps: ReaderDeps): Promise<Response> {
   const rows = await deps.store.notesFor(sub)
   if (rows.length === 0) return page('Jegyzetek', `<h1>Jegyzetek</h1><p>${NO_NOTES}</p>`)
-  const items: string[] = []
-  // ponytail: videónként egy runsFor-lekérés; egy fióknál néhány tucat sor, JOIN, ha a lista lassú lesz.
+  // A sorok `accepted_at` szerint csökkenőek: egy videó első sora a legfrissebb
+  // job, és egy fajta első előfordulása a legfrissebb kész változata.
+  const videos = new Map<string, { latest: JobRow; jobOf: Map<string, string> }>()
+  // ponytail: jobonként egy runsFor-lekérés; egy fióknál néhány tucat sor, JOIN, ha a lista lassú lesz.
   for (const row of rows) {
-    const kinds = [...new Set(readyRuns(await deps.store.runsFor(row.jobId)).flatMap(runKinds)), 'transcript']
-    const links = kinds.map((kind) => `<a href="/notes/${escapeHtml(row.jobId)}/${escapeHtml(kind)}">${escapeHtml(kind)}</a>`).join(' · ')
-    const day = row.acceptedAt === null ? '' : new Date(row.acceptedAt).toISOString().slice(0, 10)
-    items.push(`<li>${escapeHtml(row.title ?? row.videoId)} · ${day} — ${links}</li>`)
+    let video = videos.get(row.videoId)
+    if (video === undefined) {
+      video = { latest: row, jobOf: new Map() }
+      videos.set(row.videoId, video)
+    }
+    for (const kind of readyRuns(await deps.store.runsFor(row.jobId)).flatMap(runKinds)) {
+      if (!video.jobOf.has(kind)) video.jobOf.set(kind, row.jobId)
+    }
   }
+  const items = [...videos.values()].map(({ latest, jobOf }) => {
+    const links = [...[...jobOf].sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)), ['transcript', latest.jobId] as const]
+      .map(([kind, jobId]) => `<li><a href="/notes/${escapeHtml(jobId)}/${escapeHtml(kind)}">${escapeHtml(kind)}</a></li>`)
+      .join('')
+    const day = latest.acceptedAt === null ? '' : new Date(latest.acceptedAt).toISOString().slice(0, 10)
+    const title = `<a href="${escapeHtml(latest.url)}">${escapeHtml(latest.title ?? latest.videoId)}</a>`
+    return `<li>${title} · ${day}<ul>${links}</ul></li>`
+  })
   return page('Jegyzetek', `<h1>Jegyzetek</h1><ul>${items.join('')}</ul>`)
 }
 

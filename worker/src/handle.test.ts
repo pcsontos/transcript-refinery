@@ -626,3 +626,79 @@ describe('kötés', () => {
     expect(await bound.listByUpdate(3)).toEqual([])
   })
 })
+
+describe('indulási üzenet', () => {
+  const STARTED = (label: string) => `Elkezdődött a feldolgozás: ${label}. Hamarosan jelzem az eredményt.`
+
+  it('a receptfuttatás 202-es elfogadása után egyszer megy, a fordításé a nyelvvel', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const own = deps(store)
+    const knocks = await handleTap(tap(60, `r:notes:5:${ID}`), own)
+    await applyKnocks(knocks, own)
+    expect(own.sent).toEqual(['Sorba került: notes', STARTED('notes')])
+    expect((await store.run(`5:${ID}:notes`))?.status).toBe('accepted')
+
+    const translate = deps(store)
+    const planned = await handleTap(tap(61, `l:3:de:5:${ID}`), translate)
+    await applyKnocks(planned, translate)
+    expect(translate.sent.at(-1)).toBe(STARTED('summary, notes → de'))
+  })
+
+  it('a 409 csendes, a cron későbbi 202-je küldi; a már elfogadott futás újrakopogtatása nem', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const busy = deps(store, { knock: () => Promise.resolve(409) })
+    const knocks = await handleTap(tap(62, `r:qa:5:${ID}`), busy)
+    await applyKnocks(knocks, busy)
+    expect(busy.sent).toEqual(['Sorba került: qa'])
+    expect((await store.run(`5:${ID}:qa`))?.status).toBe('queued')
+
+    const cron = deps(store)
+    await handleCron(cron)
+    expect(cron.sent).toEqual([STARTED('qa')])
+    expect((await store.run(`5:${ID}:qa`))?.status).toBe('accepted')
+
+    const again = deps(store)
+    await applyKnocks([{ jobId: `5:${ID}:qa`, videoId: ID, url: VIDEO_URL, recipes: ['qa'] }], again)
+    expect(again.sent).toEqual([])
+  })
+
+  it('a feliratjob elfogadása után nincs indulási üzenet, a sikertelen küldés nem tartja vissza az állapotot', async () => {
+    const store = await boundStore()
+    const own = deps(store)
+    const planned = await handleUpdate(
+      { update_id: 5, message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, text: ID } },
+      own,
+    )
+    await applyKnocks(planned.knocks, own)
+    expect(own.sent).toEqual([`Sorba került: ${ID}`])
+
+    await store.insert(readyRow({ jobId: `6:${ID}`, updateId: 6 }))
+    const mute = deps(store, { send: () => Promise.resolve(false) })
+    const knocks = await handleTap(tap(63, `r:bloom:6:${ID}`), mute)
+    await applyKnocks(knocks, mute)
+    expect((await store.run(`6:${ID}:bloom`))?.status).toBe('accepted')
+  })
+
+  it('a gomb és a cron egyszerre kopogtat ugyanarra a futásra: egyetlen indulási üzenet megy', async () => {
+    const base = await boundStore()
+    // A D1 másolatot ad vissza, a memóriás tár közös hivatkozást: klónozva kapjuk a versenyhelyzetet.
+    const store: ReturnType<typeof memoryStore> = {
+      ...base,
+      run: async (id) => structuredClone(await base.run(id)),
+      dueRuns: async (now) => structuredClone(await base.dueRuns(now)),
+    }
+    await store.insert(readyRow())
+    let release: (code: 202) => void = () => {}
+    const gate = new Promise<202>((resolve) => {
+      release = resolve
+    })
+    const own = deps(store, { knock: () => gate })
+    const knocks = await handleTap(tap(70, `r:notes:5:${ID}`), own)
+    const both = Promise.all([applyKnocks(knocks, own), handleCron(own)])
+    release(202)
+    await both
+    expect(own.sent.filter((line) => line.startsWith('Elkezdődött'))).toHaveLength(1)
+  })
+})

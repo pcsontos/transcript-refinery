@@ -20,6 +20,7 @@ import { assertRecipeModels, modelConfigFor, usedModels } from './model/recipe-m
 import { toolChoiceFallback } from './model/tool-fallback.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
+import { helpText, overview } from './help.js'
 import { COMMIT_SCOPE, VERSION } from './meta.js'
 import { ARTIFACT_KIND, processItem, type RecipeDeps } from './pipeline.js'
 import { queuePath, readQueueFile } from './queue/file.js'
@@ -104,57 +105,6 @@ function unsupportedWatchOption(values: Record<string, unknown>): string | undef
     ([name, value]) => !WATCH_OPTIONS.has(name) && value !== undefined && value !== false,
   )?.[0]
 }
-
-export const USAGE = `refinery <parancs> [kapcsolók]
-
-Parancsok:
-  scan            Felderíti a feldolgozható videókat, és nem ír semmit.
-  run             Átiratot készít és a vaultba írja.
-  check-pricing   Összeveti a config árazását a LiteLLM élő áraival.
-  list            Kilistázza az elemeket típusonkénti állapottal; nem ír semmit.
-  fetch subtitle  YouTube-feliratot és .info.json fájlt tölt egy mappába.
-                  A run és a watch nem hívja.
-  serve           Egy videó feliratát az R2-be tölti. A fetch-utat hívja.
-  watch           Figyeli a forrásmappákat: az új feliratból átirat és
-                  _queue.md-sor lesz; modellt nem hív. Ctrl+C: leállítás.
-                  Csak a --config, --source és --no-commit kapcsolót ismeri.
-
-Kapcsolók:
-  --config <út>     konfigurációs fájl (alapértelmezés: refinery.config.yaml)
-  --source <név>    csak a megadott forrásmappából (watch: csak azt figyeli)
-  --channel <név>   csak a megadott csatorna (metaadat nélküli elemre nem illik)
-  --limit <szám>    legfeljebb ennyi elem
-  --recipe <id>     receptet is futtat (pl. summary); enélkül csak átirat
-  --dry-run         nem ír fájlt és nem rögzít állapotot; recepttel a
-                    modellhívások VALÓS költséggel megtörténnek
-  --force           létező fájlt is felülír; --queue mellett a sor minden
-                    kipipált párját, a késznek jelölteket is újrafuttatja
-                    (szűkítés: --recipe, --source, --channel, --limit)
-  --no-commit       nem commitol és nem pushol a vault repójába
-  --retry-failed    csak a korábban hibára futott elemek
-  --queue           scan: a vault _queue.md sorába fésül; run: a sor
-                    kipipált (videó, recept) párjait dolgozza fel
-  --no-judge        a bíró pontozói nem futnak (a determinisztikus kapuk
-                    igen); felülírja a model.judge_enabled beállítást
-  --status <érték>  list: done, failed vagy pending; --recipe nélkül
-                    bármely típusra illik
-  --channels        list: csatornánkénti összesítő
-  --fix             check-pricing: a talált árazási eltéréseket visszaírja
-                    a konfigurációs fájlba
-  --help, -h        megjeleníti ezt a súgót
-
-  A fetch subtitle saját kapcsolói, a run ezeket nem ismeri:
-  --out <út>        célmappa, abszolút; hiányában a config első sources eleme
-  --list <fájl>     soronkénti címek; a # sor és az üres sor kimarad
-  --sub-lang <kód>  vesszős nyelvkódok; alap a config languages, vagy hu,en
-  --sub-format <f>  vtt és srt, vesszővel; alap: vtt,srt
-  --overwrite       meglévő felirat és .info.json újraírása
-  --flat            minden fájl az --out gyökerébe
-  --playlist-items  lista szűrése, a yt-dlp -I értékeként
-  --yes-playlist    a watch?v=&list= cím a teljes listát jelenti
-
-  A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.
-`
 
 function render(event: RunEvent): string | null {
   switch (event.type) {
@@ -917,16 +867,43 @@ export async function commandRun(
   }
 }
 
+/** A súgó tárgya: az első szó, ha nem kapcsoló. A `fetch` egyetlen módja a `subtitle`. */
+function helpTopic(words: readonly string[]): string | undefined {
+  const first = words[0]
+  if (first === undefined || first.startsWith('-')) return undefined
+  return first === 'fetch' ? 'fetch subtitle' : first
+}
+
+function printHelp(topic: string | undefined): number {
+  if (topic === undefined) {
+    console.log(overview())
+    return 0
+  }
+  const text = helpText(topic)
+  if (text === undefined) {
+    console.error(`Ismeretlen parancs: ${topic}`)
+    console.log(overview())
+    return 1
+  }
+  console.log(text)
+  return 0
+}
+
 export async function main(argv: readonly string[]): Promise<number> {
   const command = argv[0]
-  const wantsHelp = argv.includes('--help') || argv.includes('-h')
-  if (!command || wantsHelp) {
-    console.log(USAGE)
-    return wantsHelp ? 0 : 1
+  if (command === 'help') return printHelp(helpTopic(argv.slice(1)))
+  if (argv.includes('--help') || argv.includes('-h')) return printHelp(helpTopic(argv))
+  if (command === 'version' || argv.includes('--version')) {
+    console.log(VERSION)
+    return 0
+  }
+  if (!command) {
+    console.log(overview())
+    return 1
   }
 
   if (command === 'fetch') return commandFetch(argv.slice(1))
-  if (command === 'serve') return commandServe(process.env)
+  if (command === 'serve') return commandServe(argv.slice(1), process.env)
 
   const { values } = parseArgs({
     args: [...argv.slice(1)],
@@ -1009,7 +986,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     })
   }
 
-  console.error(`Ismeretlen parancs: ${command}\n\n${USAGE}`)
+  console.error(`Ismeretlen parancs: ${command}\n\n${overview()}`)
   return 1
 }
 

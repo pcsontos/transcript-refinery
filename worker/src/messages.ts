@@ -117,6 +117,10 @@ export function runQueuedLine(recipes: readonly string[], lang: string | null): 
   return `Sorba került: ${runLabel(recipes, lang)}`
 }
 
+export function runStartedLine(recipes: readonly string[], lang: string | null): string {
+  return `Elkezdődött a feldolgozás: ${runLabel(recipes, lang)}. Hamarosan jelzem az eredményt.`
+}
+
 export function runFailedLine(recipes: readonly string[], lang: string | null, error: string): string {
   return `${runLabel(recipes, lang)}: ${error}`
 }

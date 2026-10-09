@@ -1,5 +1,6 @@
 import { mkdir, readFile, stat } from 'node:fs/promises'
 import { loadCliConfig } from '../config.js'
+import { helpText } from '../help.js'
 import { installSigint } from '../run/finish.js'
 import { classifyInput } from './classify.js'
 import { parseSubtitleArgs, type SubtitleArgs } from './subtitle/args.js'
@@ -34,25 +35,6 @@ export function listEntries(text: string): string[] {
     .map((line) => line.trim())
     .filter((line) => line !== '' && !line.startsWith('#'))
 }
-
-const USAGE = `Használat: refinery fetch subtitle <url> [kapcsolók...]
-           refinery fetch subtitle --list <fájl> [kapcsolók...]
-
-Módok:
-  subtitle   YouTube feliratok és metaadatok letöltése
-
-Kapcsolók (subtitle):
-  <url|id>                  Egyetlen videó vagy lejátszási lista címe/azonosítója
-  --list <fájl>             Szövegfájl, soronként egy YouTube-cím
-  --out <út>                Célmappa, abszolút útvonal
-  --sub-lang <kódok>        Vesszővel tagolt nyelvkódok (pl. hu,en-US)
-  --sub-format <formátum>   Formátum: vtt, srt vagy srt,vtt (alapból: vtt,srt)
-  --overwrite               Meglévő fájlok felülírása
-  --flat                    Csatornamappa kihagyása, közvetlenül az --out gyökerébe
-  --playlist-items <elemek> Lejátszási lista elemei (pl. 1:10)
-  --yes-playlist            watch?v=...&list=... esetén a teljes lista letöltése
-  --config <út>             Konfigurációs fájl útvonala
-`
 
 type Kind = 'downloaded' | 'skipped' | 'no-subtitle' | 'failed'
 
@@ -90,7 +72,7 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
   const stderr = runtime?.stderr ?? ((line: string) => console.error(line))
 
   if (argv.includes('--help') || argv.includes('-h')) {
-    stdout(USAGE)
+    stdout(helpText('fetch subtitle') ?? '')
     return 0
   }
 

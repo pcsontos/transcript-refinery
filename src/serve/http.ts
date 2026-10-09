@@ -53,31 +53,55 @@ function send(response: ServerResponse, status: number): void {
   response.end()
 }
 
-export function createServeServer(input: {
+function sendBody(response: ServerResponse, status: number, contentType: string, body: string): void {
+  response.writeHead(status, { 'content-type': contentType })
+  response.end(body)
+}
+
+function rejectUnauthorized(request: IncomingMessage, response: ServerResponse): void {
+  const rawIp = request.headers['x-forwarded-for'] ?? request.socket.remoteAddress
+  const clientIp = Array.isArray(rawIp) ? rawIp[0] : (rawIp ?? 'unknown')
+  console.warn(`[serve] 401 Jogosulatlan kérés: ${clientIp}`)
+  send(response, 401)
+}
+
+export interface ServeServerInput {
   secret: string
   gate: ServeGate
+  version: string
   onJob: (job: ServeJob) => Promise<void>
-}): Server {
+}
+
+export function createServeServer(input: ServeServerInput): Server {
   return createServer((request, response) => {
     void handle(request, response, input)
   })
 }
 
-async function handle(
-  request: IncomingMessage,
-  response: ServerResponse,
-  input: { secret: string; gate: ServeGate; onJob: (job: ServeJob) => Promise<void> },
-): Promise<void> {
+async function handle(request: IncomingMessage, response: ServerResponse, input: ServeServerInput): Promise<void> {
   const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname
+  if (request.method === 'GET' && path === '/ping') {
+    sendBody(response, 200, 'text/plain; charset=utf-8', 'ok')
+    return
+  }
+  if (request.method === 'GET' && path === '/version') {
+    sendBody(response, 200, 'application/json', JSON.stringify({ version: input.version }))
+    return
+  }
+  if (request.method === 'GET' && path === '/status') {
+    if (!authorized(request.headers.authorization, input.secret)) {
+      rejectUnauthorized(request, response)
+      return
+    }
+    sendBody(response, 200, 'application/json', JSON.stringify({ version: input.version, busy: input.gate.current }))
+    return
+  }
   if (request.method !== 'POST' || path !== '/jobs') {
     send(response, 404)
     return
   }
   if (!authorized(request.headers.authorization, input.secret)) {
-    const rawIp = request.headers['x-forwarded-for'] ?? request.socket.remoteAddress
-    const clientIp = Array.isArray(rawIp) ? rawIp[0] : (rawIp ?? 'unknown')
-    console.warn(`[serve] 401 Jogosulatlan kérés: ${clientIp}`)
-    send(response, 401)
+    rejectUnauthorized(request, response)
     return
   }
   let body: unknown

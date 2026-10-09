@@ -30,6 +30,7 @@ import {
   runFailedLine,
   runQueuedLine,
   runReadyMessage,
+  runStartedLine,
   waitingLine,
   type Key,
 } from './plan.js'
@@ -74,19 +75,30 @@ async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Pro
   return binding
 }
 
-/** A felirat sora és a futás sora is így áll be a kopogtatás eredménye szerint. */
+/**
+ * A felirat sora és a futás sora is így áll be a kopogtatás eredménye szerint.
+ * A `started` üzenet csak az első elfogadáskor megy: a cron a régóta elfogadott
+ * futást újra kopogtatja, és arra a konténer megint 202-t ad. A gomb és a cron
+ * egyszerre is kopogtathat: a `claimRun` dönti el, melyikük küldi az üzenetet;
+ * a vesztes nem ír és nem küld.
+ */
 async function settle(
   target: { status: JobStatus; acceptedAt: number | null; error: string | null },
   row: JobRow,
   save: () => Promise<void>,
   result: KnockResult,
   deps: WorkerDeps,
+  started?: { runId: string; text: string },
 ): Promise<void> {
   if (result === 409) return
   if (result === 202) {
+    const fresh = target.status !== 'accepted'
+    const won = fresh && started !== undefined && (await deps.store.claimRun(started.runId, target.status, 'accepted'))
+    if (fresh && started !== undefined && !won) return
     target.status = 'accepted'
     target.acceptedAt = deps.now()
     await save()
+    if (won) await deps.send(row.chatId, started.text)
     return
   }
   if (result === 401) {
@@ -233,7 +245,14 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
       const run = await deps.store.run(knock.jobId)
       const row = run === null ? null : await findRow(deps.store, run.jobId)
       if (run === null || row === null) continue
-      await settle(run, row, () => deps.store.saveRun(run), await deps.knock(knock), deps)
+      await settle(
+        run,
+        row,
+        () => deps.store.saveRun(run),
+        await deps.knock(knock),
+        deps,
+        { runId: run.runId, text: runStartedLine(run.recipes, run.lang) },
+      )
       continue
     }
     const row = await findRow(deps.store, knock.jobId)
@@ -394,6 +413,13 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
   for (const run of await deps.store.dueRuns(deps.now())) {
     const row = await findRow(deps.store, run.jobId)
     if (row === null) continue
-    await settle(run, row, () => deps.store.saveRun(run), await deps.knock(knockFor(run, row)), deps)
+    await settle(
+      run,
+      row,
+      () => deps.store.saveRun(run),
+      await deps.knock(knockFor(run, row)),
+      deps,
+      { runId: run.runId, text: runStartedLine(run.recipes, run.lang) },
+    )
   }
 }
