@@ -3,6 +3,7 @@ import { dirname } from 'node:path'
 import { loadCliConfig } from '../config.js'
 import { commandFetch } from '../fetch/command.js'
 import type { LanguageTag } from '../lang/identify.js'
+import { VERSION } from '../meta.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
 import { runJob, subtitleArgv, type JobEffects, type RecipesOutcome, type ServeJob } from './job.js'
 import { createR2Store, type R2Config } from './r2.js'
@@ -138,6 +139,7 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
   const server = createServeServer({
     secret,
     gate,
+    version: VERSION,
     onJob: async (job: ServeJob) => {
       console.log(`[serve] Munka végrehajtása indult: ${job.jobId} (${job.url})`)
       try {
