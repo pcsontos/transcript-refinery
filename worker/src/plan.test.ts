@@ -22,6 +22,7 @@ import {
   runId,
   runKinds,
   runQueuedLine,
+  runFailedLine,
   runReadyMessage,
   waitingLine,
 } from './plan.js'
@@ -256,6 +257,8 @@ describe('futások', () => {
   it('a futás mondatai', () => {
     expect(runQueuedLine(['notes'], null)).toBe('Sorba került: notes')
     expect(runQueuedLine(['summary', 'notes'], 'de')).toBe('Sorba került: summary, notes → de')
+    expect(runFailedLine(['qa'], null, 'A futás megállt.')).toBe('qa: A futás megállt.')
+    expect(runFailedLine(['summary', 'notes'], 'de', 'x')).toBe('summary, notes → de: x')
     expect(runReadyMessage('Cím\n', run({ recipes: ['notes'] }), 'https://w.test')).toBe(
       `Cím · notes. A jegyzet megvan.\nhttps://w.test/notes/1:${ID}/notes`,
     )
@@ -266,11 +269,11 @@ describe('futások', () => {
 
   it('a futás egyszer szúrható be, a claimRun csak a várt állapotból ír, a dueRuns a due szabálya', async () => {
     const store = memoryStore()
-    expect(await store.insertRun(run({ status: 'failed', error: 'x', acceptedAt: 5 }))).toBe(true)
+    expect(await store.insertRun(run({ status: 'failed', error: 'x', acceptedAt: 5, notified: true }))).toBe(true)
     expect(await store.insertRun(run({}))).toBe(false)
     expect(await store.claimRun(`1:${ID}:summary`, 'queued', 'accepted')).toBe(false)
     expect(await store.claimRun(`1:${ID}:summary`, 'failed', 'queued')).toBe(true)
-    expect(await store.run(`1:${ID}:summary`)).toMatchObject({ status: 'queued', error: null, acceptedAt: null })
+    expect(await store.run(`1:${ID}:summary`)).toMatchObject({ status: 'queued', error: null, acceptedAt: null, notified: false })
     await store.insertRun(run({ runId: `1:${ID}:qa`, recipes: ['qa'], status: 'accepted', acceptedAt: 1 }))
     await store.insertRun(run({ runId: `1:${ID}:notes`, recipes: ['notes'], status: 'accepted', acceptedAt: 999_999 }))
     await store.insertRun(run({ runId: `2:${ID}:qa`, jobId: `2:${ID}`, recipes: ['qa'], status: 'ready' }))

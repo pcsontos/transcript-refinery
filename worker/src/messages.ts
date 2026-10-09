@@ -109,6 +109,14 @@ export const PICK_LINE = 'Melyik jegyzetet fordítsam?'
 export const LANG_LINE = 'Melyik nyelvre?'
 export const NOTHING_TO_TRANSLATE = 'Előbb készíts egy jegyzetet.'
 
+function runLabel(recipes: readonly string[], lang: string | null): string {
+  return `${recipes.join(', ')}${lang === null ? '' : ` → ${lang}`}`
+}
+
 export function runQueuedLine(recipes: readonly string[], lang: string | null): string {
-  return `Sorba került: ${recipes.join(', ')}${lang === null ? '' : ` → ${lang}`}`
+  return `Sorba került: ${runLabel(recipes, lang)}`
+}
+
+export function runFailedLine(recipes: readonly string[], lang: string | null, error: string): string {
+  return `${runLabel(recipes, lang)}: ${error}`
 }

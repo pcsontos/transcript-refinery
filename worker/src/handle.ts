@@ -27,6 +27,7 @@ import {
   readyLine,
   recipeKeyboard,
   runId,
+  runFailedLine,
   runQueuedLine,
   runReadyMessage,
   waitingLine,
@@ -247,7 +248,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
   const row = await findRow(deps.store, run.jobId)
   if (row === null) return
   if (body.status === 'failed') {
-    const sent = await deps.send(row.chatId, body.error)
+    const sent = await deps.send(row.chatId, runFailedLine(run.recipes, run.lang, body.error))
     if (!sent) return
     run.status = 'failed'
     run.error = body.error
@@ -256,7 +257,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
   }
   if (run.notified) return
   if (body.noteUrl === undefined || body.noteUrl === '') {
-    const sent = await deps.send(row.chatId, MISSING_NOTE_URL)
+    const sent = await deps.send(row.chatId, runFailedLine(run.recipes, run.lang, MISSING_NOTE_URL))
     if (!sent) return
     run.status = 'failed'
     run.error = MISSING_NOTE_URL
