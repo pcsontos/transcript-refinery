@@ -54,9 +54,11 @@ export function notAllowedLine(email: string): string {
 
 export const NO_NOTES = 'Még nincs jegyzet. Küldj egy YouTube-címet a botnak.'
 export const NOTE_MISSING = 'A jegyzet nincs a vaultban.'
-export const VAULT_LOCKED = 'A vault nem olvasható.'
-export const GITHUB_DOWN = 'A GitHub nem érhető el.'
-export const OPEN_ON_GITHUB = 'Megnyitás a GitHubon'
+export const SERVE_DOWN = 'A peter-mba nem érhető el, a jegyzetek most nem olvashatók.'
+export const SERVE_SECRET_MISMATCH = 'A Worker és a serve titka nem egyezik.'
+export const SERVE_NO_VAULT = 'A serve nem éri el a vaultot.'
+export const SERVE_BAD_REPLY = 'A serve hibás választ adott.'
+export const NOTES_STALE = 'A vault most nem frissült, a lista régebbi lehet.'
 
 export const RECIPES = [
   'summary',

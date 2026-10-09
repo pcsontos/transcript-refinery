@@ -19,9 +19,6 @@ interface Env {
   TELEGRAM_WEBHOOK_SECRET: string
   REFINERY_SERVE_SECRET: string
   SERVE_URL: string
-  VAULT_GITHUB_TOKEN?: string
-  VAULT_REPO?: string
-  VAULT_BRANCH?: string
 }
 
 interface ExecutionContext {
@@ -38,6 +35,14 @@ function sameText(actual: string | undefined, expected: string | undefined): boo
     diff |= actual.charCodeAt(index) ^ expected.charCodeAt(index)
   }
   return diff === 0
+}
+
+function decoded(segment: string): string | null {
+  try {
+    return decodeURIComponent(segment)
+  } catch {
+    return null
+  }
 }
 
 async function identity(ctx: ExecutionContext): Promise<{ sub: string; email: string } | null> {
@@ -192,15 +197,12 @@ const worker = {
     if ((url.pathname === '/notes' || note !== null) && request.method === 'GET') {
       const who = await identity(ctx)
       if (who === null) return new Response(null, { status: 403 })
-      const reader: ReaderDeps = {
-        store: createD1Store(env.DB),
-        vaultRepo: env.VAULT_REPO ?? '',
-        vaultBranch: env.VAULT_BRANCH ?? '',
-        vaultToken: env.VAULT_GITHUB_TOKEN ?? '',
-      }
-      return note?.[1] === undefined || note[2] === undefined
-        ? notesPage(who.sub, reader)
-        : notePage(note[1], note[2], who.sub, reader)
+      const reader: ReaderDeps = { serveUrl: env.SERVE_URL, secret: env.REFINERY_SERVE_SECRET }
+      if (note?.[1] === undefined || note[2] === undefined) return notesPage(reader)
+      const id = decoded(note[1])
+      const kind = decoded(note[2])
+      if (id === null || kind === null) return new Response(null, { status: 404 })
+      return notePage(id, kind, reader)
     }
     const match = /^\/internal\/jobs\/([^/]+)$/.exec(url.pathname)
     if (match?.[1] !== undefined && request.method === 'POST') {

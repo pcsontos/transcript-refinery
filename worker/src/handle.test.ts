@@ -96,7 +96,7 @@ function acceptedRow(partial: Partial<JobRow> = {}): JobRow {
 }
 
 const VIDEO_URL = `https://www.youtube.com/watch?v=${ID}`
-const TRANSCRIPT_URL = 'https://github.com/tulaj/repo/blob/main/a_transcript.md'
+const TRANSCRIPT_URL = 'Inbox/transcript-refinery/a_transcript.md'
 
 function readyRow(partial: Partial<JobRow> = {}): JobRow {
   return acceptedRow({ status: 'ready', notifiedReady: true, title: 'Cím', ...partial })

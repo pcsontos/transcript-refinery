@@ -55,7 +55,6 @@ export interface JobStore {
   insertToken(token: LinkToken): Promise<void>
   token(tokenHash: string): Promise<LinkToken | null>
   saveToken(token: LinkToken): Promise<void>
-  notesFor(sub: string): Promise<JobRow[]>
   run(runId: string): Promise<RunRow | null>
   insertRun(run: RunRow): Promise<boolean>
   saveRun(run: RunRow): Promise<void>
@@ -124,12 +123,6 @@ export function memoryStore(): JobStore {
       }
       return Promise.resolve()
     },
-    notesFor: (sub) =>
-      Promise.resolve(
-        rows
-          .filter((row) => row.sub === sub && runs.some((run) => run.jobId === row.jobId && run.status === 'ready'))
-          .sort((a, b) => (b.acceptedAt ?? 0) - (a.acceptedAt ?? 0)),
-      ),
     run: (runId) => Promise.resolve(runs.find((item) => item.runId === runId) ?? null),
     insertRun: (run) => {
       if (runs.some((item) => item.runId === run.runId)) return Promise.resolve(false)

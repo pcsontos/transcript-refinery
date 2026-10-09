@@ -1130,7 +1130,7 @@ git commit -m "feat(worker): Link notes by video id in bot messages"
 - Consumes: `videoIdOf` (Task 5); a `serve` JSON-alakjai (Task 3–4): lista `{ stale: boolean, items: { itemId, title, url: string|null, origin, generatedAt: string|null, kinds: string[] }[] }`, jegyzet `{ title, url, origin, generatedAt, html }`.
 - Produces: `ReaderDeps { serveUrl: string; secret: string }`; `notesPage(deps): Promise<Response>`; `notePage(id: string, kind: string, deps): Promise<Response>` (az `id` lehet régi `jobId` is).
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 `worker/src/reader.test.ts` teljes tartalma:
 
@@ -1302,12 +1302,12 @@ describe('notePage', () => {
     expect((await worker.fetch(get('/notes/%E0/summary'), env, signed)).status).toBe(404)
 ```
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run worker/src/reader.test.ts worker/src/entry.test.ts`
 Expected: FAIL — a `ReaderDeps` alakja más, a `notesPage` a D1-et olvassa.
 
-- [ ] **Step 3: `messages.ts`**
+- [x] **Step 3: `messages.ts`**
 
 A `VAULT_LOCKED`, `GITHUB_DOWN` és `OPEN_ON_GITHUB` sor helyére:
 
@@ -1319,7 +1319,7 @@ export const SERVE_BAD_REPLY = 'A serve hibás választ adott.'
 export const NOTES_STALE = 'A vault most nem frissült, a lista régebbi lehet.'
 ```
 
-- [ ] **Step 4: `reader.ts` (teljes csere)**
+- [x] **Step 4: `reader.ts` (teljes csere)**
 
 ```ts
 import {
@@ -1479,7 +1479,7 @@ export async function notePage(id: string, kind: string, deps: ReaderDeps): Prom
 }
 ```
 
-- [ ] **Step 5: `index.ts`**
+- [x] **Step 5: `index.ts`**
 
 Az `Env`-ből töröld a `VAULT_GITHUB_TOKEN?`, `VAULT_REPO?` és `VAULT_BRANCH?` sort.
 
@@ -1511,7 +1511,7 @@ A `/notes` blokk:
     }
 ```
 
-- [ ] **Step 6: `store.ts` és `d1.ts`**
+- [x] **Step 6: `store.ts` és `d1.ts`**
 
 `worker/src/store.ts`: töröld a `notesFor(sub: string): Promise<JobRow[]>` sort a `JobStore` interfészből, és a `notesFor: (sub) => …` bejegyzést (6 sor) a `memoryStore`-ból.
 
@@ -1519,12 +1519,12 @@ A `/notes` blokk:
 
 Ellenőrzés: `grep -rn "notesFor\|VAULT_\|GITHUB\|github" worker/src` — nincs találat.
 
-- [ ] **Step 7: Futtasd, legyen zöld**
+- [x] **Step 7: Futtasd, legyen zöld**
 
 Run: `pnpm test && pnpm exec tsc -p worker/tsconfig.json --noEmit && pnpm lint`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add worker/src
