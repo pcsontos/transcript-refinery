@@ -151,7 +151,7 @@ describe('createServeServer /notes', () => {
   const get = (port: number, path: string, secret = 'titok') =>
     fetch(`http://127.0.0.1:${port}${path}`, { headers: { authorization: `Bearer ${secret}` } })
 
-  const view = { title: 'Cím', url: null, origin: 'cli' as const, generatedAt: null, html: '<p>x</p>' }
+  const view = { title: 'Cím', url: null, origin: 'cli' as const, generatedAt: null, meta: [], html: '<p>x</p>' }
 
   function fake(): NotesSource & { asked: [string, string][] } {
     const asked: [string, string][] = []

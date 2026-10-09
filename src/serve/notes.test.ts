@@ -229,3 +229,38 @@ describe('createNotesSource — beolvasás és gyorsítótár', () => {
     expect([...items[0]!.kinds].sort()).toEqual(['notes', 'transcript'])
   })
 })
+
+describe('createNotesSource.note — frontmatter', () => {
+  it('a meta a teljes frontmatter, a YAML sorrendjében, megjeleníthető szövegekkel', async () => {
+    const description = '|\n  Első sor\n  Második sor'
+    await note('jo_transcript.md', { item_id: ID, title: 'Jó', source: 'youtube' })
+    await note(
+      'jo_summary.md',
+      {
+        item_id: ID,
+        title: '"Jó: cím"',
+        source: 'youtube',
+        origin: 'cli',
+        tags: '[ai, machine_learning]',
+        duration: '1167',
+        description,
+        score: '0.85',
+        generated_at: '2026-10-02T10:00:00.000Z',
+      },
+      '# Jó\n\nTörzs.\n',
+    )
+    const view = await source().notes.note(ID, 'summary')
+    expect(view!.meta).toEqual([
+      { key: 'item_id', value: ID },
+      { key: 'title', value: 'Jó: cím' },
+      { key: 'source', value: 'youtube' },
+      { key: 'origin', value: 'cli' },
+      { key: 'tags', value: 'ai, machine_learning' },
+      { key: 'duration', value: '1167' },
+      { key: 'description', value: 'Első sor\nMásodik sor' },
+      { key: 'score', value: '0.85' },
+      { key: 'generated_at', value: '2026-10-02T10:00:00.000Z' },
+    ])
+    expect(view!.html).not.toContain('item_id')
+  })
+})
