@@ -143,3 +143,45 @@ describe('notePage', () => {
     }
   })
 })
+
+describe('notePage — frontmatter', () => {
+  const base = { title: 'Cím', url: null, origin: 'cli', generatedAt: '2026-10-07T10:00:00.000Z', html: '<h1>Cím</h1>' }
+
+  it('az összecsukható blokk a meta-sor és a törzs között áll, mezőnként egy sor, minden escape-elve', async () => {
+    serve(() =>
+      json({
+        ...base,
+        meta: [
+          { key: 'channel', value: 'Big Think' },
+          { key: 'description', value: 'Első sor\n<script>alert(1)</script>' },
+        ],
+      }),
+    )
+    const html = await (await notePage(ID, 'summary', DEPS)).text()
+    const block =
+      '<details class="fm"><summary>Frontmatter</summary><table>' +
+      '<tr><th>channel</th><td>Big Think</td></tr>' +
+      '<tr><th>description</th><td>Első sor\n&#60;script&#62;alert(1)&#60;/script&#62;</td></tr>' +
+      '</table></details>'
+    expect(html).toContain(`<p class="meta">summary · cli · 2026-10-07</p>${block}<h1>Cím</h1>`)
+    expect(html).not.toContain('<script>')
+  })
+
+  it('meta nélkül (régi serve) vagy üres metával nincs blokk, az oldal 200', async () => {
+    for (const body of [base, { ...base, meta: [] }]) {
+      serve(() => json(body))
+      const response = await notePage(ID, 'summary', DEPS)
+      expect(response.status).toBe(200)
+      expect(await response.text()).not.toContain('<details')
+    }
+  })
+
+  it('hibás alakú meta hibás válasznak számít', async () => {
+    for (const meta of ['nem lista', [{ key: 'a' }], [{ key: 1, value: 'x' }], [null]]) {
+      serve(() => json({ ...base, meta }))
+      const response = await notePage(ID, 'summary', DEPS)
+      expect(response.status).toBe(502)
+      expect(await response.text()).toContain('A serve hibás választ adott.')
+    }
+  })
+})

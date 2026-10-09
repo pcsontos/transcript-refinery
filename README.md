@@ -92,7 +92,7 @@ azonosítóját adja (`{"version": …, "busy": <jobId> | null}`).
 A `/notes` oldal adatait is a `serve` adja, a `REFINERY_SERVE_SECRET`
 Bearer-tokenjével: a `GET /notes` a vault jegyzetmappájának listáját
 (elemenként cím, YouTube-cím, `origin`, a legfrissebb jegyzet ideje és a kész
-fajták), a `GET /notes/<itemId>/<fajta>` egy jegyzet renderelt HTML-jét. A
+fajták), a `GET /notes/<itemId>/<fajta>` egy jegyzet renderelt HTML-jét és a frontmatter mezőit (`meta`). A
 lista előtt a `serve` `git pull`-t futtat a vaulton; ha ez nem sikerül, vagy
 épp munka fut, a válasz `stale: true`.
 

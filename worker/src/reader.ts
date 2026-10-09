@@ -21,7 +21,8 @@ const TIMEOUT_MS = 10_000
 const STYLE =
   ':root{color-scheme:light dark}body{font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:0 auto;padding:1rem}' +
   'table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid #8886;padding:.25rem .5rem;text-align:left;vertical-align:top}' +
-  'img{max-width:100%}.meta,.origin{opacity:.7}'
+  'img{max-width:100%}.meta,.origin{opacity:.7}' +
+  '.fm{margin:.5rem 0}.fm summary{cursor:pointer;opacity:.7}.fm table{display:table;font-size:.9rem}.fm th{white-space:nowrap}.fm td{white-space:pre-wrap;word-break:break-word}'
 
 export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`)
@@ -46,6 +47,8 @@ interface NoteView {
   url: string | null
   origin: string
   generatedAt: string | null
+  /** A frontmatter mezői; a régi `serve` nem küldi. */
+  meta?: { key: string; value: string }[]
   html: string
 }
 
@@ -71,9 +74,16 @@ function isList(value: unknown): value is { stale: boolean; items: ListItem[] } 
   return typeof list.stale === 'boolean' && Array.isArray(list.items) && list.items.every(isItem)
 }
 
+function isMeta(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const field = value as Record<string, unknown>
+  return typeof field.key === 'string' && typeof field.value === 'string'
+}
+
 function isView(value: unknown): value is NoteView {
   if (typeof value !== 'object' || value === null) return false
   const view = value as Record<string, unknown>
+  if (view.meta !== undefined && !(Array.isArray(view.meta) && view.meta.every(isMeta))) return false
   return (
     typeof view.title === 'string' &&
     nullableText(view.url) &&
@@ -151,5 +161,9 @@ export async function notePage(id: string, kind: string, deps: ReaderDeps): Prom
   const view = asked.body
   // A cím és a YouTube-link a jegyzet saját `# cím` és `🌐 <url>` sorából látszik.
   const meta = `<p class="meta">${escapeHtml(kind)} · ${escapeHtml(view.origin)} · ${day(view.generatedAt)}</p>`
-  return page(`${view.title} · ${kind}`, `${meta}${view.html}`)
+  const fields = (view.meta ?? [])
+    .map((field) => `<tr><th>${escapeHtml(field.key)}</th><td>${escapeHtml(field.value)}</td></tr>`)
+    .join('')
+  const frontmatter = fields === '' ? '' : `<details class="fm"><summary>Frontmatter</summary><table>${fields}</table></details>`
+  return page(`${view.title} · ${kind}`, `${meta}${frontmatter}${view.html}`)
 }

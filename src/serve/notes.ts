@@ -35,11 +35,19 @@ export interface NoteList {
   items: NoteListItem[]
 }
 
+/** A frontmatter egy mezője megjeleníthető szövegként. */
+export interface NoteMeta {
+  key: string
+  value: string
+}
+
 export interface NoteView {
   title: string
   url: string | null
   origin: NoteOrigin
   generatedAt: string | null
+  /** A teljes frontmatter a YAML sorrendjében. */
+  meta: NoteMeta[]
   html: string
 }
 
@@ -73,6 +81,16 @@ function text(value: unknown): string | null {
 export function originOf(fields: Record<string, unknown>): NoteOrigin {
   if (fields.origin === 'telegram' || fields.origin === 'cli') return fields.origin
   return fields.source === SERVE_SOURCE ? 'telegram' : 'cli'
+}
+
+/** Egy YAML-érték megjeleníthető szövege: a lista vesszős, a dátum ISO, a többsoros szöveg többsoros marad. */
+function shown(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (Array.isArray(value)) return value.map(shown).join(', ')
+  if (value instanceof Date) return value.toISOString()
+  if (typeof value === 'string') return value.trimEnd()
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value)
+  return JSON.stringify(value) ?? ''
 }
 
 function frontmatter(source: string): Record<string, unknown> | null {
@@ -293,11 +311,13 @@ export function createNotesSource(input: {
       const source = await readFile(file.path, 'utf8')
       const match = FRONTMATTER.exec(source)
       const body = match === null ? source : source.slice(match[0].length)
+      const fields = frontmatter(source) ?? {}
       return {
         title: file.title,
         url: file.url,
         origin: file.origin,
         generatedAt: file.generatedAt,
+        meta: Object.entries(fields).map(([key, value]) => ({ key, value: shown(value) })),
         html: markdown.render(body),
       }
     },
