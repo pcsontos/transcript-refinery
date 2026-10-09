@@ -94,6 +94,10 @@ feliratnyelvekhez és a receptfuttatásokhoz is; ha a fájl nem tölthető be, a
 `serve` el sem indul. A `--config` nélkül a munkakönyvtár
 `refinery.config.yaml`-ja érvényes, ha van.
 
+A súgó parancsonként is elérhető: `refinery help <parancs>` vagy
+`refinery <parancs> --help`; a `refinery help` a parancsok áttekintése.
+A verziót a `refinery version` (vagy `refinery --version`) írja ki.
+
 A `run --recipe summary` a normalizált átiratból összefoglaló jegyzetet
 készít, korlátos evaluator–optimizer loopban: a modell generál, egy rubrika
 pontoz **és konkrét hiányokat nevez meg**, a modell eddig javít, amíg átmegy

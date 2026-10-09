@@ -1,7 +1,8 @@
 import { once } from 'node:events'
 import type { Server } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { USAGE, main } from '../cli.js'
+import { main } from '../cli.js'
+import { overview } from '../help.js'
 import { createServeServer, type ServeGate } from './http.js'
 
 const gate: ServeGate = { current: null }
@@ -129,8 +130,8 @@ describe('createServeServer', () => {
 })
 
 describe('serve parancs', () => {
-  it('a USAGE felsorolja a serve parancsot', () => {
-    expect(USAGE).toContain('serve')
+  it('az áttekintés felsorolja a serve parancsot', () => {
+    expect(overview()).toContain('  serve ')
   })
 
   it('a refinery serve --help a súgót írja, és nem nyit portot', async () => {

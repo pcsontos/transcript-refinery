@@ -11,10 +11,11 @@ import {
   commandScan,
   commandScanQueue,
   main,
-  USAGE,
 } from './cli.js'
 import { loadConfig, loadModelConfig } from './config.js'
 import type { RunEvent } from './events.js'
+import { COMMANDS, helpText, overview } from './help.js'
+import { VERSION } from './meta.js'
 import { estimateItemUsd } from './model/budget.js'
 import type { ModelClient } from './model/client.js'
 import { normalizeItem } from './pipeline.js'
@@ -2337,11 +2338,12 @@ describe('commandRun — indulás és lezárás a naplóban', () => {
 })
 
 describe('main és súgó', () => {
-  it('a USAGE tartalmazza az összes új kapcsolót (--no-judge, --fix, --help)', () => {
-    expect(USAGE).toContain('--no-judge')
-    expect(USAGE).toContain('--fix')
-    expect(USAGE).toContain('--help, -h')
-    expect(USAGE).toContain('watch')
+  it('az áttekintés minden parancsot felsorol, és a súgóra és a verzióra utal', () => {
+    const text = overview()
+    for (const command of COMMANDS) expect(text).toContain(`  ${command.name} `)
+    expect(text).toContain('--help, -h')
+    expect(text).toContain('--version')
+    expect(text.endsWith('Részletek: refinery help <parancs>')).toBe(true)
   })
 
   it('a main([]) 1-gyel tér vissza és kiírja a súgót', async () => {
@@ -2349,7 +2351,7 @@ describe('main és súgó', () => {
     try {
       const code = await main([])
       expect(code).toBe(1)
-      expect(logSpy).toHaveBeenCalledWith(USAGE)
+      expect(logSpy).toHaveBeenCalledWith(overview())
     } finally {
       logSpy.mockRestore()
     }
@@ -2394,6 +2396,122 @@ describe('main és súgó', () => {
     expect(await main(['watch', '--source', 'downloads', '--no-commit', '--config', configPath])).toBe(0)
     expect(vi.mocked(commandWatch)).toHaveBeenCalledTimes(1)
     expect(vi.mocked(commandWatch).mock.calls[0]![1]).toEqual({ source: 'downloads', commit: false })
+  })
+
+  const OPTIONS: Record<string, string[]> = {
+    scan: ['--config', '--queue', '--dry-run', '--no-commit'],
+    run: [
+      '--config',
+      '--source',
+      '--channel',
+      '--limit',
+      '--recipe',
+      '--queue',
+      '--dry-run',
+      '--force',
+      '--no-commit',
+      '--retry-failed',
+      '--no-judge',
+    ],
+    'check-pricing': ['--config', '--fix'],
+    list: ['--config', '--source', '--channel', '--recipe', '--status', '--channels', '--limit'],
+    'fetch subtitle': [
+      '--out',
+      '--list',
+      '--sub-lang',
+      '--sub-format',
+      '--overwrite',
+      '--flat',
+      '--playlist-items',
+      '--yes-playlist',
+      '--config',
+    ],
+    serve: ['--config'],
+    watch: ['--config', '--source', '--no-commit'],
+    version: [],
+    help: [],
+  }
+
+  it('a táblázat pontosan a várt parancsokat írja le', () => {
+    expect(COMMANDS.map((command) => command.name).sort()).toEqual(Object.keys(OPTIONS).sort())
+  })
+
+  it.each(Object.entries(OPTIONS))('a(z) %s súgója a használattal kezdődik és minden kapcsolóját felsorolja', (name, flags) => {
+    const text = helpText(name)
+    expect(text?.startsWith(`Használat: refinery ${name}`)).toBe(true)
+    for (const flag of flags) expect(text).toContain(flag)
+  })
+
+  it.each(COMMANDS.map((command) => command.name).filter((name) => name !== 'help'))(
+    'a(z) %s súgója a --help és a help alakban is ugyanaz, 0-val',
+    async (name) => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      try {
+        expect(await main([...name.split(' '), '--help'])).toBe(0)
+        expect(await main(['help', ...name.split(' ')])).toBe(0)
+        expect(logSpy.mock.calls).toEqual([[helpText(name)], [helpText(name)]])
+      } finally {
+        logSpy.mockRestore()
+      }
+    },
+  )
+
+  it('a help parancs saját súgója, a fetch mód nélkül is a fetch subtitle súgója, az áttekintés 0-val', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      expect(await main(['help', 'help'])).toBe(0)
+      expect(await main(['help', 'fetch'])).toBe(0)
+      expect(await main(['fetch', '--help'])).toBe(0)
+      expect(await main(['help'])).toBe(0)
+      expect(await main(['--help'])).toBe(0)
+      expect(await main(['-h'])).toBe(0)
+      expect(logSpy.mock.calls).toEqual([
+        [helpText('help')],
+        [helpText('fetch subtitle')],
+        [helpText('fetch subtitle')],
+        [overview()],
+        [overview()],
+        [overview()],
+      ])
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('a help ismeretlen paranccsal hibát és áttekintést ad, 1-gyel', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await main(['help', 'nincs'])).toBe(1)
+      expect(errorSpy).toHaveBeenCalledWith('Ismeretlen parancs: nincs')
+      expect(logSpy).toHaveBeenCalledWith(overview())
+    } finally {
+      logSpy.mockRestore()
+      errorSpy.mockRestore()
+    }
+  })
+
+  it('a version és a --version a verziószámot írja, config betöltése és futtatás nélkül, 0-val', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      expect(await main(['version'])).toBe(0)
+      expect(await main(['--version'])).toBe(0)
+      // Csak olvasó parancs: ha a --version-t nem kezelné a main, a list futna le, nem a run.
+      expect(await main(['list', '--version'])).toBe(0)
+      expect(logSpy.mock.calls).toEqual([[VERSION], [VERSION], [VERSION]])
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('a --help elsőbbséget élvez a --version-nel szemben', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      expect(await main(['version', '--help'])).toBe(0)
+      expect(logSpy.mock.calls).toEqual([[helpText('version')]])
+    } finally {
+      logSpy.mockRestore()
+    }
   })
 })
 
@@ -2720,29 +2838,25 @@ describe('commandList', () => {
     expect(logs).toEqual([])
   })
 
-  it('a USAGE felsorolja a list parancsot és az új kapcsolókat', () => {
-    expect(USAGE).toContain('  list ')
-    expect(USAGE).toContain('--status <érték>')
-    expect(USAGE).toContain('--channels')
+  it('a list súgója felsorolja az új kapcsolókat', () => {
+    expect(overview()).toContain('  list ')
+    expect(helpText('list')).toContain('--status <érték>')
+    expect(helpText('list')).toContain('--channels')
   })
 })
 
 describe('fetch a CLI-ben', () => {
-  it('a USAGE felsorolja a serve parancsot', () => {
-    expect(USAGE).toContain('serve')
-    expect(USAGE).toContain('Egy videó feliratát az R2-be tölti. A fetch-utat hívja.')
+  it('az áttekintés felsorolja a serve parancsot', () => {
+    expect(overview()).toContain('  serve ')
+    expect(overview()).toContain('A Worker munkáit fogadó démon: felirat az R2-be, receptek a vaultba.')
   })
 
-  it('a USAGE felsorolja a fetch subtitle parancsot és a saját kapcsolóit', () => {
-    expect(USAGE).toContain('fetch subtitle')
-    expect(USAGE).toContain('--out <út>')
-    expect(USAGE).toContain('--list <fájl>')
-    expect(USAGE).toContain('--sub-lang')
-    expect(USAGE).toContain('--sub-format')
-    expect(USAGE).toContain('--overwrite')
-    expect(USAGE).toContain('--flat')
-    expect(USAGE).toContain('--playlist-items')
-    expect(USAGE).toContain('--yes-playlist')
+  it('a fetch subtitle súgója felsorolja a saját kapcsolóit', () => {
+    const text = helpText('fetch subtitle')
+    expect(overview()).toContain('fetch subtitle')
+    for (const flag of ['--out <út>', '--list <fájl>', '--sub-lang', '--sub-format', '--overwrite', '--flat', '--playlist-items', '--yes-playlist']) {
+      expect(text).toContain(flag)
+    }
   })
 
   it('a fetch subtitle --out nem kéri a vaultot', async () => {
