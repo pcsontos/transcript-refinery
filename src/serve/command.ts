@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { loadCliConfig } from '../config.js'
+import { parseArgs } from 'node:util'
+import { loadCliConfig, type Config } from '../config.js'
 import { commandFetch } from '../fetch/command.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { VERSION } from '../meta.js'
@@ -8,13 +9,14 @@ import { deleteLocalPair, readLocalPair } from './inventory.js'
 import { runJob, subtitleArgv, type JobEffects, type RecipesOutcome, type ServeJob } from './job.js'
 import { createR2Store, type R2Config } from './r2.js'
 import { createServeServer, type ServeGate } from './http.js'
-import { runRecipes as defaultRunRecipes } from './summary.js'
+import { firstLine, runRecipes as defaultRunRecipes } from './summary.js'
 
 type RecipesRun = (input: {
   videoId: string
   outDir: string
   recipes: readonly string[]
   lang?: LanguageTag
+  load?: () => Promise<{ cfg: Config; raw: unknown }>
 }) => Promise<RecipesOutcome>
 
 export function serveEffects(input: {
@@ -27,6 +29,7 @@ export function serveEffects(input: {
   deletePair?: JobEffects['deletePair']
   readFile?: JobEffects['readFile']
   runRecipes?: RecipesRun
+  configArg?: string
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
   refine: (videoId: string, recipes: readonly string[], lang?: LanguageTag) => Promise<RecipesOutcome>
@@ -45,7 +48,8 @@ export function serveEffects(input: {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, body)
     },
-    refine: (videoId, recipes, lang) => refineWith({ videoId, outDir: input.outDir, recipes, lang }),
+    refine: (videoId, recipes, lang) =>
+      refineWith({ videoId, outDir: input.outDir, recipes, lang, load: () => loadCliConfig(input.configArg) }),
   }
 }
 
@@ -66,7 +70,15 @@ function missing(env: NodeJS.ProcessEnv): string | null {
   return null
 }
 
-export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
+export async function commandServe(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
+  let configArg: string | undefined
+  try {
+    const { values } = parseArgs({ args: [...argv], options: { config: { type: 'string' } }, allowPositionals: false })
+    configArg = values.config
+  } catch (cause) {
+    console.error(`${(cause as Error).message}\nSúgó: refinery help serve`)
+    return 1
+  }
   const error = missing(env)
   if (error !== null) {
     console.error(error)
@@ -81,19 +93,19 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
     console.error('Hiányzó SERVE_PORT.')
     return 1
   }
-  let languages: readonly string[] = ['hu', 'en']
-  if (env.REFINERY_SUB_LANG && env.REFINERY_SUB_LANG.trim() !== '') {
-    languages = env.REFINERY_SUB_LANG.split(',').map((s) => s.trim()).filter(Boolean)
-  } else {
-    try {
-      const { cfg } = await loadCliConfig(undefined)
-      if (cfg.languages && cfg.languages.length > 0) {
-        languages = cfg.languages
-      }
-    } catch {
-      // Dedikált serve konténerben vagy ha nincs refinery.config.yaml, az alapértelmezett ['hu', 'en'] érvényes.
+  // A --config nélküli hiba csendes: dedikált serve konténerben nincs refinery.config.yaml.
+  let configLanguages: readonly string[] = []
+  try {
+    configLanguages = (await loadCliConfig(configArg)).cfg.languages
+  } catch (cause) {
+    if (configArg !== undefined) {
+      console.error(`Hibás konfiguráció: ${firstLine(cause instanceof Error ? cause.message : String(cause))}`)
+      return 1
     }
   }
+  const fromEnv = env.REFINERY_SUB_LANG?.split(',').map((s) => s.trim()).filter(Boolean) ?? []
+  const languages: readonly string[] =
+    fromEnv.length > 0 ? fromEnv : configLanguages.length > 0 ? configLanguages : ['hu', 'en']
   const r2: R2Config = {
     accountId: env.R2_ACCOUNT_ID ?? '',
     bucket: env.R2_BUCKET ?? '',
@@ -102,6 +114,7 @@ export async function commandServe(env: NodeJS.ProcessEnv): Promise<number> {
   }
   const effects = serveEffects({
     outDir,
+    configArg,
     languages,
     store: createR2Store(r2),
     fetchSubtitle: async (url) => {

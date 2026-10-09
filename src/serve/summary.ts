@@ -39,7 +39,7 @@ const defaultGit: SummaryGit = {
 
 type RunEvent = { type?: string; reason?: string; spentUsd?: number; limitUsd?: number; error?: string }
 
-function firstLine(text: string): string {
+export function firstLine(text: string): string {
   const line = text.split('\n').find((item) => item.trim() !== '')
   return line?.trim() ?? ''
 }

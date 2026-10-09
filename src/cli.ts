@@ -926,7 +926,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (command === 'fetch') return commandFetch(argv.slice(1))
-  if (command === 'serve') return commandServe(process.env)
+  if (command === 'serve') return commandServe(argv.slice(1), process.env)
 
   const { values } = parseArgs({
     args: [...argv.slice(1)],

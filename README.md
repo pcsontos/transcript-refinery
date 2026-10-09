@@ -89,6 +89,11 @@ hitelesítés nélkül válaszol (`ok`, illetve `{"version": …}`), a `GET /sta
 a `REFINERY_SERVE_SECRET` Bearer-tokenjével a verziót és az éppen futó munka
 azonosítóját adja (`{"version": …, "busy": <jobId> | null}`).
 
+A `refinery serve --config <út>` a megadott konfigurációt használja a
+feliratnyelvekhez és a receptfuttatásokhoz is; ha a fájl nem tölthető be, a
+`serve` el sem indul. A `--config` nélkül a munkakönyvtár
+`refinery.config.yaml`-ja érvényes, ha van.
+
 A `run --recipe summary` a normalizált átiratból összefoglaló jegyzetet
 készít, korlátos evaluator–optimizer loopban: a modell generál, egy rubrika
 pontoz **és konkrét hiányokat nevez meg**, a modell eddig javít, amíg átmegy
