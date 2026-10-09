@@ -382,7 +382,7 @@ git commit -m "fix(serve): Send a forge-neutral note path and mark Telegram runs
   - `export const FRONTMATTER` (`src/vault/lint.ts`)
   - `src/serve/notes.ts`: `KIND`, `NoteListItem`, `NoteList`, `NoteView`, `NotesSource { list(): Promise<NoteList>; note(itemId: string, kind: string): Promise<NoteView | null> }`, `class NotesUnavailable extends Error`, `originOf(fields)`, `scanNotes(notesRoot)`, `createNotesSource({ load, busy, pull? })`.
 
-- [ ] **Step 1: Függőség, git-időkorlát, export**
+- [x] **Step 1: Függőség, git-időkorlát, export**
 
 ```bash
 pnpm add -w markdown-it@^15.0.2
@@ -406,7 +406,7 @@ export async function gitPullFfOnly(repo: string, timeoutMs?: number): Promise<v
 export const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/
 ```
 
-- [ ] **Step 2: A bukó tesztek**
+- [x] **Step 2: A bukó tesztek**
 
 `src/serve/notes.test.ts`:
 
@@ -569,12 +569,12 @@ describe('createNotesSource.note', () => {
 })
 ```
 
-- [ ] **Step 3: Futtasd, bukjon**
+- [x] **Step 3: Futtasd, bukjon**
 
 Run: `pnpm vitest run src/serve/notes.test.ts`
 Expected: FAIL — `Cannot find module './notes.js'`.
 
-- [ ] **Step 4: `src/serve/notes.ts`**
+- [x] **Step 4: `src/serve/notes.ts`**
 
 ```ts
 import { readdir, readFile } from 'node:fs/promises'
@@ -792,12 +792,12 @@ export function createNotesSource(input: {
 }
 ```
 
-- [ ] **Step 5: Futtasd, legyen zöld**
+- [x] **Step 5: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run src/serve/notes.test.ts src/vault && pnpm typecheck && pnpm lint`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add package.json pnpm-lock.yaml src/vault/git.ts src/vault/lint.ts src/serve/notes.ts src/serve/notes.test.ts

@@ -178,6 +178,9 @@ importers:
       chokidar:
         specifier: 5.0.0
         version: 5.0.0
+      markdown-it:
+        specifier: ^15.0.2
+        version: 15.0.2
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -188,6 +191,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.9.1(jiti@2.7.0)(supports-color@10.2.2))
+      '@types/markdown-it':
+        specifier: ^14.2.0
+        version: 14.2.0
       '@types/node':
         specifier: ^26.0.0
         version: 26.4.0

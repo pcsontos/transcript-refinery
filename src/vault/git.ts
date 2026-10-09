@@ -11,9 +11,10 @@ export interface PushResult {
 /**
  * Futás előtti frissítés. Szándékosan `--ff-only`: ha a történet divergált,
  * inkább hasaljon el itt, mint hogy a publisher egy elavult fára írjon.
+ * `timeoutMs` után a git folyamat leáll, és a hívás hibát dob.
  */
-export async function gitPullFfOnly(repo: string): Promise<void> {
-  await run('git', ['pull', '--ff-only'], { cwd: repo })
+export async function gitPullFfOnly(repo: string, timeoutMs?: number): Promise<void> {
+  await run('git', ['pull', '--ff-only'], { cwd: repo, timeout: timeoutMs })
 }
 
 /** Van-e bármilyen követetlen vagy módosított fájl a munkafában? */

@@ -3,7 +3,7 @@ import { parse as parseYaml } from 'yaml'
 const WIKILINK = /\[\[[^\]]+\]\]/g
 // A `<…>` cél egészben, a záró `>`-ig: zárójelet is tartalmazhat (videócím).
 const MARKDOWN_LINK = /!?\[[^\]]*\]\((<[^>\n]*>|[^)]*)\)/g
-const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/
+export const FRONTMATTER = /^---\n([\s\S]*?)\n---(?:\n|$)/
 
 /**
  * A vault írási szabályai invariánsok, nem konvenciók: wikilink tilos, minden
