@@ -89,6 +89,13 @@ hitelesítés nélkül válaszol (`ok`, illetve `{"version": …}`), a `GET /sta
 a `REFINERY_SERVE_SECRET` Bearer-tokenjével a verziót és az éppen futó munka
 azonosítóját adja (`{"version": …, "busy": <jobId> | null}`).
 
+A `/notes` oldal adatait is a `serve` adja, a `REFINERY_SERVE_SECRET`
+Bearer-tokenjével: a `GET /notes` a vault jegyzetmappájának listáját
+(elemenként cím, YouTube-cím, `origin`, a legfrissebb jegyzet ideje és a kész
+fajták), a `GET /notes/<itemId>/<fajta>` egy jegyzet renderelt HTML-jét. A
+lista előtt a `serve` `git pull`-t futtat a vaulton; ha ez nem sikerül, vagy
+épp munka fut, a válasz `stale: true`.
+
 A `refinery serve --config <út>` a megadott konfigurációt használja a
 feliratnyelvekhez és a receptfuttatásokhoz is; ha a fájl nem tölthető be, a
 `serve` el sem indul. A `--config` nélkül a munkakönyvtár

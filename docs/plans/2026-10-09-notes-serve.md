@@ -817,7 +817,7 @@ git commit -m "feat(serve): Read and render vault notes for the notes page"
 - Consumes: `NotesSource`, `NotesUnavailable` (Task 3); `createNotesSource` (Task 3).
 - Produces: `ServeServerInput.notes?: NotesSource`. HTTP: `GET /notes` → `200` JSON (`NoteList`); `GET /notes/<itemId>/<fajta>` → `200` JSON (`NoteView`) vagy `404`; titok nélkül `401`; `notes` nélkül vagy `NotesUnavailable`-nél `503`; más hibánál `500`.
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 `src/serve/http.test.ts`: az importokhoz:
 
@@ -908,12 +908,12 @@ describe('createServeServer /notes', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run src/serve/http.test.ts`
 Expected: FAIL — a `/notes` ma `404` (és a `notes` mező ismeretlen a bemenetben).
 
-- [ ] **Step 3: `http.ts`**
+- [x] **Step 3: `http.ts`**
 
 Az importokhoz:
 
@@ -998,7 +998,7 @@ A `handle`-ben, a `GET /status` blokk után, a `if (request.method !== 'POST' ||
   }
 ```
 
-- [ ] **Step 4: `command.ts`**
+- [x] **Step 4: `command.ts`**
 
 Az importokhoz:
 
@@ -1013,12 +1013,12 @@ A `createServeServer({ … })` hívásban a `version: VERSION,` sor után:
     notes: createNotesSource({ load: () => loadCliConfig(configArg), busy: () => gate.current !== null }),
 ```
 
-- [ ] **Step 5: Futtasd, legyen zöld**
+- [x] **Step 5: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run src/serve && pnpm typecheck && pnpm lint`
 Expected: PASS.
 
-- [ ] **Step 6: README**
+- [x] **Step 6: README**
 
 `README.md`, a „A `serve` három lekérdező végpontot is ad: …” bekezdés után új bekezdés:
 
@@ -1031,7 +1031,7 @@ lista előtt a `serve` `git pull`-t futtat a vaulton; ha ez nem sikerül, vagy
 épp munka fut, a válasz `stale: true`.
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/serve/http.ts src/serve/http.test.ts src/serve/command.ts README.md
