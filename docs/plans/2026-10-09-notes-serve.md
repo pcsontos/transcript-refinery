@@ -70,7 +70,7 @@ Az implementáció a `feat/notes-serve` ágon indul a friss `main`-ről, miután
 **Interfaces:**
 - Produces: `export type NoteOrigin = 'telegram' | 'cli'` (`src/vault/render.ts`); `renderTranscriptNote(item, transcript, generatorVersion, origin: NoteOrigin = 'cli')`; `renderRecipeNote(item, transcript, content, meta, generatorVersion, origin: NoteOrigin = 'cli')`; `PipelineDeps.origin?: NoteOrigin`.
 
-- [ ] **Step 1: A bukó tesztek**
+- [x] **Step 1: A bukó tesztek**
 
 `src/vault/render.test.ts` végére:
 
@@ -103,12 +103,12 @@ describe('origin', () => {
   })
 ```
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run src/vault/render.test.ts src/pipeline.test.ts`
 Expected: FAIL — a render-tesztekben nincs `origin:` sor, a pipeline-tesztben a TypeScript-hiba (`origin` nem ismert mező) vagy a hiányzó sor.
 
-- [ ] **Step 3: `render.ts`**
+- [x] **Step 3: `render.ts`**
 
 A `baseFields` elé:
 
@@ -166,7 +166,7 @@ export function renderRecipeNote(
 
 (A `renderRecipeNote` többi sora változatlan.)
 
-- [ ] **Step 4: `pipeline.ts`**
+- [x] **Step 4: `pipeline.ts`**
 
 Az import:
 
@@ -193,12 +193,12 @@ A `processItem`-ben a `renderTranscriptNote(item, transcript, version),` sor hel
         renderTranscriptNote(item, transcript, version, deps.origin),
 ```
 
-- [ ] **Step 5: Futtasd, legyen zöld**
+- [x] **Step 5: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run src/vault/render.test.ts src/pipeline.test.ts && pnpm typecheck`
 Expected: PASS, típushiba nincs.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/vault/render.ts src/vault/render.test.ts src/pipeline.ts src/pipeline.test.ts
