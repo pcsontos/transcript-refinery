@@ -141,7 +141,8 @@ node dist/cli.js list --recipe clean-moderate --status pending
 A `--status` (`done`, `failed`, `pending`) `--recipe` nélkül bármely típusra
 illik: a `list --status failed` minden elemet mutat, amin legalább egy
 típus hibára futott. A `--source`, a `--channel` és a `--limit` ugyanúgy
-szűr, mint a `run`-nál. A számok ugyanabból az olvasó rétegből jönnek, mint
+szűr, mint a `run`-nál. A `--channels` összesítő a teljes szűrt halmazt
+számolja, ezért mellette a `--limit` nem hat. A számok ugyanabból az olvasó rétegből jönnek, mint
 a webes felületéi.
 
 ---

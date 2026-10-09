@@ -2672,6 +2672,19 @@ describe('commandList', () => {
     expect(lines[5]).toMatch(/^Összesen +2 0\/2 1\/2 .* 0\.0800$/)
   })
 
+  it('a main() a list kapcsolóit bekötve adja át: a --channels összesít, a hibás --limit 1-es kód', async () => {
+    await ketVideoAllapottal()
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+    await mkdir(join(vault, '.git'))
+
+    expect(await main(['list', '--config', configPath, '--channels'])).toBe(0)
+    expect(logs.join('\n').split('\n')[0]).toBe('2 csatorna')
+
+    expect(await main(['list', '--config', configPath, '--limit', 'abc'])).toBe(1)
+    expect(errors).toEqual(['A --limit pozitív egész szám.'])
+  })
+
   it('a futás után az állapotfájl bájtra és időbélyegre változatlan', async () => {
     const cfg = await ketVideoAllapottal()
     const elotte = await readFile(cfg.statePath)
