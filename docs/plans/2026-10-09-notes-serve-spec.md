@@ -14,7 +14,7 @@ Futás három helyről indul: a peter-mbp-ről (fejlesztés, próba), a peter-mb
 
 ## Ezen a körön kívül
 
-- Cache (R2 vagy D1) arra az időre, amikor a peter-mba alszik: későbbi kör. Addig ilyenkor a `/notes` nem érhető el.
+- Cache (R2 vagy D1) arra az időre, amikor a peter-mba alszik: későbbi kör (#195). Addig ilyenkor a `/notes` nem érhető el.
 - A `web` `origin`-érték: akkor kerül be, amikor a webfelület futást indíthat.
 - A `refinery-mba.peteroncode.dev/notes` útvonal (Worker-route a `serve` hosztnevén).
 - A kódrepó és a kiadás GitHub-kötései: `ghcr.io` kép, GitHub Actions CI, a `yt-dlp` letöltése a Dockerfile-ban, az `org.opencontainers.image.source` címke. Ezek nem a vaulthoz tartoznak.
@@ -60,8 +60,9 @@ Futás három helyről indul: a peter-mbp-ről (fejlesztés, próba), a peter-mb
 
 ### A `git pull`
 
-- Minden `/notes` listakérés előtt `git pull --ff-only` a vaulton, a meglévő `gitPullFfOnly` (`src/vault/git.ts`) használatával, legfeljebb 10 másodperc időkorláttal.
+- Minden `/notes` listakérés előtt `git pull --ff-only` a vaulton, a meglévő `gitPullFfOnly` (`src/vault/git.ts`) használatával, legfeljebb 10 másodperc időkorláttal (a `git` folyamat le is áll).
 - Hiba vagy időtúllépés esetén a beolvasás a helyi állapotból fut, és a válasz `stale: true` jelzést kap.
+- Amíg a `serve` munkát végez (`gate.current` nem üres), a lista nem pullol, és `stale: true`-t ad: a futás maga pullol és commitol ugyanabba a vaultba, a párhuzamos `git pull` a git zárolása miatt a futás commitját buktathatná el. Ismert korlát: a gazdagépen kézzel indított `refinery run` commitjával a pull ütközhet, ha ugyanazt a vault-klónt használják.
 - Egy jegyzet lekérése (`/notes/<id>/<fajta>`) nem pullol: a lista már frissített.
 
 ## 2. `serve`: új útvonalak
@@ -85,15 +86,16 @@ A `src/serve/http.ts` `handle` függvénye két új GET útvonalat kap, mindkett
 
 - A Worker a `SERVE_URL`-en hívja a `serve /notes`-t a `REFINERY_SERVE_SECRET`-tel, 10 másodperc időkorláttal.
 - A lap szerkezete a mai: elemenként a cím (a YouTube-linkkel, ha van `url`), a dátum (`generatedAt` napja), egy `telegram`/`cli` címke, alatta a fajták linkjei.
+- Az `url` csak `http://` vagy `https://` eleje esetén lesz link; más (például `javascript:`) esetén a cím sima szöveg.
 - A fajták sorrendje a mai `KIND_ORDER` (`worker/src/reader.ts:48`): a receptek a gombok sorrendjében, mindegyik után a fordításai, az ismeretlen fajta a végén, a `transcript` legutoljára.
 - A linkek alakja: `/notes/<itemId>/<fajta>`.
-- `stale: true` esetén a lap tetején egy sor: „A vault frissítése nem sikerült, a lista nem friss.”
+- `stale: true` esetén a lap tetején egy sor: „A vault most nem frissült, a lista régebbi lehet.”
 - Üres `items`: a mai `NO_NOTES` üzenet.
 
 ### Egy jegyzet (`GET /notes/<id>/<fajta>`)
 
 - Ha az `<id>` kettőspontot tartalmaz (régi bot-link, `<update_id>:<videóazonosító>`), a Worker az utolsó kettőspont utáni részt veszi `itemId`-nak.
-- A Worker a `serve /notes/<itemId>/<fajta>`-t hívja, és a választ a mai oldalkeretbe teszi: fejléc a címmel (YouTube-linkkel, ha van), a fajtával, az `origin`-címkével és a dátummal, alatta a `html`.
+- A Worker a `serve /notes/<itemId>/<fajta>`-t hívja, és a választ a mai oldalkeretbe teszi: egy sor a fajtával, az `origin`-címkével és a dátummal, alatta a `html`. A cím és a YouTube-link a jegyzet saját `# cím` és `🌐 <url>` sorából látszik, ezért a fejléc nem ismétli; a `<title>` `<cím> · <fajta>`.
 
 ### Hibák
 
@@ -102,7 +104,9 @@ A `src/serve/http.ts` `handle` függvénye két új GET útvonalat kap, mindkett
 | A `serve` nem válaszol 10 s alatt, vagy hálózati hiba | `502`, „A peter-mba nem érhető el, a jegyzetek most nem olvashatók.” |
 | A `serve` `401`-et ad | `502`, „A Worker és a serve titka nem egyezik.” |
 | A `serve` `503`-at ad | `502`, „A serve nem éri el a vaultot.” |
-| A `serve` `404`-et ad | `404`, a mai `NOTE_MISSING` szöveggel |
+| A `serve` `404`-et ad a jegyzetre | `404`, a mai `NOTE_MISSING` szöveggel |
+| A `serve` `404`-et ad a listára (régi `serve`, nincs még `/notes` útvonala) | `502`, a „peter-mba nem érhető el” szöveggel |
+| A `serve` válasza nem a várt JSON | `502`, „A serve hibás választ adott.” |
 
 ### Bot-üzenetek
 
@@ -113,6 +117,7 @@ A `runReadyMessage` (`worker/src/plan.ts:109`) linkjei `/notes/<videóazonosít�
 - A `baseFields` (`src/vault/render.ts:51`) új `origin` mezőt kap a `source` után. Így az átirat, a receptjegyzet és a fordítás frontmatterébe is bekerül.
 - Az érték a futás kapcsolóiból jön: a `commandRun` kapcsolói (`src/cli.ts:375` környéke) új `origin?: 'telegram' | 'cli'` mezőt kapnak, alapértéke `cli`; a pipeline a jegyzet rendereléséig viszi.
 - A `runRecipes` (`src/serve/summary.ts:140`) `origin: 'telegram'`-et ad át. A `run`, a `watch` és a `queue` `cli` marad.
+- Az `origin` jegyzetenként, a fájl írásakor rögzül. Ha egy videó átiratát a terminál írta, és Telegramról csak egy új receptet futtatunk hozzá, az átirat `cli` marad, az új jegyzet `telegram` lesz; a listán a legfrissebb jegyzeté látszik.
 
 ## 5. A GitHub-függés kivezetése
 
