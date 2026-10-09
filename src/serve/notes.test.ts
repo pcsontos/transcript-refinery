@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, truncate, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -179,5 +179,53 @@ describe('createNotesSource.note', () => {
     expect(await notes.note('ismeretlen', 'transcript')).toBeNull()
     expect(await notes.note(ID, 'summary')).toBeNull()
     expect(await notes.note(ID, 'transcript')).not.toBeNull()
+  })
+})
+
+describe('createNotesSource — beolvasás és gyorsítótár', () => {
+  it('csak a fájl elejét olvassa: egy 2 GiB fölötti ritka fájl sem buktatja a listát', async () => {
+    await note('nagy_transcript.md', { item_id: ID, title: 'Nagy', source: 'youtube' })
+    // A readFile 2 GiB fölött hibát dob; a frontmatterhez a fájl eleje elég.
+    await truncate(join(root, 'nagy_transcript.md'), 2 * 1024 ** 3 + 1024 ** 2)
+    const { items } = await source().notes.list()
+    expect(items.map((item) => item.title)).toEqual(['Nagy'])
+  })
+
+  it('a több KB-os frontmatter (hosszú leírás) is egészében feldolgozódik', async () => {
+    const description = `|\n${'  hosszú sor a leírásban\n'.repeat(2000)}`.trimEnd()
+    await note('hosszu_transcript.md', { item_id: ID, description, title: 'Hosszú', source: 'youtube', url: '"https://example.com/v"' })
+    const { items } = await source().notes.list()
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ title: 'Hosszú', url: 'https://example.com/v' })
+  })
+
+  it('a változatlan fájlt (azonos módosítási idő és méret) nem olvassa újra, a változottat igen, a törölt eltűnik', async () => {
+    const path = join(root, 'a_transcript.md')
+    const first = new Date('2026-01-01T10:00:00Z')
+    await note('a_transcript.md', { item_id: ID, title: 'AAAA', source: 'youtube' })
+    await utimes(path, first, first)
+    const { notes } = source()
+    expect((await notes.list()).items[0]!.title).toBe('AAAA')
+
+    await note('a_transcript.md', { item_id: ID, title: 'BBBB', source: 'youtube' })
+    await utimes(path, first, first)
+    expect((await notes.list()).items[0]!.title).toBe('AAAA')
+
+    const later = new Date('2026-01-02T10:00:00Z')
+    await utimes(path, later, later)
+    expect((await notes.list()).items[0]!.title).toBe('BBBB')
+
+    await rm(path)
+    expect((await notes.list()).items).toEqual([])
+  })
+
+  it('egy mappa a jegyzet nevén és egy olvashatatlan fájl kimarad, a többi jegyzet megmarad', async () => {
+    await note('jo_transcript.md', { item_id: ID, title: 'Jó', source: 'youtube' })
+    await mkdir(join(root, 'jo_mappa_summary.md'))
+    await note('jo_notes.md', { item_id: ID, title: 'Jó', source: 'youtube' })
+    await mkdir(join(root, 'jo_summary.md'))
+    const { items } = await source().notes.list()
+    expect(items).toHaveLength(1)
+    expect([...items[0]!.kinds].sort()).toEqual(['notes', 'transcript'])
   })
 })

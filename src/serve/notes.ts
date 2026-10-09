@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises'
+import { open, readdir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import MarkdownIt from 'markdown-it'
 import { parse as parseYaml } from 'yaml'
@@ -102,44 +102,126 @@ async function listing(root: string): Promise<string[]> {
   }
 }
 
+/** Egy fájl beolvasott állapota: a módosítási idő és a méret őrzi, hogy változott-e. */
+interface CacheEntry {
+  mtimeMs: number
+  size: number
+  /** `null`, ha a fájl nem jegyzet (nincs frontmatter vagy `item_id`). */
+  note: { itemId: string; file: NoteFile } | null
+}
+
+/** Fájlútvonal → utolsó beolvasás. A `serve` megtartja két kérés között. */
+export type ScanCache = Map<string, CacheEntry>
+
+/** A frontmatter olvasása ekkora darabokban halad, amíg a záró `---` meg nem jön. */
+const HEAD_CHUNK = 8 * 1024
+/** Ennél hosszabb frontmatter nem jegyzet: a fájl kimarad. */
+const HEAD_LIMIT = 1024 * 1024
+
+/**
+ * A fájl eleje a frontmatter végéig. A jegyzet törzse (egy átirat több száz KB
+ * is lehet) nem kell a listához, ezért nem olvassuk be.
+ */
+async function readHead(path: string): Promise<string> {
+  const handle = await open(path, 'r')
+  try {
+    const chunks: Buffer[] = []
+    let position = 0
+    for (;;) {
+      const buffer = Buffer.alloc(HEAD_CHUNK)
+      const { bytesRead } = await handle.read(buffer, 0, HEAD_CHUNK, position)
+      const atEnd = bytesRead < HEAD_CHUNK
+      chunks.push(buffer.subarray(0, bytesRead))
+      position += bytesRead
+      const text = Buffer.concat(chunks).toString('utf8')
+      const match = FRONTMATTER.exec(text)
+      // A szövegvégi `---` még lehet egy hosszabb sor eleje: addig nem kész, amíg nem jön újsor vagy fájlvég.
+      if (match !== null && (match[0].endsWith('\n') || atEnd)) return text
+      if (atEnd || position >= HEAD_LIMIT) return text
+    }
+  } finally {
+    await handle.close()
+  }
+}
+
+/** Egy fájl jegyzet-adatai; a gyorsítótárból, ha a módosítási idő és a méret ugyanaz. `null`, ha nem olvasható. */
+async function entryFor(path: string, cache: ScanCache): Promise<CacheEntry | null> {
+  try {
+    const info = await stat(path)
+    if (!info.isFile()) return null
+    const cached = cache.get(path)
+    if (cached !== undefined && cached.mtimeMs === info.mtimeMs && cached.size === info.size) return cached
+    const fields = frontmatter(await readHead(path))
+    const itemId = fields === null ? null : text(fields.item_id)
+    const entry: CacheEntry = {
+      mtimeMs: info.mtimeMs,
+      size: info.size,
+      note:
+        fields === null || itemId === null
+          ? null
+          : {
+              itemId,
+              file: {
+                path,
+                title: text(fields.title) ?? itemId,
+                url: text(fields.url),
+                origin: originOf(fields),
+                generatedAt: text(fields.generated_at),
+              },
+            },
+    }
+    cache.set(path, entry)
+    return entry
+  } catch {
+    // Közben eltűnt vagy olvashatatlan fájl: kimarad, a lista nem bukik miatta.
+    return null
+  }
+}
+
 /**
  * A `notesRoot` minden `*_transcript.md` fájlja egy elem kiindulópontja, és
  * ugyanabban a mappában az `<alapnév>_<fajta>.md` fájlok a jegyzetei. Az
  * elemek kulcsa a frontmatter `item_id` mezője, így két mappa ugyanarról a
  * videóról egy elem lesz; egy fajtából a legfrissebb (`generated_at`) marad.
+ * A fájlok tartalmát a `cache` őrzi, amíg a módosítási idejük és a méretük nem
+ * változik; a már nem létező fájlok kikerülnek belőle.
  */
-export async function scanNotes(notesRoot: string): Promise<Map<string, ScannedItem>> {
-  const paths = await listing(notesRoot)
+export async function scanNotes(notesRoot: string, cache: ScanCache = new Map()): Promise<Map<string, ScannedItem>> {
+  // Mappánként a fájlnevek: egy átirathoz csak a vele egy mappában levő fájlokat nézzük.
+  const byDir = new Map<string, string[]>()
+  for (const path of await listing(notesRoot)) {
+    const dir = dirname(path)
+    const names = byDir.get(dir)
+    if (names === undefined) byDir.set(dir, [basename(path)])
+    else names.push(basename(path))
+  }
   const items = new Map<string, ScannedItem>()
-  // ponytail: kiindulópontonként végigmegy az összes úton (O(n²)); néhány száz fájlig elég, mappánkénti csoportosítás, ha lassú lesz.
-  for (const anchor of paths) {
-    const name = basename(anchor)
-    if (!name.endsWith(TRANSCRIPT_END) || name.startsWith('_')) continue
-    const dir = dirname(anchor)
-    const prefix = join(dir, `${name.slice(0, -TRANSCRIPT_END.length)}_`)
-    for (const path of paths) {
-      if (!path.startsWith(prefix) || !path.endsWith('.md') || dirname(path) !== dir) continue
-      const kind = path.slice(prefix.length, -'.md'.length)
-      if (!KIND.test(kind)) continue
-      const fields = frontmatter(await readFile(join(notesRoot, path), 'utf8'))
-      const itemId = fields === null ? null : text(fields.item_id)
-      if (fields === null || itemId === null) continue
-      const file: NoteFile = {
-        path: join(notesRoot, path),
-        title: text(fields.title) ?? itemId,
-        url: text(fields.url),
-        origin: originOf(fields),
-        generatedAt: text(fields.generated_at),
+  const seen = new Set<string>()
+  for (const [dir, names] of byDir) {
+    for (const anchor of names) {
+      if (!anchor.endsWith(TRANSCRIPT_END) || anchor.startsWith('_')) continue
+      const prefix = `${anchor.slice(0, -TRANSCRIPT_END.length)}_`
+      for (const name of names) {
+        if (!name.startsWith(prefix) || !name.endsWith('.md')) continue
+        const kind = name.slice(prefix.length, -'.md'.length)
+        if (!KIND.test(kind)) continue
+        const path = join(notesRoot, dir, name)
+        const entry = await entryFor(path, cache)
+        if (entry === null) continue
+        seen.add(path)
+        if (entry.note === null) continue
+        const { itemId, file } = entry.note
+        let item = items.get(itemId)
+        if (item === undefined) {
+          item = { itemId, files: new Map() }
+          items.set(itemId, item)
+        }
+        const current = item.files.get(kind)
+        if (current === undefined || newer(file.generatedAt, current.generatedAt)) item.files.set(kind, file)
       }
-      let item = items.get(itemId)
-      if (item === undefined) {
-        item = { itemId, files: new Map() }
-        items.set(itemId, item)
-      }
-      const current = item.files.get(kind)
-      if (current === undefined || newer(file.generatedAt, current.generatedAt)) item.files.set(kind, file)
     }
   }
+  for (const path of cache.keys()) if (!seen.has(path)) cache.delete(path)
   return items
 }
 
@@ -162,6 +244,7 @@ export function createNotesSource(input: {
   pull?: (repo: string) => Promise<void>
 }): NotesSource {
   const pull = input.pull ?? ((repo: string) => gitPullFfOnly(repo, PULL_TIMEOUT_MS))
+  const cache: ScanCache = new Map()
 
   async function config(): Promise<Config> {
     try {
@@ -187,7 +270,7 @@ export function createNotesSource(input: {
           release()
         }
       }
-      const items = [...(await scanNotes(cfg.notesRoot)).values()].map((item): NoteListItem => {
+      const items = [...(await scanNotes(cfg.notesRoot, cache)).values()].map((item): NoteListItem => {
         const head = latest(item)
         return {
           itemId: item.itemId,
@@ -205,7 +288,7 @@ export function createNotesSource(input: {
     async note(itemId, kind) {
       if (!KIND.test(kind)) return null
       const cfg = await config()
-      const file = (await scanNotes(cfg.notesRoot)).get(itemId)?.files.get(kind)
+      const file = (await scanNotes(cfg.notesRoot, cache)).get(itemId)?.files.get(kind)
       if (file === undefined) return null
       const source = await readFile(file.path, 'utf8')
       const match = FRONTMATTER.exec(source)
