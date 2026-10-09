@@ -219,7 +219,7 @@ git commit -m "feat(vault): Record the run origin in note frontmatter"
 - Consumes: `NoteOrigin`, `PipelineDeps.origin` (Task 1).
 - Produces: `commandRun` `flags.origin?: NoteOrigin`; a `runRecipes` sikeres eredménye `{ ok: true, noteUrl: '<vault-relatív út>' }`, például `Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md`.
 
-- [ ] **Step 1: A tesztek átírása**
+- [x] **Step 1: A tesztek átírása**
 
 `src/serve/summary.test.ts`:
 
@@ -285,12 +285,12 @@ sed -i '' "s#'https://github.com/tulaj/repo/blob/main/Inbox/transcript-refinery/
 
 5. Ellenőrzés: `grep -n "github\|gitFor\|execFileAsync" src/serve/summary.test.ts` — nincs találat.
 
-- [ ] **Step 2: Futtasd, bukjon**
+- [x] **Step 2: Futtasd, bukjon**
 
 Run: `pnpm vitest run src/serve/summary.test.ts`
 Expected: FAIL — a `noteUrl` még GitHub-URL, az alapértelmezett gittel a helyi origin „nem GitHub-cím” hibát ad, és a jegyzetben `origin: cli` áll.
 
-- [ ] **Step 3: `cli.ts`**
+- [x] **Step 3: `cli.ts`**
 
 Az importok közé:
 
@@ -311,7 +311,7 @@ A `processItem(unit.item, { … })` hívásban a `commit,` sor után:
         origin: flags.origin,
 ```
 
-- [ ] **Step 4: `summary.ts`**
+- [x] **Step 4: `summary.ts`**
 
 1. A fejlécből töröld: `import { execFile } from 'node:child_process'`, `import { promisify } from 'node:util'`, `import { githubNoteUrl } from './note-url.js'` és a `const exec = promisify(execFile)` sort.
 
@@ -352,12 +352,12 @@ const defaultGit: SummaryGit = {
 git rm src/serve/note-url.ts src/serve/note-url.test.ts
 ```
 
-- [ ] **Step 5: Futtasd, legyen zöld**
+- [x] **Step 5: Futtasd, legyen zöld**
 
 Run: `pnpm vitest run src/serve && pnpm typecheck && pnpm lint`
 Expected: PASS; `grep -rn "githubNoteUrl\|note-url" src` — nincs találat.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/cli.ts src/serve/summary.ts src/serve/summary.test.ts

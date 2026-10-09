@@ -1,7 +1,5 @@
-import { execFile } from 'node:child_process'
 import { access, readdir, readFile, rm } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
-import { promisify } from 'node:util'
 import { commandRun, type RunRuntime } from '../cli.js'
 import { loadCliConfig, type Config } from '../config.js'
 import type { LanguageTag } from '../lang/identify.js'
@@ -11,30 +9,17 @@ import type { SourceItem } from '../types.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
 import { noteFile } from '../vault/paths.js'
 import type { RecipesOutcome } from './job.js'
-import { githubNoteUrl } from './note-url.js'
-
-const exec = promisify(execFile)
 
 type SummaryGit = {
   pull(repo: string): Promise<void>
   commit(repo: string, paths: readonly string[], message: string): Promise<boolean>
   push(repo: string): Promise<{ pushed: boolean }>
-  remote(repo: string): Promise<string>
-  branch(repo: string): Promise<string>
 }
 
 const defaultGit: SummaryGit = {
   pull: gitPullFfOnly,
   commit: gitCommitPaths,
   push: gitPush,
-  async remote(repo) {
-    const { stdout } = await exec('git', ['remote', 'get-url', 'origin'], { cwd: repo })
-    return stdout.trim()
-  },
-  async branch(repo) {
-    const { stdout } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repo })
-    return stdout.trim()
-  },
 }
 
 type RunEvent = { type?: string; reason?: string; spentUsd?: number; limitUsd?: number; error?: string }
@@ -140,7 +125,7 @@ export async function runRecipes(input: {
   const code = await commandRun(
     cfg,
     loaded.raw,
-    { recipes: ids, dryRun: false, force: false, commit: false, command: 'serve recipes' },
+    { recipes: ids, dryRun: false, force: false, commit: false, command: 'serve recipes', origin: 'telegram' },
     { createClient: input.createClient },
   )
   const events = await runEvents(cfg.logsDir, logsBefore)
@@ -181,8 +166,7 @@ export async function runRecipes(input: {
   for (const path of notePaths) {
     if (!(await exists(path))) return { ok: false, error: failureLine(events, 'A jegyzet nem készült el.') }
   }
-  const vaultRelative = relative(cfg.vaultPath, transcriptPath).split(sep).join('/')
-  const noteUrl = githubNoteUrl(await git.remote(cfg.vaultPath), await git.branch(cfg.vaultPath), vaultRelative)
-  if (noteUrl === null) return { ok: false, error: 'A vault távoli címe nem GitHub-cím.' }
+  // A vaulton belüli út forge-független: a Worker nem olvassa, csak eltárolja.
+  const noteUrl = relative(cfg.vaultPath, transcriptPath).split(sep).join('/')
   return { ok: true, noteUrl }
 }

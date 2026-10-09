@@ -61,6 +61,7 @@ import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 import { noteFile } from './vault/paths.js'
+import type { NoteOrigin } from './vault/render.js'
 import { readItems, type CellStatus } from './view/items.js'
 import {
   LIST_STATUSES,
@@ -373,6 +374,8 @@ export async function commandRun(
     noJudge?: boolean
     /** A riport fejlécében megjelenő parancssor; hiányában „run”. */
     command?: string
+    /** A jegyzetek frontmatterének `origin` mezője; hiányában `cli`. A `serve` `telegram`-ot ad. */
+    origin?: NoteOrigin
   },
   runtime: RunRuntime = {},
 ): Promise<number> {
@@ -812,6 +815,7 @@ export async function commandRun(
         options: { force: flags.force, dryRun: flags.dryRun },
         recipeDeps: depsFor(unit.recipe),
         commit,
+        origin: flags.origin,
       })
       // A pipeline maga bocsátja ki az `item:skipped` eseményt; itt csak a sor és
       // a riport kedvéért jegyezzük fel.
