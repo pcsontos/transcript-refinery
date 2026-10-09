@@ -80,31 +80,59 @@ describe('vaultPath', () => {
 })
 
 describe('notesPage', () => {
-  it('csak a saját, kész futással bíró sorok, újak elöl, a kész fajtákkal és a transcripttel, escape-elt címmel', async () => {
+  it('videónként egy bejegyzés, YouTube-linkkel, rögzített fajtasorrenddel, a legfrissebb kész jobra linkelve', async () => {
+    const ID2 = 'abcdefghijk'
+    const other = (updateId: number, partial: Partial<JobRow> = {}) =>
+      row(updateId, { jobId: `${updateId}:${ID2}`, videoId: ID2, url: `https://www.youtube.com/watch?v=${ID2}&t=1`, ...partial })
+    const otherRun = (updateId: number, recipes: string[]) =>
+      run(updateId, recipes, { jobId: `${updateId}:${ID2}`, runId: `${updateId}:${ID2}:${recipes.join('+')}` })
+
     const store = memoryStore()
     await store.insert(row(5, { title: 'Régi', acceptedAt: Date.UTC(2026, 9, 6) }))
     await store.insertRun(run(5, ['summary']))
+    await store.insertRun(run(5, ['qa']))
     await store.insert(row(6, { title: '<b>Új</b>' }))
     await store.insertRun(run(6, ['notes']))
+    await store.insertRun(run(6, ['summary']))
     await store.insertRun(run(6, ['summary', 'notes'], { lang: 'de' }))
     await store.insertRun(run(6, ['qa'], { status: 'failed' }))
+    await store.insert(other(9, { title: 'Másik', acceptedAt: Date.UTC(2026, 9, 5) }))
+    await store.insertRun(otherRun(9, ['zz-uj']))
+    await store.insertRun(otherRun(9, ['summary']))
+    await store.insertRun(otherRun(9, ['aa-uj']))
     await store.insert(row(7, { title: 'Idegen', sub: 'sub-7' }))
     await store.insertRun(run(7, ['summary']))
     await store.insert(row(8, { title: 'Félkész' }))
     await store.insertRun(run(8, ['summary'], { status: 'queued' }))
+
     const response = await notesPage('sub-42', reader(store))
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('text/html; charset=utf-8')
     const html = await response.text()
-    const link = (job: number, kind: string) => `<a href="/notes/${job}:${ID}/${kind}">${kind}</a>`
+    const item = (jobId: string, kind: string) => `<li><a href="/notes/${jobId}/${kind}">${kind}</a></li>`
     expect(html).toContain(
-      `<li>&#60;b&#62;Új&#60;/b&#62; · 2026-10-07 — ${[link(6, 'notes'), link(6, 'summary-de'), link(6, 'notes-de'), link(6, 'transcript')].join(' · ')}</li>`,
+      `<li><a href="https://www.youtube.com/watch?v=${ID}">&#60;b&#62;Új&#60;/b&#62;</a> · 2026-10-07<ul>` +
+        item(`6:${ID}`, 'summary') +
+        item(`6:${ID}`, 'summary-de') +
+        item(`6:${ID}`, 'notes') +
+        item(`6:${ID}`, 'notes-de') +
+        item(`5:${ID}`, 'qa') +
+        item(`6:${ID}`, 'transcript') +
+        '</ul></li>',
     )
-    expect(html).toContain(`<li>Régi · 2026-10-06 — ${link(5, 'summary')} · ${link(5, 'transcript')}</li>`)
-    expect(html.indexOf(`/notes/6:`)).toBeLessThan(html.indexOf(`/notes/5:`))
+    expect(html).toContain(
+      `<li><a href="https://www.youtube.com/watch?v=${ID2}&#38;t=1">Másik</a> · 2026-10-05<ul>` +
+        item(`9:${ID2}`, 'summary') +
+        item(`9:${ID2}`, 'aa-uj') +
+        item(`9:${ID2}`, 'zz-uj') +
+        item(`9:${ID2}`, 'transcript') +
+        '</ul></li>',
+    )
+    expect(html.match(new RegExp(`watch\\?v=${ID}"`, 'g'))).toHaveLength(1)
+    expect(html.indexOf(`watch?v=${ID}"`)).toBeLessThan(html.indexOf(`watch?v=${ID2}`))
+    expect(html).not.toContain('Régi')
     expect(html).not.toContain('Idegen')
     expect(html).not.toContain('Félkész')
-    expect(html).not.toContain('/qa"')
   })
 
   it('jegyzet nélkül a biztató mondat', async () => {
