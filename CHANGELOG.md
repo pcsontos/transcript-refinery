@@ -3,6 +3,21 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.14.1] — 2026-10-09
+
+A `/notes` jegyzetoldalon újra látszik a jegyzet frontmatterje.
+
+### 📚 Frontmatter a jegyzetoldalon
+
+- **Összecsukható blokk a törzs fölött:** A jegyzet megnyitásakor a meta-sor alatt
+  egy **Frontmatter** blokk áll, mezőnként egy sorral: a csatorna, a feltöltés
+  dátuma, a hossz, a címkék, a leírás, a használt modell, a pontszám és a
+  költség. Alapból összecsukott, a többsoros leírás megtartja a sortöréseit
+  (#209).
+- **Régi `serve`-vel is működik:** Ha a konténer még nem küld frontmattert, az
+  oldal blokk nélkül, hiba nélkül jelenik meg, így a telepítési sorrend nem
+  számít (#209).
+
 ## [1.14.0] — 2026-10-09
 
 A `/notes` oldal minden jegyzetet mutat, akkor is, ha a feldolgozást a
@@ -686,6 +701,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.14.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.14.1
 [1.14.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.14.0
 [1.13.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.13.0
 [1.12.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.12.1
