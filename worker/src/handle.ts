@@ -30,6 +30,7 @@ import {
   runFailedLine,
   runQueuedLine,
   runReadyMessage,
+  runStartedLine,
   waitingLine,
   type Key,
 } from './plan.js'
@@ -74,19 +75,26 @@ async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Pro
   return binding
 }
 
-/** A felirat sora és a futás sora is így áll be a kopogtatás eredménye szerint. */
+/**
+ * A felirat sora és a futás sora is így áll be a kopogtatás eredménye szerint.
+ * A `started` üzenet csak az első elfogadáskor megy: a cron a régóta elfogadott
+ * futást újra kopogtatja, és arra a konténer megint 202-t ad.
+ */
 async function settle(
   target: { status: JobStatus; acceptedAt: number | null; error: string | null },
   row: JobRow,
   save: () => Promise<void>,
   result: KnockResult,
   deps: WorkerDeps,
+  started?: string,
 ): Promise<void> {
   if (result === 409) return
   if (result === 202) {
+    const fresh = target.status !== 'accepted'
     target.status = 'accepted'
     target.acceptedAt = deps.now()
     await save()
+    if (fresh && started !== undefined) await deps.send(row.chatId, started)
     return
   }
   if (result === 401) {
@@ -233,7 +241,14 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
       const run = await deps.store.run(knock.jobId)
       const row = run === null ? null : await findRow(deps.store, run.jobId)
       if (run === null || row === null) continue
-      await settle(run, row, () => deps.store.saveRun(run), await deps.knock(knock), deps)
+      await settle(
+        run,
+        row,
+        () => deps.store.saveRun(run),
+        await deps.knock(knock),
+        deps,
+        runStartedLine(run.recipes, run.lang),
+      )
       continue
     }
     const row = await findRow(deps.store, knock.jobId)
@@ -394,6 +409,13 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
   for (const run of await deps.store.dueRuns(deps.now())) {
     const row = await findRow(deps.store, run.jobId)
     if (row === null) continue
-    await settle(run, row, () => deps.store.saveRun(run), await deps.knock(knockFor(run, row)), deps)
+    await settle(
+      run,
+      row,
+      () => deps.store.saveRun(run),
+      await deps.knock(knockFor(run, row)),
+      deps,
+      runStartedLine(run.recipes, run.lang),
+    )
   }
 }

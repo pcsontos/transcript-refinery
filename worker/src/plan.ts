@@ -26,6 +26,7 @@ export {
   LANG_LINE,
   NOTHING_TO_TRANSLATE,
   runQueuedLine,
+  runStartedLine,
   runFailedLine,
 } from './messages.js'
 
