@@ -59,7 +59,7 @@ Gyakori kérdés, hogy melyik beállítás hol él a rendszerben:
 |---|---|---|
 | **Telegram Webhook URL** | **A Telegram szerverein** (Telegram Bot API) | Nem lokális fájl! A Telegram API `setWebhook` metódusával lett beállítva: `https://transcript-refinery.peteroncode.workers.dev/telegram`. |
 | **Worker célpont (`SERVE_URL`)** | **Cloudflare Secret** | A Worker ebből tudja, hova kell küldenie a munkát: `https://refinery-mba.peteroncode.dev`. |
-| **Közös titok (`REFINERY_SERVE_SECRET`)** | **Cloudflare Secret & Infisical** | Hitelesíti a Worker kéréseit a démon felé (`Authorization: Bearer ...`). |
+| **Közös titok (`REFINERY_SERVE_SECRET`)** | **Három, egymástól független példány** | Hitelesíti a Worker kéréseit a démon felé (`Authorization: Bearer ...`). Az éles konténer a homelab Infisical-projekt `/MacbookAir/Secrets` mappájából kapja (`just render peter-mba`), a helyi fejlesztés a Transcript Refinery projekt `/peter-mbp` útjáról, a Worker pedig Cloudflare Secretként. Az értékük kézzel van egyeztetve, lásd a „A közös titok rotálása” szakaszt. |
 | **D1 Adatbázis azonosító** | `worker/wrangler.toml` | A Worker adatbázis kötése (`binding = "DB"`, id: `4fd2c124-7dcf-42a9-9e65-2ee224113967`). |
 | **peter-mba Docker környezet** | `homelab/services/refinery/` | `docker-compose.yml` és `config.peter-mba.yaml` kezeli a könyvtárak és hálózatok csatolását. |
 
@@ -290,3 +290,39 @@ ssh peter-mba 'docker logs -f homelab-refinery'
 curl -i -X POST https://refinery-mba.peteroncode.dev/jobs
 # Elvárt válasz: HTTP 401 Unauthorized (mivel nincs Bearer token)
 ```
+
+### A közös titok rotálása
+A `REFINERY_SERVE_SECRET` három helyen él, és semmi sem tartja őket szinkronban. Csere esetén mindhárom helyen ugyanarra az értékre kell átírni:
+
+1. **Homelab Infisical-projekt**, `/MacbookAir/Secrets`: ebből épül a konténer környezete. Utána `just render peter-mba`, majd a konténer újraindítása a homelab-repóból.
+2. **Transcript Refinery Infisical-projekt**, `/peter-mbp`: ebből tölt a helyi `pnpm serve` és `pnpm worker:dev`.
+3. **Cloudflare Worker titka**: `npx wrangler secret put REFINERY_SERVE_SECRET --config worker/wrangler.toml`.
+
+Egy menetben, terminálból (új, 64 hex karakteres érték; az érték nem íródik ki). Az első két parancs az Infisical-példányokat, a harmadik a Worker titkát frissíti:
+
+```bash
+NEW=$(openssl rand -hex 32)
+
+# 1) homelab-projekt: ebből épül az éles konténer
+infisical secrets set "REFINERY_SERVE_SECRET=$NEW" --env=dev --path=/MacbookAir/Secrets \
+  --projectId=cb4a1fa8-5ff8-4ab2-a903-f0b62a9298dd --type shared
+
+# 2) Transcript Refinery projekt: helyi fejlesztés (peter-mbp)
+infisical secrets set "REFINERY_SERVE_SECRET=$NEW" --env=dev --path=/peter-mbp \
+  --projectId=1c1c1853-c58b-401f-a414-2bca9076e16f --type shared
+
+# 3) Cloudflare Worker titka (a transcript-refinery repó gyökeréből)
+printf %s "$NEW" | npx wrangler secret put REFINERY_SERVE_SECRET --config worker/wrangler.toml
+
+unset NEW
+```
+
+Utána a konténer megkapja az új értéket (a homelab-repóból):
+
+```bash
+just render peter-mba && just sync peter-mba && just deploy peter-mba refinery
+```
+
+Az 1–3. lépés és a konténer újraindítása között a Worker és a `serve` titka eltér, ezért ebben az ablakban a Worker hívásai `401`-et kapnak (a Cloudflare cron újrapróbálja). Az `infisical secrets set` az értéket argumentumként kapja, így az rövid ideig látszik a folyamatlistában. A parancsokat még nem futtattuk le éles titkon, az első rotálásnál figyeld a kimenetüket.
+
+Ellenőrzés cserekor, érték kiírása nélkül: a három hely hash-ének egyeznie kell (`printf %s "$REFINERY_SERVE_SECRET" | shasum -a 256 | cut -c1-12`). Ha a Worker titka eltér a konténerétől, az éles feladatok `401`-et kapnak.
