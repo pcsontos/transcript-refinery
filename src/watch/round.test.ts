@@ -113,19 +113,34 @@ describe('watchRound — commit', () => {
     await git('git', ['-C', vault, 'config', 'user.name', 'a'])
   })
 
-  it('a jegyzeteket és a sort egy commitban viszi, a hash-sel és a push eredményével', async () => {
+  it('a jegyzetet és a sort egy commitban viszi, a hash-sel és a push eredményével', async () => {
     await felirat('Csatorna', 'Egy videó')
     const result = await round(null, true)
 
     expect(result.commit).toMatch(/^[0-9a-f]{7,}$/)
     expect(lines.some((l) => l === `commit: ${result.commit!} (push ok)`)).toBe(true)
-    const { stdout } = await git('git', ['-C', vault, 'show', '--name-only', '--format=%s', 'HEAD'])
-    expect(stdout).toContain('_transcript.md')
-    expect(stdout).toContain('_queue.md')
-    expect(stdout.split('\n')[0]).toBe(`docs(${COMMIT_SCOPE}): watch — átirat 1 videóhoz`)
+    const video = await git('git', ['-C', vault, 'show', '--name-only', '--format=%s', 'HEAD'])
+    expect(video.stdout).toContain('_transcript.md')
+    expect(video.stdout).toContain('_queue.md')
+    expect(video.stdout.split('\n')[0]).toMatch(
+      new RegExp(`^docs\\(${COMMIT_SCOPE}\\): transcript \\| Egy videó \\[.+\\]$`),
+    )
   })
 
-  it('ha csak a sor változott, a commit üzenete nem „átirat 0 videóhoz"', async () => {
+  it('két új videó két commit: a terminálsor az utolsó hashét és a darabszámot írja ki', async () => {
+    await felirat('Csatorna', 'Egy videó')
+    await felirat('Csatorna', 'Másik videó')
+    const result = await round(null, true)
+
+    expect(lines.some((l) => l === `commit: ${result.commit!} (2 commit, push ok)`)).toBe(true)
+    const { stdout } = await git('git', ['-C', vault, 'log', '--format=%s', '-2'])
+    expect(stdout.trim().split('\n')).toEqual([
+      expect.stringMatching(/ transcript \| Másik videó \[.+\]$/),
+      expect.stringMatching(/ transcript \| Egy videó \[.+\]$/),
+    ])
+  })
+
+  it('ha csak a sor változott, a sor saját commitot kap', async () => {
     await felirat('Csatorna', 'Egy videó')
     // Commit nélkül: az átirat kész, de függő commitként sem marad meg.
     await round(null, false)
@@ -135,7 +150,7 @@ describe('watchRound — commit', () => {
     expect(result.transcripts).toBe(0)
     expect(result.commit).toMatch(/^[0-9a-f]{7,}$/)
     const { stdout } = await git('git', ['-C', vault, 'show', '--name-only', '--format=%s', 'HEAD'])
-    expect(stdout.split('\n')[0]).toBe(`docs(${COMMIT_SCOPE}): watch — feldolgozási sor frissítése`)
+    expect(stdout.split('\n')[0]).toBe(`docs(${COMMIT_SCOPE}): feldolgozási sor frissítése`)
     expect(stdout).not.toContain('_transcript.md')
     expect(stdout).toContain('_queue.md')
   })
