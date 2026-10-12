@@ -55,6 +55,13 @@ export async function isDirty(repo: string): Promise<boolean> {
   return stdout.trim() !== ''
 }
 
+/** Van-e módosítás vagy követetlen tartalom a megadott útvonalakon (másutt nem számít)? */
+export async function gitHasChanges(repo: string, paths: readonly string[]): Promise<boolean> {
+  if (paths.length === 0) return false
+  const { stdout } = await run('git', ['status', '--porcelain', '--', ...paths], { cwd: repo })
+  return stdout.trim() !== ''
+}
+
 /**
  * Kizárólag a megadott útvonalakat stage-eli és commitolja. Soha nem
  * `git add -A` — így képtelen felsöpörni a félbehagyott kézi szerkesztéseket.

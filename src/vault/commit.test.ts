@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PendingNote, StateStore } from '../state/db.js'
 import { commitPending, noteCommitMessage } from './commit.js'
-import { gitCommitPaths } from './git.js'
+import { gitCommitPaths, gitHasChanges } from './git.js'
 
-vi.mock('./git.js', () => ({ gitCommitPaths: vi.fn() }))
+vi.mock('./git.js', () => ({ gitCommitPaths: vi.fn(), gitHasChanges: vi.fn() }))
 
 describe('noteCommitMessage', () => {
   it('rövid címnél a cím és az azonosító is ép', () => {
@@ -59,6 +59,36 @@ describe('commitPending', () => {
 
   beforeEach(() => {
     vi.mocked(gitCommitPaths).mockReset()
+    // Alapból minden jegyzet fájlja változott; az ellenkező esetet a tesztek állítják be.
+    vi.mocked(gitHasChanges).mockReset().mockResolvedValue(true)
+  })
+
+  it('ha az utolsó jegyzet fájlja nem változott, a sor az utolsó változottal megy, nem egy üres jegyzet üzenetével', async () => {
+    vi.mocked(gitCommitPaths).mockResolvedValue(true)
+    vi.mocked(gitHasChanges).mockImplementation((_repo, paths) => Promise.resolve(paths[0] !== '/v/s2.md'))
+    const { store } = storeWith([note('transcript', '/v/t.md'), note('summary', '/v/s.md'), note('qa', '/v/s2.md')])
+
+    await commitPending('/v', store, '/v/_queue.md')
+
+    expect(vi.mocked(gitCommitPaths).mock.calls).toEqual([
+      ['/v', ['/v/t.md'], 'docs(transcript-refinery): transcript | Első videó [a1]'],
+      ['/v', ['/v/s.md', '/v/_queue.md'], 'docs(transcript-refinery): summary | Első videó [a1]'],
+      ['/v', ['/v/s2.md'], 'docs(transcript-refinery): qa | Első videó [a1]'],
+    ])
+  })
+
+  it('ha egyik jegyzet fájlja sem változott, a sor saját commitot kap', async () => {
+    vi.mocked(gitCommitPaths).mockResolvedValue(true)
+    vi.mocked(gitHasChanges).mockResolvedValue(false)
+    const { store, cleared } = storeWith([note('transcript', '/v/t.md')])
+
+    await commitPending('/v', store, '/v/_queue.md')
+
+    expect(vi.mocked(gitCommitPaths).mock.calls).toEqual([
+      ['/v', ['/v/t.md'], 'docs(transcript-refinery): transcript | Első videó [a1]'],
+      ['/v', ['/v/_queue.md'], 'docs(transcript-refinery): feldolgozási sor frissítése'],
+    ])
+    expect(cleared).toEqual(['/v/t.md'])
   })
 
   it('jegyzetenként egy commit; a sor fájlja az utolsóval megy', async () => {

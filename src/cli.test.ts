@@ -43,6 +43,8 @@ vi.mock('./vault/git.js', async (importOriginal) => {
     ...actual,
     gitPullFfOnly: vi.fn(() => Promise.resolve(undefined)),
     gitCommitPaths: vi.fn(() => Promise.reject(new Error('szimulált git hiba a teszthez'))),
+    // A tesztvault nem git-repó: minden jegyzet fájlja „változottnak” számít.
+    gitHasChanges: vi.fn(() => Promise.resolve(true)),
   }
 })
 

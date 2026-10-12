@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { gitCommitPaths, gitHeadShort, gitPullFfOnly, isDirty } from './git.js'
+import { gitCommitPaths, gitHasChanges, gitHeadShort, gitPullFfOnly, isDirty } from './git.js'
 
 const run = promisify(execFile)
 let repo: string
@@ -45,6 +45,27 @@ describe('gitCommitPaths', () => {
 
   it('változatlan fájlra nem hoz létre üres commitot', async () => {
     expect(await gitCommitPaths(repo, ['alap.txt'], 'docs: semmi')).toBe(false)
+  })
+})
+
+describe('gitHasChanges', () => {
+  it('a módosított követett fájlra igaz', async () => {
+    await writeFile(join(repo, 'alap.txt'), 'más', 'utf8')
+    expect(await gitHasChanges(repo, ['alap.txt'])).toBe(true)
+  })
+
+  it('a követetlen új fájlra igaz', async () => {
+    await writeFile(join(repo, 'uj.md'), 'új', 'utf8')
+    expect(await gitHasChanges(repo, ['uj.md'])).toBe(true)
+  })
+
+  it('a változatlan fájlra hamis, akkor is, ha más fájl változott', async () => {
+    await writeFile(join(repo, 'masik.md'), 'másik', 'utf8')
+    expect(await gitHasChanges(repo, ['alap.txt'])).toBe(false)
+  })
+
+  it('a nem létező, nem követett útra hamis', async () => {
+    expect(await gitHasChanges(repo, ['nincs.md'])).toBe(false)
   })
 })
 
