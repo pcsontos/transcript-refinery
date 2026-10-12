@@ -59,7 +59,7 @@ Az implementáció a `feat/impl-vault-commit-uzenet` ágon, külön worktree-ben
 - Consumes: `COMMIT_SCOPE` a `src/meta.ts`-ből.
 - Produces: `noteCommitMessage(kind: string, title: string, id: string): string`
 
-- [ ] **Step 1: Írd meg a bukó tesztet**
+- [x] **Step 1: Írd meg a bukó tesztet**
 
 Hozd létre a `src/vault/commit.test.ts` fájlt:
 
@@ -106,12 +106,12 @@ describe('noteCommitMessage', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm vitest run src/vault/commit.test.ts`
 Expected: FAIL, a `./commit.js` modul nem található.
 
-- [ ] **Step 3: Írd meg a minimális megvalósítást**
+- [x] **Step 3: Írd meg a minimális megvalósítást**
 
 Hozd létre a `src/vault/commit.ts` fájlt:
 
@@ -140,17 +140,17 @@ export function noteCommitMessage(kind: string, title: string, id: string): stri
 
 A `room` a címre és az előtte vagy utána álló egy karakterre (szóköz vagy `…`) jutó hely: a 80-ból lejön az előtag, az azonosító és a két szögletes zárójel. A `[...szöveg]` kódpontokra bont, ezért a vágás nem töri ketté az emojit.
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm vitest run src/vault/commit.test.ts`
 Expected: PASS, 6 teszt.
 
-- [ ] **Step 5: Típus és lint**
+- [x] **Step 5: Típus és lint**
 
 Run: `pnpm typecheck && pnpm lint`
 Expected: hibátlan.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/vault/commit.ts src/vault/commit.test.ts
@@ -169,7 +169,7 @@ git commit -m "feat(vault): Add the note commit subject line"
 - Consumes: a meglévő `pending_commits (item_id, kind, path)` és `items (item_id, title, video_id)` tábla.
 - Produces: `interface PendingNote { id: string; title: string; kind: string; path: string }` és `StateStore.listPendingNotes(): PendingNote[]`, rögzítési (`rowid`) sorrendben.
 
-- [ ] **Step 1: Írd meg a bukó tesztet**
+- [x] **Step 1: Írd meg a bukó tesztet**
 
 A `src/state/db.test.ts` `StateStore — commitra váró műtermékek` blokkjának végére, a `rögzítés sorrendjében sorolja fel…` teszt után:
 
@@ -190,12 +190,12 @@ A `src/state/db.test.ts` `StateStore — commitra váró műtermékek` blokkján
 
 Az első elemnek van `videoId`-ja, a másodiknak nincs: a teszt mindkét azonosító-ágat és a rögzítési sorrendet is rögzíti.
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm vitest run src/state/db.test.ts`
 Expected: FAIL, `store.listPendingNotes is not a function`.
 
-- [ ] **Step 3: Írd meg a megvalósítást**
+- [x] **Step 3: Írd meg a megvalósítást**
 
 A `src/state/db.ts`-ben a séma záró `` ` `` sora után, az `export interface TranscriptRecord {` elé:
 
@@ -234,17 +234,17 @@ Az `openState` visszaadott objektumában a `listPendingCommits() { … },` metó
 
 A `LEFT JOIN` szándékos: ha egy várólistán lévő jegyzet eleme hiányozna az `items`-ből, a sima `JOIN` szó nélkül kihagyná, és a jegyzet soha nem kerülne commitba.
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm vitest run src/state/db.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Típus és lint**
+- [x] **Step 5: Típus és lint**
 
 Run: `pnpm typecheck && pnpm lint`
 Expected: hibátlan.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/state/db.ts src/state/db.test.ts
@@ -263,7 +263,7 @@ git commit -m "feat(state): List pending notes with video id and title"
 - Consumes: `noteCommitMessage(kind, title, id)` (1. feladat); `StateStore.listPendingNotes(): PendingNote[]` és `StateStore.clearPendingCommits(paths: readonly string[]): void` (2. feladat, illetve meglévő); `gitCommitPaths(repo: string, paths: readonly string[], message: string): Promise<boolean>` a `src/vault/git.ts`-ből (`false`, ha nem volt mit commitolni).
 - Produces: `commitPending(repo: string, store: StateStore, queuePath: string | null): Promise<number>` — a készült commitok száma; pusht nem végez.
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 A `src/vault/commit.test.ts` import-blokkját cseréld erre (a `vi.mock` a `gitCommitPaths`-t helyettesíti; a `noteCommitMessage` tesztjeit nem érinti):
 
@@ -349,12 +349,12 @@ describe('commitPending', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm vitest run src/vault/commit.test.ts`
 Expected: FAIL, a `commitPending` nem exportált (`commitPending is not a function`).
 
-- [ ] **Step 3: Írd meg a megvalósítást**
+- [x] **Step 3: Írd meg a megvalósítást**
 
 A `src/vault/commit.ts` import-sorát cseréld erre:
 
@@ -392,17 +392,17 @@ export async function commitPending(repo: string, store: StateStore, queuePath: 
 }
 ```
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm vitest run src/vault/commit.test.ts`
 Expected: PASS, 11 teszt.
 
-- [ ] **Step 5: Típus és lint**
+- [x] **Step 5: Típus és lint**
 
 Run: `pnpm typecheck && pnpm lint`
 Expected: hibátlan.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/vault/commit.ts src/vault/commit.test.ts
@@ -423,7 +423,7 @@ git commit -m "feat(vault): Commit pending notes one by one"
 
 Tudnivaló a `src/cli.test.ts`-hez: a fájl tetején a `gitCommitPaths` mockja alapból **hibát dob** (`szimulált git hiba a teszthez`). Egy teszt annyi `mockResolvedValueOnce(true)` értéket állítson be, ahány commitot vár: a fel nem használt egyszeri érték a következő tesztbe szivárog (a `beforeEach` csak `mockClear`-t hív).
 
-- [ ] **Step 1: Írd át a `run --queue` tesztet**
+- [x] **Step 1: Írd át a `run --queue` tesztet**
 
 A `commandRun --queue` blokkban cseréld a teszt nevét:
 
@@ -457,7 +457,7 @@ A négy régi ellenőrző sort (`toHaveBeenCalledTimes(1)` … `5 jegyzet a feld
     expect(utak.at(-1)).toEqual([expect.any(String), sor])
 ```
 
-- [ ] **Step 2: Írd át a fordítás-tesztet**
+- [x] **Step 2: Írd át a fordítás-tesztet**
 
 A `commandRun — fordítás` blokk `egy indítás előbb a forrást, aztán a fordítást készíti el` tesztjében a `const hivasok = { generate: 0, translate: 0 }` sor utáni `mockResolvedValueOnce(true)` sort cseréld erre:
 
@@ -475,7 +475,7 @@ A három régi ellenőrző sort (`toHaveBeenCalledTimes(1)`, a `const [, commito
     expect(commitolt.at(-1)).toEqual([expect.any(String), sor])
 ```
 
-- [ ] **Step 3: Írd át a commit-tartalom tesztet, és add hozzá a hibaágat**
+- [x] **Step 3: Írd át a commit-tartalom tesztet, és add hozzá a hibaágat**
 
 A `commandRun — a commit tartalma` blokk egyetlen tesztjét cseréld erre a kettőre (a `beforeEach` marad):
 
@@ -522,7 +522,7 @@ A `commandRun — a commit tartalma` blokk egyetlen tesztjét cseréld erre a ke
   })
 ```
 
-- [ ] **Step 4: Írd át az e2e tesztet**
+- [x] **Step 4: Írd át az e2e tesztet**
 
 A `src/e2e.test.ts` `scan --queue, pipálás, run --queue: pontosan a várt commitok, tiszta és pusholt munkafa` tesztjében az `expect(code).toBe(0)` utáni részt (a `const log = …` sortól az `expect(show.stdout…` kifejezés végéig) cseréld erre:
 
@@ -545,12 +545,12 @@ A `src/e2e.test.ts` `scan --queue, pipálás, run --queue: pontosan a várt comm
 
 A `feldolgozási sor frissítése` sor itt a teszt elején futó `scan --queue` commitja, nem a `run`-é.
 
-- [ ] **Step 5: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 5: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm vitest run src/cli.test.ts src/e2e.test.ts`
 Expected: FAIL az átírt teszteken (a régi kód egy commitot készít a régi üzenettel).
 
-- [ ] **Step 6: Írd át a `run` commit-blokkját**
+- [x] **Step 6: Írd át a `run` commit-blokkját**
 
 A `src/cli.ts` import-blokkjában a `./vault/git.js` sor elé:
 
@@ -586,17 +586,17 @@ cseréld erre (a fölötte álló „MINDEN commitra váró jegyzetet felvesz…
 
 A `COMMIT_SCOPE` és a `gitCommitPaths` importja marad: a `scan --queue` (`src/cli.ts:220`) továbbra is használja őket.
 
-- [ ] **Step 7: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 7: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm vitest run src/cli.test.ts src/e2e.test.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Típus és lint**
+- [x] **Step 8: Típus és lint**
 
 Run: `pnpm typecheck && pnpm lint`
 Expected: hibátlan.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/cli.ts src/cli.test.ts src/e2e.test.ts
@@ -615,7 +615,7 @@ git commit -m "feat(run): Commit each note with its own subject"
 - Consumes: `commitPending(repo: string, store: StateStore, queuePath: string | null): Promise<number>` (3. feladat).
 - Produces: nincs új interfész; a `RoundResult.commit` továbbra is az utolsó commit rövid hashe vagy `null`.
 
-- [ ] **Step 1: Írd át a teszteket**
+- [x] **Step 1: Írd át a teszteket**
 
 A `watchRound — commit` blokkban az első tesztet (`a jegyzeteket és a sort egy commitban viszi…`) cseréld erre:
 
@@ -660,12 +660,12 @@ Az üzenet elvárása (`watch — ` nélkül):
     expect(stdout.split('\n')[0]).toBe(`docs(${COMMIT_SCOPE}): feldolgozási sor frissítése`)
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm vitest run src/watch/round.test.ts`
 Expected: FAIL a három átírt, illetve új teszten.
 
-- [ ] **Step 3: Írd át a `watch` commit-blokkját**
+- [x] **Step 3: Írd át a `watch` commit-blokkját**
 
 A `src/watch/round.ts` import-blokkjában a `../meta.js` sort cseréld erre:
 
@@ -700,17 +700,17 @@ A commit-blokkot (a `let hash: string | null = null` sortól az `if (commit) { �
     }
 ```
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm vitest run src/watch/round.test.ts`
 Expected: PASS, 7 teszt.
 
-- [ ] **Step 5: Típus és lint**
+- [x] **Step 5: Típus és lint**
 
 Run: `pnpm typecheck && pnpm lint`
 Expected: hibátlan (a `COMMIT_SCOPE` és a `gitCommitPaths` importja a `round.ts`-ből kikerült, nem marad használatlan import).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/watch/round.ts src/watch/round.test.ts
@@ -729,7 +729,7 @@ git commit -m "feat(watch): Commit each note with its own subject"
 - Consumes: `noteCommitMessage(kind: string, title: string, id: string): string` (1. feladat); `discoverAll(sources, languages): Promise<SourceItem[]>` a `src/source/folder.ts`-ből (meglévő).
 - Produces: nincs új interfész; a `runRecipes` visszatérési értékei nem változnak.
 
-- [ ] **Step 1: Írd át a teszteket**
+- [x] **Step 1: Írd át a teszteket**
 
 A `src/serve/summary.test.ts`-ben a fájllistát olvasó git-hívások eddig csak az utolsó commitot nézték; mostantól a teljes történetet olvassák. Az egész fájlban:
 
@@ -781,12 +781,12 @@ A `két recept egy futásban…` teszt elé új teszt:
 
 A teszt jelenetében a fájl neve `Beszéd [abcdefghijk].hu.vtt`, az info.json címe `Beszéd`: az elvárt üzenetben ezért az azonosító egyszer szerepel.
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm vitest run src/serve/summary.test.ts`
 Expected: FAIL a két üzenetet ellenőrző teszten (a régi kód egy commitot készít `átirat 1 videóhoz` üzenettel).
 
-- [ ] **Step 3: Írd át a `serve` commit-blokkját**
+- [x] **Step 3: Írd át a `serve` commit-blokkját**
 
 A `src/serve/summary.ts` import-blokkjában a `../source/folder.js` sort cseréld erre:
 
@@ -831,17 +831,17 @@ cseréld erre:
 
 A `notePaths` az `ids` sorrendjében épül (a fölötte álló `for (const id of ids) notePaths.push(…)` ciklusban), ezért a `kinds[index]` a megfelelő fájl fajtája. A `git.commit` (`gitCommitPaths`) `false`-t ad a nem változott fájlra, így a már bekerült átiratról nem készül új commit.
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm vitest run src/serve/summary.test.ts`
 Expected: PASS, 13 teszt.
 
-- [ ] **Step 5: Típus és lint**
+- [x] **Step 5: Típus és lint**
 
 Run: `pnpm typecheck && pnpm lint`
 Expected: hibátlan.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/serve/summary.ts src/serve/summary.test.ts
@@ -852,12 +852,12 @@ git commit -m "feat(serve): Commit each note with its own subject"
 
 ### Task 7: Záró ellenőrzés
 
-- [ ] **Step 1: Teljes kör**
+- [x] **Step 1: Teljes kör**
 
 Run: `pnpm test && pnpm typecheck && pnpm lint`
 Expected: minden zöld; a próbamegvalósításon 113 tesztfájl, 1367 teszt futott.
 
-- [ ] **Step 2: A régi üzenetek eltűntek az éles kódból**
+- [x] **Step 2: A régi üzenetek eltűntek az éles kódból**
 
 Run: `grep -rn "videóhoz\|jegyzet a feldolgozási sorból\|watch — " src --include="*.ts" | grep -v "\.test\.ts"`
 Expected: pontosan négy találat, egyik sem commit-üzenet: `src/queue/parse.ts` és `src/queue/merge.ts` (két hely) megjegyzése és súgószövege, valamint a `src/serve/job.ts` `Nincs felirat a videóhoz` naplósora.
@@ -872,6 +872,6 @@ git -C <vault> log --oneline -5
 
 Expected: jegyzetenként egy sor `docs(transcript-refinery): <fajta> | <cím> [<azonosító>]` alakban, legfeljebb 80 karakter hosszú első sorral; `run --queue` után az utolsó jegyzet commitja a `_queue.md`-t is tartalmazza (`git -C <vault> show --name-only HEAD`).
 
-- [ ] **Step 4: Záró review és PR**
+- [x] **Step 4: Záró review és PR**
 
 A teljes ágra szóló review Opuson fut. Utána PR a `main`-re `Closes #215` hivatkozással; a kiadás (v1.15.0, új Docker-kép) a merge után, a megszokott menettel.

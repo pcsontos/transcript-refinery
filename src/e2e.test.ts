@@ -354,21 +354,19 @@ describe('végponttól végpontig — a feldolgozási sor valódi gittel', () =>
       )
       expect(code).toBe(0)
 
+      const elso = (await discoverAll(cfg.sources, cfg.languages)).find((i) => i.baseName === 'Elso')!
       const log = await run('git', ['log', '--format=%s'], { cwd: repo })
       expect(log.stdout.trim().split('\n')).toEqual([
-        'docs(transcript-refinery): 2 jegyzet a feldolgozási sorból',
+        `docs(transcript-refinery): summary | ${elso.title} [${elso.metadata.videoId ?? elso.itemId}]`,
+        `docs(transcript-refinery): transcript | ${elso.title} [${elso.metadata.videoId ?? elso.itemId}]`,
         'docs(transcript-refinery): feldolgozási sor frissítése',
         'kezdet',
       ])
 
-      const elso = (await discoverAll(cfg.sources, cfg.languages)).find((i) => i.baseName === 'Elso')!
+      // A sor fájlja az utolsó jegyzet commitjával megy.
       const show = await run('git', ['show', '--name-only', '--format=', 'HEAD'], { cwd: repo })
       expect(show.stdout.trim().split('\n').sort()).toEqual(
-        [
-          relative(repo, noteFile(cfg.notesRoot, elso, '_transcript.md')),
-          relative(repo, noteFile(cfg.notesRoot, elso, '_summary.md')),
-          relative(repo, sor),
-        ].sort(),
+        [relative(repo, noteFile(cfg.notesRoot, elso, '_summary.md')), relative(repo, sor)].sort(),
       )
       expect(await isDirty(repo)).toBe(false)
       const status = await run('git', ['status', '-sb'], { cwd: repo })

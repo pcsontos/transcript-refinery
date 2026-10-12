@@ -4,8 +4,9 @@ import { commandRun, type RunRuntime } from '../cli.js'
 import { loadCliConfig, type Config } from '../config.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { recipesFor } from '../recipe/registry.js'
-import { splitSubtitleName } from '../source/folder.js'
+import { discoverAll, splitSubtitleName } from '../source/folder.js'
 import type { SourceItem } from '../types.js'
+import { noteCommitMessage } from '../vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
 import { noteFile } from '../vault/paths.js'
 import type { RecipesOutcome } from './job.js'
@@ -152,12 +153,17 @@ export async function runRecipes(input: {
     transcriptPath = noteFile(cfg.notesRoot, item, '_transcript.md')
     for (const id of ids) notePaths.push(noteFile(cfg.notesRoot, item, registry[id]!.outputFile))
   }
-  const paths: string[] = []
-  for (const path of transcriptPath === null ? [] : [transcriptPath, ...notePaths]) {
-    if (await exists(path)) paths.push(path)
-  }
-  if (paths.length > 0) {
-    await git.commit(cfg.vaultPath, paths, 'docs(transcript-refinery): átirat 1 videóhoz')
+  if (transcriptPath !== null && parsed !== null) {
+    // A cím az info.json-ból jön, ha a letöltés írt ilyet; különben a fájl alapneve.
+    const found = (await discoverAll(cfg.sources, cfg.languages)).find((item) => item.baseName === parsed.base)
+    const title = found?.title ?? parsed.base
+    // Jegyzetenként külön commit, az üzenetben a fajtával: az átirat elöl, utána a receptek.
+    const kinds = ['transcript', ...ids]
+    for (const [index, path] of [transcriptPath, ...notePaths].entries()) {
+      if (await exists(path)) {
+        await git.commit(cfg.vaultPath, [path], noteCommitMessage(kinds[index]!, title, input.videoId))
+      }
+    }
   }
   const pushed = await git.push(cfg.vaultPath)
   if (!pushed.pushed) return { ok: false, error: 'A push nem sikerült, a commit lokálisan maradt.' }

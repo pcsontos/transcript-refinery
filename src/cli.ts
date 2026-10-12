@@ -59,6 +59,7 @@ import { openState } from './state/db.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
+import { commitPending } from './vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 import { noteFile } from './vault/paths.js'
 import type { NoteOrigin } from './vault/render.js'
@@ -605,17 +606,9 @@ export async function commandRun(
         // válogatását: egy korábbi, más szűrővel futott kötegből maradt
         // jegyzetet is pótol — enélkül egy megszakadt `--recipe summary`
         // futás után egy `--recipe qa` futás sosem venné fel.
-        const notePaths = store.listPendingCommits()
-        const paths = queueChanged ? [...notePaths, sorPath] : notePaths
-        if (paths.length > 0) {
-          const message = queueMode
-            ? `docs(${COMMIT_SCOPE}): ${String(notePaths.length)} jegyzet a feldolgozási sorból`
-            : `docs(${COMMIT_SCOPE}): átirat ${String(notePaths.length)} videóhoz`
-          if (await gitCommitPaths(cfg.vaultPath, paths, message)) {
-            const push = await gitPush(cfg.vaultPath)
-            if (!push.pushed) console.log('A push nem sikerült, a commit lokálisan maradt.')
-          }
-          store.clearPendingCommits(notePaths)
+        if ((await commitPending(cfg.vaultPath, store, queueChanged ? sorPath : null)) > 0) {
+          const push = await gitPush(cfg.vaultPath)
+          if (!push.pushed) console.log('A push nem sikerült, a commit lokálisan maradt.')
         }
       } catch (error) {
         commitError = error as Error

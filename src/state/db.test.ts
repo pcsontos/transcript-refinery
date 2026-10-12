@@ -327,4 +327,17 @@ describe('StateStore — commitra váró műtermékek', () => {
     store.recordArtifact('masik', 'transcript', 'done', '/v/m-t.md', null, undefined, true)
     expect(store.listPendingCommits()).toEqual(['/v/a-t.md', '/v/a-s.md', '/v/m-t.md'])
   })
+
+  it('jegyzetenként adja a videóazonosítót, a címet és a fajtát', () => {
+    store.recordItem(item({ title: 'Első', metadata: { videoId: 'dQw4w9WgXcQ' } }))
+    store.recordItem(item({ itemId: 'masik', title: 'Második' }))
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/a-t.md', null, undefined, true)
+    store.recordArtifact('masik', 'transcript', 'done', '/v/m-t.md', null, undefined, true)
+    store.recordArtifact('a1b2c3', 'summary', 'done', '/v/a-s.md', null, undefined, true)
+    expect(store.listPendingNotes()).toEqual([
+      { id: 'dQw4w9WgXcQ', title: 'Első', kind: 'transcript', path: '/v/a-t.md' },
+      { id: 'masik', title: 'Második', kind: 'transcript', path: '/v/m-t.md' },
+      { id: 'dQw4w9WgXcQ', title: 'Első', kind: 'summary', path: '/v/a-s.md' },
+    ])
+  })
 })
