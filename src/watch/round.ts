@@ -1,6 +1,6 @@
 import type { Config, SourceDir } from '../config.js'
 import type { RunEvent } from '../events.js'
-import { COMMIT_SCOPE, VERSION } from '../meta.js'
+import { VERSION } from '../meta.js'
 import { ARTIFACT_KIND, processItem } from '../pipeline.js'
 import { refreshQueue, withContentLanguage } from '../queue/refresh.js'
 import type { Registry } from '../recipe/registry.js'
@@ -8,7 +8,8 @@ import { discoverAll } from '../source/folder.js'
 import { openState } from '../state/db.js'
 import type { SourceItem } from '../types.js'
 import { writeFileAtomic } from '../vault/atomic.js'
-import { gitCommitPaths, gitHeadShort, gitPullFfOnly, gitPush } from '../vault/git.js'
+import { commitPending } from '../vault/commit.js'
+import { gitHeadShort, gitPullFfOnly, gitPush } from '../vault/git.js'
 
 export interface RoundOptions {
   cfg: Config
@@ -88,24 +89,18 @@ export async function watchRound(opts: RoundOptions): Promise<RoundResult> {
 
     let hash: string | null = null
     if (commit) {
-      const notePaths = store.listPendingCommits()
-      const paths = queueChanged ? [...notePaths, queue.path] : notePaths
-      // Új átirat nélkül csak a sor változott: az „átirat 0 videóhoz" félrevezető
-      // bejegyzés lenne a vault történetében.
-      const message =
-        notePaths.length === 0
-          ? `docs(${COMMIT_SCOPE}): watch — feldolgozási sor frissítése`
-          : `docs(${COMMIT_SCOPE}): watch — átirat ${String(notePaths.length)} videóhoz`
-      if (paths.length > 0 && (await gitCommitPaths(cfg.vaultPath, paths, message))) {
+      const commits = await commitPending(cfg.vaultPath, store, queueChanged ? queue.path : null)
+      if (commits > 0) {
         hash = await gitHeadShort(cfg.vaultPath)
+        // Jegyzetenként külön commit készül: a hash az utolsóé, a darabszám mellette áll.
+        const count = commits > 1 ? `${String(commits)} commit, ` : ''
         const push = await gitPush(cfg.vaultPath)
         out(
           push.pushed
-            ? `commit: ${hash} (push ok)`
-            : `commit: ${hash} (push sikertelen: ${firstLine(push.reason ?? 'ismeretlen ok')})`,
+            ? `commit: ${hash} (${count}push ok)`
+            : `commit: ${hash} (${count}push sikertelen: ${firstLine(push.reason ?? 'ismeretlen ok')})`,
         )
       }
-      store.clearPendingCommits(notePaths)
     }
 
     return { transcripts, failed, queueChanged, commit: hash }

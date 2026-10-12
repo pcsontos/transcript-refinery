@@ -1286,7 +1286,7 @@ describe('commandRun --queue', () => {
     vi.mocked(gitCommitPaths).mockClear()
   })
 
-  it('a kipipált párokat dolgozza fel, csak azok sorait írja vissza, és egyetlen commitot készít', async () => {
+  it('a kipipált párokat dolgozza fel, csak azok sorait írja vissza, és jegyzetenként commitol', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
     await makeVideo(downloads, 'b1', 'Harmadik videó', 'Csatorna B')
@@ -1320,7 +1320,7 @@ describe('commandRun --queue', () => {
     expect(await readFile(sor, 'utf8')).toBe(renumberQueue(kezi))
 
     const hivasok = { generate: 0 }
-    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+    for (let i = 0; i < 5; i += 1) vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
     const code = await commandRun(
       cfg,
       raw,
@@ -1341,10 +1341,21 @@ describe('commandRun --queue', () => {
     for (const path of vart) expect(existsSync(path)).toBe(true)
     expect(existsSync(noteFile(cfg.notesRoot, elem('a2'), '_transcript.md'))).toBe(false)
 
-    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
-    const [, commitolt, uzenet] = vi.mocked(gitCommitPaths).mock.calls[0]!
-    expect([...commitolt].sort()).toEqual([...vart, sor].sort())
-    expect(uzenet).toBe('docs(transcript-refinery): 5 jegyzet a feldolgozási sorból')
+    // Jegyzetenként egy commit; a sor fájlja az utolsóval megy, nem sajátban.
+    const hivasok2 = vi.mocked(gitCommitPaths).mock.calls.map(([, paths, uzenet]) => [paths[0], uzenet])
+    expect(hivasok2).toHaveLength(5)
+    expect(hivasok2).toEqual(
+      expect.arrayContaining([
+        [vart[0], 'docs(transcript-refinery): transcript | Első videó [a1]'],
+        [vart[1], 'docs(transcript-refinery): summary | Első videó [a1]'],
+        [vart[2], 'docs(transcript-refinery): qa | Első videó [a1]'],
+        [vart[3], 'docs(transcript-refinery): transcript | Harmadik videó [b1]'],
+        [vart[4], 'docs(transcript-refinery): summary | Harmadik videó [b1]'],
+      ]),
+    )
+    const utak = vi.mocked(gitCommitPaths).mock.calls.map(([, paths]) => paths)
+    expect(utak.slice(0, -1).every((paths) => paths.length === 1)).toBe(true)
+    expect(utak.at(-1)).toEqual([expect.any(String), sor])
 
     const elotte = renumberQueue(kezi).split('\n')
     const utana = (await readFile(sor, 'utf8')).split('\n')
@@ -1708,7 +1719,8 @@ describe('commandRun — fordítás', () => {
     )
 
     const hivasok = { generate: 0, translate: 0 }
-    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+    // Három commit: átirat, tisztított leirat, fordítás. Több egyszeri érték a következő tesztbe szivárogna.
+    for (let i = 0; i < 3; i += 1) vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
     const code = await commandRun(
       cfg,
       raw,
@@ -1727,9 +1739,10 @@ describe('commandRun — fordítás', () => {
     expect(skeletonOf(noteBody(magyarJegyzet).body).timestamps).toEqual(forrasVaz.timestamps)
     expect(magyarJegyzet).toContain('\nlanguage: hu\n')
     expect(magyarJegyzet).toContain('\ntranslation_of: clean-moderate\n')
-    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
-    const [, commitolt] = vi.mocked(gitCommitPaths).mock.calls[0]!
-    expect(commitolt).toEqual(expect.arrayContaining([tiszta, magyar, sor]))
+    const commitolt = vi.mocked(gitCommitPaths).mock.calls.map(([, paths]) => paths)
+    expect(commitolt).toHaveLength(3)
+    expect(commitolt.flat()).toEqual(expect.arrayContaining([tiszta, magyar]))
+    expect(commitolt.at(-1)).toEqual([expect.any(String), sor])
     const note = await readFile(sor, 'utf8')
     expect(note).toMatch(/^ {2}- \[x\] hu — ✓ 1\.00 · /m)
     expect(note).toMatch(/^- \[x\] clean-moderate — ✓ 1\.00 · /m)
@@ -2221,11 +2234,11 @@ describe('commandRun — a commit tartalma', () => {
     vi.mocked(gitCommitPaths).mockClear()
   })
 
-  it('--recipe mellett a commit az átiratot és a recept jegyzetét viszi, a mai üzenettel', async () => {
+  it('--recipe mellett az átirat és a recept jegyzete külön commit, a fajtával, a címmel és az azonosítóval', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     const raw = rawWithVault(5)
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
-    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true).mockResolvedValueOnce(true)
 
     const code = await commandRun(
       cfg,
@@ -2236,12 +2249,30 @@ describe('commandRun — a commit tartalma', () => {
 
     expect(code).toBe(0)
     const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
-    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(gitCommitPaths)).toHaveBeenCalledWith(
-      cfg.vaultPath,
-      [noteFile(cfg.notesRoot, item!, '_transcript.md'), noteFile(cfg.notesRoot, item!, '_summary.md')],
-      'docs(transcript-refinery): átirat 2 videóhoz',
+    expect(vi.mocked(gitCommitPaths).mock.calls).toEqual([
+      [cfg.vaultPath, [noteFile(cfg.notesRoot, item!, '_transcript.md')], 'docs(transcript-refinery): transcript | Első videó [a1]'],
+      [cfg.vaultPath, [noteFile(cfg.notesRoot, item!, '_summary.md')], 'docs(transcript-refinery): summary | Első videó [a1]'],
+    ])
+  })
+
+  it('ha a második commit elhasal, az első jegyzet lekerül a várólistáról, a második rajta marad', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'b1', 'Második videó', 'Csatorna B')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    // Az első commit sikerül, a második a fájl tetején mockolt hibával elhasal.
+    vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+
+    await expect(commandRun(cfg, raw, { dryRun: false, force: false, commit: true })).rejects.toThrow(
+      'szimulált git hiba',
     )
+
+    const store = openState(cfg.statePath)
+    try {
+      expect(store.listPendingNotes().map((note) => note.id)).toEqual(['b1'])
+    } finally {
+      store.close()
+    }
   })
 })
 

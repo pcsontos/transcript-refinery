@@ -64,6 +64,15 @@ CREATE TABLE IF NOT EXISTS pending_commits (
 );
 `
 
+/** Egy commitra váró jegyzet. Az `id` a videóazonosító, annak híján az elem azonosítója. */
+export interface PendingNote {
+  id: string
+  title: string
+  /** `transcript` vagy a recept azonosítója. */
+  kind: string
+  path: string
+}
+
 export interface TranscriptRecord {
   source: CaptionSource
   wordsRaw: number
@@ -152,6 +161,8 @@ export interface StateStore {
    * futás véletlenül ugyanazt válogatja be.
    */
   listPendingCommits(): string[]
+  /** Ugyanez jegyzetenként, a commit üzenetéhez kellő azonosítóval, címmel és fajtával. */
+  listPendingNotes(): PendingNote[]
   /** A megadott útvonalak levétele a commitra várók közül, sikeres commit után. */
   clearPendingCommits(paths: readonly string[]): void
   /** A rögzített hiánylista; `null`, ha nincs rögzítve. */
@@ -304,6 +315,15 @@ export function openState(path: string): StateStore {
       return (db.prepare('SELECT path FROM pending_commits ORDER BY rowid').all() as {
         path: string
       }[]).map((row) => row.path)
+    },
+
+    listPendingNotes() {
+      return db
+        .prepare(
+          `SELECT COALESCE(i.video_id, p.item_id) AS id, COALESCE(i.title, p.item_id) AS title, p.kind, p.path
+           FROM pending_commits p LEFT JOIN items i ON i.item_id = p.item_id ORDER BY p.rowid`,
+        )
+        .all() as unknown as PendingNote[]
     },
 
     clearPendingCommits(paths) {

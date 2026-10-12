@@ -105,7 +105,7 @@ describe('runRecipes', () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
   })
 
-  it('a jegyzet a vaultba kerül, a commit csak a két fájlt viszi, a link az átiratra mutat', async () => {
+  it('a jegyzet a vaultba kerül, a két fájl külön commitba megy, a link az átiratra mutat', async () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()
     roots.push(root)
@@ -123,11 +123,15 @@ describe('runRecipes', () => {
     expect(result.noteUrl).toBe(
       TRANSCRIPT,
     )
-    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], { cwd: vault, encoding: 'utf8' })
-    expect(names.trim().split('\n').sort()).toEqual([
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
+    expect(names.split('\n').filter(Boolean).sort()).toEqual([
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
     ].sort())
+    expect(execFileSync('git', ['log', '-2', '--format=%s'], { cwd: vault, encoding: 'utf8' }).trim().split('\n')).toEqual([
+      'docs(transcript-refinery): summary | Beszéd [abcdefghijk]',
+      'docs(transcript-refinery): transcript | Beszéd [abcdefghijk]',
+    ])
     const second = { generate: 0 }
     const again = await runRecipes({
       videoId: ID,
@@ -164,12 +168,12 @@ describe('runRecipes', () => {
     })
     expect(result.ok).toBe(true)
     expect(calls.generate).toBe(1)
-    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], {
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], {
       cwd: vault,
       encoding: 'utf8',
     })
     expect(names).not.toContain('zzzzzzzzzzz')
-    expect(names.trim().split('\n').sort()).toEqual([
+    expect(names.split('\n').filter(Boolean).sort()).toEqual([
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
     ].sort())
@@ -238,8 +242,8 @@ describe('runRecipes', () => {
       git: gitWith(() => Promise.resolve({ pushed: false })),
     })
     expect(result).toEqual({ ok: false, error: 'A push nem sikerült, a commit lokálisan maradt.' })
-    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '-1', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
-    expect(names.trim().split('\n').sort()).toEqual([
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
+    expect(names.split('\n').filter(Boolean).sort()).toEqual([
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
     ].sort())
@@ -303,7 +307,7 @@ describe('runRecipes', () => {
     expect(created).toBe(0)
   })
 
-  it('két recept egy futásban: mindkét jegyzet és az átirat egy commitban', async () => {
+  it('két recept egy futásban: mindkét jegyzet és az átirat külön commitban', async () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()
     roots.push(root)
@@ -322,8 +326,8 @@ describe('runRecipes', () => {
         TRANSCRIPT,
     })
     expect(calls.generate).toBe(2)
-    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], { cwd: vault, encoding: 'utf8' })
-    expect(names.trim().split('\n').sort()).toEqual([
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
+    expect(names.split('\n').filter(Boolean).sort()).toEqual([
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_qa.md',
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
       'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
@@ -341,7 +345,7 @@ describe('runRecipes', () => {
     const result = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', createClient: () => writer(german, HUNGARIAN), load, git })
     expect(result.ok).toBe(true)
     expect(german.generate).toBe(1)
-    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
     expect(names).toContain('Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary-de.md')
   })
 
