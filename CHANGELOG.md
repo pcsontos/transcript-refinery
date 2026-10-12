@@ -3,6 +3,33 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.15.0] — 2026-10-12
+
+A vault `git log` sorából mostantól látszik, melyik videó melyik jegyzete került be.
+
+### 📚 Jegyzetenként egy commit, megnevezve
+
+- **Fajta, cím és azonosító az első sorban:** A vaultba kerülő commitok első
+  sora eddig csak annyit mondott, hogy `átirat 1 videóhoz`. Mostantól így
+  néz ki: `docs(transcript-refinery): summary | Első videó [dQw4w9WgXcQ]`.
+  Az első sor legfeljebb 80 karakter; hosszú címet `…` rövidít, a videó
+  azonosítója viszont mindig teljes marad (#215).
+- **Minden jegyzet külön commit:** Az átirat és minden recept jegyzete saját
+  commitot kap, a `refinery run`, a `refinery run --queue`, a `refinery watch`
+  és a Telegram-út is ugyanígy. A korábbi `N jegyzet a feldolgozási sorból` és
+  `watch — átirat N videóhoz` üzenetek megszűntek, a meglévő commitok nem
+  íródnak át (#215).
+- **A sor fájlja nem szaporítja a történetet:** A feldolgozási sor módosítása
+  az utolsó, ténylegesen változott jegyzet commitjával megy. Saját
+  `feldolgozási sor frissítése` commit csak akkor készül, ha egyik jegyzet
+  fájlja sem változott (#215).
+- **Félbeszakadt futás után sem vész el semmi:** Ha egy commit elhasal, a már
+  commitolt jegyzetek készen maradnak, a többit a következő futás pótolja
+  (#215).
+- **A `watch` jelzi a darabszámot:** Több új videónál a terminálsor az utolsó
+  commit hashe mellett kiírja a commitok számát is, például
+  `commit: 4f2a9c1 (2 commit, push ok)` (#215).
+
 ## [1.14.1] — 2026-10-09
 
 A `/notes` jegyzetoldalon újra látszik a jegyzet frontmatterje.
@@ -701,6 +728,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.15.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.15.0
 [1.14.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.14.1
 [1.14.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.14.0
 [1.13.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.13.0
