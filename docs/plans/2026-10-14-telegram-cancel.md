@@ -179,7 +179,7 @@ git commit -m "feat(run): Stop the run on an abort signal before the next unit"
   - `JobEffects.refine: (videoId: string, recipes: readonly string[], lang?: LanguageTag, signal?: AbortSignal) => Promise<RecipesOutcome>`
   - `runJob(job: ServeJob, effects: JobEffects, signal?: AbortSignal): Promise<void>`
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `src/serve/summary.test.ts`, a `describe('runRecipes', …)` blokk végére:
 
@@ -266,12 +266,12 @@ git commit -m "feat(run): Stop the run on an abort signal before the next unit"
   })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run src/serve/summary.test.ts src/serve/job.test.ts src/serve/command.test.ts`
 Expected: FAIL — a `runRecipes` két modellhívást tesz, és `ok: true`-t ad; a másik kettőben a signal `undefined`.
 
-- [ ] **Step 3: Írd meg a megvalósítást**
+- [x] **Step 3: Írd meg a megvalósítást**
 
 `src/serve/summary.ts`, a `runRecipes` bemenetének típusában a `load?` mező után:
 
@@ -346,12 +346,12 @@ a `serveEffects` visszatérési típusában:
       refineWith({ videoId, outDir: input.outDir, recipes, lang, signal, load: () => loadCliConfig(input.configArg) }),
 ```
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run src/serve`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/summary.ts src/serve/job.ts src/serve/command.ts src/serve/summary.test.ts src/serve/job.test.ts src/serve/command.test.ts

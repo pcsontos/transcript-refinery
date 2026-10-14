@@ -99,6 +99,8 @@ export async function runRecipes(input: {
   createClient?: RunRuntime['createClient']
   git?: SummaryGit
   load?: () => Promise<{ cfg: Config; raw: unknown }>
+  /** A `serve` cancel végpontjának jele: a futás a következő egység előtt áll meg. */
+  signal?: AbortSignal
 }): Promise<RecipesOutcome> {
   const git = input.git ?? defaultGit
   let loaded: { cfg: Config; raw: unknown }
@@ -127,7 +129,7 @@ export async function runRecipes(input: {
     cfg,
     loaded.raw,
     { recipes: ids, dryRun: false, force: false, commit: false, command: 'serve recipes', origin: 'telegram' },
-    { createClient: input.createClient },
+    { createClient: input.createClient, signal: input.signal },
   )
   const events = await runEvents(cfg.logsDir, logsBefore)
   const names = await readdir(input.outDir)

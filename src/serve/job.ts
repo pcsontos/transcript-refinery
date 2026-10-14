@@ -30,7 +30,12 @@ export interface JobEffects {
   callback: (jobId: string, body: CallbackBody) => Promise<void>
   outDir?: string
   writeFile?: (path: string, body: Uint8Array) => Promise<void>
-  refine?: (videoId: string, recipes: readonly string[], lang?: LanguageTag) => Promise<RecipesOutcome>
+  refine?: (
+    videoId: string,
+    recipes: readonly string[],
+    lang?: LanguageTag,
+    signal?: AbortSignal,
+  ) => Promise<RecipesOutcome>
 }
 
 const UPLOAD_FAILED = 'A feltöltés nem sikerült.'
@@ -183,7 +188,11 @@ async function loadSummaryPair(
   return { ok: false, error: MISSING_PAIR }
 }
 
-async function runRecipeJob(job: ServeJob & { recipes: string[] }, effects: JobEffects): Promise<void> {
+async function runRecipeJob(
+  job: ServeJob & { recipes: string[] },
+  effects: JobEffects,
+  signal?: AbortSignal,
+): Promise<void> {
   // Object.hasOwn: az `in` a `toString`-et is receptnek látná.
   if (!job.recipes.every((id) => Object.hasOwn(RECIPES, id))) {
     await report(effects, job.jobId, { status: 'failed', error: UNKNOWN_RECIPE })
@@ -216,7 +225,7 @@ async function runRecipeJob(job: ServeJob & { recipes: string[] }, effects: JobE
   }
   let outcome: RecipesOutcome
   try {
-    outcome = await effects.refine(job.videoId, job.recipes, lang)
+    outcome = await effects.refine(job.videoId, job.recipes, lang, signal)
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await forgetWork(effects, job.videoId)
@@ -231,9 +240,10 @@ async function runRecipeJob(job: ServeJob & { recipes: string[] }, effects: JobE
   await report(effects, job.jobId, { status: 'failed', error: outcome.error })
 }
 
-export async function runJob(job: ServeJob, effects: JobEffects): Promise<void> {
+/** A `signal` csak a receptjobot állítja meg; a felirat-job lefut, az eredményét a Worker elnyeli. */
+export async function runJob(job: ServeJob, effects: JobEffects, signal?: AbortSignal): Promise<void> {
   if (job.recipes !== undefined) {
-    await runRecipeJob({ ...job, recipes: job.recipes }, effects)
+    await runRecipeJob({ ...job, recipes: job.recipes }, effects, signal)
     return
   }
   try {

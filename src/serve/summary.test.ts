@@ -378,4 +378,37 @@ describe('runRecipes', () => {
     expect(result).toEqual({ ok: false, error: 'a forrás már magyar' })
     expect(calls.generate).toBe(0)
   })
+
+  it('két recept közül az első után megszakítva: egy modellhívás, a kész jegyzet commitban, a költségsor a hiba', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const calls = { generate: 0 }
+    const controller = new AbortController()
+    const inner = client(calls)
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['summary', 'qa'],
+      signal: controller.signal,
+      createClient: () => ({
+        ...inner,
+        generate(...args: Parameters<typeof inner.generate>) {
+          controller.abort()
+          return inner.generate(...args)
+        },
+      }),
+      load,
+      git: gitWith(),
+    })
+    expect(calls.generate).toBe(1)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toMatch(/^A futás megállt: megszakítva \(\d+\.\d{4} \$ \/ 5\.0000 \$\)$/)
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
+      .split('\n')
+      .filter(Boolean)
+    expect(names).toHaveLength(2)
+    expect(names).toContain('Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md')
+  })
 })

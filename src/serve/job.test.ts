@@ -377,4 +377,26 @@ describe('runJob', () => {
     })
     expect(seen).toEqual([{ videoId: ID, recipes: ['summary', 'notes'], lang: 'de' }])
   })
+
+  it('a receptjob a signalt a refine-nak adja', async () => {
+    const info = new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' }))
+    const store = memoryStore({
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: info,
+    })
+    const controller = new AbortController()
+    const seen: (AbortSignal | undefined)[] = []
+    await runJob(
+      { ...job, recipes: ['summary'] },
+      {
+        ...effectsWith(store, []),
+        refine: (_videoId, _recipes, _lang, signal) => {
+          seen.push(signal)
+          return Promise.resolve({ ok: true, noteUrl: 'a_transcript.md' })
+        },
+      },
+      controller.signal,
+    )
+    expect(seen).toEqual([controller.signal])
+  })
 })
