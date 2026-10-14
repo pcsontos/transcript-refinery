@@ -1,6 +1,6 @@
 # Spec — Vault-commit üzenete: jegyzetenként egy commit, fajtával, címmel és azonosítóval
 
-**Dátum:** 2026-10-12 · **Státusz:** átnézésre vár
+**Dátum:** 2026-10-12 · **Státusz:** megvalósítva (v1.15.0)
 
 Ez a dokumentum a #215 issue tervezéséből készült. Ahol ez a spec nem mond mást, a mai viselkedés marad.
 
@@ -22,7 +22,7 @@ A commit törzse (csak első sor készül). A push módja és hibakezelése. A `
 | Többvideós futás | Nincs külön eset: minden jegyzet külön commit, akárhány videóból. |
 | `run --queue` | Ugyanígy jegyzetenként commitol; az `N jegyzet a feldolgozási sorból` üzenet megszűnik. Ez felülírja az issue erre vonatkozó elfogadási feltételét. |
 | `watch — ` előtag | Megszűnik, a jegyzetek és a sor commitjánál is. |
-| A `_queue.md` | A futás utolsó jegyzet-commitjával megy. Saját commitot csak akkor kap, ha a futásban nincs jegyzet. |
+| A `_queue.md` | A futás utolsó *változott* jegyzetének commitjával megy. Saját commitot akkor kap, ha a futásban nincs jegyzet, vagy egyik jegyzet fájlja sem változott. |
 | Ismeretlen cím | Nem fordul elő: az `items.title` kötelező, info.json híján a fájl alapneve. |
 | Azonosító | Az `items.video_id`; ha nincs, az `item_id`. |
 
@@ -70,8 +70,8 @@ A `run` és a `watch` a `store.listPendingCommits()` összes útját és (ha vá
 - **Egy jegyzet csak a saját commitja után kerül le a várólistáról.** Ha egy commit hibát dob, a sorozat megáll; a már commitolt jegyzetek lekerültek, a többit a következő futás pótolja.
 - Ha egy jegyzet fájlja nem változott (nincs mit commitolni), nem készül commit, de a jegyzet lekerül a várólistáról, mint ma.
 - **A sor fájlja** (`_queue.md`), ha a futás módosította:
-  - ha van commitra váró jegyzet, az **utolsó** jegyzet commitjába kerül, annak üzenetével;
-  - ha nincs, saját commitot kap: `docs(<COMMIT_SCOPE>): feldolgozási sor frissítése`.
+  - ha van commitra váró jegyzet, az **utolsó olyan** jegyzet commitjába kerül, amelynek a fájlja ténylegesen változott, annak üzenetével. Változatlan jegyzet commitjába nem kerülhet: az üzenet olyan jegyzetet nevezne meg, amely nincs a commitban;
+  - ha nincs ilyen (nincs jegyzet, vagy egyik fájlja sem változott), saját commitot kap: `docs(<COMMIT_SCOPE>): feldolgozási sor frissítése`.
 - **Push** futásonként egyszer megy, a commitok után, és csak akkor, ha legalább egy commit készült.
 - A `watch` terminálsora az utolsó commit hashét írja ki. Több commitnál a darabszám is szerepel: `commit: <hash> (3 commit, push ok)`; egy commitnál a mai `commit: <hash> (push ok)` marad.
 - A `listPendingCommits()` megmarad (a meglévő tesztek erre épülnek), de az éles kód már nem hívja.
@@ -95,7 +95,7 @@ A `runRecipes` a futás után egyetlen commitba teszi az átiratot és a kért r
 |---|---|
 | A sorozat k-adik commitja hibát dob | Az első k−1 jegyzet commitolva és levéve a várólistáról; a többi rajta marad; a hiba a mai úton jut a hívóhoz. |
 | A jegyzet fájlja nem változott | Nincs commit, a jegyzet lekerül a várólistáról. |
-| Csak a sor változott | Egy `feldolgozási sor frissítése` commit. |
+| Csak a sor változott (vagy egyik jegyzet fájlja sem) | Egy `feldolgozási sor frissítése` commit. |
 | A várólistán lévő jegyzet eleme hiányzik az `items`-ből | A cím és az azonosító is az `item_id`. |
 | Az azonosító olyan hosszú, hogy cím nem fér mellé | Az azonosító teljes, a sor átlépheti a 80 karaktert. |
 
