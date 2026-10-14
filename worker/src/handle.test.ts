@@ -10,7 +10,7 @@ import {
   type PlannedKnock,
   type WorkerDeps,
 } from './handle.js'
-import { langKeyboard, pickKeyboard, recipeKeyboard, runId, hashToken, type Key } from './plan.js'
+import { langKeyboard, pickKeyboard, recipeKeyboard, runId, hashToken, type Key, type Probe } from './plan.js'
 import { memoryStore, type JobRow, type RunRow } from './store.js'
 
 const ID = 'abcdefghijk'
@@ -56,6 +56,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
       cancelled.push(id)
       return Promise.resolve('ok')
     },
+    probe: () => Promise.resolve({ ok: true, ms: 7, version: '1.16.0', busy: null }),
     answerTap: (callbackQueryId) => {
       answered.push(callbackQueryId)
       return Promise.resolve()
@@ -894,5 +895,64 @@ describe('/cancel', () => {
     expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
     expect((await findRow(store, `7:${ID2}`))?.status).toBe('cancelled')
     expect(d.sent).toEqual([`Megszakítva: ${ID}.`, `Megszakítva: ${ID2}.`])
+  })
+})
+
+describe('tájékoztató parancsok', () => {
+  const HELP = [
+    'Küldj egy YouTube-linket, és letöltöm a feliratát.',
+    '',
+    '/start – a bot összekötése a Google-fiókoddal',
+    '/cancel – nyitott munka megszakítása',
+    '/status – a szerver állapota és a nyitott munkák',
+    '/ping – a szerver elérhetősége',
+    '/version – a szerver verziója',
+    '/help – ez a súgó',
+  ].join('\n')
+
+  it('a /help kötés nélkül is megy, a többi parancs kötést kér', async () => {
+    const d = deps(memoryStore())
+    await handleUpdate(command(90, '/help'), d)
+    await handleUpdate(command(91, '/ping'), d)
+    expect(d.sent).toEqual([HELP, 'Előbb kösd össze a Google-fiókoddal: /start'])
+  })
+
+  it('a /ping, a /version és a /status a serve válaszából', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    const d = deps(store, {
+      probe: () => Promise.resolve({ ok: true, ms: 7, version: '1.16.0', busy: `5:${ID}` }),
+    })
+    await handleUpdate(command(92, '/ping'), d)
+    await handleUpdate(command(93, '/version'), d)
+    await handleUpdate(command(94, '/status'), d)
+    expect(d.sent).toEqual([
+      'A szerver él (7 ms).',
+      'A szerver verziója: 1.16.0.',
+      `A szerver verziója: 1.16.0. Most ezen dolgozik: 5:${ID}.\nNyitott videó: 1, nyitott receptfutás: 0.`,
+    ])
+  })
+
+  it('nem elérhető serve mellett a /status a D1 számait is adja, titokeltérésnél a titok-sor megy', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['qa'], null, { status: 'queued', noteUrl: null, notified: false }))
+    const down = (): Promise<Probe> => Promise.resolve({ ok: false, reason: 'down' })
+    const secret = (): Promise<Probe> => Promise.resolve({ ok: false, reason: 'secret' })
+    const d = deps(store, { probe: down })
+    await handleUpdate(command(95, '/status'), d)
+    await handleUpdate(command(96, '/ping'), d)
+    await handleUpdate(command(97, '/version'), deps(store, { probe: secret, send: d.send }))
+    expect(d.sent).toEqual([
+      'A szerver nem válaszol.\nNyitott videó: 0, nyitott receptfutás: 1.',
+      'A szerver nem válaszol.',
+      'A Worker és a serve titka nem egyezik.',
+    ])
+  })
+
+  it('az ismeretlen parancs a mai választ kapja', async () => {
+    const d = deps(await boundStore())
+    await handleUpdate(command(98, '/foo'), d)
+    expect(d.sent).toEqual(['Nincs YouTube-videó az üzenetben.'])
   })
 })

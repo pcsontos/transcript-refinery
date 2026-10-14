@@ -143,3 +143,36 @@ export function cancelKeyboard(jobs: readonly { jobId: string; videoId: string; 
     [{ text: 'Mind megszakítása', data: 'c:*' }],
   ]
 }
+
+export type Probe = { ok: true; ms: number; version: string; busy: string | null } | { ok: false; reason: 'secret' | 'down' }
+
+export const HELP_TEXT = [
+  'Küldj egy YouTube-linket, és letöltöm a feliratát.',
+  '',
+  '/start – a bot összekötése a Google-fiókoddal',
+  '/cancel – nyitott munka megszakítása',
+  '/status – a szerver állapota és a nyitott munkák',
+  '/ping – a szerver elérhetősége',
+  '/version – a szerver verziója',
+  '/help – ez a súgó',
+].join('\n')
+
+export const SERVE_SILENT = 'A szerver nem válaszol.'
+
+function probeFailure(probe: { reason: 'secret' | 'down' }): string {
+  return probe.reason === 'secret' ? SERVE_SECRET_MISMATCH : SERVE_SILENT
+}
+
+export function pingLine(probe: Probe): string {
+  return probe.ok ? `A szerver él (${probe.ms} ms).` : probeFailure(probe)
+}
+
+export function versionLine(probe: Probe): string {
+  return probe.ok ? `A szerver verziója: ${probe.version}.` : probeFailure(probe)
+}
+
+export function statusText(probe: Probe, jobs: number, runs: number): string {
+  const busy = probe.ok && probe.busy !== null ? `Most ezen dolgozik: ${probe.busy}.` : 'Most nem dolgozik.'
+  const head = probe.ok ? `${versionLine(probe)} ${busy}` : probeFailure(probe)
+  return `${head}\nNyitott videó: ${jobs}, nyitott receptfutás: ${runs}.`
+}

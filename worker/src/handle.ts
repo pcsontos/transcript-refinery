@@ -3,6 +3,7 @@ import {
   CANCEL_CLOSED,
   CANCEL_LINE,
   CANCEL_RETRY,
+  HELP_TEXT,
   LANG_LINE,
   LINK_INVALID,
   MISSING_NOTE_URL,
@@ -27,6 +28,7 @@ import {
   maskRecipes,
   notAllowedLine,
   parseTap,
+  pingLine,
   pickKeyboard,
   queuedLine,
   readyBases,
@@ -37,8 +39,11 @@ import {
   runQueuedLine,
   runReadyMessage,
   runStartedLine,
+  statusText,
+  versionLine,
   waitingLine,
   type Key,
+  type Probe,
 } from './plan.js'
 import { OPEN, type Binding, type JobRow, type JobStatus, type JobStore, type RunRow } from './store.js'
 
@@ -60,6 +65,8 @@ export interface WorkerDeps {
   knock: (job: PlannedKnock) => Promise<202 | 409 | 401 | 'down'>
   /** A serve futó jobjának leállítása: `ok` 200, `unknown` 404, minden más `unreachable`. */
   cancel: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>
+  /** A serve `GET /status`-a, mért válaszidővel; ebből dolgozik a `/ping`, a `/version` és a `/status`. */
+  probe: () => Promise<Probe>
   send: (chatId: string, text: string, keyboard?: Key[][]) => Promise<boolean>
   edit: (chatId: string, messageId: number, text: string, keyboard: Key[][]) => Promise<boolean>
   answerTap: (callbackQueryId: string) => Promise<void>
@@ -68,7 +75,7 @@ export interface WorkerDeps {
 type KnockResult = 202 | 409 | 401 | 'down'
 
 const START = /^\/start(?:\s+(\S+))?\s*$/
-const COMMAND = /^\/(cancel)(?:@\w+)?\s*$/
+const COMMAND = /^\/(help|cancel|ping|version|status)(?:@\w+)?\s*$/
 
 export async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
   const head = jobId.split(':')[0]
@@ -92,14 +99,33 @@ async function handleCommand(
   deps: WorkerDeps,
 ): Promise<void> {
   if (!(await deps.store.rememberUpdate(updateId))) return
+  if (command === 'help') {
+    await deps.send(chatId, HELP_TEXT)
+    return
+  }
   const binding = await allowedBinding(userId, deps)
   if (binding === null) {
     await deps.send(chatId, BIND_FIRST)
     return
   }
+  if (command === 'cancel') {
+    const open = await deps.store.openFor(binding.sub)
+    if (open.jobs.length === 0) await deps.send(chatId, NOTHING_TO_CANCEL)
+    else await deps.send(chatId, CANCEL_LINE, cancelKeyboard(open.jobs))
+    return
+  }
+  const probe = await deps.probe()
+  if (command === 'ping') {
+    await deps.send(chatId, pingLine(probe))
+    return
+  }
+  if (command === 'version') {
+    await deps.send(chatId, versionLine(probe))
+    return
+  }
   const open = await deps.store.openFor(binding.sub)
-  if (open.jobs.length === 0) await deps.send(chatId, NOTHING_TO_CANCEL)
-  else await deps.send(chatId, CANCEL_LINE, cancelKeyboard(open.jobs))
+  const jobs = open.jobs.filter((job) => OPEN.includes(job.status)).length
+  await deps.send(chatId, statusText(probe, jobs, open.runs.length))
 }
 
 /**

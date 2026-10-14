@@ -111,6 +111,23 @@ function deps(env: Env, linkBase = ''): WorkerDeps {
         return 'unreachable'
       }
     },
+    probe: async () => {
+      const started = Date.now()
+      try {
+        const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/status`, {
+          headers: { authorization: `Bearer ${env.REFINERY_SERVE_SECRET}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        if (response.status === 401) return { ok: false, reason: 'secret' }
+        if (!response.ok) return { ok: false, reason: 'down' }
+        const body = (await response.json()) as { version?: unknown; busy?: unknown }
+        if (typeof body.version !== 'string') return { ok: false, reason: 'down' }
+        const busy = typeof body.busy === 'string' ? body.busy : null
+        return { ok: true, ms: Date.now() - started, version: body.version, busy }
+      } catch {
+        return { ok: false, reason: 'down' }
+      }
+    },
     send: (chatId, text, keyboard) =>
       telegram(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
         chat_id: chatId,

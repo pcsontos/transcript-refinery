@@ -1273,7 +1273,7 @@ git commit -m "feat(worker): Cancel open jobs from Telegram with /cancel"
   - `WorkerDeps.probe: () => Promise<Probe>` — `GET /status` a titokkal; `401` → `secret`, minden más hiba → `down`.
   - `HELP_TEXT`, `pingLine(probe)`, `versionLine(probe)`, `statusText(probe, jobs, runs)`.
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `worker/src/handle.test.ts`: az importban a `memoryStore` mellé a `Probe` típus a `./plan.js`-ből:
 
@@ -1383,12 +1383,12 @@ describe('tájékoztató parancsok', () => {
   })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts worker/src/entry.test.ts -t "tájékoztató parancsok|/ping"`
 Expected: FAIL — a `/help` és a `/ping` ma `Nincs YouTube-videó az üzenetben.` választ kap.
 
-- [ ] **Step 3: Írd meg a megvalósítást — szövegek**
+- [x] **Step 3: Írd meg a megvalósítást — szövegek**
 
 `worker/src/messages.ts` végére:
 
@@ -1437,7 +1437,7 @@ export function statusText(probe: Probe, jobs: number, runs: number): string {
   statusText,
 ```
 
-- [ ] **Step 4: Írd meg a megvalósítást — handle és index**
+- [x] **Step 4: Írd meg a megvalósítást — handle és index**
 
 `worker/src/handle.ts`, az importban a `./plan.js` listájába `HELP_TEXT`, `pingLine`, `statusText`, `versionLine`, `type Probe`. A `WorkerDeps`-ben a `cancel` után:
 
@@ -1515,12 +1515,12 @@ async function handleCommand(
     },
 ```
 
-- [ ] **Step 5: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 5: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm test && pnpm typecheck && pnpm exec tsc -p worker/tsconfig.json --noEmit && pnpm lint`
 Expected: PASS, típus- és lint-hiba nélkül.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/messages.ts worker/src/plan.ts worker/src/handle.ts worker/src/index.ts worker/src/handle.test.ts worker/src/entry.test.ts

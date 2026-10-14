@@ -34,6 +34,11 @@ export {
   CANCEL_RETRY,
   cancelledLine,
   cancelKeyboard,
+  type Probe,
+  HELP_TEXT,
+  pingLine,
+  versionLine,
+  statusText,
 } from './messages.js'
 
 export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
