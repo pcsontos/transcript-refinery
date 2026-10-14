@@ -280,6 +280,25 @@ export function createD1Store(db: D1Like): JobStore {
         .run()
       return changed(result)
     },
+    async openFor(sub) {
+      const jobs = await db
+        .prepare(
+          `SELECT * FROM jobs WHERE sub = ? AND (
+             status IN ('queued', 'waiting', 'accepted')
+             OR job_id IN (SELECT job_id FROM runs WHERE status IN ('queued', 'waiting', 'accepted'))
+           ) ORDER BY rowid`,
+        )
+        .bind(sub)
+        .all<JobRecord>()
+      const runs = await db
+        .prepare(
+          `SELECT runs.* FROM runs JOIN jobs ON jobs.job_id = runs.job_id
+           WHERE jobs.sub = ? AND runs.status IN ('queued', 'waiting', 'accepted') ORDER BY runs.rowid`,
+        )
+        .bind(sub)
+        .all<RunRecord>()
+      return { jobs: jobs.results.map(toRow), runs: runs.results.map(toRun) }
+    },
     async runsFor(jobId) {
       const result = await db.prepare('SELECT * FROM runs WHERE job_id = ? ORDER BY rowid').bind(jobId).all<RunRecord>()
       return result.results.map(toRun)

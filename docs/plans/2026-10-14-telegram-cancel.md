@@ -922,7 +922,7 @@ git commit -m "feat(worker): Add the cancelled state and guard it against late w
   - `cancelKeyboard(jobs)`, `cancelledLine(title)`, `CANCEL_LINE`, `NOTHING_TO_CANCEL`, `CANCEL_CLOSED`, `CANCEL_RETRY` (`messages.ts`, a `plan.ts` re-exportálja).
   - `handleCommand(updateId, command, userId, chatId, deps)` (`handle.ts`, belső).
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `worker/src/handle.test.ts`, a `tap` segédfüggvény után:
 
@@ -1039,12 +1039,12 @@ describe('/cancel', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts -t "/cancel"`
 Expected: FAIL — a `/cancel` ma `Nincs YouTube-videó az üzenetben.` választ kap, a `c:` gomb `null`.
 
-- [ ] **Step 3: Írd meg a megvalósítást — store**
+- [x] **Step 3: Írd meg a megvalósítást — store**
 
 `worker/src/store.ts`, a `JobStore` interfészben:
 
@@ -1089,7 +1089,7 @@ a `memoryStore`-ban:
     },
 ```
 
-- [ ] **Step 4: Írd meg a megvalósítást — szövegek és gomb**
+- [x] **Step 4: Írd meg a megvalósítást — szövegek és gomb**
 
 `worker/src/messages.ts` végére:
 
@@ -1138,7 +1138,7 @@ a `parseTap`-ben a `summary` ág után:
   }
 ```
 
-- [ ] **Step 5: Írd meg a megvalósítást — handle**
+- [x] **Step 5: Írd meg a megvalósítást — handle**
 
 `worker/src/handle.ts`, az importokban a `./plan.js` listájába `CANCEL_CLOSED`, `CANCEL_LINE`, `CANCEL_RETRY`, `NOTHING_TO_CANCEL`, `cancelKeyboard`, `cancelledLine`; a `./store.js` importja (a mai `import type` sor helyére):
 
@@ -1246,12 +1246,12 @@ a `handleTap`-ben, közvetlenül az `if (tap === null) return []` után:
   }
 ```
 
-- [ ] **Step 6: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 6: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run worker && pnpm exec tsc -p worker/tsconfig.json --noEmit && pnpm lint`
 Expected: PASS, típus- és lint-hiba nélkül.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add worker/src/store.ts worker/src/d1.ts worker/src/messages.ts worker/src/plan.ts worker/src/handle.ts worker/src/handle.test.ts

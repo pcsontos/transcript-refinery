@@ -126,3 +126,20 @@ export function runStartedLine(recipes: readonly string[], lang: string | null):
 export function runFailedLine(recipes: readonly string[], lang: string | null, error: string): string {
   return `${runLabel(recipes, lang)}: ${error}`
 }
+
+export const CANCEL_LINE = 'Melyiket szakítsam meg?'
+export const NOTHING_TO_CANCEL = 'Nincs megszakítható munka.'
+export const CANCEL_CLOSED = 'Ez már lefutott vagy meg lett szakítva.'
+export const CANCEL_RETRY = 'Most nem érem el a szervert, próbáld újra.'
+
+export function cancelledLine(title: string): string {
+  return `Megszakítva: ${flatTitle(title)}.`
+}
+
+/** Jobonként egy gomb, alul a „Mind megszakítása”; a `c:*` a felhasználó minden nyitott munkája. */
+export function cancelKeyboard(jobs: readonly { jobId: string; videoId: string; title: string | null }[]): Key[][] {
+  return [
+    ...jobs.map((job) => [{ text: flatTitle(job.title ?? job.videoId), data: `c:${job.jobId}` }]),
+    [{ text: 'Mind megszakítása', data: 'c:*' }],
+  ]
+}

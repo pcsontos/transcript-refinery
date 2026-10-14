@@ -62,6 +62,8 @@ export interface JobStore {
   insertRun(run: RunRow): Promise<boolean>
   /** `false`, ha nem hatott: a `cancelled` futást semmi nem írja felül. */
   saveRun(run: RunRow): Promise<boolean>
+  /** A felhasználó jobjai, amelyek nyitottak vagy van nyitott futásuk, és a nyitott futásaik. */
+  openFor(sub: string): Promise<{ jobs: JobRow[]; runs: RunRow[] }>
   claimRun(runId: string, expect: JobStatus, next: JobStatus): Promise<boolean>
   runsFor(jobId: string): Promise<RunRow[]>
   dueRuns(now: number): Promise<RunRow[]>
@@ -156,6 +158,13 @@ export function memoryStore(): JobStore {
       if (run === undefined || run.status !== expect) return Promise.resolve(false)
       runs[index] = { ...run, status: next, error: null, notified: false, acceptedAt: null }
       return Promise.resolve(true)
+    },
+    openFor: (sub) => {
+      const openRuns = runs.filter((run) => OPEN.includes(run.status))
+      const jobs = rows.filter(
+        (row) => row.sub === sub && (OPEN.includes(row.status) || openRuns.some((run) => run.jobId === row.jobId)),
+      )
+      return Promise.resolve({ jobs, runs: openRuns.filter((run) => jobs.some((row) => row.jobId === run.jobId)) })
     },
     runsFor: (jobId) => Promise.resolve(runs.filter((item) => item.jobId === jobId)),
     dueRuns: (now) => Promise.resolve(runs.filter((item) => isDue(item, now))),

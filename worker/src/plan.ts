@@ -28,6 +28,12 @@ export {
   runQueuedLine,
   runStartedLine,
   runFailedLine,
+  CANCEL_LINE,
+  NOTHING_TO_CANCEL,
+  CANCEL_CLOSED,
+  CANCEL_RETRY,
+  cancelledLine,
+  cancelKeyboard,
 } from './messages.js'
 
 export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
@@ -44,6 +50,7 @@ export type Tap =
   | { type: 'recipe'; recipe: string; jobId: string }
   | { type: 'translate'; jobId: string }
   | { type: 'toggle' | 'next'; mask: number; jobId: string }
+  | { type: 'cancel'; jobId: string }
   | { type: 'lang'; mask: number; lang: string; jobId: string }
 
 const MASK = /^[0-9a-f]{1,2}$/
@@ -61,6 +68,10 @@ export function parseTap(data: string): Tap | null {
     const [recipe, ...job] = rest
     if (recipe === undefined || !(RECIPES as readonly string[]).includes(recipe)) return null
     return { type: 'recipe', recipe, jobId: job.join(':') }
+  }
+  if (head === 'c') {
+    const jobId = rest.join(':')
+    return jobId === '' ? null : { type: 'cancel', jobId }
   }
   if (head === 't' || head === 'n') {
     const [hex, ...job] = rest

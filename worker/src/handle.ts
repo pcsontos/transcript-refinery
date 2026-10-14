@@ -1,8 +1,12 @@
 import {
   BIND_FIRST,
+  CANCEL_CLOSED,
+  CANCEL_LINE,
+  CANCEL_RETRY,
   LANG_LINE,
   LINK_INVALID,
   MISSING_NOTE_URL,
+  NOTHING_TO_CANCEL,
   NOTHING_TO_TRANSLATE,
   PICK_LINE,
   REJECTED_SECRET,
@@ -10,6 +14,8 @@ import {
   alreadyBoundLine,
   alreadyLine,
   boundLine,
+  cancelKeyboard,
+  cancelledLine,
   decideRun,
   decideStart,
   hashToken,
@@ -34,7 +40,7 @@ import {
   waitingLine,
   type Key,
 } from './plan.js'
-import type { Binding, JobRow, JobStatus, JobStore, RunRow } from './store.js'
+import { OPEN, type Binding, type JobRow, type JobStatus, type JobStore, type RunRow } from './store.js'
 
 export interface PlannedKnock {
   jobId: string
@@ -62,6 +68,7 @@ export interface WorkerDeps {
 type KnockResult = 202 | 409 | 401 | 'down'
 
 const START = /^\/start(?:\s+(\S+))?\s*$/
+const COMMAND = /^\/(cancel)(?:@\w+)?\s*$/
 
 export async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
   const head = jobId.split(':')[0]
@@ -75,6 +82,76 @@ async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Pro
   const binding = await deps.store.bindingFor(userId)
   if (binding === null || !isAllowed(binding.email, deps.allowedEmails)) return null
   return binding
+}
+
+async function handleCommand(
+  updateId: number,
+  command: string,
+  userId: string,
+  chatId: string,
+  deps: WorkerDeps,
+): Promise<void> {
+  if (!(await deps.store.rememberUpdate(updateId))) return
+  const binding = await allowedBinding(userId, deps)
+  if (binding === null) {
+    await deps.send(chatId, BIND_FIRST)
+    return
+  }
+  const open = await deps.store.openFor(binding.sub)
+  if (open.jobs.length === 0) await deps.send(chatId, NOTHING_TO_CANCEL)
+  else await deps.send(chatId, CANCEL_LINE, cancelKeyboard(open.jobs))
+}
+
+/**
+ * Egy sor vagy futás megszakítása: a futót előbb a serve állítja le, utána a
+ * feltételes írás. Ha az írás közben a cron átírta az állapotot, egyszer újra próbál.
+ */
+async function cancelOne(
+  id: string,
+  load: () => Promise<{ status: JobStatus } | null>,
+  claim: (expect: JobStatus) => Promise<boolean>,
+  deps: WorkerDeps,
+): Promise<'cancelled' | 'unreachable' | 'closed'> {
+  // ponytail: egy újrapróba; a harmadik versenyhez két kopogtatás kellene a koppintás alatt.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const item = await load()
+    if (item === null || !OPEN.includes(item.status)) return 'closed'
+    if (item.status === 'accepted' && (await deps.cancel(id)) === 'unreachable') return 'unreachable'
+    if (await claim(item.status)) return 'cancelled'
+  }
+  return 'closed'
+}
+
+async function cancelTap(target: string, sub: string, chatId: string, deps: WorkerDeps): Promise<void> {
+  const open = await deps.store.openFor(sub)
+  const jobs = target === '*' ? open.jobs : open.jobs.filter((job) => job.jobId === target)
+  if (jobs.length === 0) {
+    await deps.send(chatId, CANCEL_CLOSED)
+    return
+  }
+  for (const job of jobs) {
+    const outcomes = [
+      await cancelOne(
+        job.jobId,
+        () => findRow(deps.store, job.jobId),
+        (expect) => deps.store.claimJob(job.jobId, expect, 'cancelled'),
+        deps,
+      ),
+    ]
+    for (const run of open.runs.filter((item) => item.jobId === job.jobId)) {
+      outcomes.push(
+        await cancelOne(
+          run.runId,
+          () => deps.store.run(run.runId),
+          (expect) => deps.store.claimRun(run.runId, expect, 'cancelled'),
+          deps,
+        ),
+      )
+    }
+    if (outcomes.includes('unreachable')) await deps.send(chatId, CANCEL_RETRY)
+    else if (outcomes.includes('cancelled')) await deps.send(chatId, cancelledLine(job.title ?? job.videoId))
+    else await deps.send(chatId, CANCEL_CLOSED)
+  }
 }
 
 /**
@@ -210,6 +287,11 @@ export async function handleUpdate(
   const start = START.exec(message.text ?? '')
   if (start) {
     await handleStart(update.update_id, userId, chatId, start[1], deps)
+    return { status: 200, knocks: [] }
+  }
+  const command = COMMAND.exec(message.text ?? '')?.[1]
+  if (command !== undefined) {
+    await handleCommand(update.update_id, command, userId, chatId, deps)
     return { status: 200, knocks: [] }
   }
   const binding = await allowedBinding(userId, deps)
@@ -407,6 +489,11 @@ export async function handleTap(
   if (binding === null) return []
   const tap = parseTap(update.callback_query.data ?? '')
   if (tap === null) return []
+  // A privát chatben a chat azonosítója a feladóé.
+  if (tap.type === 'cancel') {
+    if (from !== undefined) await cancelTap(tap.jobId, binding.sub, String(from.id), deps)
+    return []
+  }
   const row = await findRow(deps.store, tap.jobId)
   if (row === null || row.sub !== binding.sub || row.status !== 'ready') return []
   if (tap.type === 'recipe') return requestRun(row, [tap.recipe], null, deps)

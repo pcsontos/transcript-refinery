@@ -137,6 +137,12 @@ function tap(updateId: number, data: string, from = 42, messageId?: number) {
   }
 }
 
+function command(updateId: number, text: string, from = 42) {
+  return { update_id: updateId, message: { message_id: updateId, chat: { id: from }, from: { id: from }, text } }
+}
+
+const ID2 = 'bcdefghijkl'
+
 describe('handleUpdate', () => {
   it('a nem kötött felhasználó a kösd össze sort kapja, a kötött sora kopogtatás előtt megy ki', async () => {
     const store = await boundStore()
@@ -787,5 +793,106 @@ describe('megszakítás: verseny és késői visszahívás', () => {
     const d = deps(store)
     await handleCron(d)
     expect(d.knocked).toEqual([])
+  })
+})
+
+describe('/cancel', () => {
+  it('nyitott munka nélkül ezt mondja, kötés nélkül a kösd össze sort', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(70, '/cancel'), d)
+    await handleUpdate(command(71, '/cancel', 99), d)
+    expect(d.sent).toEqual(['Nincs megszakítható munka.', 'Előbb kösd össze a Google-fiókoddal: /start'])
+  })
+
+  it('csak a saját nyitott munkákat listázza, a kész jobot a nyitott futása miatt, alul a Mind gombbal', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    await store.insert(acceptedRow({ jobId: `6:${ID}`, updateId: 6, sub: 'sub-masik', status: 'queued' }))
+    await store.insert(readyRow({ jobId: `7:${ID2}`, updateId: 7, videoId: ID2, title: 'Cím' }))
+    await store.insertRun({ ...readyRun(['qa'], null, { status: 'accepted', noteUrl: null, notified: false }), runId: `7:${ID2}:qa`, jobId: `7:${ID2}` })
+    await store.insert(readyRow({ jobId: `8:${ID2}`, updateId: 8, videoId: ID2 }))
+    const d = deps(store)
+    await handleUpdate(command(70, '/cancel@refinery_bot'), d)
+    expect(d.sent).toEqual(['Melyiket szakítsam meg?'])
+    expect(d.keyboards).toEqual([
+      [
+        [{ text: ID, data: `c:5:${ID}` }],
+        [{ text: 'Cím', data: `c:7:${ID2}` }],
+        [{ text: 'Mind megszakítása', data: 'c:*' }],
+      ],
+    ])
+  })
+
+  it('a sorban álló job megszakítása kopogtatás és serve-hívás nélkül cancelled, és a cron sem éleszti', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    const d = deps(store)
+    expect(await handleTap(tap(80, `c:5:${ID}`), d)).toEqual([])
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
+    expect(d.cancelled).toEqual([])
+    expect(d.sent).toEqual([`Megszakítva: ${ID}.`])
+    await handleCron(d)
+    expect(d.knocked).toEqual([])
+  })
+
+  it('a futó job: ok és unknown után cancelled, elérhetetlen serve mellett accepted marad és újrapróbálást kér', async () => {
+    for (const [answer, status, line] of [
+      ['ok', 'cancelled', `Megszakítva: ${ID}.`],
+      ['unknown', 'cancelled', `Megszakítva: ${ID}.`],
+      ['unreachable', 'accepted', 'Most nem érem el a szervert, próbáld újra.'],
+    ] as const) {
+      const store = await boundStore()
+      await store.insert(acceptedRow())
+      const d = deps(store, { cancel: () => Promise.resolve(answer) })
+      await handleTap(tap(81, `c:5:${ID}`), d)
+      expect((await findRow(store, `5:${ID}`))?.status).toBe(status)
+      expect(d.sent).toEqual([line])
+    }
+  })
+
+  it('a második koppintás hatástalan, az ismételt update hallgat', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    const d = deps(store)
+    await handleTap(tap(82, `c:5:${ID}`), d)
+    await handleTap(tap(82, `c:5:${ID}`), d)
+    await handleTap(tap(83, `c:5:${ID}`), d)
+    expect(d.cancelled).toEqual([`5:${ID}`])
+    expect(d.sent).toEqual([`Megszakítva: ${ID}.`, 'Ez már lefutott vagy meg lett szakítva.'])
+  })
+
+  it('más fiók jobjára a koppintás nem változtat semmit', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ jobId: `6:${ID}`, updateId: 6, sub: 'sub-masik' }))
+    const d = deps(store)
+    await handleTap(tap(84, `c:6:${ID}`), d)
+    expect((await findRow(store, `6:${ID}`))?.status).toBe('accepted')
+    expect(d.cancelled).toEqual([])
+    expect(d.sent).toEqual(['Ez már lefutott vagy meg lett szakítva.'])
+  })
+
+  it('a kész job futó receptjét állítja le: a futás cancelled, a job ready marad', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['summary'], null, { status: 'accepted', noteUrl: null, notified: false })
+    await store.insertRun(run)
+    const d = deps(store)
+    await handleTap(tap(85, `c:5:${ID}`), d)
+    expect((await store.run(run.runId))?.status).toBe('cancelled')
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('ready')
+    expect(d.cancelled).toEqual([run.runId])
+    expect(d.sent).toEqual(['Megszakítva: Cím.'])
+  })
+
+  it('a Mind gomb minden saját nyitott munkát megszakít', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    await store.insert(acceptedRow({ jobId: `7:${ID2}`, updateId: 7, videoId: ID2 }))
+    const d = deps(store)
+    await handleTap(tap(86, 'c:*'), d)
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
+    expect((await findRow(store, `7:${ID2}`))?.status).toBe('cancelled')
+    expect(d.sent).toEqual([`Megszakítva: ${ID}.`, `Megszakítva: ${ID2}.`])
   })
 })
