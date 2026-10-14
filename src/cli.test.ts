@@ -2955,3 +2955,44 @@ describe('commandRun — több recept egy futásban', () => {
     store.close()
   })
 })
+
+describe('commandRun — megszakítás signallal', () => {
+  it('a már megszakított signal nulla modellhívással megáll, a naplóban megszakítva', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const hivasok = { generate: 0 }
+    const controller = new AbortController()
+    controller.abort()
+
+    await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { signal: controller.signal, createClient: () => hamisKliens(hivasok) },
+    )
+
+    expect(hivasok.generate).toBe(0)
+    const aborted = (await naploEsemenyek(cfg.logsDir)).find((e) => e.type === 'run:aborted')
+    expect(aborted).toMatchObject({ reason: 'megszakítva', spentUsd: 0 })
+  })
+
+  it('az első egység közben érkező megszakítás után nincs több modellhívás', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await makeVideo(downloads, 'a2', 'Második videó', 'Csatorna A')
+    const raw = rawWithVault(5)
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const hivasok = { generate: 0 }
+    const controller = new AbortController()
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { signal: controller.signal, createClient: () => hamisKliens(hivasok, () => controller.abort()) },
+    )
+
+    expect(code).toBe(0)
+    expect(hivasok.generate).toBe(1)
+  })
+})

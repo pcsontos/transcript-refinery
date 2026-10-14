@@ -343,6 +343,8 @@ export interface RunRuntime {
   exit?: (code: number) => void
   /** A modellkliens gyártása; alapértelmezésben a valódi LiteLLM-kliens. */
   createClient?: (cfg: ModelConfig, opts?: ModelClientOptions) => ModelClient
+  /** Kívülről jövő megszakítás (a `serve` cancel végpontja): a következő egység előtt áll meg. */
+  signal?: AbortSignal
 }
 
 /** A modellréteg egy futásra: receptenkénti kliens, egy közös költségőr. */
@@ -793,6 +795,18 @@ export async function commandRun(
     }
 
     for (const [index, unit] of planned.entries()) {
+      // A megszakítás a plafon mintáját követi: a hátralévő egységek el sem indulnak,
+      // a már kész jegyzeteket a `finish` commitolja.
+      if (runtime.signal?.aborted) {
+        printing({
+          type: 'run:aborted',
+          reason: 'megszakítva',
+          spentUsd: model?.guard.spentUsd() ?? 0,
+          limitUsd: model?.modelConfig.costLimitUsd ?? 0,
+        })
+        for (const rest of planned.slice(index)) capped.add(unitKey(rest))
+        break
+      }
       // A forrás ebben a futásban is elbukhatott: a fordítás ilyenkor modellhívás
       // nélkül kimarad.
       const gap = alreadyDone(unit) ? null : sourceGap(unit, store)

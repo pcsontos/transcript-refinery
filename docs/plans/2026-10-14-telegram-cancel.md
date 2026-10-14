@@ -72,7 +72,7 @@ Az implementáció a `feat/telegram-cancel` ágon indul a friss `main`-ről, miu
 **Interfaces:**
 - Produces: `RunRuntime.signal?: AbortSignal`. Ha a signal megszakad, a következő egység előtt `run:aborted` (`reason: 'megszakítva'`) esemény, a hurok kilép, a `finish` lefut, a kód 0.
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 A `src/cli.test.ts` végére (az utolsó `describe` után) új blokk:
 
@@ -119,12 +119,12 @@ describe('commandRun — megszakítás signallal', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run src/cli.test.ts -t "megszakítás signallal"`
 Expected: FAIL — az első tesztben `hivasok.generate` 1, a másodikban 2.
 
-- [ ] **Step 3: Írd meg a megvalósítást**
+- [x] **Step 3: Írd meg a megvalósítást**
 
 `src/cli.ts`, a `RunRuntime` interfészben a `createClient` mező után:
 
@@ -150,12 +150,12 @@ Az egységhurok elején, közvetlenül a `for (const [index, unit] of planned.en
       }
 ```
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run src/cli.test.ts`
 Expected: PASS (a régi tesztek is).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cli.ts src/cli.test.ts
