@@ -36,7 +36,9 @@ A Telegram-botból megszakítható a saját, sorban álló vagy futó munka (`/c
 | Új állapot? | Igen: `cancelled`, a `JobStatus`-ban. Migráció nem kell. |
 | Mi van, ha a serve nem érhető el? | Az állapot csak a serve megerősítése után lesz `cancelled`; különben `accepted` marad, és a bot újrapróbálást kér. |
 | Mi van az addig elkészült kimenettel? | Megmarad és commitolódik, a terminál SIGINT-viselkedésével egyezően. |
-| Hogyan állítja le a serve a futást? | `AbortSignal` a lépéshatáron, a meglévő plafon-`break` mintáján. |
+| Hogyan állítja le a serve a futást? | `AbortSignal` a receptfutás egységhurkában, a meglévő plafon-`break` mintáján. A felirat-job nem figyeli a signalt. |
+| Kell új visszahívás-típus? | Nem. A serve a mai `ready`/`failed` visszahívást küldi; a megszakítás költsége a `failed` hibasorában jön (`failureLine`). |
+| Újraindítható a megszakított recept? | Igen, a gomb úgy indítja újra, mint a `failed` futást. |
 | Jogosultság | Csak a saját (`row.sub`) jobok szakíthatók meg, ahogy a `handleTap`-nál. |
 | `/version` | Csak a serve verziója. |
 | `/status` | A serve verziója és `busy` értéke, plusz a nyitott jobok és receptfutások száma a D1-ből. |
@@ -48,15 +50,16 @@ A Telegram-botból megszakítható a saját, sorban álló vagy futó munka (`/c
 A `handleUpdate` a `/start` ellenőrzése után, de a `linesForMessage` előtt felismeri az `^/(help|cancel|ping|version|status)(@botnév)?\s*$` alakú üzenetet. A parancs nem hoz létre jobot, és az üzenetnek nincs argumentuma.
 
 - **Jogosultság:** a `/help` kötés nélkül is megy, és utal a `/start`-ra. A többi parancs kötés nélkül a meglévő `BIND_FIRST` választ kapja.
-- **Ismeretlen `/parancs`:** a mai viselkedés marad.
-- **A serve elérése:** a `WorkerDeps` kap egy `serve` objektumot, amelyet az `index.ts` a `SERVE_URL`-ből és a titokból épít, a `reader.ts` időkorlátjával:
-  - `ping()`: `GET /ping`, válaszidővel (ms).
-  - `status()`: `GET /status`, `{version, busy}` vagy `null`, ha nem érhető el.
-  - `cancel(id)`: `POST /jobs/<id>/cancel` (az azonosító URL-kódolt). Kimenete `ok` (`200`), `unknown` (`404`) vagy `unreachable` (hálózati hiba, időtúllépés, `5xx`, `401`; `401`-nél naplózva).
-- **Válaszok:**
-  - `/ping`: "A szerver él (123 ms)." vagy "A szerver nem válaszol."
-  - `/version`: a serve verziója, vagy a "nem válaszol" üzenet.
+- **Ismeretlen `/parancs`:** a mai viselkedés marad: a `linesForMessage` a tokent kihagyja, a válasz "Nincs YouTube-videó az üzenetben."
+- **Ismételt webhook:** a parancsok a `/start`-hoz hasonlóan a `rememberUpdate`-tel szűrik az ismételt `update_id`-t.
+- **A serve elérése:** a `WorkerDeps` két új függvényt kap, amelyeket az `index.ts` a `SERVE_URL`-ből és a titokból épít, a `reader.ts` időkorlátjával (10 s):
+  - `probe()`: `GET /status` a titokkal, mért válaszidővel. Kimenete `{ok: true, ms, version, busy}`, `{ok: false, reason: 'secret'}` (`401`) vagy `{ok: false, reason: 'down'}` (minden más).
+  - `cancel(id)`: `POST /jobs/<id>/cancel` (az azonosító URL-kódolt). Kimenete `ok` (`200`), `unknown` (`404`) vagy `unreachable` (hálózati hiba, időtúllépés, minden más státusz).
+- **Válaszok** (mindhárom a `probe()`-ból):
+  - `/ping`: "A szerver él (123 ms)."
+  - `/version`: "A szerver verziója: 1.16.0."
   - `/status`: a serve verziója és `busy` értéke, a D1-ből a nyitott jobok és receptfutások száma (`queued`, `waiting`, `accepted`). Ha a serve nem érhető el, a D1-ből származó számok így is megjelennek.
+  - Ha a serve nem érhető el: "A szerver nem válaszol." Titokeltérésnél a meglévő `SERVE_SECRET_MISMATCH` szöveg.
   - `/help`: a parancsok listája és egy sor arról, hogy YouTube-linket kell küldeni. A pontos szöveg a tervben dől el.
 - **Közös lekérdezés:** a `JobStore` kap egy új metódust (pl. `openFor(sub)`), amely a felhasználó nyitott jobjait és receptfutásait adja. Ebből épül a `/cancel` lista és a `/status` számláló. Megvalósítás a `memoryStore`-ban és a D1-ben (`worker/src/d1.ts`).
 
@@ -72,7 +75,7 @@ A `parseTap` kap egy `cancel` típust: `c:<jobId>` egy jobra, `c:*` mindre. A `j
 
 ### Állapot
 
-A `JobStatus` kap egy `cancelled` értéket. A `due`, az `isDue` és az `activeByVideo` nem tekinti nyitottnak, tehát a cron nem kopogtatja, és ugyanarra a videóra új job indulhat.
+A `JobStatus` kap egy `cancelled` értéket. A `due`, az `isDue` és az `activeByVideo` nem tekinti nyitottnak, tehát a cron nem kopogtatja, és ugyanarra a videóra új job indulhat. A `decideRun` a `cancelled` futást a `failed`-hez hasonlóan újraindíthatónak veszi (`retry`); a `requestRun` a futás tényleges állapotából (`failed` vagy `cancelled`) állítja vissza `queued`-ra.
 
 ### Elemenként a döntés
 
@@ -81,50 +84,43 @@ Az állapotírás feltételes (`WHERE status = ?`), így a második megszakítá
 | Állapot | Mit tesz a Worker |
 |---|---|
 | `queued`, `waiting` | A serve-nek nem szól; azonnal `cancelled`. |
-| `accepted` | `serve.cancel(id)`. `ok` és `unknown`: `cancelled` (az `unknown` azt jelenti, hogy a serve újraindult, vagy a job már lefutott, nincs mit leállítani). `unreachable`: az állapot `accepted` marad, a bot újrapróbálást kér. |
+| `accepted` | `cancel(id)` a serve felé. `ok` és `unknown`: `cancelled` (az `unknown` azt jelenti, hogy a serve újraindult, vagy a job már lefutott, nincs mit leállítani). `unreachable`: az állapot `accepted` marad, a bot újrapróbálást kér. |
 | `ready`, `failed`, `cancelled` | Nincs változás; a bot jelzi, hogy nincs mit megszakítani. |
 
 ### Futási verseny
 
 A `settle` ma feltétel nélkül menti a sort. Ha a koppintással egy időben jön a cron kopogtatása és a serve `202`-t ad, a `settle` visszaírhatná `accepted`-et a `cancelled` helyére, a serve pedig futna tovább. Ezért:
-- A `save` és a `saveRun` soha nem ír felül `cancelled` sort.
-- Ha a mentés ezért nem hat (a `settle` `202`-t kapott, de a sor közben `cancelled` lett), a Worker utólag meghívja a serve cancel végpontját.
+- A `save` és a `saveRun` soha nem ír felül `cancelled` sort, és visszaadja, hogy az írás hatott-e.
+- Ha a `settle` `202`-t kapott, de a sor közben `cancelled` lett (a mentés nem hatott, vagy a futás `claimRun`-ja azért vesztett), a Worker utólag meghívja a serve cancel végpontját.
 
 ### Visszahívás
 
-A `handleCallback` és a `runCallback` `cancelled` sorra nem ír állapotot és nem küld "kész" értesítést. Egyetlen kivétel: egy `cancelled` visszahívás elkészült jegyzettel (`noteUrl`) egyszer elküldi a "Megszakítva. A `summary` elkészült: [link]" üzenetet; az egyszeriséget a `notified` jelző adja.
+A serve a mai `ready` vagy `failed` visszahívást küldi, új típus nincs.
+- **Felirat-job `cancelled` soron:** a visszahívás elnyelődik (nincs állapotírás, nincs üzenet).
+- **Receptfutás `cancelled` soron:** a Worker a visszahívást állapotváltozás nélkül egy üzenetként továbbítja: `failed` esetén a `runFailedLine` sort (a megszakításnál ebben van a költség: "A futás megállt: megszakítva (0.0040 $ / 5.0000 $)"), `ready` esetén a `runReadyMessage` linkjeit (ha a futás a megszakítás előtt végzett). A serve visszahívásonként egyszer küld, és a `cancelled` futást a cron nem kopogtatja, ezért külön egyszeriség-jelző nem kell.
 
 ### Visszajelzés
 
-A koppintásra a bot azonnal válaszol: "Megszakítva: [cím]", vagy "Megszakítás kérve", ha a futó lépés még befejeződik. A pontos szövegek a tervben dőlnek el.
+A koppintásra a bot azonnal válaszol: "Megszakítva: [cím]." A pontos szövegek a tervben vannak.
 
 ## 3. Serve: a megszakítás
 
 ### Végpont
 
 `POST /jobs/<id>/cancel`, ugyanazzal a Bearer-titokkal, mint a többi végpont (rossz vagy hiányzó titoknál `401`).
-- A `ServeGate` a `current` mellé kap egy `abort: AbortController | null` mezőt. A `handle` a friss job elfogadásakor hozza létre, és a `finally` a `current`-tel együtt nullázza.
+- A `ServeGate` a `current` mellé kap egy opcionális `abort?: AbortController` mezőt. A `handle` a friss job elfogadásakor hozza létre, a `signal`-ját az `onJob` második paramétereként adja át, és a `finally` a `current`-tel együtt törli.
 - Ha a `gate.current === id`, a végpont `abort()`-ol és `200`-at ad (ismételt hívásra is, amíg a job fut). Ha a `current` más, vagy a kaput nem job foglalja (pl. a `notes` lekérés), `404`.
 - A `200` azt jelenti, hogy a jelzés megérkezett, nem azt, hogy a futás már megállt. A kapu a futás leállásáig foglalt marad; a Worker ezt a meglévő `409` útvonalon kezeli.
 - A kérés naplózódik (`[serve] POST /jobs/<id>/cancel -> <státusz>`).
 
-### Megszakítási pontok
+### Megszakítási pont
 
-- **Receptfutás:** a `commandRun` runtime kap egy opcionális `signal`-t. Az egységhurok elején, a `processItem` előtt a `signal.aborted` esetén kibocsát egy `run:aborted` eseményt (`reason: "megszakítva"`, `spentUsd` a költségőrből), a hátralévő egységeket a plafon-ághoz hasonlóan kihagyottnak jelöli, és kilép a hurokból. A meglévő `finish` ezután a kész jegyzeteket commitolja. Mivel minden recept `maxIterations: 0`, az egységhatár gyakorlatilag a hívás határa; ha a konfig `maxIterations`-t emel, a futó egység a javítókörökkel együtt befejeződik (ismert korlát).
-- **Felirat-munka (`runJob`):** a signal ellenőrzése a `fetchSubtitle` előtt és a feltöltések között. Az éppen futó `yt-dlp` és a már elindult feltöltés befejeződik. Megszakításkor a `forgetWork` takarít. A már feltöltött R2-fájlok maradnak; `info.json` nélkül a `remoteReady` nem tekinti késznek, tehát a következő kérés újra letölt.
-- **Receptfutás előtt:** a `runRecipeJob` a fájlok kiírása és a `refine` előtt is ellenőriz.
+- **Receptfutás:** a signal a `runJob` → `refine` → `runRecipes` → `commandRun` (runtime `signal`) úton jut a hurokig. Az egységhurok elején, a `processItem` előtt a `signal.aborted` esetén kibocsát egy `run:aborted` eseményt (`reason: "megszakítva"`, `spentUsd` a költségőrből), a hátralévő egységeket a plafon-ághoz hasonlóan kihagyottnak jelöli, és kilép a hurokból. A meglévő `finish` ezután lefut. Mivel minden recept `maxIterations: 0`, az egységhatár gyakorlatilag a hívás határa; ha a konfig `maxIterations`-t emel, a futó egység a javítókörökkel együtt befejeződik (ismert korlát). Az első egység előtt érkező megszakítás nulla modellhívást jelent, ezért a `refine` előtt nem kell külön ellenőrzés.
+- **Felirat-job (`runJob` felirat-ága):** nem figyeli a signalt. A `yt-dlp` és az R2-feltöltés lefut, a visszahívást a Worker elnyeli. Ismert korlát: a kapu a letöltés végéig foglalt; ha ez zavar, későbbi körben pótolható.
 
-### A `runRecipes` kimenete megszakítás után
+### A `runRecipes` megszakítás után
 
-A meglévő jegyzetenkénti commit és push változatlanul lefut. Új kimeneti ág: ha a signal megszakadt, az eredmény `{ok: false, cancelled: true, done, noteUrl?, spentUsd?, note?}`.
-- `done`: a kért jegyzetfajták közül a ténylegesen meglévők.
-- `noteUrl`: csak akkor kerül bele, ha az átirat és legalább egy jegyzet elkészült.
-- `spentUsd`: a futás `run:aborted` eseményéből (a `failureLine` mintájára).
-- `note`: ha a push megszakítás után mégis elbukik, itt a hibaszöveg (a commit csak helyben van).
-
-### Visszahívás
-
-A `CallbackBody` mindkét oldalon (`src/serve/job.ts`, `worker/src/handle.ts`) kap egy harmadik alakot: `{status: 'cancelled', noteUrl?, done?, spentUsd?, note?}`. A felirat-munkánál `spentUsd` nincs. A serve naplója külön sorral rögzíti a megszakítást (`[serve] Munka megszakítva: <jobId>`).
+Nincs új kód: a hurok `break`-je után a `commandRun` kódja 0, a meglévő jegyzetenkénti commit és push lefut, a hiányzó jegyzet miatt a meglévő `failureLine` a `run:aborted` eseményből ezt adja: "A futás megállt: megszakítva (0.0040 $ / 5.0000 $)". Ha minden kért jegyzet a megszakítás előtt elkészült, az eredmény `ok: true`. A serve ezt a mai `failed`/`ready` visszahívással küldi. A naplóban a megszakítás külön sorral jelenik meg (`[serve] POST /jobs/<id>/cancel -> 200`).
 
 ## 4. Hibakezelés
 
@@ -144,16 +140,17 @@ A meglévő `*.test.ts` mintára, a `memoryStore`-ral és hamis klienssel.
 4. `accepted` megszakítása: a serve `ok` és `unknown` esetén `cancelled`; `unreachable` esetén `accepted` marad és újrapróbálást kér.
 5. Dupla koppintás: a második hatástalan.
 6. Futási verseny: a `settle` `202`-je nem írja felül a `cancelled` sort, és a Worker utólag meghívja a serve cancel végpontját.
-7. `ready` és `failed` visszahívás `cancelled` soron nem ír állapotot és nem küld üzenetet; `cancelled` visszahívás `noteUrl`-lel egyszer küld üzenetet, másodszor nem.
+7. Felirat-job `cancelled` soron a `ready` és `failed` visszahívás nem ír állapotot és nem küld üzenetet; receptfutás `cancelled` soron a `failed` visszahívás egy hibasort, a `ready` a linkeket küldi, az állapot `cancelled` marad.
 8. Más felhasználó jobjára a koppintás nem változtat semmit.
 9. `/help` kötés nélkül is megy; a többi parancs kötés nélkül `BIND_FIRST`-et ad.
-10. `/ping`, `/version`, `/status` működő és nem elérhető serve mellett; a `/status` a D1-ből számolja a nyitott munkákat.
+10. `/ping`, `/version`, `/status` működő, nem elérhető és titokeltérő serve mellett; a `/status` a D1-ből számolja a nyitott munkákat.
+11. A megszakított receptfutás a receptgombbal újraindul.
 
 **Serve**
-1. `POST /jobs/<id>/cancel`: futó jobra `200` (ismételve is), más azonosítóra `404`, titok nélkül `401`; a kapu a futás leállása után szabadul.
-2. `runRecipes` megszakítás után: a második egységre nincs modellhívás (hívásszámláló hamis klienssel), az első jegyzet commitolva van, az eredmény `cancelled` a `done` listával.
+1. `POST /jobs/<id>/cancel`: futó jobra `200` (ismételve is), és a futó `onJob` signalja megszakad; más azonosítóra és a `notes` foglalta kapura `404`; titok nélkül `401`.
+2. `runRecipes` két recepttel, az első egység után megszakítva: a második egységre nincs modellhívás, az első jegyzet commitolva van, az eredmény `ok: false` a "megszakítva" költségsorral.
 3. `commandRun` indulás előtt megszakítva: nulla modellhívás, `run:aborted` esemény `reason: "megszakítva"`.
-4. `runJob` a feltöltés előtt megszakítva: nincs `store.put`, a `deletePair` lefut, a visszahívás `cancelled`.
+4. A `runJob` a receptjob signalját a `refine`-nak adja tovább.
 
 **Kézi próba az élő környezetben:** a peter-mba-n kétreceptes futást indítani, kiadni a `/cancel`-t, és ellenőrizni: a serve naplója leállást mutat, a `/status` `busy` értéke visszaáll `null`-ra, és a vaultban csak a kész jegyzet van.
 
@@ -165,7 +162,5 @@ A `docs/operations/telegram-worker-topology.md` kapja meg az új végpontot és 
 
 ## Nyitott pontok a tervhez
 
-- A parancsok és a visszajelzések pontos szövegei (`/help`, "Megszakítva…", "Megszakítás kérve").
-- A `commandRun` kilépési kódja megszakításkor: a `runRecipes` a megszakítást a `signal.aborted` alapján ismeri fel, nem a kódból, de a plan szintjén a hurok utáni ágat érdemes ellenőrizni.
-- Hogyan bánik a mai `linesForMessage` az ismeretlen `/parancs`-csal: a terv ellenőrzi, és tesztben rögzíti.
+- A parancsok és a visszajelzések pontos szövegei: a tervben.
 - A #220 címének és törzsének frissítése a spec jóváhagyása után (a `/help`, `/ping`, `/version`, `/status` és a döntések belekerülnek).
