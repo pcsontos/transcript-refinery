@@ -209,7 +209,17 @@ Ha valóban töréspontokon szeretnél megállni a futás során, a `./scripts/t
 
 ## 4. A Bot bemenetei és viselkedése
 
-A botnak nincsenek hagyományos `/parancsai`; a beérkező üzenetet szóközök mentén szavakra bontja, és minden elemet önállóan értékel (`worker/src/plan.ts`):
+A bot öt parancsot ismer:
+
+| Parancs | Mit csinál |
+|---|---|
+| `/help` | A parancsok listája; kötés nélkül is megy. |
+| `/cancel` | Gombos lista a saját nyitott munkákról, alul `Mind megszakítása`. A sorban álló munka azonnal `cancelled`; a futót a Worker a serve `POST /jobs/<id>/cancel` végpontjával állítja le, és csak a `200`/`404` után írja `cancelled`-re. Ha a serve nem érhető el, az állapot marad, és a bot újrapróbálást kér. |
+| `/ping` | A serve elérhetősége és válaszideje (`GET /status`). |
+| `/version` | A serve verziója. |
+| `/status` | A serve verziója, az épp futó munka, és a nyitott videók és receptfutások száma a D1-ből. |
+
+A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden elemet önállóan értékel (`worker/src/plan.ts`):
 
 | Bemenet formátuma | Feldolgozás módja | Bot válasza |
 |---|---|---|

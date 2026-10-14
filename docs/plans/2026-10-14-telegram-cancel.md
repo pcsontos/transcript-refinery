@@ -1535,7 +1535,7 @@ git commit -m "feat(worker): Add the help, ping, version and status commands"
 - Modify: `README.md` (a `serve` végpontjai, ~87–90. sor)
 - Modify: `docs/operations/telegram-worker-topology.md` (4. szakasz eleje)
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 A `README.md`-ben a `GET /status` bekezdése után új bekezdés:
 
@@ -1546,7 +1546,7 @@ receptfutás a következő egység előtt áll meg, a kész jegyzetek commitoló
 Más azonosítóra `404`. A felirat-letöltés nem szakad meg.
 ```
 
-- [ ] **Step 2: Topológia-dokumentum**
+- [x] **Step 2: Topológia-dokumentum**
 
 A `docs/operations/telegram-worker-topology.md` 4. szakaszában a „A botnak nincsenek hagyományos `/parancsai`;” kezdetű mondat helyére:
 
@@ -1564,12 +1564,12 @@ A bot öt parancsot ismer; minden más üzenetet szóközök mentén szavakra bo
 A szöveges üzenetek értelmezése:
 ```
 
-- [ ] **Step 3: Ellenőrzés**
+- [x] **Step 3: Ellenőrzés**
 
 Run: `pnpm test && pnpm lint`
 Expected: PASS (a dokumentum nem tesztelt, de a lint a markdownt nem érinti).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md docs/operations/telegram-worker-topology.md
