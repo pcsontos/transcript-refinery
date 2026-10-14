@@ -3,6 +3,39 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.16.0] — 2026-10-14
+
+A Telegram-botból megszakítható a saját, sorban álló vagy futó munka, és a bot négy tájékoztató parancsot is ismer.
+
+### ✨ Megszakítás és új parancsok
+
+- **`/cancel`:** Gombos lista a saját nyitott munkáidról, alul a `Mind
+  megszakítása` gombbal. A sorban álló munka azonnal megáll, a futó receptfutás
+  a következő jegyzet előtt. Az addig elkészült jegyzetek megmaradnak és
+  bekerülnek a vaultba, a megszakítás költségét a bot a hibasorban jelzi:
+  `A futás megállt: megszakítva (0.0040 $ / 5.0000 $)`. A megszakított futás a
+  receptgombbal újraindítható (#220).
+- **Ha a szerver nem érhető el:** A futó munka csak akkor számít
+  megszakítottnak, ha a szerver megerősítette; különben a bot újrapróbálást kér
+  (#220).
+- **`/help`, `/ping`, `/version`, `/status`:** A súgó kötés nélkül is megy. A
+  `/ping` a szerver válaszidejét, a `/version` a szerver verzióját, a `/status`
+  a verziót, az épp futó munkát és a nyitott videók és receptfutások számát
+  mutatja (#220).
+
+### 🔧 Szerver
+
+- **Új végpont:** `POST /jobs/<id>/cancel` a futó munkát állítja le (ugyanazzal a
+  Bearer-tokennel, mint a többi végpont). A felirat-letöltés nem szakad meg,
+  ennek eredményét a bot elnyeli (#220).
+
+### ⚠️ Telepítési sorrend és ismert korlát
+
+- Előbb a szerver frissüljön, utána a Worker, különben a régi szerver a cancel
+  hívásra `404`-et adna.
+- Ha a megszakított futás gombját a leállás előtt újra megnyomod, az
+  újraindítás elveszhet. Ez a #229-ben nyitott.
+
 ## [1.15.0] — 2026-10-12
 
 A vault `git log` sorából mostantól látszik, melyik videó melyik jegyzete került be.
@@ -728,6 +761,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.16.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.16.0
 [1.15.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.15.0
 [1.14.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.14.1
 [1.14.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.14.0
