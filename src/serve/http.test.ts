@@ -15,6 +15,7 @@ afterEach(async () => {
     await once(server, 'close')
   }
   gate.current = null
+  gate.abort = undefined
 })
 
 async function post(port: number, secret: string, body: unknown): Promise<number> {
@@ -22,6 +23,14 @@ async function post(port: number, secret: string, body: unknown): Promise<number
     method: 'POST',
     headers: { authorization: `Bearer ${secret}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  })
+  return response.status
+}
+
+async function cancel(port: number, secret: string, id: string): Promise<number> {
+  const response = await fetch(`http://127.0.0.1:${port}/jobs/${encodeURIComponent(id)}/cancel`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${secret}` },
   })
   return response.status
 }
@@ -127,6 +136,46 @@ describe('createServeServer', () => {
     expect((await fetch(`${base}/ismeretlen`)).status).toBe(404)
     expect((await fetch(`${base}/ping`, { method: 'POST' })).status).toBe(404)
     expect((await fetch(`${base}/jobs`)).status).toBe(404)
+  })
+
+  it('a cancel a futó job signalját megszakítja: rossz titokra 401, más azonosítóra 404, ismételve is 200', async () => {
+    let signal: AbortSignal | undefined
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    server = createServeServer({
+      secret: 'titok',
+      gate,
+      version: '9.9.9',
+      onJob: (_job, jobSignal) => {
+        signal = jobSignal
+        return held
+      },
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const port = (server.address() as { port: number }).port
+    const job = { jobId: '5:abcdefghijk:summary', videoId: 'abcdefghijk', url: 'https://www.youtube.com/watch?v=abcdefghijk', recipes: ['summary'] }
+    expect(await post(port, 'titok', job)).toBe(202)
+    expect(await cancel(port, 'rossz', job.jobId)).toBe(401)
+    expect(await cancel(port, 'titok', '5:abcdefghijk:qa')).toBe(404)
+    expect(signal?.aborted).toBe(false)
+    expect(await cancel(port, 'titok', job.jobId)).toBe(200)
+    expect(signal?.aborted).toBe(true)
+    expect(await cancel(port, 'titok', job.jobId)).toBe(200)
+    release()
+  })
+
+  it('a notes foglalta kapura és üres kapura a cancel 404', async () => {
+    server = createServeServer({ secret: 'titok', gate, version: '9.9.9', onJob: () => Promise.resolve() })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const port = (server.address() as { port: number }).port
+    expect(await cancel(port, 'titok', 'notes')).toBe(404)
+    const free = claimGate(gate, 'notes')
+    expect(await cancel(port, 'titok', 'notes')).toBe(404)
+    free?.()
   })
 })
 

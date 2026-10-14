@@ -374,7 +374,7 @@ git commit -m "feat(serve): Pass the abort signal down to the recipe run"
   - `ServeServerInput.onJob: (job: ServeJob, signal: AbortSignal) => Promise<void>`
   - `POST /jobs/<id>/cancel` (Bearer): `200`, ha a `gate.current === id` és van controller (ismételve is); egyébként `404`; rossz titokra `401`.
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `src/serve/http.test.ts`: az `afterEach`-be a `gate.current = null` mellé:
 
@@ -438,12 +438,12 @@ async function cancel(port: number, secret: string, id: string): Promise<number>
   })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run src/serve/http.test.ts`
 Expected: FAIL — a cancel útvonal ma `404` minden kérésre, a rossz titokra is.
 
-- [ ] **Step 3: Írd meg a megvalósítást**
+- [x] **Step 3: Írd meg a megvalósítást**
 
 `src/serve/http.ts`:
 
@@ -514,12 +514,12 @@ a friss job indítása:
     },
 ```
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run src/serve && pnpm typecheck`
 Expected: PASS, típushiba nélkül.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/http.ts src/serve/command.ts src/serve/http.test.ts

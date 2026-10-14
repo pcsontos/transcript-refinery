@@ -162,11 +162,11 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     version: VERSION,
     // A config kérésenként töltődik, mint a receptfuttatásnál: a vault-config szerkesztése újraindítás nélkül hat.
     notes: createNotesSource({ load: () => loadCliConfig(configArg), claim: () => claimGate(gate, 'notes') }),
-    onJob: async (job: ServeJob) => {
+    onJob: async (job: ServeJob, signal: AbortSignal) => {
       console.log(`[serve] Munka végrehajtása indult: ${job.jobId} (${job.url})`)
       try {
-        await runJob(job, effects)
-        console.log(`[serve] Munka kész: ${job.jobId}`)
+        await runJob(job, effects, signal)
+        console.log(`[serve] Munka ${signal.aborted ? 'megszakítva' : 'kész'}: ${job.jobId}`)
       } catch (err) {
         console.error(`[serve] Munka sikertelen: ${job.jobId}:`, err)
       }
