@@ -5,6 +5,8 @@ import { NotesUnavailable, type NotesSource } from './notes.js'
 
 export interface ServeGate {
   current: string | null
+  /** A futó job megszakítója; a nem-job foglalásnál (`notes`) nincs. */
+  abort?: AbortController
 }
 
 export function acceptJob(gate: ServeGate, jobId: string): 202 | 409 {
@@ -81,10 +83,11 @@ export interface ServeServerInput {
   version: string
   /** A `/notes` útvonalak forrása; hiányában a két útvonal `503`. */
   notes?: NotesSource
-  onJob: (job: ServeJob) => Promise<void>
+  onJob: (job: ServeJob, signal: AbortSignal) => Promise<void>
 }
 
 const NOTE_PATH = /^\/notes\/([^/]+)\/([^/]+)$/
+const CANCEL_PATH = /^\/jobs\/([^/]+)\/cancel$/
 
 function decoded(segment: string | undefined): string | null {
   if (segment === undefined) return null
@@ -163,6 +166,21 @@ async function handle(request: IncomingMessage, response: ServerResponse, input:
     await notesRoute(path, request, response, input)
     return
   }
+  const cancel = CANCEL_PATH.exec(path)
+  if (request.method === 'POST' && cancel !== null) {
+    if (!authorized(request.headers.authorization, input.secret)) {
+      rejectUnauthorized(request, response)
+      return
+    }
+    const id = decoded(cancel[1])
+    // Csak a futó jobot lehet megszakítani; a `200` azt jelenti, hogy a jel megérkezett.
+    const controller = id !== null && id === input.gate.current ? input.gate.abort : undefined
+    controller?.abort()
+    const status = controller === undefined ? 404 : 200
+    console.log(`[serve] POST /jobs/${id ?? '?'}/cancel -> HTTP ${status}`)
+    send(response, status)
+    return
+  }
   if (request.method !== 'POST' || path !== '/jobs') {
     send(response, 404)
     return
@@ -188,10 +206,13 @@ async function handle(request: IncomingMessage, response: ServerResponse, input:
   const status = acceptJob(input.gate, body.jobId)
   console.log(`[serve] POST /jobs: jobId=${body.jobId} videoId=${body.videoId} -> HTTP ${status} (fresh=${fresh})`)
   if (status === 202 && fresh) {
+    const controller = new AbortController()
+    input.gate.abort = controller
     void Promise.resolve()
-      .then(() => input.onJob(body))
+      .then(() => input.onJob(body, controller.signal))
       .finally(() => {
         input.gate.current = null
+        input.gate.abort = undefined
       })
   }
   send(response, status)

@@ -116,4 +116,23 @@ describe('commandServe környezeti változók ellenőrzése', () => {
     // töltené, nem bukna el.
     await expect(load?.()).rejects.toThrow('Nincs konfigurációs fájl: /nincs/ilyen/refinery.config.yaml')
   })
+
+
+  it('a refine a signalt a receptfuttatásnak adja', async () => {
+    const seen: { signal?: AbortSignal }[] = []
+    const effects = serveEffects({
+      outDir: '/tmp',
+      languages: ['hu'],
+      store: memoryStore(),
+      fetchSubtitle: () => Promise.resolve({ code: 0, stdout: '', stderr: '' }),
+      callback: () => Promise.resolve(),
+      runRecipes: (input) => {
+        seen.push(input)
+        return Promise.resolve({ ok: true, noteUrl: 'x' })
+      },
+    })
+    const controller = new AbortController()
+    await effects.refine('abcdefghijk', ['summary'], undefined, controller.signal)
+    expect(seen[0]?.signal).toBe(controller.signal)
+  })
 })

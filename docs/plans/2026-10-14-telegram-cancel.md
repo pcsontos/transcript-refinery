@@ -72,7 +72,7 @@ Az implementáció a `feat/telegram-cancel` ágon indul a friss `main`-ről, miu
 **Interfaces:**
 - Produces: `RunRuntime.signal?: AbortSignal`. Ha a signal megszakad, a következő egység előtt `run:aborted` (`reason: 'megszakítva'`) esemény, a hurok kilép, a `finish` lefut, a kód 0.
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 A `src/cli.test.ts` végére (az utolsó `describe` után) új blokk:
 
@@ -119,12 +119,12 @@ describe('commandRun — megszakítás signallal', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run src/cli.test.ts -t "megszakítás signallal"`
 Expected: FAIL — az első tesztben `hivasok.generate` 1, a másodikban 2.
 
-- [ ] **Step 3: Írd meg a megvalósítást**
+- [x] **Step 3: Írd meg a megvalósítást**
 
 `src/cli.ts`, a `RunRuntime` interfészben a `createClient` mező után:
 
@@ -150,12 +150,12 @@ Az egységhurok elején, közvetlenül a `for (const [index, unit] of planned.en
       }
 ```
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run src/cli.test.ts`
 Expected: PASS (a régi tesztek is).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cli.ts src/cli.test.ts
@@ -179,7 +179,7 @@ git commit -m "feat(run): Stop the run on an abort signal before the next unit"
   - `JobEffects.refine: (videoId: string, recipes: readonly string[], lang?: LanguageTag, signal?: AbortSignal) => Promise<RecipesOutcome>`
   - `runJob(job: ServeJob, effects: JobEffects, signal?: AbortSignal): Promise<void>`
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `src/serve/summary.test.ts`, a `describe('runRecipes', …)` blokk végére:
 
@@ -266,12 +266,12 @@ git commit -m "feat(run): Stop the run on an abort signal before the next unit"
   })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run src/serve/summary.test.ts src/serve/job.test.ts src/serve/command.test.ts`
 Expected: FAIL — a `runRecipes` két modellhívást tesz, és `ok: true`-t ad; a másik kettőben a signal `undefined`.
 
-- [ ] **Step 3: Írd meg a megvalósítást**
+- [x] **Step 3: Írd meg a megvalósítást**
 
 `src/serve/summary.ts`, a `runRecipes` bemenetének típusában a `load?` mező után:
 
@@ -346,12 +346,12 @@ a `serveEffects` visszatérési típusában:
       refineWith({ videoId, outDir: input.outDir, recipes, lang, signal, load: () => loadCliConfig(input.configArg) }),
 ```
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run src/serve`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/summary.ts src/serve/job.ts src/serve/command.ts src/serve/summary.test.ts src/serve/job.test.ts src/serve/command.test.ts
@@ -374,7 +374,7 @@ git commit -m "feat(serve): Pass the abort signal down to the recipe run"
   - `ServeServerInput.onJob: (job: ServeJob, signal: AbortSignal) => Promise<void>`
   - `POST /jobs/<id>/cancel` (Bearer): `200`, ha a `gate.current === id` és van controller (ismételve is); egyébként `404`; rossz titokra `401`.
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `src/serve/http.test.ts`: az `afterEach`-be a `gate.current = null` mellé:
 
@@ -438,12 +438,12 @@ async function cancel(port: number, secret: string, id: string): Promise<number>
   })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run src/serve/http.test.ts`
 Expected: FAIL — a cancel útvonal ma `404` minden kérésre, a rossz titokra is.
 
-- [ ] **Step 3: Írd meg a megvalósítást**
+- [x] **Step 3: Írd meg a megvalósítást**
 
 `src/serve/http.ts`:
 
@@ -514,12 +514,12 @@ a friss job indítása:
     },
 ```
 
-- [ ] **Step 4: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 4: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run src/serve && pnpm typecheck`
 Expected: PASS, típushiba nélkül.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/http.ts src/serve/command.ts src/serve/http.test.ts
@@ -543,7 +543,7 @@ git commit -m "feat(serve): Add a cancel endpoint for the running job"
   - `WorkerDeps.cancel: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>`
   - `export const TIMEOUT_MS = 10_000` (`reader.ts`)
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `worker/src/handle.test.ts`: az importban a `handle.js`-ből a `findRow` is kell:
 
@@ -660,12 +660,12 @@ describe('megszakítás: verseny és késői visszahívás', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts -t "megszakítás: verseny"`
 Expected: FAIL — `store.claimJob is not a function`, a futás `accepted` lesz, a késői `ready` kiküldi a receptgombokat, a `cancelled` futásra a gomb nem indít.
 
-- [ ] **Step 3: Írd meg a megvalósítást — store**
+- [x] **Step 3: Írd meg a megvalósítást — store**
 
 `worker/src/store.ts`:
 
@@ -782,7 +782,7 @@ a `saveRun` és a `claimRun` helyére:
     },
 ```
 
-- [ ] **Step 4: Írd meg a megvalósítást — plan, handle, index**
+- [x] **Step 4: Írd meg a megvalósítást — plan, handle, index**
 
 `worker/src/plan.ts`, a `decideRun`-ban:
 
@@ -894,12 +894,12 @@ a `deps(env, …)` objektumban a `knock` után:
     },
 ```
 
-- [ ] **Step 5: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 5: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run worker && pnpm exec tsc -p worker/tsconfig.json --noEmit`
 Expected: PASS, típushiba nélkül. Ha egy régi teszt a `memoryStore` objektumainak közös hivatkozására épült, és most bukik, állj meg és jelezd; ne írd át a tesztet a viselkedés ellenőrzése nélkül.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/store.ts worker/src/d1.ts worker/src/plan.ts worker/src/handle.ts worker/src/reader.ts worker/src/index.ts worker/src/handle.test.ts
@@ -922,7 +922,7 @@ git commit -m "feat(worker): Add the cancelled state and guard it against late w
   - `cancelKeyboard(jobs)`, `cancelledLine(title)`, `CANCEL_LINE`, `NOTHING_TO_CANCEL`, `CANCEL_CLOSED`, `CANCEL_RETRY` (`messages.ts`, a `plan.ts` re-exportálja).
   - `handleCommand(updateId, command, userId, chatId, deps)` (`handle.ts`, belső).
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `worker/src/handle.test.ts`, a `tap` segédfüggvény után:
 
@@ -1039,12 +1039,12 @@ describe('/cancel', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts -t "/cancel"`
 Expected: FAIL — a `/cancel` ma `Nincs YouTube-videó az üzenetben.` választ kap, a `c:` gomb `null`.
 
-- [ ] **Step 3: Írd meg a megvalósítást — store**
+- [x] **Step 3: Írd meg a megvalósítást — store**
 
 `worker/src/store.ts`, a `JobStore` interfészben:
 
@@ -1089,7 +1089,7 @@ a `memoryStore`-ban:
     },
 ```
 
-- [ ] **Step 4: Írd meg a megvalósítást — szövegek és gomb**
+- [x] **Step 4: Írd meg a megvalósítást — szövegek és gomb**
 
 `worker/src/messages.ts` végére:
 
@@ -1138,7 +1138,7 @@ a `parseTap`-ben a `summary` ág után:
   }
 ```
 
-- [ ] **Step 5: Írd meg a megvalósítást — handle**
+- [x] **Step 5: Írd meg a megvalósítást — handle**
 
 `worker/src/handle.ts`, az importokban a `./plan.js` listájába `CANCEL_CLOSED`, `CANCEL_LINE`, `CANCEL_RETRY`, `NOTHING_TO_CANCEL`, `cancelKeyboard`, `cancelledLine`; a `./store.js` importja (a mai `import type` sor helyére):
 
@@ -1246,12 +1246,12 @@ a `handleTap`-ben, közvetlenül az `if (tap === null) return []` után:
   }
 ```
 
-- [ ] **Step 6: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 6: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run worker && pnpm exec tsc -p worker/tsconfig.json --noEmit && pnpm lint`
 Expected: PASS, típus- és lint-hiba nélkül.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add worker/src/store.ts worker/src/d1.ts worker/src/messages.ts worker/src/plan.ts worker/src/handle.ts worker/src/handle.test.ts
@@ -1273,7 +1273,7 @@ git commit -m "feat(worker): Cancel open jobs from Telegram with /cancel"
   - `WorkerDeps.probe: () => Promise<Probe>` — `GET /status` a titokkal; `401` → `secret`, minden más hiba → `down`.
   - `HELP_TEXT`, `pingLine(probe)`, `versionLine(probe)`, `statusText(probe, jobs, runs)`.
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `worker/src/handle.test.ts`: az importban a `memoryStore` mellé a `Probe` típus a `./plan.js`-ből:
 
@@ -1383,12 +1383,12 @@ describe('tájékoztató parancsok', () => {
   })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts worker/src/entry.test.ts -t "tájékoztató parancsok|/ping"`
 Expected: FAIL — a `/help` és a `/ping` ma `Nincs YouTube-videó az üzenetben.` választ kap.
 
-- [ ] **Step 3: Írd meg a megvalósítást — szövegek**
+- [x] **Step 3: Írd meg a megvalósítást — szövegek**
 
 `worker/src/messages.ts` végére:
 
@@ -1437,7 +1437,7 @@ export function statusText(probe: Probe, jobs: number, runs: number): string {
   statusText,
 ```
 
-- [ ] **Step 4: Írd meg a megvalósítást — handle és index**
+- [x] **Step 4: Írd meg a megvalósítást — handle és index**
 
 `worker/src/handle.ts`, az importban a `./plan.js` listájába `HELP_TEXT`, `pingLine`, `statusText`, `versionLine`, `type Probe`. A `WorkerDeps`-ben a `cancel` után:
 
@@ -1515,12 +1515,12 @@ async function handleCommand(
     },
 ```
 
-- [ ] **Step 5: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 5: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm test && pnpm typecheck && pnpm exec tsc -p worker/tsconfig.json --noEmit && pnpm lint`
 Expected: PASS, típus- és lint-hiba nélkül.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/messages.ts worker/src/plan.ts worker/src/handle.ts worker/src/index.ts worker/src/handle.test.ts worker/src/entry.test.ts
@@ -1535,7 +1535,7 @@ git commit -m "feat(worker): Add the help, ping, version and status commands"
 - Modify: `README.md` (a `serve` végpontjai, ~87–90. sor)
 - Modify: `docs/operations/telegram-worker-topology.md` (4. szakasz eleje)
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 A `README.md`-ben a `GET /status` bekezdése után új bekezdés:
 
@@ -1546,7 +1546,7 @@ receptfutás a következő egység előtt áll meg, a kész jegyzetek commitoló
 Más azonosítóra `404`. A felirat-letöltés nem szakad meg.
 ```
 
-- [ ] **Step 2: Topológia-dokumentum**
+- [x] **Step 2: Topológia-dokumentum**
 
 A `docs/operations/telegram-worker-topology.md` 4. szakaszában a „A botnak nincsenek hagyományos `/parancsai`;” kezdetű mondat helyére:
 
@@ -1564,12 +1564,12 @@ A bot öt parancsot ismer; minden más üzenetet szóközök mentén szavakra bo
 A szöveges üzenetek értelmezése:
 ```
 
-- [ ] **Step 3: Ellenőrzés**
+- [x] **Step 3: Ellenőrzés**
 
 Run: `pnpm test && pnpm lint`
 Expected: PASS (a dokumentum nem tesztelt, de a lint a markdownt nem érinti).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add README.md docs/operations/telegram-worker-topology.md

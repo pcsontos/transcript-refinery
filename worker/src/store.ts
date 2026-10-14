@@ -1,4 +1,4 @@
-export type JobStatus = 'queued' | 'waiting' | 'accepted' | 'ready' | 'failed'
+export type JobStatus = 'queued' | 'waiting' | 'accepted' | 'ready' | 'failed' | 'cancelled'
 
 export interface JobRow {
   jobId: string
@@ -47,7 +47,10 @@ export interface JobStore {
   listByUpdate(updateId: number): Promise<JobRow[]>
   activeByVideo(videoId: string): Promise<JobRow | null>
   insert(row: JobRow): Promise<void>
-  save(row: JobRow): Promise<void>
+  /** `false`, ha nem hatott: a `cancelled` sort semmi nem írja felül. */
+  save(row: JobRow): Promise<boolean>
+  /** Feltételes állapotváltás, mint a `claimRun`. */
+  claimJob(jobId: string, expect: JobStatus, next: JobStatus): Promise<boolean>
   due(now: number): Promise<JobRow[]>
   rememberUpdate(updateId: number): Promise<boolean>
   bindingFor(telegramUserId: string): Promise<Binding | null>
@@ -57,13 +60,16 @@ export interface JobStore {
   saveToken(token: LinkToken): Promise<void>
   run(runId: string): Promise<RunRow | null>
   insertRun(run: RunRow): Promise<boolean>
-  saveRun(run: RunRow): Promise<void>
+  /** `false`, ha nem hatott: a `cancelled` futást semmi nem írja felül. */
+  saveRun(run: RunRow): Promise<boolean>
+  /** A felhasználó jobjai, amelyek nyitottak vagy van nyitott futásuk, és a nyitott futásaik. */
+  openFor(sub: string): Promise<{ jobs: JobRow[]; runs: RunRow[] }>
   claimRun(runId: string, expect: JobStatus, next: JobStatus): Promise<boolean>
   runsFor(jobId: string): Promise<RunRow[]>
   dueRuns(now: number): Promise<RunRow[]>
 }
 
-const OPEN: readonly JobStatus[] = ['queued', 'waiting', 'accepted']
+export const OPEN: readonly JobStatus[] = ['queued', 'waiting', 'accepted']
 const FIFTEEN_MINUTES = 15 * 60 * 1000
 
 function isDue(item: { status: JobStatus; acceptedAt: number | null }, now: number): boolean {
@@ -87,9 +93,19 @@ export function memoryStore(): JobStore {
     },
     save: (row) => {
       const index = rows.findIndex((item) => item.jobId === row.jobId)
+      // A cron 202-je és a megszakítás versenyének őre, mint a D1-ben.
+      if (rows[index]?.status === 'cancelled') return Promise.resolve(false)
       if (index === -1) rows.push(row)
       else rows[index] = row
-      return Promise.resolve()
+      return Promise.resolve(true)
+    },
+    claimJob: (jobId, expect, next) => {
+      const index = rows.findIndex((item) => item.jobId === jobId)
+      const row = rows[index]
+      if (row === undefined || row.status !== expect) return Promise.resolve(false)
+      // Új objektum, mint a D1-nél: aki a régit tartja, elavult másolatot lát.
+      rows[index] = { ...row, status: next }
+      return Promise.resolve(true)
     },
     due: (now) => Promise.resolve(rows.filter((row) => isDue(row, now))),
     rememberUpdate: (updateId) => {
@@ -131,18 +147,24 @@ export function memoryStore(): JobStore {
     },
     saveRun: (run) => {
       const index = runs.findIndex((item) => item.runId === run.runId)
+      if (runs[index]?.status === 'cancelled') return Promise.resolve(false)
       if (index === -1) runs.push(run)
       else runs[index] = run
-      return Promise.resolve()
+      return Promise.resolve(true)
     },
     claimRun: (runId, expect, next) => {
-      const run = runs.find((item) => item.runId === runId)
+      const index = runs.findIndex((item) => item.runId === runId)
+      const run = runs[index]
       if (run === undefined || run.status !== expect) return Promise.resolve(false)
-      run.status = next
-      run.error = null
-      run.notified = false
-      run.acceptedAt = null
+      runs[index] = { ...run, status: next, error: null, notified: false, acceptedAt: null }
       return Promise.resolve(true)
+    },
+    openFor: (sub) => {
+      const openRuns = runs.filter((run) => OPEN.includes(run.status))
+      const jobs = rows.filter(
+        (row) => row.sub === sub && (OPEN.includes(row.status) || openRuns.some((run) => run.jobId === row.jobId)),
+      )
+      return Promise.resolve({ jobs, runs: openRuns.filter((run) => jobs.some((row) => row.jobId === run.jobId)) })
     },
     runsFor: (jobId) => Promise.resolve(runs.filter((item) => item.jobId === jobId)),
     dueRuns: (now) => Promise.resolve(runs.filter((item) => isDue(item, now))),

@@ -89,6 +89,11 @@ hitelesítés nélkül válaszol (`ok`, illetve `{"version": …}`), a `GET /sta
 a `REFINERY_SERVE_SECRET` Bearer-tokenjével a verziót és az éppen futó munka
 azonosítóját adja (`{"version": …, "busy": <jobId> | null}`).
 
+A `POST /jobs/<id>/cancel` (ugyanazzal a Bearer-tokennel) a futó munkát
+állítja le: `200`, ha a megadott azonosító fut, és a jelzés megérkezett; a
+receptfutás a következő egység előtt áll meg, a kész jegyzetek commitolódnak.
+Más azonosítóra `404`. A felirat-letöltés nem szakad meg.
+
 A `/notes` oldal adatait is a `serve` adja, a `REFINERY_SERVE_SECRET`
 Bearer-tokenjével: a `GET /notes` a vault jegyzetmappájának listáját
 (elemenként cím, YouTube-cím, `origin`, a legfrissebb jegyzet ideje és a kész

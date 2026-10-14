@@ -17,6 +17,7 @@ type RecipesRun = (input: {
   outDir: string
   recipes: readonly string[]
   lang?: LanguageTag
+  signal?: AbortSignal
   load?: () => Promise<{ cfg: Config; raw: unknown }>
 }) => Promise<RecipesOutcome>
 
@@ -33,7 +34,12 @@ export function serveEffects(input: {
   configArg?: string
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
-  refine: (videoId: string, recipes: readonly string[], lang?: LanguageTag) => Promise<RecipesOutcome>
+  refine: (
+    videoId: string,
+    recipes: readonly string[],
+    lang?: LanguageTag,
+    signal?: AbortSignal,
+  ) => Promise<RecipesOutcome>
 } {
   const refineWith = input.runRecipes ?? defaultRunRecipes
   return {
@@ -49,8 +55,8 @@ export function serveEffects(input: {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, body)
     },
-    refine: (videoId, recipes, lang) =>
-      refineWith({ videoId, outDir: input.outDir, recipes, lang, load: () => loadCliConfig(input.configArg) }),
+    refine: (videoId, recipes, lang, signal) =>
+      refineWith({ videoId, outDir: input.outDir, recipes, lang, signal, load: () => loadCliConfig(input.configArg) }),
   }
 }
 
@@ -156,11 +162,12 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     version: VERSION,
     // A config kérésenként töltődik, mint a receptfuttatásnál: a vault-config szerkesztése újraindítás nélkül hat.
     notes: createNotesSource({ load: () => loadCliConfig(configArg), claim: () => claimGate(gate, 'notes') }),
-    onJob: async (job: ServeJob) => {
+    onJob: async (job: ServeJob, signal: AbortSignal) => {
       console.log(`[serve] Munka végrehajtása indult: ${job.jobId} (${job.url})`)
       try {
-        await runJob(job, effects)
-        console.log(`[serve] Munka kész: ${job.jobId}`)
+        await runJob(job, effects, signal)
+        // A felirat-ág nem figyeli a signalt: az végigfut, akkor is, ha a kérés megérkezett.
+        console.log(`[serve] Munka ${signal.aborted && job.recipes !== undefined ? 'megszakítva' : 'kész'}: ${job.jobId}`)
       } catch (err) {
         console.error(`[serve] Munka sikertelen: ${job.jobId}:`, err)
       }

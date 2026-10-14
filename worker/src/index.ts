@@ -9,7 +9,7 @@ import {
   type WorkerDeps,
 } from './handle.js'
 import { LINK_INVALID_PAGE, newToken, type Key } from './plan.js'
-import { notePage, notesPage, type ReaderDeps } from './reader.js'
+import { notePage, notesPage, TIMEOUT_MS, type ReaderDeps } from './reader.js'
 
 interface Env {
   DB: D1Like
@@ -96,6 +96,36 @@ function deps(env: Env, linkBase = ''): WorkerDeps {
         return 'down'
       } catch {
         return 'down'
+      }
+    },
+    cancel: async (id) => {
+      try {
+        const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/jobs/${encodeURIComponent(id)}/cancel`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${env.REFINERY_SERVE_SECRET}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        if (response.status === 200) return 'ok'
+        return response.status === 404 ? 'unknown' : 'unreachable'
+      } catch {
+        return 'unreachable'
+      }
+    },
+    probe: async () => {
+      const started = Date.now()
+      try {
+        const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/status`, {
+          headers: { authorization: `Bearer ${env.REFINERY_SERVE_SECRET}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        if (response.status === 401) return { ok: false, reason: 'secret' }
+        if (!response.ok) return { ok: false, reason: 'down' }
+        const body = (await response.json()) as { version?: unknown; busy?: unknown }
+        if (typeof body.version !== 'string') return { ok: false, reason: 'down' }
+        const busy = typeof body.busy === 'string' ? body.busy : null
+        return { ok: true, ms: Date.now() - started, version: body.version, busy }
+      } catch {
+        return { ok: false, reason: 'down' }
       }
     },
     send: (chatId, text, keyboard) =>

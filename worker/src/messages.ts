@@ -126,3 +126,53 @@ export function runStartedLine(recipes: readonly string[], lang: string | null):
 export function runFailedLine(recipes: readonly string[], lang: string | null, error: string): string {
   return `${runLabel(recipes, lang)}: ${error}`
 }
+
+export const CANCEL_LINE = 'Melyiket szakítsam meg?'
+export const NOTHING_TO_CANCEL = 'Nincs megszakítható munka.'
+export const CANCEL_CLOSED = 'Ez már lefutott vagy meg lett szakítva.'
+export const CANCEL_RETRY = 'Most nem érem el a szervert, próbáld újra.'
+
+export function cancelledLine(title: string): string {
+  return `Megszakítva: ${flatTitle(title)}.`
+}
+
+/** Jobonként egy gomb, alul a „Mind megszakítása”; a `c:*` a felhasználó minden nyitott munkája. */
+export function cancelKeyboard(jobs: readonly { jobId: string; videoId: string; title: string | null }[]): Key[][] {
+  return [
+    ...jobs.map((job) => [{ text: flatTitle(job.title ?? job.videoId), data: `c:${job.jobId}` }]),
+    [{ text: 'Mind megszakítása', data: 'c:*' }],
+  ]
+}
+
+export type Probe = { ok: true; ms: number; version: string; busy: string | null } | { ok: false; reason: 'secret' | 'down' }
+
+export const HELP_TEXT = [
+  'Küldj egy YouTube-linket, és letöltöm a feliratát.',
+  '',
+  '/start – a bot összekötése a Google-fiókoddal',
+  '/cancel – nyitott munka megszakítása',
+  '/status – a szerver állapota és a nyitott munkák',
+  '/ping – a szerver elérhetősége',
+  '/version – a szerver verziója',
+  '/help – ez a súgó',
+].join('\n')
+
+export const SERVE_SILENT = 'A szerver nem válaszol.'
+
+function probeFailure(probe: { reason: 'secret' | 'down' }): string {
+  return probe.reason === 'secret' ? SERVE_SECRET_MISMATCH : SERVE_SILENT
+}
+
+export function pingLine(probe: Probe): string {
+  return probe.ok ? `A szerver él (${probe.ms} ms).` : probeFailure(probe)
+}
+
+export function versionLine(probe: Probe): string {
+  return probe.ok ? `A szerver verziója: ${probe.version}.` : probeFailure(probe)
+}
+
+export function statusText(probe: Probe, jobs: number, runs: number): string {
+  const busy = probe.ok && probe.busy !== null ? `Most ezen dolgozik: ${probe.busy}.` : 'Most nem dolgozik.'
+  const head = probe.ok ? `${versionLine(probe)} ${busy}` : probeFailure(probe)
+  return `${head}\nNyitott videó: ${jobs}, nyitott receptfutás: ${runs}.`
+}

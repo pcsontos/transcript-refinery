@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   applyKnocks,
+  findRow,
   handleCallback,
   handleCron,
   handleLink,
@@ -9,7 +10,7 @@ import {
   type PlannedKnock,
   type WorkerDeps,
 } from './handle.js'
-import { langKeyboard, pickKeyboard, recipeKeyboard, runId, hashToken, type Key } from './plan.js'
+import { langKeyboard, pickKeyboard, recipeKeyboard, runId, hashToken, type Key, type Probe } from './plan.js'
 import { memoryStore, type JobRow, type RunRow } from './store.js'
 
 const ID = 'abcdefghijk'
@@ -25,6 +26,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
   keyboards: Key[][][]
   edits: { chatId: string; messageId: number; text: string; keyboard: Key[][] }[]
   answered: string[]
+  cancelled: string[]
 } {
   const sent: string[] = []
   const chats: string[] = []
@@ -33,6 +35,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
   const keyboards: Key[][][] = []
   const edits: { chatId: string; messageId: number; text: string; keyboard: Key[][] }[] = []
   const answered: string[] = []
+  const cancelled: string[] = []
   let next = 0
   return {
     allowedEmails: 'en@example.com',
@@ -48,6 +51,12 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
     keyboards,
     edits,
     answered,
+    cancelled,
+    cancel: (id) => {
+      cancelled.push(id)
+      return Promise.resolve('ok')
+    },
+    probe: () => Promise.resolve({ ok: true, ms: 7, version: '1.16.0', busy: null }),
     answerTap: (callbackQueryId) => {
       answered.push(callbackQueryId)
       return Promise.resolve()
@@ -128,6 +137,12 @@ function tap(updateId: number, data: string, from = 42, messageId?: number) {
     },
   }
 }
+
+function command(updateId: number, text: string, from = 42) {
+  return { update_id: updateId, message: { message_id: updateId, chat: { id: from }, from: { id: from }, text } }
+}
+
+const ID2 = 'bcdefghijkl'
 
 describe('handleUpdate', () => {
   it('a nem kötött felhasználó a kösd össze sort kapja, a kötött sora kopogtatás előtt megy ki', async () => {
@@ -700,5 +715,269 @@ describe('indulási üzenet', () => {
     release(202)
     await both
     expect(own.sent.filter((line) => line.startsWith('Elkezdődött'))).toHaveLength(1)
+  })
+})
+
+describe('megszakítás: verseny és késői visszahívás', () => {
+  it('a kopogtatás közben megszakított sort a 202 nem írja vissza, és a serve leállítást kap', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    const d = deps(store, {
+      knock: async (job) => {
+        await store.claimJob(job.jobId, 'queued', 'cancelled')
+        return 202
+      },
+    })
+    await handleCron(d)
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
+    expect(d.cancelled).toEqual([`5:${ID}`])
+  })
+
+  it('a kopogtatás közben megszakított futás nem indul el, és a serve leállítást kap', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['summary'], null, { status: 'queued', noteUrl: null, notified: false, acceptedAt: null })
+    await store.insertRun(run)
+    const d = deps(store, {
+      knock: async (job) => {
+        await store.claimRun(job.jobId, 'queued', 'cancelled')
+        return 202
+      },
+    })
+    await handleCron(d)
+    expect((await store.run(run.runId))?.status).toBe('cancelled')
+    expect(d.cancelled).toEqual([run.runId])
+    expect(d.sent).toEqual([])
+  })
+
+  it('megszakított feliratsorra a késői ready és failed visszahívás csendes', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'cancelled' }))
+    const d = deps(store)
+    expect(await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, d)).toBe(200)
+    expect(await handleCallback(`5:${ID}`, { status: 'failed', error: 'Nincs felirat' }, d)).toBe(200)
+    expect(d.sent).toEqual([])
+    expect(d.keyboards).toEqual([])
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
+  })
+
+  it('megszakított futásra a failed a hibasort, a ready a linkeket küldi, az állapot marad', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['summary', 'qa'], null, { status: 'cancelled', noteUrl: null, notified: false })
+    await store.insertRun(run)
+    const d = deps(store)
+    await handleCallback(run.runId, { status: 'failed', error: 'A futás megállt: megszakítva (0.0040 $ / 5.0000 $)' }, d)
+    await handleCallback(run.runId, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, d)
+    expect(d.sent).toEqual([
+      'summary, qa: A futás megállt: megszakítva (0.0040 $ / 5.0000 $)',
+      `Cím · summary, qa. A jegyzet megvan.\nhttps://worker.test/notes/${ID}/summary\nhttps://worker.test/notes/${ID}/qa`,
+    ])
+    expect((await store.run(run.runId))?.status).toBe('cancelled')
+  })
+
+  it('a megszakított futást a receptgomb újraindítja', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['summary'], null, { status: 'cancelled', noteUrl: null, notified: false }))
+    const d = deps(store)
+    const knocks = await handleTap(tap(60, `r:summary:5:${ID}`), d)
+    expect(knocks.map((knock) => knock.jobId)).toEqual([runId(`5:${ID}`, ['summary'], null)])
+    expect((await store.run(runId(`5:${ID}`, ['summary'], null)))?.status).toBe('queued')
+    expect(d.sent).toEqual(['Sorba került: summary'])
+  })
+
+  it('a cron a megszakított sort és futást nem kopogtatja', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'cancelled' }))
+    await store.insertRun(readyRun(['qa'], null, { status: 'cancelled' }))
+    const d = deps(store)
+    await handleCron(d)
+    expect(d.knocked).toEqual([])
+  })
+})
+
+describe('/cancel', () => {
+  it('nyitott munka nélkül ezt mondja, kötés nélkül a kösd össze sort', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(70, '/cancel'), d)
+    await handleUpdate(command(71, '/cancel', 99), d)
+    expect(d.sent).toEqual(['Nincs megszakítható munka.', 'Előbb kösd össze a Google-fiókoddal: /start'])
+  })
+
+  it('csak a saját nyitott munkákat listázza, a kész jobot a nyitott futása miatt, alul a Mind gombbal', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    await store.insert(acceptedRow({ jobId: `6:${ID}`, updateId: 6, sub: 'sub-masik', status: 'queued' }))
+    await store.insert(readyRow({ jobId: `7:${ID2}`, updateId: 7, videoId: ID2, title: 'Cím' }))
+    await store.insertRun({ ...readyRun(['qa'], null, { status: 'accepted', noteUrl: null, notified: false }), runId: `7:${ID2}:qa`, jobId: `7:${ID2}` })
+    await store.insert(readyRow({ jobId: `8:${ID2}`, updateId: 8, videoId: ID2 }))
+    const d = deps(store)
+    await handleUpdate(command(70, '/cancel@refinery_bot'), d)
+    expect(d.sent).toEqual(['Melyiket szakítsam meg?'])
+    expect(d.keyboards).toEqual([
+      [
+        [{ text: ID, data: `c:5:${ID}` }],
+        [{ text: 'Cím', data: `c:7:${ID2}` }],
+        [{ text: 'Mind megszakítása', data: 'c:*' }],
+      ],
+    ])
+  })
+
+  it('a sorban álló job megszakítása kopogtatás és serve-hívás nélkül cancelled, és a cron sem éleszti', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    const d = deps(store)
+    expect(await handleTap(tap(80, `c:5:${ID}`), d)).toEqual([])
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
+    expect(d.cancelled).toEqual([])
+    expect(d.sent).toEqual([`Megszakítva: ${ID}.`])
+    await handleCron(d)
+    expect(d.knocked).toEqual([])
+  })
+
+  it('a futó job: ok és unknown után cancelled, elérhetetlen serve mellett accepted marad és újrapróbálást kér', async () => {
+    for (const [answer, status, line] of [
+      ['ok', 'cancelled', `Megszakítva: ${ID}.`],
+      ['unknown', 'cancelled', `Megszakítva: ${ID}.`],
+      ['unreachable', 'accepted', 'Most nem érem el a szervert, próbáld újra.'],
+    ] as const) {
+      const store = await boundStore()
+      await store.insert(acceptedRow())
+      const d = deps(store, { cancel: () => Promise.resolve(answer) })
+      await handleTap(tap(81, `c:5:${ID}`), d)
+      expect((await findRow(store, `5:${ID}`))?.status).toBe(status)
+      expect(d.sent).toEqual([line])
+    }
+  })
+
+  it('a második koppintás hatástalan, az ismételt update hallgat', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    const d = deps(store)
+    await handleTap(tap(82, `c:5:${ID}`), d)
+    await handleTap(tap(82, `c:5:${ID}`), d)
+    await handleTap(tap(83, `c:5:${ID}`), d)
+    expect(d.cancelled).toEqual([`5:${ID}`])
+    expect(d.sent).toEqual([`Megszakítva: ${ID}.`, 'Ez már lefutott vagy meg lett szakítva.'])
+  })
+
+  it('más fiók jobjára a koppintás nem változtat semmit', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ jobId: `6:${ID}`, updateId: 6, sub: 'sub-masik' }))
+    const d = deps(store)
+    await handleTap(tap(84, `c:6:${ID}`), d)
+    expect((await findRow(store, `6:${ID}`))?.status).toBe('accepted')
+    expect(d.cancelled).toEqual([])
+    expect(d.sent).toEqual(['Ez már lefutott vagy meg lett szakítva.'])
+  })
+
+  it('a kész job futó receptjét állítja le: a futás cancelled, a job ready marad', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['summary'], null, { status: 'accepted', noteUrl: null, notified: false })
+    await store.insertRun(run)
+    const d = deps(store)
+    await handleTap(tap(85, `c:5:${ID}`), d)
+    expect((await store.run(run.runId))?.status).toBe('cancelled')
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('ready')
+    expect(d.cancelled).toEqual([run.runId])
+    expect(d.sent).toEqual(['Megszakítva: Cím.'])
+  })
+
+  it('a Mind gomb minden saját nyitott munkát megszakít', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    await store.insert(acceptedRow({ jobId: `7:${ID2}`, updateId: 7, videoId: ID2 }))
+    const d = deps(store)
+    await handleTap(tap(86, 'c:*'), d)
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
+    expect((await findRow(store, `7:${ID2}`))?.status).toBe('cancelled')
+    expect(d.sent).toEqual([`Megszakítva: ${ID}.`, `Megszakítva: ${ID2}.`])
+  })
+})
+
+describe('tájékoztató parancsok', () => {
+  const HELP = [
+    'Küldj egy YouTube-linket, és letöltöm a feliratát.',
+    '',
+    '/start – a bot összekötése a Google-fiókoddal',
+    '/cancel – nyitott munka megszakítása',
+    '/status – a szerver állapota és a nyitott munkák',
+    '/ping – a szerver elérhetősége',
+    '/version – a szerver verziója',
+    '/help – ez a súgó',
+  ].join('\n')
+
+  it('a /help kötés nélkül is megy, a többi parancs kötést kér', async () => {
+    const d = deps(memoryStore())
+    await handleUpdate(command(90, '/help'), d)
+    await handleUpdate(command(91, '/ping'), d)
+    expect(d.sent).toEqual([HELP, 'Előbb kösd össze a Google-fiókoddal: /start'])
+  })
+
+  it('a /ping, a /version és a /status a serve válaszából', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    const d = deps(store, {
+      probe: () => Promise.resolve({ ok: true, ms: 7, version: '1.16.0', busy: `5:${ID}` }),
+    })
+    await handleUpdate(command(92, '/ping'), d)
+    await handleUpdate(command(93, '/version'), d)
+    await handleUpdate(command(94, '/status'), d)
+    expect(d.sent).toEqual([
+      'A szerver él (7 ms).',
+      'A szerver verziója: 1.16.0.',
+      `A szerver verziója: 1.16.0. Most ezen dolgozik: 5:${ID}.\nNyitott videó: 1, nyitott receptfutás: 0.`,
+    ])
+  })
+
+  it('nem elérhető serve mellett a /status a D1 számait is adja, titokeltérésnél a titok-sor megy', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['qa'], null, { status: 'queued', noteUrl: null, notified: false }))
+    const down = (): Promise<Probe> => Promise.resolve({ ok: false, reason: 'down' })
+    const secret = (): Promise<Probe> => Promise.resolve({ ok: false, reason: 'secret' })
+    const d = deps(store, { probe: down })
+    await handleUpdate(command(95, '/status'), d)
+    await handleUpdate(command(96, '/ping'), d)
+    await handleUpdate(command(97, '/version'), deps(store, { probe: secret, send: d.send }))
+    expect(d.sent).toEqual([
+      'A szerver nem válaszol.\nNyitott videó: 0, nyitott receptfutás: 1.',
+      'A szerver nem válaszol.',
+      'A Worker és a serve titka nem egyezik.',
+    ])
+  })
+
+  it('az ismeretlen parancs a mai választ kapja', async () => {
+    const d = deps(await boundStore())
+    await handleUpdate(command(98, '/foo'), d)
+    expect(d.sent).toEqual(['Nincs YouTube-videó az üzenetben.'])
+  })
+})
+
+describe('megszakítás: naplózás', () => {
+  it('az utólagos serve-leállítás elbukása és a sikertelen üzenet figyelmeztetést naplóz', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    await handleCron(
+      deps(store, {
+        knock: async (job) => {
+          await store.claimJob(job.jobId, 'queued', 'cancelled')
+          return 202
+        },
+        cancel: () => Promise.resolve('unreachable'),
+      }),
+    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`5:${ID}`))
+    warn.mockClear()
+
+    const other = await boundStore()
+    await other.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    await handleTap(tap(87, `c:5:${ID}`), deps(other, { send: () => Promise.resolve(false) }))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`5:${ID}`))
+    warn.mockRestore()
   })
 })

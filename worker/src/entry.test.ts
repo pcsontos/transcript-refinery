@@ -329,4 +329,33 @@ describe('worker belépés', () => {
       },
     })
   })
+
+  it('a /ping a serve /status-át hívja a titokkal, és a válaszidőt küldi', async () => {
+    const calls: { url: string; body: string; auth: string | null }[] = []
+    globalThis.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      const raw = init?.body
+      calls.push({ url, body: typeof raw === 'string' ? raw : '', auth: new Headers(init?.headers).get('authorization') })
+      if (url === 'http://127.0.0.1:8787/status') return Promise.resolve(Response.json({ version: '1.16.0', busy: null }))
+      return Promise.resolve(new Response(null, { status: 200 }))
+    }
+    const env = {
+      DB: memoryDb(),
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const request = new Request('https://worker.test/telegram', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'hook' },
+      body: JSON.stringify({ update_id: 60, message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, text: '/ping' } }),
+    })
+    const response = await worker.fetch(request, env, { waitUntil: () => undefined })
+    expect(response.status).toBe(200)
+    expect(calls[0]).toMatchObject({ url: 'http://127.0.0.1:8787/status', auth: 'Bearer titok' })
+    expect((JSON.parse(calls[1]!.body) as { text: string }).text).toMatch(/^A szerver él \(\d+ ms\)\.$/)
+  })
 })
