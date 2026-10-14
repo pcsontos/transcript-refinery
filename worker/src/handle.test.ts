@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyKnocks,
+  findRow,
   handleCallback,
   handleCron,
   handleLink,
@@ -25,6 +26,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
   keyboards: Key[][][]
   edits: { chatId: string; messageId: number; text: string; keyboard: Key[][] }[]
   answered: string[]
+  cancelled: string[]
 } {
   const sent: string[] = []
   const chats: string[] = []
@@ -33,6 +35,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
   const keyboards: Key[][][] = []
   const edits: { chatId: string; messageId: number; text: string; keyboard: Key[][] }[] = []
   const answered: string[] = []
+  const cancelled: string[] = []
   let next = 0
   return {
     allowedEmails: 'en@example.com',
@@ -48,6 +51,11 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
     keyboards,
     edits,
     answered,
+    cancelled,
+    cancel: (id) => {
+      cancelled.push(id)
+      return Promise.resolve('ok')
+    },
     answerTap: (callbackQueryId) => {
       answered.push(callbackQueryId)
       return Promise.resolve()
@@ -700,5 +708,84 @@ describe('indulási üzenet', () => {
     release(202)
     await both
     expect(own.sent.filter((line) => line.startsWith('Elkezdődött'))).toHaveLength(1)
+  })
+})
+
+describe('megszakítás: verseny és késői visszahívás', () => {
+  it('a kopogtatás közben megszakított sort a 202 nem írja vissza, és a serve leállítást kap', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    const d = deps(store, {
+      knock: async (job) => {
+        await store.claimJob(job.jobId, 'queued', 'cancelled')
+        return 202
+      },
+    })
+    await handleCron(d)
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
+    expect(d.cancelled).toEqual([`5:${ID}`])
+  })
+
+  it('a kopogtatás közben megszakított futás nem indul el, és a serve leállítást kap', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['summary'], null, { status: 'queued', noteUrl: null, notified: false, acceptedAt: null })
+    await store.insertRun(run)
+    const d = deps(store, {
+      knock: async (job) => {
+        await store.claimRun(job.jobId, 'queued', 'cancelled')
+        return 202
+      },
+    })
+    await handleCron(d)
+    expect((await store.run(run.runId))?.status).toBe('cancelled')
+    expect(d.cancelled).toEqual([run.runId])
+    expect(d.sent).toEqual([])
+  })
+
+  it('megszakított feliratsorra a késői ready és failed visszahívás csendes', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'cancelled' }))
+    const d = deps(store)
+    expect(await handleCallback(`5:${ID}`, { status: 'ready', title: 'Cím' }, d)).toBe(200)
+    expect(await handleCallback(`5:${ID}`, { status: 'failed', error: 'Nincs felirat' }, d)).toBe(200)
+    expect(d.sent).toEqual([])
+    expect(d.keyboards).toEqual([])
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
+  })
+
+  it('megszakított futásra a failed a hibasort, a ready a linkeket küldi, az állapot marad', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['summary', 'qa'], null, { status: 'cancelled', noteUrl: null, notified: false })
+    await store.insertRun(run)
+    const d = deps(store)
+    await handleCallback(run.runId, { status: 'failed', error: 'A futás megállt: megszakítva (0.0040 $ / 5.0000 $)' }, d)
+    await handleCallback(run.runId, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, d)
+    expect(d.sent).toEqual([
+      'summary, qa: A futás megállt: megszakítva (0.0040 $ / 5.0000 $)',
+      `Cím · summary, qa. A jegyzet megvan.\nhttps://worker.test/notes/${ID}/summary\nhttps://worker.test/notes/${ID}/qa`,
+    ])
+    expect((await store.run(run.runId))?.status).toBe('cancelled')
+  })
+
+  it('a megszakított futást a receptgomb újraindítja', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['summary'], null, { status: 'cancelled', noteUrl: null, notified: false }))
+    const d = deps(store)
+    const knocks = await handleTap(tap(60, `r:summary:5:${ID}`), d)
+    expect(knocks.map((knock) => knock.jobId)).toEqual([runId(`5:${ID}`, ['summary'], null)])
+    expect((await store.run(runId(`5:${ID}`, ['summary'], null)))?.status).toBe('queued')
+    expect(d.sent).toEqual(['Sorba került: summary'])
+  })
+
+  it('a cron a megszakított sort és futást nem kopogtatja', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'cancelled' }))
+    await store.insertRun(readyRun(['qa'], null, { status: 'cancelled' }))
+    const d = deps(store)
+    await handleCron(d)
+    expect(d.knocked).toEqual([])
   })
 })

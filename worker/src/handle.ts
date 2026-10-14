@@ -52,6 +52,8 @@ export interface WorkerDeps {
   now: () => number
   newToken: () => string
   knock: (job: PlannedKnock) => Promise<202 | 409 | 401 | 'down'>
+  /** A serve futó jobjának leállítása: `ok` 200, `unknown` 404, minden más `unreachable`. */
+  cancel: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>
   send: (chatId: string, text: string, keyboard?: Key[][]) => Promise<boolean>
   edit: (chatId: string, messageId: number, text: string, keyboard: Key[][]) => Promise<boolean>
   answerTap: (callbackQueryId: string) => Promise<void>
@@ -81,11 +83,13 @@ async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Pro
  * futást újra kopogtatja, és arra a konténer megint 202-t ad. A gomb és a cron
  * egyszerre is kopogtathat: a `claimRun` dönti el, melyikük küldi az üzenetet;
  * a vesztes nem ír és nem küld.
+ * Ha a sort vagy a futást a kopogtatás közben megszakították, a 202 nem írja
+ * vissza, hanem a serve leállítást kap.
  */
 async function settle(
   target: { status: JobStatus; acceptedAt: number | null; error: string | null },
   row: JobRow,
-  save: () => Promise<void>,
+  save: () => Promise<boolean>,
   result: KnockResult,
   deps: WorkerDeps,
   started?: { runId: string; text: string },
@@ -94,10 +98,16 @@ async function settle(
   if (result === 202) {
     const fresh = target.status !== 'accepted'
     const won = fresh && started !== undefined && (await deps.store.claimRun(started.runId, target.status, 'accepted'))
-    if (fresh && started !== undefined && !won) return
+    if (fresh && started !== undefined && !won) {
+      if ((await deps.store.run(started.runId))?.status === 'cancelled') await deps.cancel(started.runId)
+      return
+    }
     target.status = 'accepted'
     target.acceptedAt = deps.now()
-    await save()
+    if (!(await save())) {
+      await deps.cancel(started?.runId ?? row.jobId)
+      return
+    }
     if (won) await deps.send(row.chatId, started.text)
     return
   }
@@ -266,6 +276,16 @@ type CallbackBody = { status: 'ready'; title: string; noteUrl?: string } | { sta
 async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): Promise<void> {
   const row = await findRow(deps.store, run.jobId)
   if (row === null) return
+  // A megszakított futás késői eredménye csak üzenet: az állapot marad, a cron nem kopogtatja.
+  if (run.status === 'cancelled') {
+    await deps.send(
+      row.chatId,
+      body.status === 'failed'
+        ? runFailedLine(run.recipes, run.lang, body.error)
+        : runReadyMessage(body.title, run, deps.linkBase),
+    )
+    return
+  }
   if (body.status === 'failed') {
     const sent = await deps.send(row.chatId, runFailedLine(run.recipes, run.lang, body.error))
     if (!sent) return
@@ -302,7 +322,8 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
     return 200
   }
   const row = await findRow(deps.store, id)
-  if (!row) return 200
+  // A megszakított felirat-job késői eredményét elnyeljük.
+  if (!row || row.status === 'cancelled') return 200
   if (body.status === 'failed') {
     const sent = await deps.send(row.chatId, body.error)
     if (!sent) return 200
@@ -356,7 +377,9 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     acceptedAt: null,
   }
   const claimed =
-    action.type === 'start' ? await deps.store.insertRun(fresh) : await deps.store.claimRun(id, 'failed', 'queued')
+    action.type === 'start'
+      ? await deps.store.insertRun(fresh)
+      : run !== null && (await deps.store.claimRun(id, run.status, 'queued'))
   if (!claimed) {
     await deps.send(row.chatId, alreadyLine(row.videoId))
     return []

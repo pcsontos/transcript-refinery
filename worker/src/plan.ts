@@ -35,7 +35,7 @@ export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' }
 export function decideRun(run: RunRow | null): TapAction {
   if (run === null) return { type: 'start' }
   if (OPEN.has(run.status)) return { type: 'busy' }
-  if (run.status === 'failed') return { type: 'retry' }
+  if (run.status === 'failed' || run.status === 'cancelled') return { type: 'retry' }
   if (run.status === 'ready' && run.notified) return { type: 'resend' }
   return { type: 'ignore' }
 }

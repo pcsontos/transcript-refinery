@@ -543,7 +543,7 @@ git commit -m "feat(serve): Add a cancel endpoint for the running job"
   - `WorkerDeps.cancel: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>`
   - `export const TIMEOUT_MS = 10_000` (`reader.ts`)
 
-- [ ] **Step 1: Írd meg a bukó teszteket**
+- [x] **Step 1: Írd meg a bukó teszteket**
 
 `worker/src/handle.test.ts`: az importban a `handle.js`-ből a `findRow` is kell:
 
@@ -660,12 +660,12 @@ describe('megszakítás: verseny és késői visszahívás', () => {
 })
 ```
 
-- [ ] **Step 2: Futtasd, és nézd meg, hogy bukik**
+- [x] **Step 2: Futtasd, és nézd meg, hogy bukik**
 
 Run: `pnpm exec vitest run worker/src/handle.test.ts -t "megszakítás: verseny"`
 Expected: FAIL — `store.claimJob is not a function`, a futás `accepted` lesz, a késői `ready` kiküldi a receptgombokat, a `cancelled` futásra a gomb nem indít.
 
-- [ ] **Step 3: Írd meg a megvalósítást — store**
+- [x] **Step 3: Írd meg a megvalósítást — store**
 
 `worker/src/store.ts`:
 
@@ -782,7 +782,7 @@ a `saveRun` és a `claimRun` helyére:
     },
 ```
 
-- [ ] **Step 4: Írd meg a megvalósítást — plan, handle, index**
+- [x] **Step 4: Írd meg a megvalósítást — plan, handle, index**
 
 `worker/src/plan.ts`, a `decideRun`-ban:
 
@@ -894,12 +894,12 @@ a `deps(env, …)` objektumban a `knock` után:
     },
 ```
 
-- [ ] **Step 5: Futtasd, és nézd meg, hogy átmegy**
+- [x] **Step 5: Futtasd, és nézd meg, hogy átmegy**
 
 Run: `pnpm exec vitest run worker && pnpm exec tsc -p worker/tsconfig.json --noEmit`
 Expected: PASS, típushiba nélkül. Ha egy régi teszt a `memoryStore` objektumainak közös hivatkozására épült, és most bukik, állj meg és jelezd; ne írd át a tesztet a viselkedés ellenőrzése nélkül.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add worker/src/store.ts worker/src/d1.ts worker/src/plan.ts worker/src/handle.ts worker/src/reader.ts worker/src/index.ts worker/src/handle.test.ts

@@ -9,7 +9,7 @@ import {
   type WorkerDeps,
 } from './handle.js'
 import { LINK_INVALID_PAGE, newToken, type Key } from './plan.js'
-import { notePage, notesPage, type ReaderDeps } from './reader.js'
+import { notePage, notesPage, TIMEOUT_MS, type ReaderDeps } from './reader.js'
 
 interface Env {
   DB: D1Like
@@ -96,6 +96,19 @@ function deps(env: Env, linkBase = ''): WorkerDeps {
         return 'down'
       } catch {
         return 'down'
+      }
+    },
+    cancel: async (id) => {
+      try {
+        const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/jobs/${encodeURIComponent(id)}/cancel`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${env.REFINERY_SERVE_SECRET}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        if (response.status === 200) return 'ok'
+        return response.status === 404 ? 'unknown' : 'unreachable'
+      } catch {
+        return 'unreachable'
       }
     },
     send: (chatId, text, keyboard) =>

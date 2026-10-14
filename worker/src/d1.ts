@@ -152,12 +152,12 @@ export function createD1Store(db: D1Like): JobStore {
         .run()
     },
     async save(row) {
-      await db
+      const result = await db
         .prepare(
           `UPDATE jobs SET
             update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?,
             error = ?, title = ?, notified_ready = ?, accepted_at = ?, sub = ?
-          WHERE job_id = ?`,
+          WHERE job_id = ? AND status != 'cancelled'`,
         )
         .bind(
           row.updateId,
@@ -174,6 +174,14 @@ export function createD1Store(db: D1Like): JobStore {
           row.jobId,
         )
         .run()
+      return changed(result)
+    },
+    async claimJob(jobId, expect, next) {
+      const result = await db
+        .prepare('UPDATE jobs SET status = ? WHERE job_id = ? AND status = ?')
+        .bind(next, jobId, expect)
+        .run()
+      return changed(result)
     },
     async due(now) {
       const result = await db
@@ -257,10 +265,13 @@ export function createD1Store(db: D1Like): JobStore {
       return changed(result)
     },
     async saveRun(run) {
-      await db
-        .prepare('UPDATE runs SET status = ?, error = ?, note_url = ?, notified = ?, accepted_at = ? WHERE run_id = ?')
+      const result = await db
+        .prepare(
+          "UPDATE runs SET status = ?, error = ?, note_url = ?, notified = ?, accepted_at = ? WHERE run_id = ? AND status != 'cancelled'",
+        )
         .bind(run.status, run.error, run.noteUrl, run.notified ? 1 : 0, run.acceptedAt, run.runId)
         .run()
+      return changed(result)
     },
     async claimRun(runId, expect, next) {
       const result = await db
