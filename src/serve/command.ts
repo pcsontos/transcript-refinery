@@ -166,7 +166,8 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
       console.log(`[serve] Munka végrehajtása indult: ${job.jobId} (${job.url})`)
       try {
         await runJob(job, effects, signal)
-        console.log(`[serve] Munka ${signal.aborted ? 'megszakítva' : 'kész'}: ${job.jobId}`)
+        // A felirat-ág nem figyeli a signalt: az végigfut, akkor is, ha a kérés megérkezett.
+        console.log(`[serve] Munka ${signal.aborted && job.recipes !== undefined ? 'megszakítva' : 'kész'}: ${job.jobId}`)
       } catch (err) {
         console.error(`[serve] Munka sikertelen: ${job.jobId}:`, err)
       }

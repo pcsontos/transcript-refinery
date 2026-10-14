@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   applyKnocks,
   findRow,
@@ -954,5 +954,30 @@ describe('tájékoztató parancsok', () => {
     const d = deps(await boundStore())
     await handleUpdate(command(98, '/foo'), d)
     expect(d.sent).toEqual(['Nincs YouTube-videó az üzenetben.'])
+  })
+})
+
+describe('megszakítás: naplózás', () => {
+  it('az utólagos serve-leállítás elbukása és a sikertelen üzenet figyelmeztetést naplóz', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const store = await boundStore()
+    await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    await handleCron(
+      deps(store, {
+        knock: async (job) => {
+          await store.claimJob(job.jobId, 'queued', 'cancelled')
+          return 202
+        },
+        cancel: () => Promise.resolve('unreachable'),
+      }),
+    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`5:${ID}`))
+    warn.mockClear()
+
+    const other = await boundStore()
+    await other.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+    await handleTap(tap(87, `c:5:${ID}`), deps(other, { send: () => Promise.resolve(false) }))
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(`5:${ID}`))
+    warn.mockRestore()
   })
 })

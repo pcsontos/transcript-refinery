@@ -174,10 +174,19 @@ async function cancelTap(target: string, sub: string, chatId: string, deps: Work
         ),
       )
     }
-    if (outcomes.includes('unreachable')) await deps.send(chatId, CANCEL_RETRY)
-    else if (outcomes.includes('cancelled')) await deps.send(chatId, cancelledLine(job.title ?? job.videoId))
-    else await deps.send(chatId, CANCEL_CLOSED)
+    const text = outcomes.includes('unreachable')
+      ? CANCEL_RETRY
+      : outcomes.includes('cancelled')
+        ? cancelledLine(job.title ?? job.videoId)
+        : CANCEL_CLOSED
+    // A sor ilyenkor is cancelled marad; a spec szerint csak naplózzuk.
+    if (!(await deps.send(chatId, text))) console.warn(`[worker] A megszakítás üzenete nem ment ki: ${job.jobId}`)
   }
+}
+
+/** Az utólagos leállítás: ha a serve nem érhető el, a sor már cancelled, és csak a napló őrzi a nyomát. */
+async function stopServe(id: string, deps: WorkerDeps): Promise<void> {
+  if ((await deps.cancel(id)) === 'unreachable') console.warn(`[worker] A serve leállítása nem sikerült: ${id}`)
 }
 
 /**
@@ -202,13 +211,13 @@ async function settle(
     const fresh = target.status !== 'accepted'
     const won = fresh && started !== undefined && (await deps.store.claimRun(started.runId, target.status, 'accepted'))
     if (fresh && started !== undefined && !won) {
-      if ((await deps.store.run(started.runId))?.status === 'cancelled') await deps.cancel(started.runId)
+      if ((await deps.store.run(started.runId))?.status === 'cancelled') await stopServe(started.runId, deps)
       return
     }
     target.status = 'accepted'
     target.acceptedAt = deps.now()
     if (!(await save())) {
-      await deps.cancel(started?.runId ?? row.jobId)
+      await stopServe(started?.runId ?? row.jobId, deps)
       return
     }
     if (won) await deps.send(row.chatId, started.text)

@@ -219,6 +219,8 @@ A bot öt parancsot ismer:
 | `/version` | A serve verziója. |
 | `/status` | A serve verziója, az épp futó munka, és a nyitott videók és receptfutások száma a D1-ből. |
 
+**Telepítési sorrend:** a `/cancel` miatt előbb a serve-képet kell frissíteni (a peter-mba-n), utána a Workert. A régi serve nem ismeri a cancel végpontot, az `404`-et adna, a Worker `unknown`-nak venné, és `cancelled`-re állítaná a még futó jobot.
+
 A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden elemet önállóan értékel (`worker/src/plan.ts`):
 
 | Bemenet formátuma | Feldolgozás módja | Bot válasza |
