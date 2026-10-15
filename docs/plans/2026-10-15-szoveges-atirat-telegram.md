@@ -272,7 +272,7 @@ git commit   # commit-message skill; pl. "refactor(source): Share text normaliza
   - `ServeJob` új opcionális mezői: `text?: string`, `title?: string`, `textLang?: string`
   - a recept nélküli, `text`-es kopogtatásra az R2-ben `text.txt` + `info.json`, majd `ready`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/serve/job.test.ts`, import: `import { textItemId } from '../source/text.js'`; új blokk a fájl végére:
 
@@ -367,12 +367,12 @@ describe('runJob szöveges tétel', () => {
   })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run src/serve/job.test.ts src/serve/http.test.ts`
 Expected: FAIL — a szöveges kopogtatás ma a yt-dlp-utat indítja, a hibás típus 202.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `src/serve/inventory.ts`, az `infoKey` alá:
 
@@ -451,12 +451,12 @@ async function runTextJob(job: ServeJob & { text: string }, effects: JobEffects)
   }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run src/serve` majd a teljes ellenőrzés.
 Expected: PASS; a meglévő felirat- és receptjob-tesztek változatlanul zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/inventory.ts src/serve/job.ts src/serve/http.ts src/serve/job.test.ts src/serve/http.test.ts

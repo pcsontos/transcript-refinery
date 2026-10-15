@@ -25,6 +25,11 @@ export function infoKey(videoId: string): string {
   return `videos/${videoId}/info.json`
 }
 
+/** A Telegramból jött szöveges tétel normalizált szövege; a kulcs azonosítója a tartalom hash-e. */
+export function textKey(videoId: string): string {
+  return `videos/${videoId}/text.txt`
+}
+
 export function languageMatches(tag: string, languages: readonly string[]): boolean {
   const lower = tag.toLowerCase()
   const lowerBase = lower.split('-')[0] ?? lower

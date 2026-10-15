@@ -49,13 +49,16 @@ function readBody(request: IncomingMessage): Promise<string> {
 
 function isJob(value: unknown): value is ServeJob {
   if (typeof value !== 'object' || value === null) return false
-  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown }
+  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown; text?: unknown; title?: unknown; textLang?: unknown }
   if (typeof job.jobId !== 'string' || typeof job.videoId !== 'string' || typeof job.url !== 'string') return false
   // A régi, egyreceptes alakot a felirat-munka helyett hibaként kell látni.
   if (job.recipe !== undefined) return false
   if (job.recipes !== undefined) {
     if (!Array.isArray(job.recipes) || job.recipes.length === 0) return false
     if (!job.recipes.every((id) => typeof id === 'string')) return false
+  }
+  for (const field of [job.text, job.title, job.textLang]) {
+    if (field !== undefined && typeof field !== 'string') return false
   }
   return job.lang === undefined || typeof job.lang === 'string'
 }

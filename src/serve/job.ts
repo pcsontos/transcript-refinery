@@ -2,8 +2,9 @@ import { join } from 'node:path'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
 import { RECIPES } from '../recipe/registry.js'
+import { normalizeText, textItemId } from '../source/text.js'
 import { sanitizeSegment } from '../vault/sanitize.js'
-import { infoKey, languageMatches, subtitleKey, type LocalPair } from './inventory.js'
+import { infoKey, languageMatches, subtitleKey, textKey, type LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
 
 export interface ServeJob {
@@ -12,6 +13,11 @@ export interface ServeJob {
   url: string
   recipes?: string[]
   lang?: string
+  /** Szöveges tétel (Telegram-csatolmány vagy `/scan`): a Worker normalizálta, a `videoId` a `t-…` azonosító. */
+  text?: string
+  title?: string
+  /** A fájlnévből kapott nyelvkód; nem a fordítás `lang`-ja. */
+  textLang?: string
 }
 
 export type CallbackBody =
@@ -44,6 +50,7 @@ const MISSING_PAIR = 'A felirat nincs az R2-ben.'
 const UNREADABLE_PAIR = 'A felirat nem olvasható az R2-ből.'
 const UNKNOWN_RECIPE = 'Ismeretlen recept.'
 const UNKNOWN_LANGUAGE = 'Ismeretlen nyelv.'
+const ID_MISMATCH = 'A szöveg azonosítója nem egyezik.'
 const SUB_NAME = /^([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
 
 export function subtitleArgv(url: string, outDir: string): string[] {
@@ -188,6 +195,33 @@ async function loadSummaryPair(
   return { ok: false, error: MISSING_PAIR }
 }
 
+/** A feliratletöltés párja szöveges tételre: ellenőrzés, majd az R2-be, yt-dlp nélkül. */
+async function runTextJob(job: ServeJob & { text: string }, effects: JobEffects): Promise<void> {
+  const title = job.title ?? job.videoId
+  try {
+    const keys = await effects.store.list(`videos/${job.videoId}/`)
+    // ponytail: a kulcs a tartalom hash-e, ezért a megléte elég; üres objektumot a putWithRetry nem hagy.
+    if (keys.includes(textKey(job.videoId)) && keys.includes(infoKey(job.videoId))) {
+      await report(effects, job.jobId, { status: 'ready', title })
+      return
+    }
+    // A Worker és a serve más verziója más azonosítót adhat: ilyenkor a jegyzet rossz tételhez kerülne.
+    const text = normalizeText(new TextEncoder().encode(job.text), false)
+    if ((await textItemId(text)) !== job.videoId) {
+      await report(effects, job.jobId, { status: 'failed', error: ID_MISMATCH })
+      return
+    }
+    const info = { id: job.videoId, title, ...(job.textLang === undefined ? {} : { language: job.textLang }) }
+    await putWithRetry(effects.store, textKey(job.videoId), new TextEncoder().encode(text))
+    await putWithRetry(effects.store, infoKey(job.videoId), new TextEncoder().encode(JSON.stringify(info)))
+    console.log(`[job] Szöveges tétel az R2-ben: "${title}" (${job.videoId})`)
+    await report(effects, job.jobId, { status: 'ready', title })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : UPLOAD_FAILED
+    await report(effects, job.jobId, { status: 'failed', error: message })
+  }
+}
+
 async function runRecipeJob(
   job: ServeJob & { recipes: string[] },
   effects: JobEffects,
@@ -244,6 +278,10 @@ async function runRecipeJob(
 export async function runJob(job: ServeJob, effects: JobEffects, signal?: AbortSignal): Promise<void> {
   if (job.recipes !== undefined) {
     await runRecipeJob({ ...job, recipes: job.recipes }, effects, signal)
+    return
+  }
+  if (job.text !== undefined) {
+    await runTextJob({ ...job, text: job.text }, effects)
     return
   }
   try {
