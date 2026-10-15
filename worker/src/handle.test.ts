@@ -1,3 +1,4 @@
+import { textItemId } from 'transcript-refinery/text'
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyKnocks,
@@ -10,7 +11,16 @@ import {
   type PlannedKnock,
   type WorkerDeps,
 } from './handle.js'
-import { langKeyboard, pickKeyboard, recipeKeyboard, runId, hashToken, type Key, type Probe } from './plan.js'
+import {
+  langKeyboard,
+  pickKeyboard,
+  recipeKeyboard,
+  runId,
+  runReadyMessage,
+  hashToken,
+  type Key,
+  type Probe,
+} from './plan.js'
 import { memoryStore, type JobRow, type RunRow } from './store.js'
 
 const ID = 'abcdefghijk'
@@ -76,6 +86,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
       edits.push({ chatId, messageId, text, keyboard })
       return Promise.resolve(true)
     },
+    download: () => Promise.resolve(null),
     ...over,
   }
 }
@@ -901,7 +912,9 @@ describe('/cancel', () => {
 describe('tájékoztató parancsok', () => {
   const HELP = [
     'Küldj egy YouTube-linket, és letöltöm a feliratát.',
+    'Csatolt .txt vagy .md átiratot is feldolgozok.',
     '',
+    '/scan <szöveg> – beillesztett átirat feldolgozása (egy üzenetnyi)',
     '/start – a bot összekötése a Google-fiókoddal',
     '/cancel – nyitott munka megszakítása',
     '/status – a szerver állapota és a nyitott munkák',
@@ -979,5 +992,200 @@ describe('megszakítás: naplózás', () => {
     await handleTap(tap(87, `c:5:${ID}`), deps(other, { send: () => Promise.resolve(false) }))
     expect(warn).toHaveBeenCalledWith(expect.stringContaining(`5:${ID}`))
     warn.mockRestore()
+  })
+})
+
+describe('szöveges bemenet', () => {
+  const enc = (text: string) => new TextEncoder().encode(text)
+  const BODY = 'Első sor.\nMásodik sor.'
+
+  function doc(
+    updateId: number,
+    document: { file_id: string; file_name?: string; file_size?: number },
+    extra: Record<string, unknown> = {},
+  ) {
+    return {
+      update_id: updateId,
+      message: { message_id: updateId, chat: { id: 42 }, from: { id: 42 }, document, ...extra },
+    }
+  }
+
+  function file(updateId: number, name: string, extra: Record<string, unknown> = {}) {
+    return doc(updateId, { file_id: `F${updateId}`, file_name: name, file_size: 20 }, extra)
+  }
+
+  it('a csatolt .txt sort nyit a címmel, és a kopogtatás viszi a szöveget és a nyelvkódot', async () => {
+    const store = await boundStore()
+    const d = deps(store, { download: () => Promise.resolve(enc(`${BODY}\r\n`)) })
+    const id = await textItemId(BODY)
+    const planned = await handleUpdate(file(5, 'átirat.en.txt'), d)
+    expect(d.sent).toEqual(['Sorba került: átirat'])
+    expect((await store.listByUpdate(5))[0]).toMatchObject({
+      jobId: `5:${id}`,
+      videoId: id,
+      url: '',
+      title: 'átirat',
+      fileId: 'F5',
+      fileName: 'átirat.en.txt',
+      text: null,
+    })
+    expect(planned.knocks).toEqual([
+      { jobId: `5:${id}`, videoId: id, url: '', text: BODY, title: 'átirat', textLang: 'en' },
+    ])
+  })
+
+  it('a nagybetűs kiterjesztés is jó, és az aláírás linkje nem indul', async () => {
+    const store = await boundStore()
+    const d = deps(store, { download: () => Promise.resolve(enc(BODY)) })
+    const planned = await handleUpdate(file(5, 'ÁTIRAT.TXT', { caption: `https://youtu.be/${ID}` }), d)
+    expect(d.sent).toEqual(['Sorba került: ÁTIRAT'])
+    expect(planned.knocks).toHaveLength(1)
+    expect(await store.listByUpdate(5)).toHaveLength(1)
+    expect((await store.listByUpdate(5))[0]?.videoId).toBe(await textItemId(BODY))
+  })
+
+  it('ugyanaz a szöveg más néven, nyitott sor mellett: már sorban, kopogtatás nélkül', async () => {
+    const store = await boundStore()
+    const d = deps(store, { download: () => Promise.resolve(enc(BODY)) })
+    await handleUpdate(file(5, 'egy.txt'), d)
+    const second = await handleUpdate(file(6, 'masik.txt'), d)
+    expect(d.sent).toEqual(['Sorba került: egy', 'Már sorban van: masik.'])
+    expect(second.knocks).toEqual([])
+  })
+
+  it('a .pdf, a név nélküli és a 3 MB-os fájl hibát kap, letöltés és sor nélkül, a videós mondat sem jön', async () => {
+    const store = await boundStore()
+    let downloads = 0
+    const d = deps(store, {
+      download: () => {
+        downloads += 1
+        return Promise.resolve(enc(BODY))
+      },
+    })
+    await handleUpdate(file(5, 'jegyzet.pdf'), d)
+    await handleUpdate(doc(6, { file_id: 'F6' }), d)
+    await handleUpdate(doc(7, { file_id: 'F7', file_name: 'nagy.txt', file_size: 3 * 1024 * 1024 }), d)
+    expect(d.sent).toEqual([
+      'Csak .txt vagy .md fájlt tudok feldolgozni.',
+      'Csak .txt vagy .md fájlt tudok feldolgozni.',
+      'A fájl túl nagy: 3.0 MB, legfeljebb 2 MB.',
+    ])
+    expect(downloads).toBe(0)
+    for (const update of [5, 6, 7]) expect(await store.listByUpdate(update)).toEqual([])
+  })
+
+  it('a .md frontmatter nélkül megy tovább', async () => {
+    const store = await boundStore()
+    const d = deps(store, { download: () => Promise.resolve(enc('---\ntitle: X\n---\n# Fejezet\nszöveg\n')) })
+    const planned = await handleUpdate(file(5, 'jegyzet.md'), d)
+    expect(planned.knocks[0]?.text).toBe('# Fejezet\nszöveg')
+  })
+
+  it('a nem UTF-8 fájl, az üres fájl és a sikertelen letöltés megnevezett mondatot kap, sor nélkül', async () => {
+    const store = await boundStore()
+    const a = deps(store, { download: () => Promise.resolve(new Uint8Array([0xc3, 0x28])) })
+    await handleUpdate(file(5, 'a.txt'), a)
+    const b = deps(store, { download: () => Promise.resolve(enc(' \n')) })
+    await handleUpdate(file(6, 'b.txt'), b)
+    const c = deps(store)
+    await handleUpdate(file(7, 'c.txt'), c)
+    expect([...a.sent, ...b.sent, ...c.sent]).toEqual([
+      'A fájl nem UTF-8 szöveg.',
+      'A fájl üres.',
+      'A fájlt nem tudtam letölteni, küldd újra.',
+    ])
+    for (const update of [5, 6, 7]) expect(await store.listByUpdate(update)).toEqual([])
+  })
+
+  it('a /scan szövegéből a cím az első sor, a szöveg a D1-ben vár', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    const planned = await handleUpdate(command(5, '/scan \n\n  Kubernetes alapok\nMa arról lesz szó.'), d)
+    const text = 'Kubernetes alapok\nMa arról lesz szó.'
+    const id = await textItemId(text)
+    expect(d.sent).toEqual(['Sorba került: Kubernetes alapok'])
+    expect((await store.listByUpdate(5))[0]).toMatchObject({ videoId: id, title: 'Kubernetes alapok', text, fileId: null })
+    expect(planned.knocks).toEqual([{ jobId: `5:${id}`, videoId: id, url: '', text, title: 'Kubernetes alapok' }])
+  })
+
+  it('a hosszú első sor 80 karakterre vágva a cím; az üres /scan tippet ad; a 3900 karakteres figyelmeztet', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(5, `/scan ${'a'.repeat(100)}`), d)
+    await handleUpdate(command(6, '/scan'), d)
+    await handleUpdate(command(7, `/scan ${'x'.repeat(3900)}`), d)
+    expect(d.sent).toEqual([
+      `Sorba került: ${'a'.repeat(80)}`,
+      'Írd a /scan után a szöveget, vagy küldd fájlként.',
+      `Sorba került: ${'x'.repeat(80)}\nA szöveg elérhette a Telegram-üzenet határát, lehet, hogy csonka. Hosszabb átiratot fájlként küldj.`,
+    ])
+    expect(await store.listByUpdate(6)).toEqual([])
+  })
+
+  it('a /scanner nem a /scan parancs', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(5, '/scanner'), d)
+    expect(d.sent).toEqual(['Nincs YouTube-videó az üzenetben.'])
+  })
+
+  it('down után a cron a D1 szövegéből kopogtat, és a vár sor a címet mondja', async () => {
+    const store = await boundStore()
+    const down = deps(store, { knock: () => Promise.resolve('down') })
+    const planned = await handleUpdate(command(5, '/scan Kubernetes alapok'), down)
+    await applyKnocks(planned.knocks, down)
+    expect(down.sent).toEqual(['Sorba került: Kubernetes alapok', 'A gép ébredésére vár: Kubernetes alapok.'])
+    const up = deps(store)
+    await handleCron(up)
+    expect(up.knocks.map((knock) => knock.text)).toEqual(['Kubernetes alapok'])
+  })
+
+  it('a cron a .md csatolmányt újra letölti, a frontmatter újra lekerül; sikertelen letöltésnél nem kopogtat', async () => {
+    const store = await boundStore()
+    let downloads = 0
+    const md = () => {
+      downloads += 1
+      return Promise.resolve(enc('---\ntitle: X\n---\n# Fejezet\n'))
+    }
+    const down = deps(store, { download: md, knock: () => Promise.resolve('down') })
+    await applyKnocks((await handleUpdate(file(5, 'a.md'), down)).knocks, down)
+    const failing = deps(store)
+    await handleCron(failing)
+    expect(failing.knocked).toEqual([])
+    expect((await store.listByUpdate(5))[0]?.status).toBe('waiting')
+    const up = deps(store, { download: md })
+    await handleCron(up)
+    expect(up.knocks).toEqual([
+      {
+        jobId: `5:${await textItemId('# Fejezet')}`,
+        videoId: await textItemId('# Fejezet'),
+        url: '',
+        text: '# Fejezet',
+        title: 'a',
+      },
+    ])
+    expect(downloads).toBe(2)
+  })
+
+  it('a ready visszahívás után a szöveg kiürül, és a szöveg megvan üzenet a gombokkal jön; failed után is üres', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(5, '/scan Kubernetes alapok'), d)
+    const id = await textItemId('Kubernetes alapok')
+    await handleCallback(`5:${id}`, { status: 'ready', title: 'Kubernetes alapok' }, d)
+    expect((await store.listByUpdate(5))[0]?.text).toBeNull()
+    expect(d.sent.at(-1)).toBe('Kubernetes alapok. A szöveg megvan.')
+    expect(d.keyboards.at(-1)).toEqual(recipeKeyboard(`5:${id}`))
+    await handleUpdate(command(6, '/scan Másik szöveg'), d)
+    const other = await textItemId('Másik szöveg')
+    await handleCallback(`6:${other}`, { status: 'failed', error: 'Ismeretlen nyelv.' }, d)
+    expect((await store.listByUpdate(6))[0]?.text).toBeNull()
+  })
+
+  it('a kész futás linkje /notes/t-…/summary', async () => {
+    const id = await textItemId(BODY)
+    expect(runReadyMessage('Cím', { jobId: `5:${id}`, recipes: ['summary'], lang: null }, 'https://worker.test')).toBe(
+      `Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/${id}/summary`,
+    )
   })
 })

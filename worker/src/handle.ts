@@ -1,5 +1,9 @@
 import {
   BIND_FIRST,
+  DOWNLOAD_FAILED,
+  SCAN_EMPTY,
+  SCAN_LONG,
+  TEXT_ONLY,
   CANCEL_CLOSED,
   CANCEL_LINE,
   CANCEL_RETRY,
@@ -45,6 +49,15 @@ import {
   type Key,
   type Probe,
 } from './plan.js'
+import {
+  MAX_TEXT_BYTES,
+  TEXT_EXTENSIONS,
+  isTextItemId,
+  normalizeText,
+  splitSubtitleName,
+  textItemId,
+  tooLargeMessage,
+} from 'transcript-refinery/text'
 import { OPEN, type Binding, type JobRow, type JobStatus, type JobStore, type RunRow } from './store.js'
 
 export interface PlannedKnock {
@@ -53,6 +66,10 @@ export interface PlannedKnock {
   url: string
   recipes?: string[]
   lang?: string
+  /** Szöveges tétel: a normalizált szöveg, a cím és a fájlnév nyelvkódja; a serve ebből tölti az R2-t. */
+  text?: string
+  title?: string
+  textLang?: string
 }
 
 export interface WorkerDeps {
@@ -67,6 +84,8 @@ export interface WorkerDeps {
   cancel: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>
   /** A serve `GET /status`-a, mért válaszidővel; ebből dolgozik a `/ping`, a `/version` és a `/status`. */
   probe: () => Promise<Probe>
+  /** A Telegram-csatolmány bájtjai (`getFile`, majd a fájl-URL); `null`, ha nem sikerült. */
+  download: (fileId: string) => Promise<Uint8Array | null>
   send: (chatId: string, text: string, keyboard?: Key[][]) => Promise<boolean>
   edit: (chatId: string, messageId: number, text: string, keyboard: Key[][]) => Promise<boolean>
   answerTap: (callbackQueryId: string) => Promise<void>
@@ -76,6 +95,129 @@ type KnockResult = 202 | 409 | 401 | 'down'
 
 const START = /^\/start(?:\s+(\S+))?\s*$/
 const COMMAND = /^\/(help|cancel|ping|version|status)(?:@\w+)?\s*$/
+
+const SCAN = /^\/scan(?:@\w+)?(?:\s+([\s\S]*))?$/
+/** A Telegram 4096 karakternél bont, mondathatáron, így az első darab rövidebb is lehet. */
+const SCAN_WARN_AT = 3900
+const TITLE_MAX = 80
+
+type TelegramDocument = { file_id: string; file_name?: string; file_size?: number }
+type TextJob = { videoId: string; title: string; text: string; fileId: string | null; fileName: string | null }
+
+/** A szöveges mag hibája (`a fájl üres`) a botban mondatként. */
+function sentence(message: string): string {
+  return `${message.charAt(0).toUpperCase()}${message.slice(1)}.`
+}
+
+/** Szöveges tételnél a cím, videónál az azonosító, ahogy ma. */
+function label(row: JobRow): string {
+  return isTextItemId(row.videoId) ? (row.title ?? row.videoId) : row.videoId
+}
+
+/** Csatolmányból vagy `/scan`-ből a szöveges tétel; `string` a visszaküldendő mondat, `null`, ha nem szöveges bemenet. */
+async function textInput(
+  message: { text?: string; document?: TelegramDocument },
+  deps: WorkerDeps,
+): Promise<{ job: TextJob; warn: boolean } | string | null> {
+  const doc = message.document
+  if (doc !== undefined) {
+    const fileName = doc.file_name ?? ''
+    const name = splitSubtitleName(fileName, TEXT_EXTENSIONS)
+    if (name === null) return TEXT_ONLY
+    if ((doc.file_size ?? 0) > MAX_TEXT_BYTES) return sentence(tooLargeMessage(doc.file_size ?? 0))
+    const bytes = await deps.download(doc.file_id)
+    if (bytes === null) return DOWNLOAD_FAILED
+    let text: string
+    try {
+      text = normalizeText(bytes, fileName.toLowerCase().endsWith('.md'))
+    } catch (error) {
+      return sentence((error as Error).message)
+    }
+    return { job: { videoId: await textItemId(text), title: name.base, text, fileId: doc.file_id, fileName }, warn: false }
+  }
+  const scan = SCAN.exec(message.text ?? '')
+  if (scan === null) return null
+  let text: string
+  try {
+    text = normalizeText(new TextEncoder().encode(scan[1] ?? ''), false)
+  } catch {
+    // Egy Telegram-szöveg nem lehet bináris és 2 MB-os sem: a valós hiba csak az üresség.
+    return SCAN_EMPTY
+  }
+  const first = text.split('\n').find((line) => line.trim() !== '') ?? text
+  const title = [...first.trim()].slice(0, TITLE_MAX).join('')
+  return {
+    job: { videoId: await textItemId(text), title, text, fileId: null, fileName: null },
+    warn: (message.text ?? '').length >= SCAN_WARN_AT,
+  }
+}
+
+function textKnock(row: JobRow, text: string): PlannedKnock {
+  const knock: PlannedKnock = { jobId: row.jobId, videoId: row.videoId, url: row.url, text, title: row.title ?? row.videoId }
+  const lang = row.fileName ? splitSubtitleName(row.fileName, TEXT_EXTENSIONS)?.language : null
+  if (lang) knock.textLang = lang
+  return knock
+}
+
+/**
+ * A sor kopogtatása. Szöveges sornál a szöveg a D1-ből, vagy a csatolmány
+ * újraletöltéséből; `null`, ha a letöltés nem sikerült (a hívó `down`-nak veszi).
+ */
+async function jobKnock(row: JobRow, deps: WorkerDeps): Promise<PlannedKnock | null> {
+  if (row.text) return textKnock(row, row.text)
+  if (row.fileId && row.fileName) {
+    const bytes = await deps.download(row.fileId)
+    if (bytes === null) return null
+    try {
+      return textKnock(row, normalizeText(bytes, row.fileName.toLowerCase().endsWith('.md')))
+    } catch {
+      // A file_id tartalma nem változik, és a beérkezéskor átment: ide nem jutunk.
+      return null
+    }
+  }
+  return { jobId: row.jobId, videoId: row.videoId, url: row.url }
+}
+
+async function textRow(
+  updateId: number,
+  messageId: number,
+  chatId: string,
+  sub: string,
+  input: { job: TextJob; warn: boolean },
+  deps: WorkerDeps,
+): Promise<{ status: number; knocks: PlannedKnock[] }> {
+  const { job, warn } = input
+  const lines: string[] = []
+  const knocks: PlannedKnock[] = []
+  if (await deps.store.activeByVideo(job.videoId)) {
+    lines.push(alreadyLine(job.title))
+  } else {
+    const row: JobRow = {
+      jobId: `${updateId}:${job.videoId}`,
+      updateId,
+      chatId,
+      messageId,
+      videoId: job.videoId,
+      url: '',
+      status: 'queued',
+      error: null,
+      title: job.title,
+      notifiedReady: false,
+      acceptedAt: null,
+      sub,
+      fileId: job.fileId,
+      fileName: job.fileName,
+      // A csatolmány a file_id-ből újra letölthető, a beillesztett szöveg nem.
+      text: job.fileId === null ? job.text : null,
+    }
+    await deps.store.insert(row)
+    lines.push(queuedLine(job.title))
+    knocks.push(textKnock(row, job.text))
+  }
+  if (warn) lines.push(SCAN_LONG)
+  await deps.send(chatId, lines.join('\n'))
+  return { status: 200, knocks }
+}
 
 export async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
   const head = jobId.split(':')[0]
@@ -232,7 +374,7 @@ async function settle(
     return
   }
   if (target.status === 'waiting') return
-  const sent = await deps.send(row.chatId, waitingLine(row.videoId))
+  const sent = await deps.send(row.chatId, waitingLine(label(row)))
   if (!sent) return
   target.status = 'waiting'
   await save()
@@ -309,7 +451,14 @@ export async function handleLink(
 export async function handleUpdate(
   update: {
     update_id: number
-    message?: { message_id: number; chat: { id: number }; from?: { id: number }; text?: string }
+    message?: {
+      message_id: number
+      chat: { id: number }
+      from?: { id: number }
+      text?: string
+      document?: TelegramDocument
+      caption?: string
+    }
   },
   deps: WorkerDeps,
 ): Promise<{ status: number; knocks: PlannedKnock[] }> {
@@ -335,6 +484,12 @@ export async function handleUpdate(
     return { status: 200, knocks: [] }
   }
   if ((await deps.store.listByUpdate(update.update_id)).length > 0) return { status: 200, knocks: [] }
+  const input = await textInput(message, deps)
+  if (typeof input === 'string') {
+    await deps.send(chatId, input)
+    return { status: 200, knocks: [] }
+  }
+  if (input !== null) return textRow(update.update_id, message.message_id, chatId, binding.sub, input, deps)
   const planned = linesForMessage(message.text ?? '', [])
   const lines = [...planned.lines]
   const knocks: PlannedKnock[] = []
@@ -458,7 +613,7 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
     return 200
   }
   row.title = body.title
-  const sent = await deps.send(row.chatId, readyLine(body.title), recipeKeyboard(row.jobId))
+  const sent = await deps.send(row.chatId, readyLine(body.title, isTextItemId(row.videoId)), recipeKeyboard(row.jobId))
   if (!sent) {
     await deps.store.save(row)
     return 200
@@ -475,7 +630,7 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
   const action = decideRun(run)
   if (action.type === 'ignore') return []
   if (action.type === 'busy') {
-    await deps.send(row.chatId, alreadyLine(row.videoId))
+    await deps.send(row.chatId, alreadyLine(label(row)))
     return []
   }
   if (action.type === 'resend') {
@@ -498,7 +653,7 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
       ? await deps.store.insertRun(fresh)
       : run !== null && (await deps.store.claimRun(id, run.status, 'queued'))
   if (!claimed) {
-    await deps.send(row.chatId, alreadyLine(row.videoId))
+    await deps.send(row.chatId, alreadyLine(label(row)))
     return []
   }
   await deps.send(row.chatId, runQueuedLine(recipes, lang))
@@ -552,8 +707,8 @@ export async function handleTap(
 
 export async function handleCron(deps: WorkerDeps): Promise<void> {
   for (const row of await deps.store.due(deps.now())) {
-    const knock: PlannedKnock = { jobId: row.jobId, videoId: row.videoId, url: row.url }
-    await settle(row, row, () => deps.store.save(row), await deps.knock(knock), deps)
+    const knock = await jobKnock(row, deps)
+    await settle(row, row, () => deps.store.save(row), knock === null ? 'down' : await deps.knock(knock), deps)
   }
   for (const run of await deps.store.dueRuns(deps.now())) {
     const row = await findRow(deps.store, run.jobId)

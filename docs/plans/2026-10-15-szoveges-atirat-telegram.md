@@ -897,7 +897,7 @@ git commit   # commit-message skill; pl. "feat(worker): Keep text job sources un
   - `readyLine(title: string, text?: boolean): string`
   - üzenetek: `TEXT_ONLY`, `SCAN_EMPTY`, `DOWNLOAD_FAILED`, `SCAN_LONG`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `worker/src/handle.test.ts`:
 - import: `import { textItemId } from 'transcript-refinery/text'`; a `plan.js` importba `runReadyMessage`;
@@ -1156,12 +1156,12 @@ describe('szöveges bemenet', () => {
   })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run worker`
 Expected: FAIL — a `download` nem része a `WorkerDeps`-nek, a csatolmányra a videós mondat jön, a `/scan` ismeretlen.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `worker/src/messages.ts`:
 
@@ -1422,12 +1422,12 @@ async function textRow(
 | **Más csatolmány** | Nem indít feladatot | `Csak .txt vagy .md fájlt tudok feldolgozni.` |
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run worker` majd a teljes ellenőrzés (`pnpm build` a Worker típusellenőrzése előtt).
 Expected: PASS; a meglévő link-, recept-, cron- és `/cancel`-tesztek változatlanul zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/messages.ts worker/src/plan.ts worker/src/handle.ts worker/src/index.ts worker/src/handle.test.ts worker/src/entry.test.ts docs/operations/telegram-worker-topology.md

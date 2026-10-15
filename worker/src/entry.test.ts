@@ -102,6 +102,69 @@ describe('worker belépés', () => {
     expect(db.rows).toHaveLength(1)
   })
 
+  it('a csatolt fájlt a getFile és a fájl-URL útján tölti le, és a sor a file_id-vel kerül a D1-be', async () => {
+    const urls: string[] = []
+    globalThis.fetch = (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      urls.push(url)
+      if (url.endsWith('/getFile')) {
+        return Promise.resolve(Response.json({ ok: true, result: { file_path: 'documents/file_1.txt' } }))
+      }
+      if (url.includes('/file/bot')) return Promise.resolve(new Response('Első sor.\nMásodik sor.'))
+      return Promise.resolve(new Response(null, { status: 200 }))
+    }
+    const db = memoryDb()
+    const env = {
+      DB: db,
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const update = {
+      update_id: 5,
+      message: {
+        message_id: 1,
+        chat: { id: 42 },
+        from: { id: 42 },
+        document: { file_id: 'FILE', file_name: 'átirat.txt', file_size: 22 },
+      },
+    }
+    const request = new Request('https://worker.test/telegram', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'hook' },
+      body: JSON.stringify(update),
+    })
+    expect((await worker.fetch(request, env, { waitUntil: () => undefined })).status).toBe(200)
+    expect(urls.slice(0, 2)).toEqual([
+      'https://api.telegram.org/bottoken/getFile',
+      'https://api.telegram.org/file/bottoken/documents/file_1.txt',
+    ])
+    expect(db.rows).toHaveLength(1)
+    expect((db.rows[0] as unknown[]).slice(-3)).toEqual(['FILE', 'átirat.txt', null])
+  })
+
+  it('a rossz alakú document 400', async () => {
+    const env = {
+      DB: memoryDb(),
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const bad = { update_id: 5, message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, document: { file_id: 1 } } }
+    const request = new Request('https://worker.test/telegram', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'hook' },
+      body: JSON.stringify(bad),
+    })
+    expect((await worker.fetch(request, env, { waitUntil: () => undefined })).status).toBe(400)
+  })
+
   it('a gombkoppintás üres answerCallbackQuery választ kér, idegen chatnél kopogtatás nélkül', async () => {
     const calls: { url: string; body: string }[] = []
     globalThis.fetch = (input, init) => {
