@@ -501,7 +501,7 @@ git commit   # commit-message skill; pl. "feat(pipeline): Normalize text transcr
   - `discoverAdHoc(adHoc: AdHoc, languages: readonly string[]): Promise<SourceItem[]>`
   - `queuedTextItem(itemId: string, path: string): Promise<SourceItem | string>` — siker esetén a tétel, különben a „nem található” üzenet
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/source/folder.test.ts`, az importok:
 
@@ -631,12 +631,12 @@ describe('queuedTextItem', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/source/folder.test.ts`
 Expected: FAIL — a `discoverAdHoc`, `queuedTextItem`, `textItem` nincs exportálva.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/source/folder.ts`, importok:
 
@@ -840,12 +840,12 @@ export async function queuedTextItem(itemId: string, path: string): Promise<Sour
     : `nem található: a fájl tartalma megváltozott a sorba vétel óta (${path})`
 }
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/source && pnpm typecheck && pnpm lint`
 Expected: PASS; a meglévő `folder.test.ts` esetek változatlanul zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/folder.ts src/source/folder.test.ts
