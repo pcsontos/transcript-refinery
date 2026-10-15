@@ -148,7 +148,7 @@ async function loadSummaryPair(
   effects: JobEffects,
   videoId: string,
 ): Promise<
-  | { ok: true; title: string; language: string; extension: string; subtitle: Uint8Array; info: Uint8Array }
+  | { ok: true; title: string; language: string | null; extension: string; subtitle: Uint8Array; info: Uint8Array }
   | { ok: false; error: string }
 > {
   const prefix = `videos/${videoId}/`
@@ -161,7 +161,8 @@ async function loadSummaryPair(
   const named = keys.map((key) => ({ key, name: key.slice(prefix.length) }))
   const infoItem = named.find((item) => item.name === 'info.json')
   const subs = named.filter((item) => SUB_NAME.test(item.name))
-  if (infoItem === undefined || subs.length === 0) return { ok: false, error: MISSING_PAIR }
+  const textItem = named.find((item) => item.key === textKey(videoId))
+  if (infoItem === undefined || (subs.length === 0 && textItem === undefined)) return { ok: false, error: MISSING_PAIR }
   let infoBody: Uint8Array | null
   try {
     infoBody = await effects.store.get(infoItem.key)
@@ -171,14 +172,29 @@ async function loadSummaryPair(
   if (infoBody === null || infoBody.byteLength === 0) return { ok: false, error: UNREADABLE_PAIR }
   let title: string
   let accepted = effects.languages
+  let infoLanguage: string | null = null
   try {
     const raw = JSON.parse(new TextDecoder().decode(infoBody)) as { id?: unknown; title?: unknown; language?: unknown }
     if (raw.id !== videoId) return { ok: false, error: MISSING_PAIR }
     const text = typeof raw.title === 'string' ? raw.title : ''
     title = text.trim() === '' ? videoId : text
-    if (typeof raw.language === 'string' && raw.language.trim() !== '') accepted = [raw.language]
+    if (typeof raw.language === 'string' && raw.language.trim() !== '') {
+      accepted = [raw.language]
+      infoLanguage = raw.language
+    }
   } catch {
     return { ok: false, error: MISSING_PAIR }
+  }
+  if (textItem !== undefined) {
+    let text: Uint8Array | null
+    try {
+      text = await effects.store.get(textItem.key)
+    } catch {
+      return { ok: false, error: UNREADABLE_PAIR }
+    }
+    if (text === null || text.byteLength === 0) return { ok: false, error: UNREADABLE_PAIR }
+    // A szöveges tétel nyelve a fájlnévből jön, ha volt; különben a futás a tartalomból dönt.
+    return { ok: true, title, language: infoLanguage, extension: 'txt', subtitle: text, info: infoBody }
   }
   for (const sub of subs) {
     const match = SUB_NAME.exec(sub.name)
@@ -250,7 +266,9 @@ async function runRecipeJob(
   }
   const stem = `${sanitizeSegment(loaded.title)} [${job.videoId}]`
   try {
-    await effects.writeFile(join(effects.outDir, `${stem}.${loaded.language}.${loaded.extension}`), loaded.subtitle)
+    const name =
+      loaded.language === null ? `${stem}.${loaded.extension}` : `${stem}.${loaded.language}.${loaded.extension}`
+    await effects.writeFile(join(effects.outDir, name), loaded.subtitle)
     await effects.writeFile(join(effects.outDir, `${stem}.info.json`), loaded.info)
   } catch {
     await forgetWork(effects, job.videoId)

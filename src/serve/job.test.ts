@@ -464,6 +464,42 @@ describe('runJob szöveges tétel', () => {
     expect(callbacks).toEqual([{ status: 'ready', title: 'új név' }])
   })
 
+  it('a recept-futás a SERVE_OUT-ba .txt-t ír, nyelvkóddal vagy anélkül', async () => {
+    const id = 't-0123456789abcdef'
+    const cases = [
+      [undefined, `Kész cím [${id}].txt`],
+      ['en', `Kész cím [${id}].en.txt`],
+    ] as const
+    for (const [language, name] of cases) {
+      const info = enc(JSON.stringify({ id, title: 'Kész cím', ...(language === undefined ? {} : { language }) }))
+      const store = memoryStore({ [`videos/${id}/text.txt`]: enc('Szöveg.'), [`videos/${id}/info.json`]: info })
+      const paths: string[] = []
+      const callbacks: CallbackBody[] = []
+      await runJob(
+        { jobId: `5:${id}`, videoId: id, url: '', recipes: ['summary'] },
+        {
+          ...effectsWith(store, paths),
+          callback: (_id, body) => {
+            callbacks.push(body)
+            return Promise.resolve()
+          },
+        },
+      )
+      expect(paths).toEqual([`/data/telegram/${name}`, `/data/telegram/Kész cím [${id}].info.json`])
+      expect(callbacks).toEqual([
+        { status: 'ready', title: 'Kész cím', noteUrl: 'https://github.com/tulaj/repo/blob/main/a.md' },
+      ])
+    }
+  })
+
+  it('a hiányzó szövegre a hiányzó pár mondata jön', async () => {
+    const id = 't-0123456789abcdef'
+    const store = memoryStore({ [`videos/${id}/info.json`]: enc(JSON.stringify({ id, title: 'X' })) })
+    const callbacks: CallbackBody[] = []
+    await runJob({ jobId: `5:${id}`, videoId: id, url: '', recipes: ['summary'] }, capture(store, callbacks))
+    expect(callbacks).toEqual([{ status: 'failed', error: 'A felirat nincs az R2-ben.' }])
+  })
+
   it('eltérő azonosítóra failed, és az R2-be nem ír', async () => {
     const store = memoryStore()
     const callbacks: CallbackBody[] = []

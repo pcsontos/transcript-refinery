@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadConfig } from '../config.js'
 import type { RunRuntime } from '../cli.js'
+import { textItemId } from '../source/text.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
 import { runRecipes } from './summary.js'
 
@@ -143,6 +144,32 @@ describe('runRecipes', () => {
     })
     expect(again).toEqual(result)
     expect(second.generate).toBe(0)
+  })
+
+  it('a szöveges tétel a --file úton fut: jegyzet t- azonosítóval, a második kérés modell nélkül', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const text =
+      'Ez a beszéd arról szól, hogy a figyelem és a türelem hogyan segít a tanulásban, és a tanító azt mondja, hogy nem kell sietni.'
+    const id = await textItemId(text)
+    // A scene feliratát a futás eleji takarítás (keepThisVideo) elviszi, mert nem ehhez az azonosítóhoz tartozik.
+    await writeFile(join(outDir, `Beszéd [${id}].txt`), text)
+    await writeFile(join(outDir, `Beszéd [${id}].info.json`), JSON.stringify({ id, title: 'Beszéd' }))
+    const calls = { generate: 0 }
+    const run = (createClient: RunRuntime['createClient']) =>
+      runRecipes({ videoId: id, recipes: ['summary'], outDir, createClient, load, git: gitWith() })
+    const result = await run(() => client(calls))
+    expect(result).toEqual({ ok: true, noteUrl: `Inbox/transcript-refinery/telegram/Beszéd [${id}]_transcript.md` })
+    const note = await readFile(join(vault, `Inbox/transcript-refinery/telegram/Beszéd [${id}]_summary.md`), 'utf8')
+    expect(note).toMatch(new RegExp(`item_id: "?${id}"?\\n`))
+    expect(note).toContain('origin: telegram\n')
+    expect(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: vault, encoding: 'utf8' }).trim()).toBe(
+      `docs(transcript-refinery): summary | Beszéd [${id}]`,
+    )
+    const again = { generate: 0 }
+    expect(await run(() => client(again))).toEqual(result)
+    expect(again.generate).toBe(0)
   })
 
   it('az idegen felirat nem hív modellt és nem kerül a commitba', async () => {
