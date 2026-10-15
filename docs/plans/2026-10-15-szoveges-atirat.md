@@ -1082,7 +1082,7 @@ git commit   # commit-message skill; pl. "feat(queue): Keep text item path in hi
   - `commandScanQueue(cfg, flags: { dryRun: boolean; commit: boolean; adHoc?: AdHoc })`
   - `commandRun(cfg, raw, flags: { …; adHoc?: AdHoc }, runtime)`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/cli.test.ts`, új `describe` a fájl végén (a fájl már importálja a `main`-t, `vi`-t, `existsSync`-et; ha nem, add hozzá):
 
@@ -1354,12 +1354,12 @@ describe('szöveges átirat (--dir, --file)', () => {
 })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run src/cli.test.ts src/e2e.test.ts`
 Expected: FAIL — `parseArgs` ismeretlen kapcsolót kap (`--dir`), a `commandRun` nem ismeri az `adHoc`-ot.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/cli.ts`, importok (a meglévők mellé; a `readFile`/`existsSync` már importálva van):
 
@@ -1608,12 +1608,12 @@ A `scan` és a `run` ága:
 
 A watch az új kapcsolókat magától elutasítja: a `WATCH_OPTIONS` engedélylista, ehhez nem kell nyúlni.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run src/cli.test.ts src/e2e.test.ts && pnpm typecheck && pnpm lint`
 Expected: PASS. Ha az `e2e` queue-teszt `existsSync(noteFile(…))` állítása bukik, nézd meg, hová írta a jegyzetet: a sorból feloldott tétel forrásneve a fájl mappája (`atiratok`), lásd az „Eltérések” 5. pontját.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cli.ts src/cli.test.ts src/e2e.test.ts

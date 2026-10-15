@@ -2996,3 +2996,35 @@ describe('commandRun — megszakítás signallal', () => {
     expect(hivasok.generate).toBe(1)
   })
 })
+
+describe('ad hoc forrás — kapcsolóhibák', () => {
+  it.each([
+    [['scan', '--match', '*.md'], 'A --match csak a --dir mellett használható.'],
+    [['run', '--dir', 'D', '--file', 'F'], 'A --dir és a --file együtt nem használható.'],
+    [['run', '--dir', 'D', '--source', 'x'], 'A --source a --dir és a --file mellett nem használható: azok a sources helyére lépnek.'],
+    [['run', '--file', 'PDF'], 'A --file csak .srt, .vtt, .txt vagy .md fájl lehet: PDF'],
+    [['run', '--file', 'NINCS'], 'A --file nem létező fájl: NINCS'],
+    [['scan', '--dir', 'NINCSDIR'], 'A --dir nem létező mappa: NINCSDIR'],
+  ])('%j → hiba a futás előtt', async (args, message) => {
+    const pdf = join(work, 'a.pdf')
+    await writeFile(pdf, '%PDF')
+    const subst: Record<string, string> = {
+      D: downloads,
+      F: pdf,
+      PDF: pdf,
+      NINCS: join(work, 'nincs.txt'),
+      NINCSDIR: join(work, 'nincs'),
+    }
+    const real = args.map((arg) => subst[arg] ?? arg)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expect(await main(real)).toBe(1)
+      expect(String(errorSpy.mock.calls[0]?.[0])).toBe(
+        message.replace(/PDF|NINCSDIR|NINCS/, (key) => subst[key]!),
+      )
+      expect(existsSync(join(work, 'state.db'))).toBe(false)
+    } finally {
+      errorSpy.mockRestore()
+    }
+  })
+})
