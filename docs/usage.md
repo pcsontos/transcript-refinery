@@ -85,10 +85,13 @@ refinery run --queue
 - A mintát mindig idézőjelbe tedd: a zsh az idézetlen `*.md`-t maga bontja ki,
   és találat nélkül el sem indítja a parancsot. A `/` nélküli minta a
   fájlnévre illik, a `/`-t tartalmazó a mappához képesti útra.
+  A `--dir` a rejtett (`.`-tal kezdődő) fájlokat és mappákat, valamint a
+  `node_modules`-t nem járja be.
 - A cím és a jegyzet neve a fájlnévből jön; a nyelvkód a fájlnévből
   (`átirat.en.md`), hiányában a tartalomból.
 - Az `.md` vezető frontmattere lekerül; a wikilinkből a felirata marad, a
-  linkek célja csúcsos zárójelbe kerül (a vault írási szabálya).
+  linkek célja csúcsos zárójelbe kerül, a link címe (`"cím"`) elmarad (a vault
+  írási szabálya).
 - Az azonosság a tartalomé: átnevezett vagy áthelyezett fájlért nem fizetsz
   újra, a szerkesztett fájl új tétel. Ha a jegyzet neve már foglalt, a
   write-once miatt kimarad (a `scan` jelzi); újrafeldolgozás `--force`-szal.

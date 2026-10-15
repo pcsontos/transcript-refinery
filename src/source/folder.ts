@@ -39,7 +39,7 @@ function toPosix(path: string): string {
   return path.split(sep).join('/')
 }
 
-async function walk(dir: string): Promise<string[]> {
+async function walk(dir: string, skipHidden = false): Promise<string[]> {
   let entries
   try {
     entries = await readdir(dir, { withFileTypes: true })
@@ -48,8 +48,10 @@ async function walk(dir: string): Promise<string[]> {
   }
   const files: string[] = []
   for (const entry of entries) {
+    // Az ad hoc bejárás a rejtett és a függőségi mappákat nem veszi fel (`.git`, `.obsidian`, `node_modules`).
+    if (skipHidden && (entry.name.startsWith('.') || entry.name === 'node_modules')) continue
     const full = join(dir, entry.name)
-    if (entry.isDirectory()) files.push(...(await walk(full)))
+    if (entry.isDirectory()) files.push(...(await walk(full, skipHidden)))
     else files.push(full)
   }
   return files
@@ -222,8 +224,10 @@ export async function textItem(path: string, source: SourceDir): Promise<SourceI
   try {
     itemId = textItemId(await readTextSource(path))
   } catch {
-    // ponytail: útvonal-hash azonosító; a fájl javítása után új tétel lesz belőle
-    itemId = `t-${itemIdFor(source.name, sourceFile)}`
+    // ponytail: útvonal-hash azonosító; a fájl javítása után új tétel lesz belőle.
+    // Az abszolút útból képzett: a forrásnévtől és a gyökértől függetlenül ugyanaz
+    // marad, ha a tételt a sor horgonyából építjük újra.
+    itemId = `t-${itemIdFor('', path)}`
   }
   return {
     itemId,
@@ -254,11 +258,19 @@ export interface AdHoc {
 export async function discoverAdHoc(
   adHoc: AdHoc,
   languages: readonly string[],
+  sources: readonly SourceDir[] = [],
 ): Promise<SourceItem[]> {
   const root = resolve(adHoc.file === undefined ? adHoc.dir! : dirname(adHoc.file))
   const source: SourceDir = { name: basename(root), path: root }
-  let files = adHoc.file === undefined ? await walk(root) : [resolve(adHoc.file)]
-  const pattern = adHoc.match
+  // Ha a mappa egy konfigurált forrás belsejében van, a feliratok azonosítója és
+  // forrásneve a konfigurált forrásból jön, különben ugyanaz a videó második
+  // tételként (más azonosítóval) kerülne a sorba.
+  const configured = sources.find((candidate) => {
+    const base = resolve(candidate.path)
+    return root === base || root.startsWith(base + sep)
+  })
+  let files = adHoc.file === undefined ? await walk(root, true) : [resolve(adHoc.file)]
+  const pattern = adHoc.match?.replace(/^\.\//, '')
   if (pattern !== undefined) {
     files = files.filter((path) =>
       matchesGlob(pattern.includes('/') ? toPosix(relative(root, path)) : basename(path), pattern),
@@ -266,7 +278,7 @@ export async function discoverAdHoc(
   }
   const texts = files.filter((path) => splitSubtitleName(basename(path), TEXT_EXTENSIONS) !== null).sort()
   return firstById([
-    ...(await subtitleItems(files, source, languages)),
+    ...(await subtitleItems(files, configured ?? source, languages)),
     ...(await Promise.all(texts.map((path) => textItem(path, source)))),
   ])
 }
@@ -276,6 +288,9 @@ export async function discoverAdHoc(
  * az okot adja: a hívó a „nem található” listára teszi.
  */
 export async function queuedTextItem(itemId: string, path: string): Promise<SourceItem | string> {
+  if (splitSubtitleName(basename(path), TEXT_EXTENSIONS) === null) {
+    return `nem található: nem .txt vagy .md fájl (${path})`
+  }
   if (!existsSync(path)) return `nem található: ${path}`
   const item = await textItem(path, { name: basename(dirname(path)), path: dirname(path) })
   return item.itemId === itemId

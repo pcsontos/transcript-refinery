@@ -185,7 +185,7 @@ export async function adHocOptions(values: {
 
 /** Az ad hoc forrás erre a futásra a `sources` helyére lép. */
 function discover(cfg: Config, adHoc: AdHoc | undefined): Promise<SourceItem[]> {
-  return adHoc ? discoverAdHoc(adHoc, cfg.languages) : discoverAll(cfg.sources, cfg.languages)
+  return adHoc ? discoverAdHoc(adHoc, cfg.languages, cfg.sources) : discoverAll(cfg.sources, cfg.languages)
 }
 
 /** A szöveges tétel részletsora; jelzi, ha a jegyzet neve már egy másik tételé. */
@@ -248,7 +248,7 @@ export async function commandScanQueue(
 
   // Az ad hoc forrás itt NEM lép a sources helyére: az összefésülés minden
   // sorbeli, de fel nem derített tételt „nem található”-nak jelölne.
-  const adHoc = flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages) : []
+  const adHoc = flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages, cfg.sources) : []
   const unsafe = adHoc.filter((item) => item.format === 'text' && item.subtitlePath.includes('%%'))
   for (const item of unsafe) {
     console.error(`Az útvonalban %% van, a sorba nem vehető fel: ${item.subtitlePath}`)
@@ -761,7 +761,7 @@ export async function commandRun(
     discovered = queueMode
       ? firstById([
           ...(await discoverAll(cfg.sources, cfg.languages)),
-          ...(flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages) : []),
+          ...(flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages, cfg.sources) : []),
         ])
       : await discover(cfg, flags.adHoc)
 

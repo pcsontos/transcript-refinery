@@ -43,6 +43,26 @@ describe('vaultSafeLinks', () => {
   })
 })
 
+describe('vaultSafeLinks — szélső esetek', () => {
+  it('az üres feliratú vagy üres célú wikilinkből is a másik rész marad', () => {
+    const out = vaultSafeLinks('[[a|]] és [[|b]]')
+    expect(out).toBe('a és b')
+    expect(lintVaultMarkdown(out)).toEqual([])
+  })
+
+  it('a zárójeles URL egészben marad a csúcsos zárójelben', () => {
+    const out = vaultSafeLinks('[W](https://e.org/Foo_(bar)) vége')
+    expect(out).toBe('[W](<https://e.org/Foo_(bar)>) vége')
+    expect(lintVaultMarkdown(out)).toEqual([])
+  })
+
+  it('a link címe (idézőjelben) elmarad, a cél csúcsos zárójelbe kerül', () => {
+    const out = vaultSafeLinks('[t](https://e.org/x "cím")')
+    expect(out).toBe('[t](<https://e.org/x>)')
+    expect(lintVaultMarkdown(out)).toEqual([])
+  })
+})
+
 describe('readTextSource és textItemId', () => {
   it('a CRLF, a BOM és a szélek whitespace-e nem változtat az azonosítón', async () => {
     const a = await readTextSource(await file('a.txt', 'Első sor.\nMásodik sor.\n'))

@@ -279,8 +279,6 @@ async function runRecipe(
     })),
   })
 
-  // Csak az időbélyeges receptnél értelmes: egy `summary` jegyzetben minden
-  // bekezdés időbélyeg nélküli, az nem hiány.
   // Csak az időbélyeges receptnél és időbélyeges átiratnál értelmes: egy
   // `summary` vagy egy szöveges átirat jegyzetében az időbélyeg hiánya nem hiány.
   if (recipe.anchored && transcript.timed.length > 0) {

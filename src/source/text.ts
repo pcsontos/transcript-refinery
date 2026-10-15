@@ -25,12 +25,15 @@ export function stripFrontmatter(text: string): string {
  */
 export function vaultSafeLinks(text: string): string {
   return text
-    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_match, target: string, alias: string | undefined) =>
-      alias ?? target,
+    .replace(/\[\[([^\]|]*)(?:\|([^\]]*))?\]\]/g, (_match, target: string, alias: string | undefined) =>
+      alias === undefined || alias === '' ? target : alias,
     )
-    .replace(/(!?\[[^\]]*\]\()([^)]*)\)/g, (match, open: string, dest: string) =>
-      dest.startsWith('<') ? match : `${open}<${dest}>)`,
-    )
+    .replace(/(!?\[[^\]]*\]\()((?:[^()]|\([^()]*\))*)\)/g, (match, open: string, dest: string) => {
+      if (dest.startsWith('<')) return match
+      // A vault lintje a `(<cél> "cím")` alakot sem fogadja el, ezért a link címe elmarad.
+      const titled = /^(.*?)\s+("[^"]*"|'[^']*')$/s.exec(dest)
+      return `${open}<${titled ? titled[1]! : dest}>)`
+    })
 }
 
 /**

@@ -303,3 +303,39 @@ describe('queuedTextItem', () => {
     )
   })
 })
+
+describe('queuedTextItem — szélső esetek', () => {
+  it('nem .txt/.md fájlra mutató horgonyra okot ad, nem dob', async () => {
+    await write('y/x.pdf', '%PDF')
+    const path = join(root, 'y', 'x.pdf')
+    expect(await queuedTextItem('t-0000000000000000', path)).toBe(
+      `nem található: nem .txt vagy .md fájl (${path})`,
+    )
+  })
+
+  it('az olvashatatlan, almappából jött fájl azonosítója a sorból újraépítve is ugyanaz', async () => {
+    await write('x/al/ures.hu.txt', '')
+    const [item] = await discoverAdHoc({ dir: join(root, 'x') }, [])
+    const rebuilt = await queuedTextItem(item!.itemId, join(root, 'x', 'al', 'ures.hu.txt'))
+    expect(typeof rebuilt).not.toBe('string')
+  })
+})
+
+describe('discoverAdHoc — konfigurált forrás és rejtett fájlok', () => {
+  it('a konfigurált forrás almappája ugyanazt az azonosítót és forrásnevet adja, mint a sources bejárása', async () => {
+    await write('Cs/A.hu.srt', SRT)
+    const [fromSources] = await discoverAll([source()], [])
+    const [adHoc] = await discoverAdHoc({ dir: join(root, 'Cs') }, [], [source()])
+    expect(adHoc).toMatchObject({ itemId: fromSources!.itemId, source: 'youtube', sourceFile: 'Cs/A.hu.srt' })
+  })
+
+  it('a rejtett mappát és fájlt kihagyja, a ./ kezdetű minta működik', async () => {
+    await write('x/.obsidian/n.hu.md', '# N')
+    await write('x/node_modules/p/r.hu.md', '# R')
+    await write('x/.rejtett.hu.md', '# H')
+    await write('x/al/d.hu.md', '# D')
+    expect((await discoverAdHoc({ dir: join(root, 'x') }, [])).map((i) => i.sourceFile)).toEqual(['al/d.hu.md'])
+    const dotted = await discoverAdHoc({ dir: join(root, 'x'), match: './al/*.md' }, [])
+    expect(dotted.map((i) => i.sourceFile)).toEqual(['al/d.hu.md'])
+  })
+})
