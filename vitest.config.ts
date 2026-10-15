@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: {
     alias: {
       'transcript-refinery/classify': fileURLToPath(new URL('./src/fetch/classify.ts', import.meta.url)),
+      'transcript-refinery/text': fileURLToPath(new URL('./src/source/text-core.ts', import.meta.url)),
     },
   },
   test: {

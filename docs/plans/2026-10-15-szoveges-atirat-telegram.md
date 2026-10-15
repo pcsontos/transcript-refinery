@@ -84,7 +84,7 @@ Az implementáció a `feat/szoveges-atirat-telegram` ágon, külön worktree-ben
   - `isTextItemId(id: string): boolean`
   - `readTextSource(path: string): Promise<string>` (csak `./text.js`, változatlan viselkedés)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 A `src/source/text.test.ts`-ben a `textItemId` hívások elé `await` kerül (a `readTextSource és textItemId` blokk három tesztjében: `expect(await textItemId(b)).toBe(await textItemId(a))`, `expect(await textItemId(a)).not.toBe(await textItemId(b))`, `expect(await textItemId(a)).toMatch(...)`, `expect(await textItemId(a)).toBe(await textItemId(b))`). Az import bővül, és a fájl végére új blokk jön:
 
@@ -131,12 +131,12 @@ describe('textItemId (Web Crypto)', () => {
 })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run src/source/text.test.ts`
 Expected: FAIL — `normalizeText` és `isTextItemId` nem exportált.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `src/source/text-core.ts` (új). A `LANGUAGE_TAG` a teljes kommentjével, a `SubtitleName` és a `splitSubtitleName` **szó szerint** átkerül a `src/source/folder.ts`-ből (ma `:16-87`), a `stripFrontmatter` és a `vaultSafeLinks` a `src/source/text.ts`-ből, a dokumentációs kommentjeikkel együtt:
 
@@ -245,12 +245,12 @@ export async function readTextSource(path: string): Promise<string> {
       'transcript-refinery/text': fileURLToPath(new URL('./src/source/text-core.ts', import.meta.url)),
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run src/source` majd a Global Constraints teljes ellenőrzése.
 Expected: PASS; a meglévő `folder.test.ts` (`splitSubtitleName`) és `text.test.ts` esetek változatlanul zöldek; `grep -n "node:" src/source/text-core.ts` üres.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/text-core.ts src/source/text.ts src/source/text.test.ts src/source/folder.ts package.json vitest.config.ts
