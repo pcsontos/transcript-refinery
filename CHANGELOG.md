@@ -3,6 +3,42 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.17.0] — 2026-10-15
+
+Időbélyeg nélküli `.txt` és `.md` átiratból is készül jegyzet a parancssorból.
+
+### ✨ Szöveges átirat
+
+- **Új kapcsolók:** a `refinery scan` és a `refinery run` ismeri a `--dir`,
+  `--match` és `--file` kapcsolót. Egy mappa (almappákkal együtt) vagy egyetlen
+  fájl kerül sorra, `.srt`, `.vtt`, `.txt` és `.md` fájlból. A kapcsoló erre a
+  futásra a `sources` helyére lép; a konfigurált `sources` továbbra is csak
+  feliratot vesz fel. A `--match` mintát idézőjelbe kell tenni (#206).
+- **Tartalom szerinti azonosság:** egy átirat azonosítója a szövegéből jön.
+  Átnevezett vagy áthelyezett fájlért nem fizetsz újra, a szerkesztett fájl új
+  tétel (#206).
+- **Ellenőrzés és tisztítás:** legfeljebb 2 MB, UTF-8 szöveg; üres, túl nagy vagy
+  nem szöveges fájlra megnevezett hiba jön, a többi fájl fut tovább. Az `.md`
+  vezető frontmattere lekerül; a wikilinkből a felirata marad, a linkek célja
+  csúcsos zárójelbe kerül, a link címe elmarad (a vault írási szabálya miatt)
+  (#206).
+- **Sor:** a `scan --queue` felveszi a szöveges tételt, a horgonyába rejtve az
+  útvonallal. A `run --queue`, a `scan --queue` és a `watch` ebből találja meg
+  újra a fájlt; ha eltűnt vagy megváltozott, „nem található”-nak jelöli, okkal
+  (#206).
+- **`scan`:** szöveges tételnél szószámot és típust (`.txt`, `.md`) mutat, és
+  jelzi, ha a jegyzet neve már foglalt (#206).
+- **Súgó és leírás:** a `scan` és a `run` súgója és a `docs/usage.md` leírja az
+  új kapcsolókat (#206).
+
+### ⚠️ Tudnivalók
+
+- A `--dir` kihagyja a rejtett (`.`-tal kezdődő) fájlokat és mappákat, valamint a
+  `node_modules`-t.
+- Azonos alapnevű, de eltérő tartalmú fájlok jegyzetútja ütközik; a második a
+  már meglévő jegyzet miatt kimarad (a `scan` jelzi).
+- A Telegramos csatolmány és a `/scan` szöveggel még nincs kész (#206 B szelet).
+
 ## [1.16.0] — 2026-10-14
 
 A Telegram-botból megszakítható a saját, sorban álló vagy futó munka, és a bot négy tájékoztató parancsot is ismer.
@@ -761,6 +797,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.17.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.17.0
 [1.16.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.16.0
 [1.15.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.15.0
 [1.14.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.14.1
