@@ -1632,7 +1632,7 @@ git commit   # commit-message skill; pl. "feat(cli): Add --dir, --match, --file 
 **Interfaces:**
 - Consumes: a Task 5 kapcsolói
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/cli.test.ts`, az `OPTIONS` táblázatban a `scan` és a `run` sora:
 
@@ -1656,12 +1656,12 @@ git commit   # commit-message skill; pl. "feat(cli): Add --dir, --match, --file 
   })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/cli.test.ts -t súgó`
 Expected: FAIL — a súgóban nincs `--dir`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/help.ts`, az állandók közé:
 
@@ -1765,12 +1765,12 @@ refinery run --queue
   `--match` `--dir` nélkül.
 ````
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm test && pnpm typecheck && pnpm lint`
 Expected: PASS, a teljes készlet zöld.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/help.ts src/cli.test.ts docs/usage.md

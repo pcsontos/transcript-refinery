@@ -2432,9 +2432,12 @@ describe('main és súgó', () => {
   })
 
   const OPTIONS: Record<string, string[]> = {
-    scan: ['--config', '--queue', '--dry-run', '--no-commit'],
+    scan: ['--config', '--dir', '--match', '--file', '--queue', '--dry-run', '--no-commit'],
     run: [
       '--config',
+      '--dir',
+      '--match',
+      '--file',
       '--source',
       '--channel',
       '--limit',
@@ -2488,6 +2491,12 @@ describe('main és súgó', () => {
       }
     },
   )
+
+  it('a scan és a run súgója idézőjeles mintát és szöveges példát mutat', () => {
+    expect(helpText('scan')).toContain("refinery scan --dir ~/atiratok --match '*.md'")
+    expect(helpText('run')).toContain('refinery run --file ~/atiratok/átirat.txt')
+    expect(overview()).not.toContain('videókat')
+  })
 
   it('a help parancs saját súgója, a fetch mód nélkül is a fetch subtitle súgója, az áttekintés 0-val', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
