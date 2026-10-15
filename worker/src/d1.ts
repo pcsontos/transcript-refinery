@@ -1,4 +1,4 @@
-import type { Binding, JobRow, JobStatus, JobStore, LinkToken, RunRow } from './store.js'
+import { OPEN, type Binding, type JobRow, type JobStatus, type JobStore, type LinkToken, type RunRow } from './store.js'
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement
@@ -24,6 +24,9 @@ interface JobRecord {
   notified_ready: number
   accepted_at: number | null
   sub: string | null
+  file_id: string | null
+  file_name: string | null
+  text: string | null
 }
 
 interface BindingRecord {
@@ -89,6 +92,9 @@ function toRow(record: JobRecord): JobRow {
     notifiedReady: record.notified_ready === 1,
     acceptedAt: record.accepted_at,
     sub: record.sub,
+    fileId: record.file_id,
+    fileName: record.file_name,
+    text: record.text,
   }
 }
 
@@ -132,8 +138,8 @@ export function createD1Store(db: D1Like): JobStore {
         .prepare(
           `INSERT INTO jobs (
             job_id, update_id, chat_id, message_id, video_id, url, status, error, title,
-            notified_ready, accepted_at, sub
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            notified_ready, accepted_at, sub, file_id, file_name, text
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           row.jobId,
@@ -148,6 +154,9 @@ export function createD1Store(db: D1Like): JobStore {
           row.notifiedReady ? 1 : 0,
           row.acceptedAt,
           row.sub,
+          row.fileId ?? null,
+          row.fileName ?? null,
+          row.text ?? null,
         )
         .run()
     },
@@ -156,7 +165,8 @@ export function createD1Store(db: D1Like): JobStore {
         .prepare(
           `UPDATE jobs SET
             update_id = ?, chat_id = ?, message_id = ?, video_id = ?, url = ?, status = ?,
-            error = ?, title = ?, notified_ready = ?, accepted_at = ?, sub = ?
+            error = ?, title = ?, notified_ready = ?, accepted_at = ?, sub = ?,
+            file_id = ?, file_name = ?, text = ?
           WHERE job_id = ? AND status != 'cancelled'`,
         )
         .bind(
@@ -171,17 +181,20 @@ export function createD1Store(db: D1Like): JobStore {
           row.notifiedReady ? 1 : 0,
           row.acceptedAt,
           row.sub,
+          row.fileId ?? null,
+          row.fileName ?? null,
+          OPEN.includes(row.status) ? (row.text ?? null) : null,
           row.jobId,
         )
         .run()
       return changed(result)
     },
     async claimJob(jobId, expect, next) {
-      const result = await db
-        .prepare('UPDATE jobs SET status = ? WHERE job_id = ? AND status = ?')
-        .bind(next, jobId, expect)
-        .run()
-      return changed(result)
+      // Ma csak a megszakítás hívja; a lezárt sor szövegére nincs több újrapróbálás.
+      const sql = OPEN.includes(next)
+        ? 'UPDATE jobs SET status = ? WHERE job_id = ? AND status = ?'
+        : 'UPDATE jobs SET status = ?, text = NULL WHERE job_id = ? AND status = ?'
+      return changed(await db.prepare(sql).bind(next, jobId, expect).run())
     },
     async due(now) {
       const result = await db

@@ -31,6 +31,10 @@ describe('szállítási fájlok', () => {
     const runs = await readFile('worker/migrations/0004_runs.sql', 'utf8')
     expect(runs).toContain('CREATE TABLE runs')
     expect(runs).toContain("WHERE phase = 'summary'")
+    const text = await readFile('worker/migrations/0005_text.sql', 'utf8')
+    expect(text).toContain('ALTER TABLE jobs ADD COLUMN file_id TEXT')
+    expect(text).toContain('ALTER TABLE jobs ADD COLUMN file_name TEXT')
+    expect(text).toContain('ALTER TABLE jobs ADD COLUMN text TEXT')
   })
 })
 

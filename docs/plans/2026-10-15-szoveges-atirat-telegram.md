@@ -682,7 +682,7 @@ git commit   # commit-message skill; pl. "feat(serve): Run recipes on Telegram t
 **Interfaces:**
 - Produces: `JobRow` új opcionális mezői: `fileId?: string | null`, `fileName?: string | null`, `text?: string | null`. A `save` és a `claimJob` a nem nyitott (`ready`/`failed`/`cancelled`) sor `text`-jét `null`-ra írja.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `worker/src/store.test.ts` (új):
 
@@ -808,12 +808,12 @@ describe('D1: szöveges sor', () => {
     expect(text).toContain('ALTER TABLE jobs ADD COLUMN text TEXT')
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run worker/src/store.test.ts worker/src/d1.test.ts worker/src/entry.test.ts`
 Expected: FAIL — a migráció hiányzik, a szöveg nem ürül, a D1 nem viszi az új oszlopokat.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `worker/migrations/0005_text.sql`:
 
@@ -869,12 +869,12 @@ A `memoryStore`-ban:
     },
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run worker` majd a teljes ellenőrzés.
 Expected: PASS; a meglévő Worker-tesztek változatlanul zöldek (az új mezők opcionálisak, a régi `JobRow` literálok nem változnak).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/migrations/0005_text.sql worker/src/store.ts worker/src/d1.ts worker/src/store.test.ts worker/src/d1.test.ts worker/src/entry.test.ts
