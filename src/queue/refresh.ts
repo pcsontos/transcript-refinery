@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import type { Config } from '../config.js'
 import { normalizeItem } from '../pipeline.js'
 import type { Registry } from '../recipe/registry.js'
+import { firstById, queuedTextItem } from '../source/folder.js'
 import { openState } from '../state/db.js'
 import type { SourceItem } from '../types.js'
 import { doneLookup, markDone } from './done.js'
@@ -9,6 +10,7 @@ import { queuePath, readQueueFile } from './file.js'
 import { queueLayout } from './layout.js'
 import { migrateLegacy } from './legacy.js'
 import { mergeQueue, type MergeStats } from './merge.js'
+import { parseQueue } from './parse.js'
 import { renumberQueue } from './renumber.js'
 
 /**
@@ -47,19 +49,41 @@ export interface QueueRefresh {
 }
 
 /**
+ * A sor szöveges tételei a horgonyuk útvonalából. Enélkül az összefésülés
+ * minden szöveges tételt „nem található”-nak jelölne, mert a `sources` nem
+ * tartalmazza őket. Ami már nincs meg, kimarad — azt a merge jelöli.
+ */
+async function queuedTextItems(queueText: string | null): Promise<SourceItem[]> {
+  if (queueText === null) return []
+  const items: SourceItem[] = []
+  for (const video of parseQueue(queueText).videos) {
+    if (video.path === undefined) continue
+    const item = await queuedTextItem(video.itemId, video.path)
+    if (typeof item !== 'string') items.push(item)
+  }
+  return items
+}
+
+/**
  * A felderített elemek összefésülése a sorba, a kész párok bepipálásával és az
- * újraszámozással — a `scan --queue` és a `watch` közös útja. Nem ír: a sort
+ * újraszámozással — a `scan --queue` és a `watch` közös útja. A sor szöveges
+ * tételeit a horgonyuk útvonalából maga építi újra, hogy a hívó forrása
+ * (pl. a `watch`) ne jelölje őket hamisan „nem található”-nak. Nem ír: a sort
  * közvetlenül írás előtt frissen olvassa, így a hívó a lehető legkisebb
  * versenyablakkal írhat vissza. Az állapottárat csak olvassa, és csak ha már van.
  */
 export async function refreshQueue(
   cfg: Config,
   registry: Registry,
-  items: readonly SourceItem[],
+  discovered: readonly SourceItem[],
 ): Promise<QueueRefresh> {
   const layout = queueLayout(registry)
   const path = queuePath(cfg.notesRoot)
   const current = await readQueueFile(path)
+  const items = firstById([
+    ...discovered,
+    ...(await withContentLanguage(await queuedTextItems(current))),
+  ])
   // A régi formátumot egyszer átalakítjuk; utána a merge és az újraszámozás
   // már az újat látja.
   const legacy = current === null ? null : migrateLegacy(current, layout)

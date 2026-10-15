@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { commandScanQueue } from '../cli.js'
 import { loadConfig, type Config } from '../config.js'
 import { COMMIT_SCOPE } from '../meta.js'
 import { queuePath } from '../queue/file.js'
+import { NOT_FOUND_MARK } from '../queue/merge.js'
 import { RECIPES } from '../recipe/registry.js'
 import { watchRound } from './round.js'
 
@@ -64,6 +66,22 @@ describe('watchRound', () => {
     expect(await readFile(queuePath(cfg.notesRoot), 'utf8')).toContain('Egy videó')
     expect(lines.some((l) => l.startsWith('új átirat: ') && l.includes('Egy videó') && l.includes('(en)'))).toBe(true)
     expect(lines.some((l) => l.startsWith('_queue.md frissítve: +1 elem'))).toBe(true)
+  })
+
+  it('a sorba vett szöveges tételt nem jelöli „nem található”-nak, és nem ír a sorba', async () => {
+    await felirat('Csatorna', 'Egy videó')
+    const txt = join(work, 'atiratok', 'átirat.hu.txt')
+    await mkdir(join(work, 'atiratok'), { recursive: true })
+    await writeFile(txt, 'Ez egy szöveges átirat. A második mondat is itt van.\n', 'utf8')
+    await commandScanQueue(cfg, { dryRun: false, commit: false, adHoc: { file: txt } })
+    await round(null)
+    lines = []
+
+    const result = await round(null)
+
+    expect(await readFile(queuePath(cfg.notesRoot), 'utf8')).not.toContain(NOT_FOUND_MARK)
+    expect(await readFile(queuePath(cfg.notesRoot), 'utf8')).toContain(txt)
+    expect(result.queueChanged).toBe(false)
   })
 
   it('a már kész elemet nem dolgozza fel újra, és változatlan sornál nem ír ki semmit', async () => {

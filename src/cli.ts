@@ -202,23 +202,6 @@ async function textDetail(cfg: Config, item: SourceItem): Promise<string> {
   return `${String(words)} szó, szöveg (${ext})${taken ? ' · jegyzet már létezik ezen a néven' : ''}`
 }
 
-/**
- * A sor szöveges tételei a horgonyuk útvonalából. Enélkül az összefésülés
- * minden szöveges tételt „nem található”-nak jelölne, mert a `sources` nem
- * tartalmazza őket. Ami már nincs meg, kimarad — azt a merge jelöli.
- */
-async function queuedTextItems(notesRoot: string): Promise<SourceItem[]> {
-  const text = await readQueueFile(queuePath(notesRoot))
-  if (text === null) return []
-  const items: SourceItem[] = []
-  for (const video of parseQueue(text).videos) {
-    if (video.path === undefined) continue
-    const item = await queuedTextItem(video.itemId, video.path)
-    if (typeof item !== 'string') items.push(item)
-  }
-  return items
-}
-
 export async function commandScan(cfg: Config, adHoc?: AdHoc): Promise<number> {
   const items = await discover(cfg, adHoc)
   const filter = adHoc?.match === undefined ? '' : ` (--match '${adHoc.match}')`
@@ -274,7 +257,6 @@ export async function commandScanQueue(
   const items = await withContentLanguage(
     firstById([
       ...(await discoverAll(cfg.sources, cfg.languages)),
-      ...(await queuedTextItems(cfg.notesRoot)),
       ...adHoc.filter((item) => !unsafe.includes(item)),
     ]),
   )
@@ -774,7 +756,14 @@ export async function commandRun(
   }, runtime.signals)
 
   try {
-    discovered = await discover(cfg, flags.adHoc)
+    // Queue-módban a sor `sources`-beli tételei is feloldandók: az ad hoc forrás
+    // a `scan --queue`-hoz hasonlóan csak kiegészít, nem helyettesít.
+    discovered = queueMode
+      ? firstById([
+          ...(await discoverAll(cfg.sources, cfg.languages)),
+          ...(flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages) : []),
+        ])
+      : await discover(cfg, flags.adHoc)
 
     let units: WorkUnit[]
     if (queueMode) {

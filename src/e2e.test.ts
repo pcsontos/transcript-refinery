@@ -727,6 +727,28 @@ describe('szöveges átirat (--dir, --file)', () => {
     expect(existsSync(noteFile(cfg.notesRoot, item!, '_summary.md'))).toBe(true)
   })
 
+  it('run --dir --queue: a sorban lévő forrásvideós pár nem lesz „nem található”', async () => {
+    await write(join(subsA, 'Cs', 'Video.en.srt'), SRT)
+    const txt = join(atiratok, 'átirat.hu.txt')
+    await write(txt, 'Ez egy szöveges átirat. A második mondat is itt van.\n')
+    const cfg = cfgOf()
+    const sor = queuePath(cfg.notesRoot)
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false, adHoc: { dir: atiratok } })).toBe(0)
+    await writeFile(sor, (await readFile(sor, 'utf8')).replaceAll('- [ ] summary', '- [x] summary'), 'utf8')
+
+    const code = await commandRun(
+      cfg,
+      raw(),
+      { adHoc: { dir: atiratok }, queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => kliens([]) },
+    )
+
+    expect(code).toBe(0)
+    const [video] = (await discoverAll(cfg.sources, cfg.languages)).slice(0, 1)
+    expect(existsSync(noteFile(cfg.notesRoot, video!, '_summary.md'))).toBe(true)
+    expect(await readFile(sor, 'utf8')).not.toContain(NOT_FOUND_MARK)
+  })
+
   it.each([
     ['törölve', (path: string) => rm(path), (path: string) => `nem található: ${path}`],
     [
