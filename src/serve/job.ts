@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
 import { RECIPES } from '../recipe/registry.js'
-import { normalizeText, textItemId } from '../source/text.js'
+import { isLanguageTag, normalizeText, textItemId } from '../source/text.js'
 import { sanitizeSegment } from '../vault/sanitize.js'
 import { infoKey, languageMatches, subtitleKey, textKey, type LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
@@ -194,7 +194,9 @@ async function loadSummaryPair(
     }
     if (text === null || text.byteLength === 0) return { ok: false, error: UNREADABLE_PAIR }
     // A szöveges tétel nyelve a fájlnévből jön, ha volt; különben a futás a tartalomból dönt.
-    return { ok: true, title, language: infoLanguage, extension: 'txt', subtitle: text, info: infoBody }
+    // Az info.json az R2-ből jön, a nyelvkód a fájlnévbe kerül: csak érvényes kód mehet tovább.
+    const language = infoLanguage !== null && isLanguageTag(infoLanguage) ? infoLanguage : null
+    return { ok: true, title, language, extension: 'txt', subtitle: text, info: infoBody }
   }
   for (const sub of subs) {
     const match = SUB_NAME.exec(sub.name)

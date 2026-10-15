@@ -172,6 +172,23 @@ describe('runRecipes', () => {
     expect(again.generate).toBe(0)
   })
 
+  it('egy megmaradt szöveges fájl a videó azonosítóját a címében hordozva sem viszi el a videó futását', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, outDir, load } = await scene()
+    roots.push(root)
+    // Egy /scan szöveg első sora egy videólink volt: a fájl neve tartalmazza a videó azonosítóját.
+    await writeFile(join(outDir, `https：⧸⧸youtu.be⧸${ID} [t-0123456789abcdef].txt`), 'Valami régi szöveg.')
+    const result = await runRecipes({
+      videoId: ID,
+      recipes: ['summary'],
+      outDir,
+      createClient: () => client({ generate: 0 }),
+      load,
+      git: gitWith(),
+    })
+    expect(result).toEqual({ ok: true, noteUrl: TRANSCRIPT })
+  })
+
   it('az idegen felirat nem hív modellt és nem kerül a commitba', async () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()

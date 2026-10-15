@@ -111,6 +111,7 @@ describe('createServeServer', () => {
     expect(await post(port, 'titok', { ...job, text: 1 })).toBe(400)
     expect(await post(port, 'titok', { ...job, title: 1 })).toBe(400)
     expect(await post(port, 'titok', { ...job, textLang: 1 })).toBe(400)
+    expect(await post(port, 'titok', { ...job, textLang: '/../../tmp/x' })).toBe(400)
     expect(await post(port, 'titok', { ...job, text: 'Szöveg.', title: 'Cím', textLang: 'en' })).toBe(202)
     await vi.waitFor(() => expect(seen).toEqual([{ ...job, text: 'Szöveg.', title: 'Cím', textLang: 'en' }]))
   })

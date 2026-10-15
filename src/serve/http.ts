@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { ServeJob } from './job.js'
+import { isLanguageTag } from '../source/text.js'
 import { NotesUnavailable, type NotesSource } from './notes.js'
 
 export interface ServeGate {
@@ -60,6 +61,8 @@ function isJob(value: unknown): value is ServeJob {
   for (const field of [job.text, job.title, job.textLang]) {
     if (field !== undefined && typeof field !== 'string') return false
   }
+  // A nyelvkód a SERVE_OUT fájlnevébe kerül: más érték útvonal-bejárás lenne.
+  if (typeof job.textLang === 'string' && !isLanguageTag(job.textLang)) return false
   return job.lang === undefined || typeof job.lang === 'string'
 }
 

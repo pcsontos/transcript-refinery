@@ -5,7 +5,7 @@ import { loadCliConfig, type Config } from '../config.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { recipesFor } from '../recipe/registry.js'
 import { discoverAll, splitSubtitleName } from '../source/folder.js'
-import { TEXT_EXTENSIONS } from '../source/text.js'
+import { isTextItemId, TEXT_EXTENSIONS } from '../source/text.js'
 import type { SourceItem } from '../types.js'
 import { noteCommitMessage } from '../vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
@@ -126,9 +126,13 @@ export async function runRecipes(input: {
   const ids = lang === undefined ? [...input.recipes] : input.recipes.map((id) => `${id}-${lang}`)
   await keepThisVideo(input.outDir, input.videoId)
   // A szöveges tétel az A szelet `--file` útján fut: a `sources` csak feliratot vesz fel.
-  const textName = (await readdir(input.outDir)).find(
-    (name) => name.includes(input.videoId) && splitSubtitleName(name, TEXT_EXTENSIONS) !== null,
-  )
+  // Csak szöveges azonosítóra, és a `[<azonosító>]` utótagra: egy régi szöveg címében
+  // szereplő videóazonosító nem vihet el egy videó futását.
+  const textName = isTextItemId(input.videoId)
+    ? (await readdir(input.outDir)).find(
+        (name) => name.includes(`[${input.videoId}]`) && splitSubtitleName(name, TEXT_EXTENSIONS) !== null,
+      )
+    : undefined
   const logsBefore = new Set(await logNames(cfg.logsDir))
   const code = await commandRun(
     cfg,

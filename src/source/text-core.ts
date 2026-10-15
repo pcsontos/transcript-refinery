@@ -37,6 +37,11 @@ export function tooLargeMessage(bytes: number): string {
  */
 const LANGUAGE_TAG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
 
+/** Nyelvkód-e (`en`, `hu`, `en-US`); fájlnévbe kerülő értéket ezzel kell ellenőrizni. */
+export function isLanguageTag(tag: string): boolean {
+  return LANGUAGE_TAG.test(tag)
+}
+
 export interface SubtitleName {
   base: string
   language: string | null

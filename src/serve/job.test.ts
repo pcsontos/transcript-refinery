@@ -492,6 +492,17 @@ describe('runJob szöveges tétel', () => {
     }
   })
 
+  it('az info.json nem nyelvkód értéke nem kerül a fájlnévbe', async () => {
+    const id = 't-0123456789abcdef'
+    const store = memoryStore({
+      [`videos/${id}/text.txt`]: enc('Szöveg.'),
+      [`videos/${id}/info.json`]: enc(JSON.stringify({ id, title: 'Cím', language: '/../../tmp/x' })),
+    })
+    const paths: string[] = []
+    await runJob({ jobId: `5:${id}`, videoId: id, url: '', recipes: ['summary'] }, effectsWith(store, paths))
+    expect(paths).toEqual([`/data/telegram/Cím [${id}].txt`, `/data/telegram/Cím [${id}].info.json`])
+  })
+
   it('a hiányzó szövegre a hiányzó pár mondata jön', async () => {
     const id = 't-0123456789abcdef'
     const store = memoryStore({ [`videos/${id}/info.json`]: enc(JSON.stringify({ id, title: 'X' })) })
