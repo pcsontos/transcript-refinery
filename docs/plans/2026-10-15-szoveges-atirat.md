@@ -85,7 +85,7 @@ Az implementáció a `feat/szoveges-atirat` ágon indul a friss `main`-ről, miu
   - `textItemId(text: string): string`
   - `SourceItem.format?: 'text'`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/source/text.test.ts`:
 
@@ -175,12 +175,12 @@ describe('readTextSource és textItemId', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/source/text.test.ts`
 Expected: FAIL — `Failed to resolve import "./text.js"`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/source/text.ts`:
 
@@ -270,12 +270,12 @@ export function textItemId(text: string): string {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/source/text.test.ts && pnpm typecheck`
 Expected: PASS, typecheck hibátlan.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/text.ts src/source/text.test.ts src/types.ts
