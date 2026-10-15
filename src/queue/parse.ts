@@ -27,6 +27,8 @@ export interface QueueRecipe {
 export interface QueueVideo {
   line: number
   itemId: string
+  /** Szöveges tételnél a forrásfájl abszolút útja a horgonyból. */
+  path?: string
   /** A sor eleje a horgonyig, a `### N. ` előtaggal együtt. */
   head: string
   suffix: string
@@ -53,6 +55,8 @@ export interface QueueDoc {
 
 export interface QueuePair {
   itemId: string
+  /** Szöveges tételnél a forrásfájl abszolút útja a horgonyból. */
+  path?: string
   recipeId: string
 }
 
@@ -84,6 +88,7 @@ export function parseQueue(text: string): QueueDoc {
         current = {
           line,
           itemId: parsed.itemId,
+          ...(parsed.path === undefined ? {} : { path: parsed.path }),
           head: parsed.head,
           suffix: parsed.suffix,
           duplicate: seen.has(parsed.itemId),
@@ -135,15 +140,17 @@ export function parseQueue(text: string): QueueDoc {
 export function checkedPairs(doc: QueueDoc): QueuePair[] {
   return doc.videos
     .filter((video) => !video.duplicate)
-    .flatMap((video) =>
-      video.recipes.flatMap((recipe) => [
-        ...(recipe.checked ? [{ itemId: video.itemId, recipeId: recipe.recipeId }] : []),
+    .flatMap((video) => {
+      const at = video.path === undefined ? {} : { path: video.path }
+      return video.recipes.flatMap((recipe) => [
+        ...(recipe.checked ? [{ itemId: video.itemId, ...at, recipeId: recipe.recipeId }] : []),
         ...recipe.translations
           .filter((translation) => translation.checked)
           .map((translation) => ({
             itemId: video.itemId,
+            ...at,
             recipeId: translationId(recipe.recipeId, translation.lang),
           })),
-      ]),
-    )
+      ])
+    })
 }

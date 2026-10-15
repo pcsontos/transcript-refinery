@@ -868,7 +868,7 @@ git commit   # commit-message skill; pl. "feat(source): Discover ad hoc text and
   - `QueueVideo.path?: string`, `QueuePair.path?: string`
   - `videoLine(item)` szöveges tételnél `### 0. <cím> %%<itemId> <abszolút út>%%`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/queue/line.test.ts`, a fájl végére:
 
@@ -937,12 +937,12 @@ describe('checkedPairs szöveges tétellel', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/queue/line.test.ts src/queue/parse.test.ts`
 Expected: FAIL — a horgonyban nincs útvonal, a `classifyLine` az egész horgonyt azonosítónak veszi.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/queue/line.ts`:
 
@@ -1054,12 +1054,12 @@ export function checkedPairs(doc: QueueDoc): QueuePair[] {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/queue && pnpm typecheck`
 Expected: PASS; a meglévő sorformátum-tesztek változtatás nélkül zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/queue/line.ts src/queue/line.test.ts src/queue/parse.ts src/queue/parse.test.ts

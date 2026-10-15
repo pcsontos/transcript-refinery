@@ -99,3 +99,22 @@ describe('saját, számozatlan fejléc', () => {
     expect(parseQueue(SAJAT).boundaries).toEqual([0, 6, 9])
   })
 })
+
+describe('checkedPairs szöveges tétellel', () => {
+  it('a pár viszi a horgony útvonalát', () => {
+    const doc = parseQueue(
+      [
+        '## 1. atiratok',
+        '### 1. átirat %%t-0123456789abcdef /tmp/a b/átirat.md%%',
+        '- [x] summary',
+        '### 2. Videó %%abcDEF12345%%',
+        '- [x] summary',
+        '',
+      ].join('\n'),
+    )
+    expect(checkedPairs(doc)).toEqual([
+      { itemId: 't-0123456789abcdef', path: '/tmp/a b/átirat.md', recipeId: 'summary' },
+      { itemId: 'abcDEF12345', recipeId: 'summary' },
+    ])
+  })
+})

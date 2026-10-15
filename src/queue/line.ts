@@ -6,7 +6,7 @@ export const SEPARATOR = ' — '
 
 export type QueueLine =
   | { kind: 'heading'; key: string }
-  | { kind: 'video'; itemId: string; head: string; suffix: string }
+  | { kind: 'video'; itemId: string; path?: string; head: string; suffix: string }
   | { kind: 'recipe'; recipeId: string; checked: boolean; head: string; suffix: string }
   | { kind: 'translation'; lang: string; checked: boolean; head: string; suffix: string }
   | { kind: 'other' }
@@ -16,6 +16,8 @@ const HEADING = /^## \d+\. (.+)$/
 // A cím nem-mohó: az ELSŐ `%%…%%` a horgony. A `cleanTitle` gondoskodik róla,
 // hogy a címben ne maradjon `%%`. A fej a sorszámot is viszi: a `withSuffix`
 // ebből írja vissza a sort, a sorszámot csak a `renumberQueue` írja át.
+// Szöveges tételnél a horgony `azonosító útvonal`: az azonosítóban nincs
+// szóköz, az útvonalban lehet, ezért az első szóköznél válik ketté.
 const VIDEO = /^(### \d+\. .*? %%(.+?)%%)(.*)$/
 /** Receptsor: behúzás nélküli pipás sor a videófejléc alatt. */
 const RECIPE = /^(- \[([ xX])\] ([A-Za-z0-9_-]+))(.*)$/
@@ -29,7 +31,17 @@ export function classifyLine(line: string): QueueLine {
 
   const video = VIDEO.exec(line)
   if (video) {
-    return { kind: 'video', itemId: video[2]!, head: video[1]!, suffix: video[3]! }
+    const anchor = video[2]!
+    const space = anchor.indexOf(' ')
+    return space === -1
+      ? { kind: 'video', itemId: anchor, head: video[1]!, suffix: video[3]! }
+      : {
+          kind: 'video',
+          itemId: anchor.slice(0, space),
+          path: anchor.slice(space + 1),
+          head: video[1]!,
+          suffix: video[3]!,
+        }
   }
 
   const recipe = RECIPE.exec(line)
@@ -85,8 +97,14 @@ export function headingLine(key: string): string {
   return `## 0. ${key}`
 }
 
+/**
+ * Szöveges tételnél a horgony az útvonalat is viszi: a `run --queue` ebből
+ * találja meg a fájlt, ami a `sources`-ban nincs. Rejtett, mert egy látható
+ * linket a Better Markdown Links plugin átírhatna.
+ */
 export function videoLine(item: SourceItem): string {
-  return `### 0. ${cleanTitle(item.title, item.itemId)} %%${item.itemId}%%`
+  const anchor = item.format === 'text' ? `${item.itemId} ${item.subtitlePath}` : item.itemId
+  return `### 0. ${cleanTitle(item.title, item.itemId)} %%${anchor}%%`
 }
 
 export function recipeLine(recipeId: string): string {
