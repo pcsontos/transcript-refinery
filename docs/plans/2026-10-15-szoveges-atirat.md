@@ -295,7 +295,7 @@ git commit   # a commit-message skillel; tárgy pl. "feat(source): Add text tran
 - Consumes: `readTextSource(path)` (Task 1), `SourceItem.format`
 - Produces: `normalizeItem(item)` szöveges tételre `{ lines, timed: [], wordsRaw === wordsNormalized, … }`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/pipeline.test.ts`, a `describe('processItem — horgonyzás kihagyása'` blokkon belül, a meglévő `it` után (ott elérhető a `HORGONYZOTT_RECEPT`):
 
@@ -366,12 +366,12 @@ describe('normalizeItem — szöveges tétel', () => {
 
 Ha a `readFile` még nincs importálva a `node:fs/promises`-ból a teszt tetején, add hozzá.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/pipeline.test.ts`
 Expected: FAIL — a szöveges tételnél a `parseSubtitle` dob: `Nem támogatott feliratformátum`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/pipeline.ts`, import:
 
@@ -470,12 +470,12 @@ export function anchorParagraphs(output: string, timed: readonly TimedLine[]): s
   const words = wordStream(timed)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/pipeline.test.ts src/recipe && pnpm typecheck`
 Expected: PASS. Ha egy meglévő teszt a régi „a feliratfájl nevében nincs nyelvkód” szövegre illeszt, a Global Constraints szerinti új szövegre igazítsd. Ha a „nyelvkód nélkül a tartalom dönt” teszt `identifyLanguage`-a a rövid mondatra `null`-t ad, hosszabbítsd a szöveget (nézd meg a `src/lang/identify.test.ts` mintáit), ne a kódot.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pipeline.ts src/pipeline.test.ts src/recipe/anchor.ts

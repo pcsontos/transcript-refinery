@@ -10,6 +10,7 @@ import { retrying } from './model/retry.js'
 import { classifyCaptions, punctuationDensity } from './normalize/classify.js'
 import { countWords, dedupeTimedLines } from './normalize/dedupe.js'
 import { unanchoredParagraphs } from './recipe/anchor.js'
+import { readTextSource } from './source/text.js'
 import { alreadyInTarget } from './recipe/translate.js'
 import type { Recipe, RecipeInput, Translation } from './recipe/types.js'
 import { refine } from './refine/loop.js'
@@ -65,12 +66,50 @@ export interface ItemOutcome {
 export const ARTIFACT_KIND = 'transcript'
 
 /**
- * Feliratfájl → normalizált átirat. A `scan`, a költségbecslés és a
+ * A fájlnév nyelvkódja az elsődleges forrás; ha nincs, a tartalom dönt.
+ * Csendes angol alapértelmezés helyett megnevezett hiba: egy holland vagy
+ * német átiratot angolnak véve a nyelvi kapu rossz alaphoz mérne.
+ */
+function detectLanguage(item: SourceItem, text: string): void {
+  if (item.language !== null) return
+  const detected = identifyLanguage(text)
+  if (detected === null) {
+    throw new Error(
+      'a fájl nevében nincs nyelvkód, és a tartalom nyelve sem ' +
+        `ismerhető fel biztosan: ${item.sourceFile}`,
+    )
+  }
+  item.language = detected
+}
+
+/** Időbélyeg nélküli átirat: a nem üres sorok, változatlan sorrendben, deduplikálás nélkül. */
+async function normalizeText(item: SourceItem): Promise<NormalizedTranscript> {
+  const lines = (await readTextSource(item.subtitlePath))
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+  const text = lines.join(' ')
+  detectLanguage(item, text)
+  const words = countWords(text)
+  return {
+    lines,
+    timed: [],
+    wordsRaw: words,
+    wordsNormalized: words,
+    captionSource: classifyCaptions(text),
+    punctuationDensity: punctuationDensity(text),
+  }
+}
+
+/**
+ * Forrásfájl → normalizált átirat. A `scan`, a költségbecslés és a
  * feldolgozás ugyanezt hívja, hogy a szószám mindhárom helyen ugyanaz legyen.
  */
 export async function normalizeItem(
   item: SourceItem,
 ): Promise<NormalizedTranscript> {
+  if (item.format === 'text') return normalizeText(item)
+
   const raw = await readFile(item.subtitlePath, 'utf8')
   const cues = parseSubtitle(raw, item.subtitlePath)
   if (cues.length === 0) {
@@ -84,20 +123,7 @@ export async function normalizeItem(
   }
   const lines = timed.map((line) => line.text)
   const normalizedText = lines.join(' ')
-
-  // A fájlnév nyelvkódja az elsődleges forrás; ha nincs, a tartalom dönt.
-  // Csendes angol alapértelmezés helyett megnevezett hiba: egy holland vagy
-  // német feliratot angolnak véve a nyelvi kapu rossz alaphoz mérne.
-  if (item.language === null) {
-    const detected = identifyLanguage(normalizedText)
-    if (detected === null) {
-      throw new Error(
-        'a feliratfájl nevében nincs nyelvkód, és a tartalom nyelve sem ' +
-          `ismerhető fel biztosan: ${item.sourceFile}`,
-      )
-    }
-    item.language = detected
-  }
+  detectLanguage(item, normalizedText)
 
   return {
     lines,
@@ -255,7 +281,9 @@ async function runRecipe(
 
   // Csak az időbélyeges receptnél értelmes: egy `summary` jegyzetben minden
   // bekezdés időbélyeg nélküli, az nem hiány.
-  if (recipe.anchored) {
+  // Csak az időbélyeges receptnél és időbélyeges átiratnál értelmes: egy
+  // `summary` vagy egy szöveges átirat jegyzetében az időbélyeg hiánya nem hiány.
+  if (recipe.anchored && transcript.timed.length > 0) {
     const { count, total } = unanchoredParagraphs(result.output)
     if (count > 0) {
       deps.sink({ type: 'item:anchor-skipped', itemId: item.itemId, recipe: recipe.id, count, total })

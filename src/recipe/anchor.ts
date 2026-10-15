@@ -157,6 +157,8 @@ function anchorOne(
  * segítségével naplózza, hány bekezdés maradt így.
  */
 export function anchorParagraphs(output: string, timed: readonly TimedLine[]): string {
+  // Szöveges átiratnál nincs mihez horgonyozni: a kimenet érintetlenül megy át.
+  if (timed.length === 0) return output
   const words = wordStream(timed)
   const out: string[] = []
   let cursor = 0

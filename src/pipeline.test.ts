@@ -789,6 +789,29 @@ describe('processItem — horgonyzás kihagyása', () => {
     )
     expect(skipped).toMatchObject({ count: 1 })
   })
+
+  it('szöveges tételen nincs horgonyzás és nincs horgonyzási esemény', async () => {
+    await writeFile(join(dir, 'Átirat.en.txt'), 'The speaker explains the idea.\n', 'utf8')
+    const { sink, events } = collectEvents()
+    const kimenet = 'Completely unrelated sentence about quantum chromodynamics.'
+    const outcome = await processItem(
+      item({ format: 'text', subtitlePath: join(dir, 'Átirat.en.txt'), sourceFile: 'Átirat.en.txt', baseName: 'Átirat' }),
+      {
+        ...alapDeps(),
+        sink,
+        recipeDeps: {
+          recipe: HORGONYZOTT_RECEPT,
+          client: probaKliens(`${kimenet}\n`),
+          modelConfig: MODELL_CFG,
+          guard: createCostGuard(5),
+        },
+      },
+    )
+
+    expect(outcome.status).toBe('published')
+    expect(events.some((e) => e.type === 'item:anchor-skipped')).toBe(false)
+    expect(await readFile(outcome.recipePath!, 'utf8')).toContain(`\n${kimenet}\n`)
+  })
 })
 
 const ANGOL_FORRAS = [
@@ -1046,5 +1069,41 @@ describe('processItem — a már meglévő jegyzet a modellhívás előtt', () =
     expect(deps.store.artifactOf(item().itemId, 'proba')).toMatchObject({ status: 'done', path })
     // Csak az átirat került a commitra várók közé, amit a pipeline maga írt.
     expect(deps.store.listPendingCommits()).toEqual([noteFile(notesRoot, item(), '_transcript.md')])
+  })
+})
+
+describe('normalizeItem — szöveges tétel', () => {
+  it('a nem üres sorok sorrendben, deduplikálás és időbélyeg nélkül', async () => {
+    await writeFile(join(dir, 'Átirat.hu.txt'), 'Első sor.\n\nElső sor.\n  Második sor.  \n', 'utf8')
+    const current = item({ format: 'text', subtitlePath: join(dir, 'Átirat.hu.txt'), language: 'hu' })
+
+    const transcript = await normalizeItem(current)
+
+    expect(transcript.lines).toEqual(['Első sor.', 'Első sor.', 'Második sor.'])
+    expect(transcript.timed).toEqual([])
+    expect(transcript.wordsRaw).toBe(6)
+    expect(transcript.wordsNormalized).toBe(6)
+  })
+
+  it('nyelvkód nélkül a tartalom dönt', async () => {
+    await writeFile(
+      join(dir, 'Átirat.txt'),
+      'The speaker explains why the problem should always come before the tool, and gives an example.\n',
+      'utf8',
+    )
+    const current = item({ format: 'text', subtitlePath: join(dir, 'Átirat.txt'), language: null })
+    await normalizeItem(current)
+    expect(current.language).toBe('en')
+  })
+
+  it('a fájl hibája megnevezett item:failed, nem csendes kihagyás', async () => {
+    await writeFile(join(dir, 'Üres.hu.txt'), '\n', 'utf8')
+    const { sink, events } = collectEvents()
+    const outcome = await processItem(
+      item({ format: 'text', subtitlePath: join(dir, 'Üres.hu.txt'), language: 'hu' }),
+      { ...alapDeps(), sink },
+    )
+    expect(outcome).toMatchObject({ status: 'failed', error: 'a fájl üres' })
+    expect(events).toContainEqual(expect.objectContaining({ type: 'item:failed', error: 'a fájl üres' }))
   })
 })
