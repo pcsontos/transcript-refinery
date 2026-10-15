@@ -145,3 +145,43 @@ describe('sorgenerálók és withSuffix', () => {
     expect(withSuffix('- [x] summary', null)).toBe('- [x] summary')
   })
 })
+
+describe('szöveges tétel horgonya', () => {
+  const szoveg = elem({
+    itemId: 't-0123456789abcdef',
+    source: 'Saját átiratok',
+    sourceFile: 'átirat.hu.md',
+    subtitlePath: '/Users/x/Saját átiratok/átirat.hu.md',
+    baseName: 'átirat',
+    title: 'átirat',
+    format: 'text',
+  })
+
+  it('a horgonyban az azonosító után szóközzel az abszolút út áll', () => {
+    const line = videoLine(szoveg)
+    expect(line).toBe('### 0. átirat %%t-0123456789abcdef /Users/x/Saját átiratok/átirat.hu.md%%')
+    expect(lintVaultMarkdown(line)).toEqual([])
+  })
+
+  it('olvasáskor az első szóköznél válik ketté, az útvonal egészben marad', () => {
+    expect(classifyLine(`${videoLine(szoveg)} — ✓ summary`)).toEqual({
+      kind: 'video',
+      itemId: 't-0123456789abcdef',
+      path: '/Users/x/Saját átiratok/átirat.hu.md',
+      head: videoLine(szoveg),
+      suffix: ' — ✓ summary',
+    })
+  })
+
+  it('a státuszutótag frissítése után az útvonal megmarad', () => {
+    const parsed = classifyLine(videoLine(szoveg))
+    if (parsed.kind !== 'video') throw new Error('videósort vártam')
+    expect(classifyLine(withSuffix(parsed.head, '⚠ x'))).toMatchObject({
+      path: '/Users/x/Saját átiratok/átirat.hu.md',
+    })
+  })
+
+  it('a feliratos videósorhoz nem kerül útvonal', () => {
+    expect(classifyLine(videoLine(elem()))).not.toHaveProperty('path')
+  })
+})

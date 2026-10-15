@@ -1,18 +1,19 @@
 import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { promisify } from 'node:util'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { commandRun, commandScanQueue } from './cli.js'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { commandRun, commandScan, commandScanQueue } from './cli.js'
 import { DEFAULT_NOTES_DIR, loadConfig } from './config.js'
 import { collectEvents, summarize, type RunEvent } from './events.js'
 import type { ModelClient } from './model/client.js'
 import { processItem } from './pipeline.js'
 import { queuePath } from './queue/file.js'
+import { NOT_FOUND_MARK } from './queue/merge.js'
 import { renderReport } from './run/report.js'
-import { discoverAll } from './source/folder.js'
+import { discoverAdHoc, discoverAll } from './source/folder.js'
 import { openState } from './state/db.js'
 import { gitCommitPaths, isDirty } from './vault/git.js'
 import { noteFile } from './vault/paths.js'
@@ -549,5 +550,247 @@ describe('végponttól végpontig — megszakadt futás után a vault-commit', (
 
     await mindenJegyzetCommitolvaEsPusholva(cfg)
     expect(await isDirty(repo)).toBe(false)
+  })
+})
+
+describe('szöveges átirat (--dir, --file)', () => {
+  let atiratok: string
+  let mentettKulcs: string | undefined
+
+  const raw = () => ({
+    vault: { path: vault },
+    sources: [subsA],
+    state: { path: join(work, 'state.db') },
+    logs: { dir: join(work, 'logs') },
+    model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
+    pricing: {
+      'proba-draft': { input_per_million: 3, output_per_million: 15 },
+      'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
+    },
+    cost_limit_usd: 5,
+  })
+  const cfgOf = () => loadConfig(raw(), join(work, 'refinery.config.yaml'))
+
+  /** Hamis kliens, amely a generáló promptokat gyűjti. */
+  function kliens(promptok: string[]): ModelClient {
+    return {
+      generate: (_role, prompt) => {
+        promptok.push(prompt)
+        return Promise.resolve({
+          value: '## Összefoglaló\n\nEgy mondat a jegyzetből.\n',
+          usage: { inputTokens: 10, outputTokens: 5 },
+        })
+      },
+      generateObject: <T>() =>
+        Promise.resolve({ value: { score: 1, gaps: [] } as T, usage: { inputTokens: 5, outputTokens: 2 } }),
+    }
+  }
+
+  const summary = (adHoc: { dir?: string; file?: string; match?: string }) => ({
+    adHoc,
+    recipe: 'summary',
+    dryRun: false,
+    force: false,
+    commit: false,
+  })
+
+  beforeEach(async () => {
+    atiratok = join(work, 'atiratok')
+    await mkdir(atiratok, { recursive: true })
+    mentettKulcs = process.env.LITELLM_API_KEY
+    process.env.LITELLM_API_KEY = 'sk-proba'
+  })
+
+  afterEach(() => {
+    process.env.LITELLM_API_KEY = mentettKulcs
+  })
+
+  it('run --file: jegyzet, done állapot, költség a riportban; átnevezve újra: nincs új hívás', async () => {
+    const txt = join(atiratok, 'átirat.hu.txt')
+    await write(txt, 'Ez egy szöveges átirat. A második mondat is itt van, írásjelekkel.\n')
+    const cfg = cfgOf()
+    const promptok: string[] = []
+
+    expect(await commandRun(cfg, raw(), summary({ file: txt }), { createClient: () => kliens(promptok) })).toBe(0)
+
+    const [item] = await discoverAdHoc({ file: txt }, cfg.languages)
+    expect(existsSync(noteFile(cfg.notesRoot, item!, '_transcript.md'))).toBe(true)
+    expect(existsSync(noteFile(cfg.notesRoot, item!, '_summary.md'))).toBe(true)
+    const store = openState(cfg.statePath)
+    expect(store.isDone(item!.itemId, 'summary')).toBe(true)
+    store.close()
+    const riport = (await readdir(join(work, 'logs'))).find((f) => f.endsWith('.md'))!
+    expect(await readFile(join(work, 'logs', riport), 'utf8')).toContain('összköltség')
+
+    const hivasok = promptok.length
+    const atnevezett = join(atiratok, 'más-név.hu.txt')
+    await rename(txt, atnevezett)
+    expect(
+      await commandRun(cfg, raw(), summary({ file: atnevezett }), { createClient: () => kliens(promptok) }),
+    ).toBe(0)
+    expect(promptok.length).toBe(hivasok)
+  })
+
+  it('.md frontmatterrel: a promptban nincs frontmatter, a fejléc igen', async () => {
+    const md = join(atiratok, 'jegyzet.hu.md')
+    await write(md, '---\ntitle: Titkos mező\n---\n# Fejezet\n\nSzöveg itt, mondatokkal.\n')
+    const promptok: string[] = []
+
+    expect(await commandRun(cfgOf(), raw(), summary({ file: md }), { createClient: () => kliens(promptok) })).toBe(0)
+
+    expect(promptok[0]).not.toContain('Titkos mező')
+    expect(promptok[0]).toContain('# Fejezet')
+  })
+
+  it('hibás fájlok: megnevezett hiba, a jó tétel elkészül', async () => {
+    await write(join(atiratok, 'ures.hu.txt'), '\n')
+    await write(join(atiratok, 'nagy.hu.txt'), 'a'.repeat(2 * 1024 * 1024 + 1))
+    await write(join(atiratok, 'nul.hu.txt'), 'a\0b')
+    await writeFile(join(atiratok, 'rossz.hu.txt'), Buffer.from([0xc3, 0x28]))
+    await write(join(atiratok, 'jo.hu.txt'), 'Ez egy jó átirat, rendes mondatokkal.\n')
+    const cfg = cfgOf()
+
+    const code = await commandRun(cfg, raw(), { adHoc: { dir: atiratok }, dryRun: false, force: false, commit: false })
+
+    expect(code).toBe(1)
+    const items = await discoverAdHoc({ dir: atiratok }, cfg.languages)
+    const by = (base: string) => items.find((i) => i.baseName === base)!
+    const store = openState(cfg.statePath)
+    expect(store.artifactOf(by('ures').itemId, 'transcript')?.error).toBe('a fájl üres')
+    expect(store.artifactOf(by('nagy').itemId, 'transcript')?.error).toBe('a fájl túl nagy: 2.0 MB, legfeljebb 2 MB')
+    expect(store.artifactOf(by('nul').itemId, 'transcript')?.error).toBe('a fájl nem UTF-8 szöveg')
+    expect(store.artifactOf(by('rossz').itemId, 'transcript')?.error).toBe('a fájl nem UTF-8 szöveg')
+    expect(store.isDone(by('jo').itemId, 'transcript')).toBe(true)
+    store.close()
+  })
+
+  it('scan --dir --match: fejléc, részletsor, almappa, ütközés, üres eredmény', async () => {
+    await write(join(atiratok, 'a.hu.srt'), SRT)
+    await write(join(atiratok, 'f.hu.md'), '# F\n\nEgy mondat.\n')
+    await write(join(atiratok, 'al', 'd.hu.md'), '# D\n\nMásik mondat.\n')
+    const cfg = cfgOf()
+    // Egy másik, azonos nevű fájl jegyzete már ott van.
+    const [f] = await discoverAdHoc({ dir: atiratok, match: 'f.*' }, cfg.languages)
+    await write(noteFile(cfg.notesRoot, f!, '_transcript.md'), '---\nitem_id: t-masik\n---\n')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const out = () => logSpy.mock.calls.map((c) => String(c[0])).join('\n')
+    try {
+      expect(await commandScan(cfg, { dir: atiratok, match: '*.md' })).toBe(0)
+      expect(out()).toContain("2 feldolgozható fájl (--match '*.md')")
+      expect(out()).toContain('al/d.hu.md')
+      expect(out()).toMatch(/\d+ szó, szöveg \(\.md\) · jegyzet már létezik ezen a néven/)
+      expect(out()).toMatch(/\d+ szó, szöveg \(\.md\)$/m)
+      logSpy.mockClear()
+
+      expect(await commandScan(cfg, { dir: atiratok })).toBe(0)
+      expect(out()).toContain('3 feldolgozható fájl')
+      logSpy.mockClear()
+
+      expect(await commandScan(cfg, { dir: atiratok, match: '*.pdf' })).toBe(0)
+      expect(out()).toContain("0 feldolgozható fájl (--match '*.pdf')")
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('scan --queue --dir, majd run --queue: a sources-ban nem lévő tétel is feldolgozódik', async () => {
+    await write(join(subsA, 'Cs', 'Video.en.srt'), SRT)
+    const txt = join(atiratok, 'átirat.hu.txt')
+    await write(txt, 'Ez egy szöveges átirat. A második mondat is itt van.\n')
+    const cfg = cfgOf()
+    const sor = queuePath(cfg.notesRoot)
+
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false, adHoc: { dir: atiratok } })).toBe(0)
+    const [item] = await discoverAdHoc({ dir: atiratok }, cfg.languages)
+    const text = await readFile(sor, 'utf8')
+    expect(text).toContain(`%%${item!.itemId} ${txt}%%`)
+    expect(text).not.toContain(NOT_FOUND_MARK)
+
+    // A sima scan --queue a szöveges tételt sem jelöli „nem található”-nak.
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false })).toBe(0)
+    expect(await readFile(sor, 'utf8')).not.toContain(NOT_FOUND_MARK)
+
+    const sorok = (await readFile(sor, 'utf8')).split('\n')
+    const horgony = sorok.findIndex((l) => l.includes(item!.itemId))
+    const pipa = sorok.findIndex((l, n) => n > horgony && l === '- [ ] summary')
+    sorok[pipa] = '- [x] summary'
+    await writeFile(sor, sorok.join('\n'), 'utf8')
+
+    expect(
+      await commandRun(
+        cfg,
+        raw(),
+        { queue: true, dryRun: false, force: false, commit: false },
+        { createClient: () => kliens([]) },
+      ),
+    ).toBe(0)
+    expect(existsSync(noteFile(cfg.notesRoot, item!, '_summary.md'))).toBe(true)
+  })
+
+  it('run --dir --queue: a sorban lévő forrásvideós pár nem lesz „nem található”', async () => {
+    await write(join(subsA, 'Cs', 'Video.en.srt'), SRT)
+    const txt = join(atiratok, 'átirat.hu.txt')
+    await write(txt, 'Ez egy szöveges átirat. A második mondat is itt van.\n')
+    const cfg = cfgOf()
+    const sor = queuePath(cfg.notesRoot)
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false, adHoc: { dir: atiratok } })).toBe(0)
+    await writeFile(sor, (await readFile(sor, 'utf8')).replaceAll('- [ ] summary', '- [x] summary'), 'utf8')
+
+    const code = await commandRun(
+      cfg,
+      raw(),
+      { adHoc: { dir: atiratok }, queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => kliens([]) },
+    )
+
+    expect(code).toBe(0)
+    const [video] = (await discoverAll(cfg.sources, cfg.languages)).slice(0, 1)
+    expect(existsSync(noteFile(cfg.notesRoot, video!, '_summary.md'))).toBe(true)
+    expect(await readFile(sor, 'utf8')).not.toContain(NOT_FOUND_MARK)
+  })
+
+  it.each([
+    ['törölve', (path: string) => rm(path), (path: string) => `nem található: ${path}`],
+    [
+      'módosítva',
+      (path: string) => writeFile(path, 'Teljesen más szöveg.\n', 'utf8'),
+      (path: string) => `nem található: a fájl tartalma megváltozott a sorba vétel óta (${path})`,
+    ],
+  ])('run --queue, a fájl közben %s: a nem található listára kerül, okkal', async (_name, change, reason) => {
+    const txt = join(atiratok, 'átirat.hu.txt')
+    await write(txt, 'Ez egy szöveges átirat. A második mondat is itt van.\n')
+    const cfg = cfgOf()
+    const sor = queuePath(cfg.notesRoot)
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false, adHoc: { file: txt } })).toBe(0)
+    await writeFile(sor, (await readFile(sor, 'utf8')).replace('- [ ] summary', '- [x] summary'), 'utf8')
+    await change(txt)
+
+    const code = await commandRun(
+      cfg,
+      raw(),
+      { queue: true, dryRun: false, force: false, commit: false },
+      { createClient: () => kliens([]) },
+    )
+
+    expect(code).toBe(1)
+    const riport = (await readdir(join(work, 'logs'))).find((f) => f.endsWith('.md'))!
+    expect(await readFile(join(work, 'logs', riport), 'utf8')).toContain(reason(txt))
+  })
+
+  it('scan --queue: a %%-t tartalmazó útvonal megnevezett hiba, a sor nem kapja meg', async () => {
+    const furcsa = join(work, 'a%%b')
+    await write(join(furcsa, 'c.hu.txt'), 'Egy mondat.\n')
+    const cfg = cfgOf()
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expect(await commandScanQueue(cfg, { dryRun: false, commit: false, adHoc: { dir: furcsa } })).toBe(1)
+      expect(String(errorSpy.mock.calls[0]?.[0])).toBe(
+        `Az útvonalban %% van, a sorba nem vehető fel: ${join(furcsa, 'c.hu.txt')}`,
+      )
+    } finally {
+      errorSpy.mockRestore()
+    }
+    const sor = await readFile(queuePath(cfg.notesRoot), 'utf8').catch(() => '')
+    expect(sor).not.toContain('c.hu.txt')
   })
 })

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, realpathSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { extname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
@@ -22,7 +22,7 @@ import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
 import { helpText, overview } from './help.js'
 import { COMMIT_SCOPE, VERSION } from './meta.js'
-import { ARTIFACT_KIND, processItem, type RecipeDeps } from './pipeline.js'
+import { ARTIFACT_KIND, normalizeItem, processItem, type RecipeDeps } from './pipeline.js'
 import { queuePath, readQueueFile } from './queue/file.js'
 import { isLegacyQueue } from './queue/legacy.js'
 import { checkedPairs, parseQueue, type QueuePair } from './queue/parse.js'
@@ -54,14 +54,21 @@ import {
 } from './run/plan.js'
 import { renderReport, type QueueRecipeStatus } from './run/report.js'
 import { nextCommand } from './run/suggest.js'
-import { discoverAll } from './source/folder.js'
+import {
+  AD_HOC_EXTENSIONS,
+  discoverAdHoc,
+  discoverAll,
+  firstById,
+  queuedTextItem,
+  type AdHoc,
+} from './source/folder.js'
 import { openState } from './state/db.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
 import { commitPending } from './vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
-import { noteFile } from './vault/paths.js'
+import { noteFile, transcriptFile } from './vault/paths.js'
 import type { NoteOrigin } from './vault/render.js'
 import { readItems, type CellStatus } from './view/items.js'
 import {
@@ -147,19 +154,74 @@ function render(event: RunEvent): string | null {
   }
 }
 
-export async function commandScan(cfg: Config): Promise<number> {
-  const items = await discoverAll(cfg.sources, cfg.languages)
-  console.log(`${items.length} feldolgozható felirat\n`)
+/**
+ * A `--dir`/`--file`/`--match` ellenőrzése a futás előtt: hibánál az üzenet,
+ * ad hoc forrás nélkül `undefined`.
+ */
+export async function adHocOptions(values: {
+  dir?: string
+  file?: string
+  match?: string
+  source?: string
+}): Promise<AdHoc | string | undefined> {
+  const { dir, file, match } = values
+  if (match !== undefined && dir === undefined) return 'A --match csak a --dir mellett használható.'
+  if (dir === undefined && file === undefined) return undefined
+  if (dir !== undefined && file !== undefined) return 'A --dir és a --file együtt nem használható.'
+  if (values.source !== undefined) {
+    return 'A --source a --dir és a --file mellett nem használható: azok a sources helyére lépnek.'
+  }
+  if (file !== undefined) {
+    if (!AD_HOC_EXTENSIONS.includes(extname(file).toLowerCase())) {
+      return `A --file csak .srt, .vtt, .txt vagy .md fájl lehet: ${file}`
+    }
+    const isFile = await stat(file).then((s) => s.isFile(), () => false)
+    return isFile ? { file } : `A --file nem létező fájl: ${file}`
+  }
+  const isDir = await stat(dir!).then((s) => s.isDirectory(), () => false)
+  if (!isDir) return `A --dir nem létező mappa: ${dir!}`
+  return match === undefined ? { dir: dir! } : { dir: dir!, match }
+}
+
+/** Az ad hoc forrás erre a futásra a `sources` helyére lép. */
+function discover(cfg: Config, adHoc: AdHoc | undefined): Promise<SourceItem[]> {
+  return adHoc ? discoverAdHoc(adHoc, cfg.languages, cfg.sources) : discoverAll(cfg.sources, cfg.languages)
+}
+
+/** A szöveges tétel részletsora; jelzi, ha a jegyzet neve már egy másik tételé. */
+async function textDetail(cfg: Config, item: SourceItem): Promise<string> {
+  const words = (await normalizeItem({ ...item })).wordsNormalized
+  let taken = false
+  try {
+    const existing = await readFile(transcriptFile(cfg.notesRoot, item), 'utf8')
+    taken = !existing.includes(`item_id: ${item.itemId}\n`)
+  } catch {
+    // Nincs ilyen jegyzet: a név szabad.
+  }
+  const ext = extname(item.subtitlePath).toLowerCase()
+  return `${String(words)} szó, szöveg (${ext})${taken ? ' · jegyzet már létezik ezen a néven' : ''}`
+}
+
+export async function commandScan(cfg: Config, adHoc?: AdHoc): Promise<number> {
+  const items = await discover(cfg, adHoc)
+  const filter = adHoc?.match === undefined ? '' : ` (--match '${adHoc.match}')`
+  console.log(
+    adHoc ? `${String(items.length)} feldolgozható fájl${filter}\n` : `${String(items.length)} feldolgozható felirat\n`,
+  )
   for (const item of items) {
     let detail: string
     try {
-      const raw = await readFile(item.subtitlePath, 'utf8')
-      const cues = parseSubtitle(raw, item.subtitlePath)
-      const rawText = cues.flatMap((c) => c.lines).join(' ')
-      const normalized = dedupeLines(cues).join(' ')
-      detail = `${countWords(rawText)} → ${countWords(normalized)} szó, ${classifyCaptions(normalized)}`
+      if (item.format === 'text') {
+        detail = await textDetail(cfg, item)
+      } else {
+        const raw = await readFile(item.subtitlePath, 'utf8')
+        const cues = parseSubtitle(raw, item.subtitlePath)
+        const rawText = cues.flatMap((c) => c.lines).join(' ')
+        const normalized = dedupeLines(cues).join(' ')
+        detail = `${countWords(rawText)} → ${countWords(normalized)} szó, ${classifyCaptions(normalized)}`
+      }
     } catch (error) {
-      detail = `olvashatatlan felirat: ${(error as Error).message}`
+      detail = `olvashatatlan ${item.format === 'text' ? 'fájl' : 'felirat'}: ${(error as Error).message}`
     }
     console.log(`  ${item.source}  ${item.itemId}  ${item.title}`)
     console.log(`      ${item.sourceFile}`)
@@ -176,7 +238,7 @@ export async function commandScan(cfg: Config): Promise<number> {
  */
 export async function commandScanQueue(
   cfg: Config,
-  flags: { dryRun: boolean; commit: boolean },
+  flags: { dryRun: boolean; commit: boolean; adHoc?: AdHoc },
 ): Promise<number> {
   // A regiszter a felderítés és a sor írása előtt épül: egy hibás translate
   // kulcs így nem hagy félig frissített sort maga után.
@@ -184,7 +246,20 @@ export async function commandScanQueue(
   const commit = flags.commit && !flags.dryRun
   if (commit) await gitPullFfOnly(cfg.vaultPath)
 
-  const items = await withContentLanguage(await discoverAll(cfg.sources, cfg.languages))
+  // Az ad hoc forrás itt NEM lép a sources helyére: az összefésülés minden
+  // sorbeli, de fel nem derített tételt „nem található”-nak jelölne.
+  const adHoc = flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages, cfg.sources) : []
+  const unsafe = adHoc.filter((item) => item.format === 'text' && item.subtitlePath.includes('%%'))
+  for (const item of unsafe) {
+    console.error(`Az útvonalban %% van, a sorba nem vehető fel: ${item.subtitlePath}`)
+  }
+  const code = unsafe.length > 0 ? 1 : 0
+  const items = await withContentLanguage(
+    firstById([
+      ...(await discoverAll(cfg.sources, cfg.languages)),
+      ...adHoc.filter((item) => !unsafe.includes(item)),
+    ]),
+  )
   const { path, current, text, stats, migrated, marked } = await refreshQueue(cfg, registry, items)
 
   console.log(
@@ -207,11 +282,11 @@ export async function commandScanQueue(
   }
   if (flags.dryRun) {
     console.log('Próbafutás: a sor nem íródott.')
-    return 0
+    return code
   }
   if (text === current) {
     console.log(`A sor naprakész: ${path}`)
-    return 0
+    return code
   }
 
   await writeFileAtomic(path, text)
@@ -223,7 +298,7 @@ export async function commandScanQueue(
     const push = await gitPush(cfg.vaultPath)
     if (!push.pushed) console.log('A push nem sikerült, a commit lokálisan maradt.')
   }
-  return 0
+  return code
 }
 
 export interface ListOptions {
@@ -379,6 +454,8 @@ export async function commandRun(
     command?: string
     /** A jegyzetek frontmatterének `origin` mezője; hiányában `cli`. A `serve` `telegram`-ot ad. */
     origin?: NoteOrigin
+    /** Erre a futásra a `sources` helyére lépő forrás (`--dir`/`--file`). */
+    adHoc?: AdHoc
   },
   runtime: RunRuntime = {},
 ): Promise<number> {
@@ -679,11 +756,20 @@ export async function commandRun(
   }, runtime.signals)
 
   try {
-    discovered = await discoverAll(cfg.sources, cfg.languages)
+    // Queue-módban a sor `sources`-beli tételei is feloldandók: az ad hoc forrás
+    // a `scan --queue`-hoz hasonlóan csak kiegészít, nem helyettesít.
+    discovered = queueMode
+      ? firstById([
+          ...(await discoverAll(cfg.sources, cfg.languages)),
+          ...(flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages, cfg.sources) : []),
+        ])
+      : await discover(cfg, flags.adHoc)
 
     let units: WorkUnit[]
     if (queueMode) {
       const byId = new Map(discovered.map((item) => [item.itemId, item] as const))
+      /** A horgony útvonalából feloldott szöveges tételek; a hiba oka egyszer kerül a riportba. */
+      const resolved = new Map<string, SourceItem | string>()
       units = []
       for (const pair of checkedPairs(parseQueue(queueText ?? ''))) {
         const pairRecipe = registry[pair.recipeId]
@@ -691,7 +777,16 @@ export async function commandRun(
           warnings.push(`ismeretlen recept a sorban: ${pair.recipeId} (${pair.itemId})`)
           continue
         }
-        const item = byId.get(pair.itemId)
+        let item = byId.get(pair.itemId)
+        if (item === undefined && pair.path !== undefined) {
+          if (!resolved.has(pair.itemId)) {
+            const queued = await queuedTextItem(pair.itemId, pair.path)
+            resolved.set(pair.itemId, queued)
+            if (typeof queued === 'string') warnings.push(queued)
+          }
+          const queued = resolved.get(pair.itemId)
+          if (typeof queued !== 'string') item = queued
+        }
         if (item) units.push({ item, recipe: pairRecipe })
         else notFound.push(pair)
       }
@@ -929,6 +1024,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       'no-commit': { type: 'boolean', default: false },
       'retry-failed': { type: 'boolean', default: false },
       queue: { type: 'boolean', default: false },
+      dir: { type: 'string' },
+      file: { type: 'string' },
+      match: { type: 'string' },
       // Szándékosan `default` nélkül: az `undefined` jelenti azt, hogy a
       // kapcsolót nem adták meg, és ilyenkor a config dönt.
       'no-judge': { type: 'boolean' },
@@ -939,6 +1037,17 @@ export async function main(argv: readonly string[]): Promise<number> {
     },
     allowPositionals: false,
   })
+
+  // A kapcsolóütközés a konfiguráció és az állapottár érintése előtt áll meg.
+  let adHoc: AdHoc | undefined
+  if (command === 'scan' || command === 'run') {
+    const checked = await adHocOptions(values)
+    if (typeof checked === 'string') {
+      console.error(checked)
+      return 1
+    }
+    adHoc = checked
+  }
 
   // A watch csak a saját kapcsolóit ismeri. A többit nem hagyhatjuk csendben
   // figyelmen kívül: egy `watch --dry-run` különben átiratot írna, és
@@ -958,8 +1067,8 @@ export async function main(argv: readonly string[]): Promise<number> {
 
   if (command === 'scan') {
     return values.queue
-      ? commandScanQueue(cfg, { dryRun: values['dry-run'], commit: !values['no-commit'] })
-      : commandScan(cfg)
+      ? commandScanQueue(cfg, { dryRun: values['dry-run'], commit: !values['no-commit'], adHoc })
+      : commandScan(cfg, adHoc)
   }
   if (command === 'check-pricing') {
     return commandCheckPricing(loadModelConfig(raw, process.env, cfg.configPath), {
@@ -994,6 +1103,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       retryFailed: values['retry-failed'],
       noJudge: values['no-judge'],
       command: argv.join(' '),
+      adHoc,
     })
   }
 

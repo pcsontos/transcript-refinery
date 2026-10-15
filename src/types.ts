@@ -52,7 +52,7 @@ export interface SourceItem {
   source: string
   /** A feliratfájl útvonala a forrás gyökeréhez képest, `/` elválasztóval. */
   sourceFile: string
-  /** A feliratfájl abszolút útvonala. */
+  /** A forrásfájl abszolút útvonala: felirat, vagy szöveges átiratnál a `.txt`/`.md`. */
   subtitlePath: string
   /** A fájlnév nyelvi utótag és kiterjesztés nélkül. Ez adja a jegyzet nevét. */
   baseName: string
@@ -62,6 +62,8 @@ export interface SourceItem {
   language: string | null
   /** A metaadatfájl mezői; üres objektum, ha nincs metaadat. */
   metadata: ItemMetadata
+  /** `'text'`: időbélyeg nélküli `.txt`/`.md` átirat. Hiányában felirat. */
+  format?: 'text'
 }
 
 /** A normalizálás eredménye. */

@@ -63,6 +63,44 @@ A felderített videók összefésülése a vault feldolgozási sorába (`_queue.
 node dist/cli.js scan --queue
 ```
 
+### Szöveges átirat (`--dir`, `--match`, `--file`)
+
+Időbélyeg nélküli `.txt` vagy `.md` átiratból is készül jegyzet. Ezek csak
+ezekkel a kapcsolókkal jönnek be; a konfigurált `sources` továbbra is csak
+feliratot (`.srt`, `.vtt`) vesz fel. A kapcsoló erre az egy futásra a
+`sources` helyére lép, a `scan` és a `run` ugyanúgy érti:
+
+```bash
+# előnézet: egy mappa .md fájljai, az almappákból is
+refinery scan --dir ~/atiratok --match '*.md'
+# csak egy almappa
+refinery scan --dir ~/atiratok --match 'eloadasok/*.md'
+# egyetlen fájl feldolgozása recepttel
+refinery run --file ~/atiratok/átirat.txt --recipe summary
+# a sorba vétel, majd a kipipált párok feldolgozása
+refinery scan --dir ~/atiratok --queue
+refinery run --queue
+```
+
+- A mintát mindig idézőjelbe tedd: a zsh az idézetlen `*.md`-t maga bontja ki,
+  és találat nélkül el sem indítja a parancsot. A `/` nélküli minta a
+  fájlnévre illik, a `/`-t tartalmazó a mappához képesti útra.
+  A `--dir` a rejtett (`.`-tal kezdődő) fájlokat és mappákat, valamint a
+  `node_modules`-t nem járja be.
+- A cím és a jegyzet neve a fájlnévből jön; a nyelvkód a fájlnévből
+  (`átirat.en.md`), hiányában a tartalomból.
+- Az `.md` vezető frontmattere lekerül; a wikilinkből a felirata marad, a
+  linkek célja csúcsos zárójelbe kerül, a link címe (`"cím"`) elmarad (a vault
+  írási szabálya).
+- Az azonosság a tartalomé: átnevezett vagy áthelyezett fájlért nem fizetsz
+  újra, a szerkesztett fájl új tétel. Ha a jegyzet neve már foglalt, a
+  write-once miatt kimarad (a `scan` jelzi); újrafeldolgozás `--force`-szal.
+- Legfeljebb 2 MB, UTF-8 szöveg. A sorban a tétel horgonya rejtve az
+  útvonalat is viszi; ha a fájl közben eltűnik vagy megváltozik, a
+  `run --queue` „nem található”-nak jelöli.
+- Nem használható együtt: `--dir` és `--file`; `--source` ezek mellett;
+  `--match` `--dir` nélkül.
+
 ---
 
 ## 3. Feldolgozás (`run`)

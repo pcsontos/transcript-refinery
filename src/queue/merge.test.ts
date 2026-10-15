@@ -318,3 +318,16 @@ describe('mergeQueue — saját fejléc a csoport után', () => {
     expect(mergeQueue(renumberQueue(text), [A1, A2], ALAP).text).toBe(renumberQueue(text))
   })
 })
+
+describe('mergeQueue — áthelyezett szöveges tétel', () => {
+  it('az azonos azonosítójú tétel új útvonala átíródik a horgonyban, jelölés nélkül', () => {
+    const old = { ...elem('t-0123456789abcdef', 'x.txt', 'átirat'), format: 'text' as const, subtitlePath: '/a/x.txt' }
+    const moved = { ...old, subtitlePath: '/b/x.txt' }
+    const first = mergeQueue(null, [old], layout(['summary'])).text
+    const second = mergeQueue(first, [moved], layout(['summary']))
+    expect(second.text).toContain('%%t-0123456789abcdef /b/x.txt%%')
+    expect(second.text).not.toContain('/a/x.txt')
+    expect(second.text).not.toContain('nem található')
+    expect(mergeQueue(second.text, [moved], layout(['summary'])).text).toBe(second.text)
+  })
+})

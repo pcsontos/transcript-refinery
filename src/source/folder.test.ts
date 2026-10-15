@@ -1,8 +1,16 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rename, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { discoverAll, folderSource, splitSubtitleName } from './folder.js'
+import {
+  discoverAdHoc,
+  discoverAll,
+  folderSource,
+  queuedTextItem,
+  splitSubtitleName,
+  textItem,
+} from './folder.js'
+import { TEXT_EXTENSIONS } from './text.js'
 
 let root: string
 
@@ -187,5 +195,147 @@ describe('discoverAll', () => {
     )
     expect(items).toHaveLength(1)
     expect(items[0]!.source).toBe('egy')
+  })
+})
+
+const SRT = '1\n00:00:00,000 --> 00:00:02,000\nEgy felirat sor.\n'
+const VTT = 'WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nEgy vtt sor.\n'
+
+describe('splitSubtitleName szöveges kiterjesztéssel', () => {
+  it('a nyelvkód szabálya ugyanaz', () => {
+    expect(splitSubtitleName('átirat.en.md', TEXT_EXTENSIONS)).toEqual({ base: 'átirat', language: 'en' })
+    expect(splitSubtitleName('átirat.txt', TEXT_EXTENSIONS)).toEqual({ base: 'átirat', language: null })
+  })
+
+  it('alapértelmezésben a szöveg nem felirat', () => {
+    expect(splitSubtitleName('átirat.md')).toBeNull()
+  })
+})
+
+describe('folderSource', () => {
+  it('a konfigurált forrásból nem vesz fel .txt és .md fájlt', async () => {
+    await write('Cs/A.hu.srt', SRT)
+    await write('Cs/README.md', '# Olvass el')
+    await write('Cs/jegyzet.txt', 'szöveg')
+    const items = await folderSource(source(), []).discover()
+    expect(items.map((i) => i.baseName)).toEqual(['A'])
+  })
+})
+
+describe('discoverAdHoc', () => {
+  const x = () => join(root, 'x')
+
+  beforeEach(async () => {
+    await write('x/a.hu.srt', SRT)
+    await write('x/b.hu.vtt', VTT)
+    await write('x/c.hu.txt', 'Szöveg c.')
+    await write('x/f.hu.md', '# F')
+    await write('x/al/d.hu.md', '# D')
+  })
+
+  it('minta nélkül mind a négy fajtát felveszi, az almappából is', async () => {
+    const items = await discoverAdHoc({ dir: x() }, [])
+    expect(items.map((i) => i.sourceFile).sort()).toEqual(['a.hu.srt', 'al/d.hu.md', 'b.hu.vtt', 'c.hu.txt', 'f.hu.md'])
+    expect(new Set(items.map((i) => i.source))).toEqual(new Set(['x']))
+    const d = items.find((i) => i.baseName === 'd')!
+    expect(d).toMatchObject({ format: 'text', title: 'd', language: 'hu', metadata: {}, subtitlePath: join(x(), 'al', 'd.hu.md') })
+    expect(d.itemId).toMatch(/^t-[0-9a-f]{16}$/)
+    expect(items.find((i) => i.baseName === 'a')!.format).toBeUndefined()
+  })
+
+  it("a / nélküli minta a fájlnévre illik, minden mélységben", async () => {
+    const items = await discoverAdHoc({ dir: x(), match: '*.md' }, [])
+    expect(items.map((i) => i.sourceFile).sort()).toEqual(['al/d.hu.md', 'f.hu.md'])
+  })
+
+  it('a /-t tartalmazó minta a relatív útra illik', async () => {
+    const items = await discoverAdHoc({ dir: x(), match: 'al/*.md' }, [])
+    expect(items.map((i) => i.sourceFile)).toEqual(['al/d.hu.md'])
+  })
+
+  it('a nem támogatott kiterjesztésre illő minta üres eredményt ad', async () => {
+    await write('x/g.pdf', '%PDF')
+    expect(await discoverAdHoc({ dir: x(), match: '*.pdf' }, [])).toEqual([])
+  })
+
+  it('--file: egyetlen tétel, a forrás a fájlt tartalmazó mappa', async () => {
+    const items = await discoverAdHoc({ file: join(x(), 'al', 'd.hu.md') }, [])
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ source: 'al', sourceFile: 'd.hu.md', baseName: 'd' })
+  })
+
+  it('azonos tartalom két néven: egy tétel', async () => {
+    await write('x/c-masolat.hu.txt', 'Szöveg c.')
+    const items = await discoverAdHoc({ dir: x(), match: 'c*.txt' }, [])
+    expect(items).toHaveLength(1)
+  })
+
+  it('átnevezés után ugyanaz az azonosító', async () => {
+    const before = await textItem(join(x(), 'c.hu.txt'), { name: 'x', path: x() })
+    await rename(join(x(), 'c.hu.txt'), join(x(), 'uj-nev.hu.txt'))
+    const after = await textItem(join(x(), 'uj-nev.hu.txt'), { name: 'x', path: x() })
+    expect(after.itemId).toBe(before.itemId)
+  })
+
+  it('az olvashatatlan fájl is tétel lesz, t- előtagú azonosítóval', async () => {
+    await write('x/ures.hu.txt', '')
+    const item = await textItem(join(x(), 'ures.hu.txt'), { name: 'x', path: x() })
+    expect(item.itemId).toMatch(/^t-/)
+    expect(item.format).toBe('text')
+  })
+})
+
+describe('queuedTextItem', () => {
+  it('a horgony útvonalából újraépíti a tételt', async () => {
+    await write('y/átirat.hu.txt', 'Egy szöveg.')
+    const path = join(root, 'y', 'átirat.hu.txt')
+    const original = await textItem(path, { name: 'y', path: join(root, 'y') })
+    const item = await queuedTextItem(original.itemId, path)
+    expect(item).toMatchObject({ itemId: original.itemId, source: 'y', sourceFile: 'átirat.hu.txt', format: 'text' })
+  })
+
+  it('a hiányzó fájlra és a megváltozott tartalomra okot ad', async () => {
+    const path = join(root, 'y', 'átirat.hu.txt')
+    expect(await queuedTextItem('t-0000000000000000', path)).toBe(`nem található: ${path}`)
+    await write('y/átirat.hu.txt', 'Már más szöveg.')
+    expect(await queuedTextItem('t-0000000000000000', path)).toBe(
+      `nem található: a fájl tartalma megváltozott a sorba vétel óta (${path})`,
+    )
+  })
+})
+
+describe('queuedTextItem — szélső esetek', () => {
+  it('nem .txt/.md fájlra mutató horgonyra okot ad, nem dob', async () => {
+    await write('y/x.pdf', '%PDF')
+    const path = join(root, 'y', 'x.pdf')
+    expect(await queuedTextItem('t-0000000000000000', path)).toBe(
+      `nem található: nem .txt vagy .md fájl (${path})`,
+    )
+  })
+
+  it('az olvashatatlan, almappából jött fájl azonosítója a sorból újraépítve is ugyanaz', async () => {
+    await write('x/al/ures.hu.txt', '')
+    const [item] = await discoverAdHoc({ dir: join(root, 'x') }, [])
+    const rebuilt = await queuedTextItem(item!.itemId, join(root, 'x', 'al', 'ures.hu.txt'))
+    expect(typeof rebuilt).not.toBe('string')
+  })
+})
+
+describe('discoverAdHoc — konfigurált forrás és rejtett fájlok', () => {
+  it('a konfigurált forrás almappája ugyanazt az azonosítót és forrásnevet adja, mint a sources bejárása', async () => {
+    await write('Cs/A.hu.srt', SRT)
+    const [fromSources] = await discoverAll([source()], [])
+    const [adHoc] = await discoverAdHoc({ dir: join(root, 'Cs') }, [], [source()])
+    expect(adHoc).toMatchObject({ itemId: fromSources!.itemId, source: 'youtube', sourceFile: 'Cs/A.hu.srt' })
+  })
+
+  it('a rejtett mappát és fájlt kihagyja, a ./ kezdetű minta működik', async () => {
+    await write('x/.obsidian/n.hu.md', '# N')
+    await write('x/node_modules/p/r.hu.md', '# R')
+    await write('x/.rejtett.hu.md', '# H')
+    await write('x/al/d.hu.md', '# D')
+    expect((await discoverAdHoc({ dir: join(root, 'x') }, [])).map((i) => i.sourceFile)).toEqual(['al/d.hu.md'])
+    const dotted = await discoverAdHoc({ dir: join(root, 'x'), match: './al/*.md' }, [])
+    expect(dotted.map((i) => i.sourceFile)).toEqual(['al/d.hu.md'])
   })
 })

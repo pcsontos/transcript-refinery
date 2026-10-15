@@ -107,7 +107,18 @@ export function mergeQueue(
       : discovered.has(video.itemId)
         ? null
         : NOT_FOUND_MARK
-    const next = withSuffix(video.head, mark)
+    const item = discovered.get(video.itemId)
+    // Áthelyezett szöveges fájl: az azonosító a tartalomé, az útvonal viszont
+    // a horgonyban él — ezt frissítjük, különben a `run --queue` a régi helyet keresné.
+    const moved =
+      item?.format === 'text' &&
+      video.path !== undefined &&
+      video.path !== item.subtitlePath &&
+      !item.subtitlePath.includes('%%')
+    const head = moved
+      ? video.head.replace(/%%.+%%$/, `%%${video.itemId} ${item.subtitlePath}%%`)
+      : video.head
+    const next = withSuffix(head, mark)
     if (next !== lines[video.line]) {
       assertLint(next)
       lines[video.line] = next

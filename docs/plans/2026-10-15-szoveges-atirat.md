@@ -85,7 +85,7 @@ Az implementáció a `feat/szoveges-atirat` ágon indul a friss `main`-ről, miu
   - `textItemId(text: string): string`
   - `SourceItem.format?: 'text'`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/source/text.test.ts`:
 
@@ -175,12 +175,12 @@ describe('readTextSource és textItemId', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/source/text.test.ts`
 Expected: FAIL — `Failed to resolve import "./text.js"`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/source/text.ts`:
 
@@ -270,12 +270,12 @@ export function textItemId(text: string): string {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/source/text.test.ts && pnpm typecheck`
 Expected: PASS, typecheck hibátlan.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/text.ts src/source/text.test.ts src/types.ts
@@ -295,7 +295,7 @@ git commit   # a commit-message skillel; tárgy pl. "feat(source): Add text tran
 - Consumes: `readTextSource(path)` (Task 1), `SourceItem.format`
 - Produces: `normalizeItem(item)` szöveges tételre `{ lines, timed: [], wordsRaw === wordsNormalized, … }`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/pipeline.test.ts`, a `describe('processItem — horgonyzás kihagyása'` blokkon belül, a meglévő `it` után (ott elérhető a `HORGONYZOTT_RECEPT`):
 
@@ -366,12 +366,12 @@ describe('normalizeItem — szöveges tétel', () => {
 
 Ha a `readFile` még nincs importálva a `node:fs/promises`-ból a teszt tetején, add hozzá.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/pipeline.test.ts`
 Expected: FAIL — a szöveges tételnél a `parseSubtitle` dob: `Nem támogatott feliratformátum`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/pipeline.ts`, import:
 
@@ -470,12 +470,12 @@ export function anchorParagraphs(output: string, timed: readonly TimedLine[]): s
   const words = wordStream(timed)
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/pipeline.test.ts src/recipe && pnpm typecheck`
 Expected: PASS. Ha egy meglévő teszt a régi „a feliratfájl nevében nincs nyelvkód” szövegre illeszt, a Global Constraints szerinti új szövegre igazítsd. Ha a „nyelvkód nélkül a tartalom dönt” teszt `identifyLanguage`-a a rövid mondatra `null`-t ad, hosszabbítsd a szöveget (nézd meg a `src/lang/identify.test.ts` mintáit), ne a kódot.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/pipeline.ts src/pipeline.test.ts src/recipe/anchor.ts
@@ -501,7 +501,7 @@ git commit   # commit-message skill; pl. "feat(pipeline): Normalize text transcr
   - `discoverAdHoc(adHoc: AdHoc, languages: readonly string[]): Promise<SourceItem[]>`
   - `queuedTextItem(itemId: string, path: string): Promise<SourceItem | string>` — siker esetén a tétel, különben a „nem található” üzenet
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/source/folder.test.ts`, az importok:
 
@@ -631,12 +631,12 @@ describe('queuedTextItem', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/source/folder.test.ts`
 Expected: FAIL — a `discoverAdHoc`, `queuedTextItem`, `textItem` nincs exportálva.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/source/folder.ts`, importok:
 
@@ -840,12 +840,12 @@ export async function queuedTextItem(itemId: string, path: string): Promise<Sour
     : `nem található: a fájl tartalma megváltozott a sorba vétel óta (${path})`
 }
 ```
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/source && pnpm typecheck && pnpm lint`
 Expected: PASS; a meglévő `folder.test.ts` esetek változatlanul zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/folder.ts src/source/folder.test.ts
@@ -868,7 +868,7 @@ git commit   # commit-message skill; pl. "feat(source): Discover ad hoc text and
   - `QueueVideo.path?: string`, `QueuePair.path?: string`
   - `videoLine(item)` szöveges tételnél `### 0. <cím> %%<itemId> <abszolút út>%%`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/queue/line.test.ts`, a fájl végére:
 
@@ -937,12 +937,12 @@ describe('checkedPairs szöveges tétellel', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/queue/line.test.ts src/queue/parse.test.ts`
 Expected: FAIL — a horgonyban nincs útvonal, a `classifyLine` az egész horgonyt azonosítónak veszi.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/queue/line.ts`:
 
@@ -1054,12 +1054,12 @@ export function checkedPairs(doc: QueueDoc): QueuePair[] {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run src/queue && pnpm typecheck`
 Expected: PASS; a meglévő sorformátum-tesztek változtatás nélkül zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/queue/line.ts src/queue/line.test.ts src/queue/parse.ts src/queue/parse.test.ts
@@ -1082,7 +1082,7 @@ git commit   # commit-message skill; pl. "feat(queue): Keep text item path in hi
   - `commandScanQueue(cfg, flags: { dryRun: boolean; commit: boolean; adHoc?: AdHoc })`
   - `commandRun(cfg, raw, flags: { …; adHoc?: AdHoc }, runtime)`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/cli.test.ts`, új `describe` a fájl végén (a fájl már importálja a `main`-t, `vi`-t, `existsSync`-et; ha nem, add hozzá):
 
@@ -1354,12 +1354,12 @@ describe('szöveges átirat (--dir, --file)', () => {
 })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run src/cli.test.ts src/e2e.test.ts`
 Expected: FAIL — `parseArgs` ismeretlen kapcsolót kap (`--dir`), a `commandRun` nem ismeri az `adHoc`-ot.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/cli.ts`, importok (a meglévők mellé; a `readFile`/`existsSync` már importálva van):
 
@@ -1608,12 +1608,12 @@ A `scan` és a `run` ága:
 
 A watch az új kapcsolókat magától elutasítja: a `WATCH_OPTIONS` engedélylista, ehhez nem kell nyúlni.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run src/cli.test.ts src/e2e.test.ts && pnpm typecheck && pnpm lint`
 Expected: PASS. Ha az `e2e` queue-teszt `existsSync(noteFile(…))` állítása bukik, nézd meg, hová írta a jegyzetet: a sorból feloldott tétel forrásneve a fájl mappája (`atiratok`), lásd az „Eltérések” 5. pontját.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cli.ts src/cli.test.ts src/e2e.test.ts
@@ -1632,7 +1632,7 @@ git commit   # commit-message skill; pl. "feat(cli): Add --dir, --match, --file 
 **Interfaces:**
 - Consumes: a Task 5 kapcsolói
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 `src/cli.test.ts`, az `OPTIONS` táblázatban a `scan` és a `run` sora:
 
@@ -1656,12 +1656,12 @@ git commit   # commit-message skill; pl. "feat(cli): Add --dir, --match, --file 
   })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `pnpm exec vitest run src/cli.test.ts -t súgó`
 Expected: FAIL — a súgóban nincs `--dir`.
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `src/help.ts`, az állandók közé:
 
@@ -1765,12 +1765,12 @@ refinery run --queue
   `--match` `--dir` nélkül.
 ````
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `pnpm test && pnpm typecheck && pnpm lint`
 Expected: PASS, a teljes készlet zöld.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/help.ts src/cli.test.ts docs/usage.md

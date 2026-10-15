@@ -17,24 +17,36 @@ const HELP = ['--help, -h', 'megjeleníti ezt a súgót'] as const
 const SOURCE = ['--source <név>', 'csak a megadott forrásmappából'] as const
 const CHANNEL = ['--channel <név>', 'csak a megadott csatorna (metaadat nélküli elemre nem illik)'] as const
 const LIMIT = ['--limit <szám>', 'legfeljebb ennyi elem'] as const
+const DIR = ['--dir <mappa>', 'ad hoc mappa a sources helyett, rekurzívan: .srt, .vtt, .txt, .md'] as const
+const MATCH = [
+  "--match '<glob>'",
+  "--dir mellett: csak a mintára illő fájlok; / nélkül a fájlnévre illik. Idézőjelben, különben a shell bontja ki",
+] as const
+const FILE = ['--file <út>', 'egyetlen .srt, .vtt, .txt vagy .md fájl a sources helyett'] as const
+const AD_HOC_NOTE =
+  'A --dir vagy a --file erre a futásra a sources helyére lép; .txt és .md átirat csak így jön be.'
 const NO_COMMIT = ['--no-commit', 'nem commitol és nem pushol a vault repójába'] as const
 
 export const COMMANDS: readonly CommandHelp[] = [
   {
     name: 'scan',
-    summary: 'Felderíti a feldolgozható videókat, és nem ír semmit.',
+    summary: 'Felderíti a feldolgozható tételeket, és nem ír semmit.',
     usage: 'refinery scan [kapcsolók]',
     description:
       'Felderíti a forrásmappák feldolgozható videóit, és kiírja őket.\n' +
+      `${AD_HOC_NOTE}\n` +
       'A --queue mellett a vault _queue.md sorába fésüli az új tételeket.',
     options: [
       CONFIG,
+      DIR,
+      MATCH,
+      FILE,
       ['--queue', 'a vault _queue.md sorába fésül'],
       ['--dry-run', '--queue mellett: nem írja a sort, csak kiírja a változást'],
       ['--no-commit', '--queue mellett: nem commitol és nem pushol a vault repójába'],
       HELP,
     ],
-    examples: ['refinery scan', 'refinery scan --queue --dry-run'],
+    examples: ['refinery scan', "refinery scan --dir ~/atiratok --match '*.md'", 'refinery scan --queue --dry-run'],
   },
   {
     name: 'run',
@@ -42,10 +54,14 @@ export const COMMANDS: readonly CommandHelp[] = [
     usage: 'refinery run [kapcsolók]',
     description:
       'Átiratot készít a feldolgozható videókból, és a vaultba írja.\n' +
+      `${AD_HOC_NOTE}\n` +
       'A --recipe receptet is futtat; a --queue a vault _queue.md sorának kipipált párjait dolgozza fel.\n' +
       'A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.',
     options: [
       CONFIG,
+      DIR,
+      MATCH,
+      FILE,
       SOURCE,
       CHANNEL,
       LIMIT,
@@ -61,7 +77,12 @@ export const COMMANDS: readonly CommandHelp[] = [
       ['--no-judge', 'a bíró pontozói nem futnak (a determinisztikus kapuk igen); felülírja a model.judge_enabled beállítást'],
       HELP,
     ],
-    examples: ['refinery run --limit 3', 'refinery run --recipe summary --limit 1', 'refinery run --queue'],
+    examples: [
+      'refinery run --limit 3',
+      'refinery run --recipe summary --limit 1',
+      'refinery run --file ~/atiratok/átirat.txt',
+      'refinery run --queue',
+    ],
   },
   {
     name: 'check-pricing',

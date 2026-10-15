@@ -100,3 +100,9 @@ describe('unanchoredParagraphs', () => {
     expect(unanchoredParagraphs('[1:05:20] Bekezdés.')).toEqual({ count: 0, total: 1 })
   })
 })
+
+describe('anchorParagraphs időbélyeg nélküli átiratnál', () => {
+  it('a bekezdéseket a régi módon vágja és illeszti újra, nem adja vissza nyersen', () => {
+    expect(anchorParagraphs('## Cím\nElső.\n\n\n\nMásodik.  \n', [])).toBe('## Cím\n\nElső.\n\nMásodik.')
+  })
+})
