@@ -58,7 +58,8 @@ function baseFields(
     ['title', item.title],
     ['source', item.source],
     ['origin', origin],
-    ['source_file', item.sourceFile],
+    // A Telegramból jött szöveges tétel fájlneve belső (`<cím> [t-…].txt`), a megjelenítendő név a `title`.
+    ['source_file', origin === 'telegram' && item.format === 'text' ? undefined : item.sourceFile],
     ['language', language ?? item.language ?? undefined],
     ['video_id', item.metadata.videoId],
     ['channel', item.metadata.channel],

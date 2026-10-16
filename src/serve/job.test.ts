@@ -425,8 +425,8 @@ describe('runJob szöveges tétel', () => {
       { jobId: `5:${id}`, videoId: id, url: '', text: TEXT, title: 'átirat', textLang: 'en' },
       capture(store, callbacks),
     )
-    expect(new TextDecoder().decode(store.objects[`videos/${id}/text.txt`])).toBe(TEXT)
-    expect(JSON.parse(new TextDecoder().decode(store.objects[`videos/${id}/info.json`]))).toEqual({
+    expect(new TextDecoder().decode(store.objects[`documents/${id}/text.txt`])).toBe(TEXT)
+    expect(JSON.parse(new TextDecoder().decode(store.objects[`documents/${id}/info.json`]))).toEqual({
       id,
       title: 'átirat',
       language: 'en',
@@ -434,11 +434,29 @@ describe('runJob szöveges tétel', () => {
     expect(callbacks).toEqual([{ status: 'ready', title: 'átirat' }])
   })
 
+  it('a szöveges tétel kulcsai a documents/ alatt vannak, a videos/ alatt semmi', async () => {
+    const id = await textItemId(TEXT)
+    const store = memoryStore()
+    await runJob({ jobId: `5:${id}`, videoId: id, url: '', text: TEXT, title: 'átirat' }, capture(store, []))
+    expect(Object.keys(store.objects).sort()).toEqual([`documents/${id}/info.json`, `documents/${id}/text.txt`])
+  })
+
+  it('a régi, videos/ alatti szöveges párt a recept-futás nem keresi (nincs visszaesés)', async () => {
+    const id = 't-0123456789abcdef'
+    const store = memoryStore({
+      [`videos/${id}/text.txt`]: enc('Szöveg.'),
+      [`videos/${id}/info.json`]: enc(JSON.stringify({ id, title: 'Régi' })),
+    })
+    const callbacks: CallbackBody[] = []
+    await runJob({ jobId: `5:${id}`, videoId: id, url: '', recipes: ['summary'] }, capture(store, callbacks))
+    expect(callbacks).toEqual([{ status: 'failed', error: 'A felirat nincs az R2-ben.' }])
+  })
+
   it('nyelvkód nélkül az info.json-ban nincs language', async () => {
     const id = await textItemId(TEXT)
     const store = memoryStore()
     await runJob({ jobId: `5:${id}`, videoId: id, url: '', text: TEXT, title: 'átirat' }, capture(store, []))
-    expect(JSON.parse(new TextDecoder().decode(store.objects[`videos/${id}/info.json`]))).toEqual({
+    expect(JSON.parse(new TextDecoder().decode(store.objects[`documents/${id}/info.json`]))).toEqual({
       id,
       title: 'átirat',
     })
@@ -447,8 +465,8 @@ describe('runJob szöveges tétel', () => {
   it('a teljes R2-párra azonnal ready, feltöltés nélkül', async () => {
     const id = await textItemId(TEXT)
     const base = memoryStore({
-      [`videos/${id}/text.txt`]: enc(TEXT),
-      [`videos/${id}/info.json`]: enc(JSON.stringify({ id, title: 'régi' })),
+      [`documents/${id}/text.txt`]: enc(TEXT),
+      [`documents/${id}/info.json`]: enc(JSON.stringify({ id, title: 'régi' })),
     })
     const puts: string[] = []
     const store = {
@@ -472,7 +490,7 @@ describe('runJob szöveges tétel', () => {
     ] as const
     for (const [language, name] of cases) {
       const info = enc(JSON.stringify({ id, title: 'Kész cím', ...(language === undefined ? {} : { language }) }))
-      const store = memoryStore({ [`videos/${id}/text.txt`]: enc('Szöveg.'), [`videos/${id}/info.json`]: info })
+      const store = memoryStore({ [`documents/${id}/text.txt`]: enc('Szöveg.'), [`documents/${id}/info.json`]: info })
       const paths: string[] = []
       const callbacks: CallbackBody[] = []
       await runJob(
@@ -495,8 +513,8 @@ describe('runJob szöveges tétel', () => {
   it('az info.json nem nyelvkód értéke nem kerül a fájlnévbe', async () => {
     const id = 't-0123456789abcdef'
     const store = memoryStore({
-      [`videos/${id}/text.txt`]: enc('Szöveg.'),
-      [`videos/${id}/info.json`]: enc(JSON.stringify({ id, title: 'Cím', language: '/../../tmp/x' })),
+      [`documents/${id}/text.txt`]: enc('Szöveg.'),
+      [`documents/${id}/info.json`]: enc(JSON.stringify({ id, title: 'Cím', language: '/../../tmp/x' })),
     })
     const paths: string[] = []
     await runJob({ jobId: `5:${id}`, videoId: id, url: '', recipes: ['summary'] }, effectsWith(store, paths))
@@ -505,7 +523,7 @@ describe('runJob szöveges tétel', () => {
 
   it('a hiányzó szövegre a hiányzó pár mondata jön', async () => {
     const id = 't-0123456789abcdef'
-    const store = memoryStore({ [`videos/${id}/info.json`]: enc(JSON.stringify({ id, title: 'X' })) })
+    const store = memoryStore({ [`documents/${id}/info.json`]: enc(JSON.stringify({ id, title: 'X' })) })
     const callbacks: CallbackBody[] = []
     await runJob({ jobId: `5:${id}`, videoId: id, url: '', recipes: ['summary'] }, capture(store, callbacks))
     expect(callbacks).toEqual([{ status: 'failed', error: 'A felirat nincs az R2-ben.' }])

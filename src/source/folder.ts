@@ -179,13 +179,16 @@ export async function textItem(path: string, source: SourceDir): Promise<SourceI
     // marad, ha a tételt a sor horgonyából építjük újra.
     itemId = `t-${itemIdFor('', path)}`
   }
+  // A mellette lévő `<alapnév>.info.json` címe (a serve írja a Telegramból jött tételhez);
+  // a többi mezőjét nem vesszük át: az `id` itt nem videóazonosító.
+  const sidecar = await readSidecar(join(dirname(path), `${base}.info.json`))
   return {
     itemId,
     source: source.name,
     sourceFile,
     subtitlePath: path,
     baseName: base,
-    title: base,
+    title: sidecar?.title ?? base,
     language,
     metadata: {},
     format: 'text',

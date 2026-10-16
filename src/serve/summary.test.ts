@@ -164,6 +164,11 @@ describe('runRecipes', () => {
     const note = await readFile(join(vault, `Inbox/transcript-refinery/telegram/Beszéd [${id}]_summary.md`), 'utf8')
     expect(note).toMatch(new RegExp(`item_id: "?${id}"?\\n`))
     expect(note).toContain('origin: telegram\n')
+    // A cím az info.json tiszta címe, a belső fájlnév utótagja és kiterjesztése nem szivároghat be.
+    expect(note).toMatch(/\ntitle: Beszéd\n/)
+    expect(note).not.toContain(`[${id}]`)
+    expect(note).not.toMatch(/^source_file:/m)
+    expect(note).not.toMatch(/^video_id:/m)
     expect(execFileSync('git', ['log', '-1', '--format=%s'], { cwd: vault, encoding: 'utf8' }).trim()).toBe(
       `docs(transcript-refinery): summary | Beszéd [${id}]`,
     )

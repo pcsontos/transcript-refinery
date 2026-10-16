@@ -1,5 +1,6 @@
 import { readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { isTextItemId } from '../source/text.js'
 
 const SUB = /^(.*) \[([A-Za-z0-9_-]{11})\]\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
 const INFO = /^(.*) \[([A-Za-z0-9_-]{11})\]\.info\.json$/i
@@ -26,8 +27,18 @@ export function infoKey(videoId: string): string {
 }
 
 /** A Telegramból jött szöveges tétel normalizált szövege; a kulcs azonosítója a tartalom hash-e. */
-export function textKey(videoId: string): string {
-  return `videos/${videoId}/text.txt`
+export function textKey(itemId: string): string {
+  return `documents/${itemId}/text.txt`
+}
+
+/** A szöveges tétel `info.json`-ja (`id`, `title`, `language?`), a szöveg mellett. */
+export function textInfoKey(itemId: string): string {
+  return `documents/${itemId}/info.json`
+}
+
+/** A tétel R2-mappája: a szöveges tételeké `documents/`, a videóké `videos/`. */
+export function itemPrefix(itemId: string): string {
+  return isTextItemId(itemId) ? `documents/${itemId}/` : `videos/${itemId}/`
 }
 
 export function languageMatches(tag: string, languages: readonly string[]): boolean {

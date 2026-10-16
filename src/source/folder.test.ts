@@ -277,6 +277,20 @@ describe('discoverAdHoc', () => {
     expect(after.itemId).toBe(before.itemId)
   })
 
+  it('a szöveges tétel címe a mellette lévő info.json-ból jön, a metaadatot nem veszi át', async () => {
+    const name = 'Beszéd [t-0123456789abcdef]'
+    await write(`x/${name}.txt`, 'Szöveg.')
+    await write(`x/${name}.info.json`, JSON.stringify({ id: 't-0123456789abcdef', title: 'Beszéd' }))
+    const item = await textItem(join(x(), `${name}.txt`), { name: 'x', path: x() })
+    expect(item.title).toBe('Beszéd')
+    expect(item.metadata).toEqual({})
+  })
+
+  it('info.json nélkül a szöveges tétel címe a fájlnév alapneve', async () => {
+    const item = await textItem(join(x(), 'c.hu.txt'), { name: 'x', path: x() })
+    expect(item.title).toBe('c')
+  })
+
   it('az olvashatatlan fájl is tétel lesz, t- előtagú azonosítóval', async () => {
     await write('x/ures.hu.txt', '')
     const item = await textItem(join(x(), 'ures.hu.txt'), { name: 'x', path: x() })

@@ -217,6 +217,16 @@ describe('origin', () => {
     expect(note).toContain('source: youtube\norigin: cli\nsource_file:')
   })
 
+  it('a Telegramból jött szöveges tételnél nincs source_file, a CLI-snél és a videónál marad', () => {
+    const text = item({ sourceFile: 'Beszéd [t-0123456789abcdef].txt', format: 'text' })
+    expect(renderTranscriptNote(text, transcript, '0.1.0', 'telegram')).not.toContain('source_file')
+    expect(renderRecipeNote(text, transcript, 'A törzs.', meta, '0.1.0', 'telegram')).not.toContain('source_file')
+    expect(renderTranscriptNote(text, transcript, '0.1.0', 'cli')).toContain('\nsource_file:')
+    expect(renderTranscriptNote(item(), transcript, '0.1.0', 'telegram')).toContain(
+      '\nsource_file: 3Blue1Brown/Transformers.en.srt\n',
+    )
+  })
+
   it('a megadott origin a receptjegyzetbe is bekerül', () => {
     const note = renderRecipeNote(item(), transcript, 'A törzs.', meta, '0.1.0', 'telegram')
     expect(note).toContain('source: youtube\norigin: telegram\nsource_file:')
