@@ -231,6 +231,9 @@ A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden el
 | **Már sorban lévő videó** | Megelőzi a duplikációt | `Már sorban van: <id>.` |
 | **Lejátszási lista URL** | Jelenleg kihagyja | `Lejátszási lista későbbre marad.` |
 | **Nem YouTube webcím** | Érvénytelen forrásként jelzi | `Nem YouTube-cím.` |
+| **Csatolt `.txt`/`.md` fájl** (parancs nélkül, legfeljebb 2 MB) | A Worker letölti, normalizálja, `t-…` azonosítót számol; a serve az R2-be teszi (`videos/<t-id>/text.txt`) | `Sorba került: <cím>`, kész: `<cím>. A szöveg megvan.` |
+| **`/scan <szöveg>`** (egy üzenetnyi) | Ugyanígy; a cím az első sor, a szöveg a D1-ben vár, amíg a serve át nem veszi | `Sorba került: <cím>`; 3900 karaktertől figyelmeztetés |
+| **Más csatolmány** | Nem indít feladatot | `Csak .txt vagy .md fájlt tudok feldolgozni.` |
 | **Bármilyen egyéb szöveg** | Nem indít feladatot | `Nincs YouTube-videó az üzenetben.` |
 
 ### Életciklus üzenetek a chaten:

@@ -128,6 +128,26 @@ function deps(env: Env, linkBase = ''): WorkerDeps {
         return { ok: false, reason: 'down' }
       }
     },
+    download: async (fileId) => {
+      try {
+        const meta = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ file_id: fileId }),
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        if (!meta.ok) return null
+        const body = (await meta.json()) as { result?: { file_path?: unknown } }
+        const path = body.result?.file_path
+        if (typeof path !== 'string') return null
+        const file = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${path}`, {
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        return file.ok ? new Uint8Array(await file.arrayBuffer()) : null
+      } catch {
+        return null
+      }
+    },
     send: (chatId, text, keyboard) =>
       telegram(env.TELEGRAM_BOT_TOKEN, 'sendMessage', {
         chat_id: chatId,
@@ -166,7 +186,14 @@ function isTap(value: unknown): value is {
 
 function isUpdate(value: unknown): value is {
   update_id: number
-  message?: { message_id: number; chat: { id: number }; from?: { id: number }; text?: string }
+  message?: {
+    message_id: number
+    chat: { id: number }
+    from?: { id: number }
+    text?: string
+    document?: { file_id: string; file_name?: string; file_size?: number }
+    caption?: string
+  }
 } {
   if (typeof value !== 'object' || value === null) return false
   const update = value as { update_id?: unknown; message?: unknown }
@@ -176,6 +203,14 @@ function isUpdate(value: unknown): value is {
   const message = update.message as { message_id?: unknown; chat?: unknown; from?: unknown }
   if (typeof message.message_id !== 'number') return false
   if (message.from !== undefined && !hasNumericId(message.from)) return false
+  const document = (update.message as { document?: unknown }).document
+  if (document !== undefined) {
+    if (typeof document !== 'object' || document === null) return false
+    const fields = document as { file_id?: unknown; file_name?: unknown; file_size?: unknown }
+    if (typeof fields.file_id !== 'string') return false
+    if (fields.file_name !== undefined && typeof fields.file_name !== 'string') return false
+    if (fields.file_size !== undefined && typeof fields.file_size !== 'number') return false
+  }
   return hasNumericId(message.chat)
 }
 

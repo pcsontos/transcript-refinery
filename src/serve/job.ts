@@ -2,8 +2,9 @@ import { join } from 'node:path'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
 import { RECIPES } from '../recipe/registry.js'
+import { isLanguageTag, normalizeText, textItemId } from '../source/text.js'
 import { sanitizeSegment } from '../vault/sanitize.js'
-import { infoKey, languageMatches, subtitleKey, type LocalPair } from './inventory.js'
+import { infoKey, languageMatches, subtitleKey, textKey, type LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
 
 export interface ServeJob {
@@ -12,6 +13,11 @@ export interface ServeJob {
   url: string
   recipes?: string[]
   lang?: string
+  /** Szöveges tétel (Telegram-csatolmány vagy `/scan`): a Worker normalizálta, a `videoId` a `t-…` azonosító. */
+  text?: string
+  title?: string
+  /** A fájlnévből kapott nyelvkód; nem a fordítás `lang`-ja. */
+  textLang?: string
 }
 
 export type CallbackBody =
@@ -44,6 +50,7 @@ const MISSING_PAIR = 'A felirat nincs az R2-ben.'
 const UNREADABLE_PAIR = 'A felirat nem olvasható az R2-ből.'
 const UNKNOWN_RECIPE = 'Ismeretlen recept.'
 const UNKNOWN_LANGUAGE = 'Ismeretlen nyelv.'
+const ID_MISMATCH = 'A szöveg azonosítója nem egyezik.'
 const SUB_NAME = /^([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
 
 export function subtitleArgv(url: string, outDir: string): string[] {
@@ -141,7 +148,7 @@ async function loadSummaryPair(
   effects: JobEffects,
   videoId: string,
 ): Promise<
-  | { ok: true; title: string; language: string; extension: string; subtitle: Uint8Array; info: Uint8Array }
+  | { ok: true; title: string; language: string | null; extension: string; subtitle: Uint8Array; info: Uint8Array }
   | { ok: false; error: string }
 > {
   const prefix = `videos/${videoId}/`
@@ -154,7 +161,8 @@ async function loadSummaryPair(
   const named = keys.map((key) => ({ key, name: key.slice(prefix.length) }))
   const infoItem = named.find((item) => item.name === 'info.json')
   const subs = named.filter((item) => SUB_NAME.test(item.name))
-  if (infoItem === undefined || subs.length === 0) return { ok: false, error: MISSING_PAIR }
+  const textItem = named.find((item) => item.key === textKey(videoId))
+  if (infoItem === undefined || (subs.length === 0 && textItem === undefined)) return { ok: false, error: MISSING_PAIR }
   let infoBody: Uint8Array | null
   try {
     infoBody = await effects.store.get(infoItem.key)
@@ -164,14 +172,31 @@ async function loadSummaryPair(
   if (infoBody === null || infoBody.byteLength === 0) return { ok: false, error: UNREADABLE_PAIR }
   let title: string
   let accepted = effects.languages
+  let infoLanguage: string | null = null
   try {
     const raw = JSON.parse(new TextDecoder().decode(infoBody)) as { id?: unknown; title?: unknown; language?: unknown }
     if (raw.id !== videoId) return { ok: false, error: MISSING_PAIR }
     const text = typeof raw.title === 'string' ? raw.title : ''
     title = text.trim() === '' ? videoId : text
-    if (typeof raw.language === 'string' && raw.language.trim() !== '') accepted = [raw.language]
+    if (typeof raw.language === 'string' && raw.language.trim() !== '') {
+      accepted = [raw.language]
+      infoLanguage = raw.language
+    }
   } catch {
     return { ok: false, error: MISSING_PAIR }
+  }
+  if (textItem !== undefined) {
+    let text: Uint8Array | null
+    try {
+      text = await effects.store.get(textItem.key)
+    } catch {
+      return { ok: false, error: UNREADABLE_PAIR }
+    }
+    if (text === null || text.byteLength === 0) return { ok: false, error: UNREADABLE_PAIR }
+    // A szöveges tétel nyelve a fájlnévből jön, ha volt; különben a futás a tartalomból dönt.
+    // Az info.json az R2-ből jön, a nyelvkód a fájlnévbe kerül: csak érvényes kód mehet tovább.
+    const language = infoLanguage !== null && isLanguageTag(infoLanguage) ? infoLanguage : null
+    return { ok: true, title, language, extension: 'txt', subtitle: text, info: infoBody }
   }
   for (const sub of subs) {
     const match = SUB_NAME.exec(sub.name)
@@ -186,6 +211,33 @@ async function loadSummaryPair(
     return { ok: true, title, language: match[1], extension: match[2], subtitle, info: infoBody }
   }
   return { ok: false, error: MISSING_PAIR }
+}
+
+/** A feliratletöltés párja szöveges tételre: ellenőrzés, majd az R2-be, yt-dlp nélkül. */
+async function runTextJob(job: ServeJob & { text: string }, effects: JobEffects): Promise<void> {
+  const title = job.title ?? job.videoId
+  try {
+    const keys = await effects.store.list(`videos/${job.videoId}/`)
+    // ponytail: a kulcs a tartalom hash-e, ezért a megléte elég; üres objektumot a putWithRetry nem hagy.
+    if (keys.includes(textKey(job.videoId)) && keys.includes(infoKey(job.videoId))) {
+      await report(effects, job.jobId, { status: 'ready', title })
+      return
+    }
+    // A Worker és a serve más verziója más azonosítót adhat: ilyenkor a jegyzet rossz tételhez kerülne.
+    const text = normalizeText(new TextEncoder().encode(job.text), false)
+    if ((await textItemId(text)) !== job.videoId) {
+      await report(effects, job.jobId, { status: 'failed', error: ID_MISMATCH })
+      return
+    }
+    const info = { id: job.videoId, title, ...(job.textLang === undefined ? {} : { language: job.textLang }) }
+    await putWithRetry(effects.store, textKey(job.videoId), new TextEncoder().encode(text))
+    await putWithRetry(effects.store, infoKey(job.videoId), new TextEncoder().encode(JSON.stringify(info)))
+    console.log(`[job] Szöveges tétel az R2-ben: "${title}" (${job.videoId})`)
+    await report(effects, job.jobId, { status: 'ready', title })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : UPLOAD_FAILED
+    await report(effects, job.jobId, { status: 'failed', error: message })
+  }
 }
 
 async function runRecipeJob(
@@ -216,7 +268,9 @@ async function runRecipeJob(
   }
   const stem = `${sanitizeSegment(loaded.title)} [${job.videoId}]`
   try {
-    await effects.writeFile(join(effects.outDir, `${stem}.${loaded.language}.${loaded.extension}`), loaded.subtitle)
+    const name =
+      loaded.language === null ? `${stem}.${loaded.extension}` : `${stem}.${loaded.language}.${loaded.extension}`
+    await effects.writeFile(join(effects.outDir, name), loaded.subtitle)
     await effects.writeFile(join(effects.outDir, `${stem}.info.json`), loaded.info)
   } catch {
     await forgetWork(effects, job.videoId)
@@ -244,6 +298,10 @@ async function runRecipeJob(
 export async function runJob(job: ServeJob, effects: JobEffects, signal?: AbortSignal): Promise<void> {
   if (job.recipes !== undefined) {
     await runRecipeJob({ ...job, recipes: job.recipes }, effects, signal)
+    return
+  }
+  if (job.text !== undefined) {
+    await runTextJob({ ...job, text: job.text }, effects)
     return
   }
   try {

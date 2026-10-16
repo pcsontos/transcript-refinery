@@ -5,34 +5,13 @@ import type { SourceDir } from '../config.js'
 import type { SourceItem } from '../types.js'
 import { itemIdFor } from './identity.js'
 import { readSidecar } from './metadata.js'
-import { readTextSource, TEXT_EXTENSIONS, textItemId } from './text.js'
+import { readTextSource, splitSubtitleName, SUBTITLE_EXTENSIONS, TEXT_EXTENSIONS, textItemId } from './text.js'
 import type { Source } from './types.js'
 
-const SUBTITLE_EXTENSIONS = ['.srt', '.vtt'] as const
+export { splitSubtitleName, type SubtitleName } from './text.js'
 
 /** Amit a `--dir`/`--file` felvehet. A konfigurált `sources` csak feliratot. */
 export const AD_HOC_EXTENSIONS: readonly string[] = [...SUBTITLE_EXTENSIONS, ...TEXT_EXTENSIONS]
-
-/**
- * Nyelvkódnak látszó utótag: `en`, `hu`, `en-US`. A szűkítés szándékos — a
- * `Some.Talk.srt` alapneve `Some.Talk` marad, nem `Some`.
- *
- * A nyelvrész (kötőjel előtti szakasz) KIZÁRÓLAG kisbetűs lehet — a
- * régiókód (kötőjel utáni szakasz) case-insensitive marad, mert a
- * yt-dlp/whisper `en-US` alakja is nagybetűs régiót ad. A megszorítás a
- * `Rész.II.srt` / `Rész.III.srt` osztályt üti ki: a római szám nagybetűs,
- * tehát levágás nélkül marad az alapnév része.
- *
- * Két ismert korlát, mindkettő tudatosan vállalt:
- * 1. A kézzel írt NAGYBETŰS nyelvkód (`Talk.EN.srt`) nem ismerődik fel — a
- *    yt-dlp és a whisper is kisbetűset ad, a megkülönböztetés a római
- *    számoktól viszont enélkül nem megoldható.
- * 2. A címvégi kisbetűs kétbetűs szótag (`Bevezetés a Node.js.srt`) alakilag
- *    azonos egy valódi nyelvkóddal, ezért levágódik: az alapnév csonka lesz
- *    és a `language` hamis. A metaadat viszont NEM vész el — a
- *    sidecar-keresés a levágás nélküli nevet is próbálja.
- */
-const LANGUAGE_TAG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
 
 /** Az útvonal `/` elválasztóval, hogy a frontmatter platformfüggetlen legyen. */
 function toPosix(path: string): string {
@@ -55,35 +34,6 @@ async function walk(dir: string, skipHidden = false): Promise<string[]> {
     else files.push(full)
   }
   return files
-}
-
-export interface SubtitleName {
-  base: string
-  language: string | null
-}
-
-/**
- * `Beszéd.en.srt` → `{ base: 'Beszéd', language: 'en' }`. Nem feliratfájlra
- * `null`. Az alapnév a metaadatfájl megtalálásának és az elem
- * azonosításának is az alapja, ezért a levágás szabályai szűkek.
- */
-export function splitSubtitleName(
-  fileName: string,
-  extensions: readonly string[] = SUBTITLE_EXTENSIONS,
-): SubtitleName | null {
-  const lower = fileName.toLowerCase()
-  const ext = extensions.find((candidate) => lower.endsWith(candidate))
-  if (!ext) return null
-
-  const withoutExt = fileName.slice(0, -ext.length)
-  const dot = withoutExt.lastIndexOf('.')
-  if (dot > 0) {
-    const tag = withoutExt.slice(dot + 1)
-    if (LANGUAGE_TAG.test(tag)) {
-      return { base: withoutExt.slice(0, dot), language: tag }
-    }
-  }
-  return { base: withoutExt, language: null }
 }
 
 interface Candidate {
@@ -222,7 +172,7 @@ export async function textItem(path: string, source: SourceDir): Promise<SourceI
   const sourceFile = toPosix(relative(source.path, path))
   let itemId: string
   try {
-    itemId = textItemId(await readTextSource(path))
+    itemId = await textItemId(await readTextSource(path))
   } catch {
     // ponytail: útvonal-hash azonosító; a fájl javítása után új tétel lesz belőle.
     // Az abszolút útból képzett: a forrásnévtől és a gyökértől függetlenül ugyanaz

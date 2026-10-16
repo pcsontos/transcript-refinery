@@ -13,6 +13,12 @@ export interface JobRow {
   notifiedReady: boolean
   acceptedAt: number | null
   sub: string | null
+  /** Szöveges tétel: a Telegram-csatolmány `file_id`-je; a cron ebből tölti le újra. */
+  fileId?: string | null
+  /** Szöveges tétel: a csatolmány neve; ebből a nyelvkód és a `.md` jelzés. */
+  fileName?: string | null
+  /** Szöveges tétel: a `/scan` szövege, amíg a sor nyitott; lezáráskor `null`. */
+  text?: string | null
 }
 
 export interface RunRow {
@@ -95,8 +101,10 @@ export function memoryStore(): JobStore {
       const index = rows.findIndex((item) => item.jobId === row.jobId)
       // A cron 202-je és a megszakítás versenyének őre, mint a D1-ben.
       if (rows[index]?.status === 'cancelled') return Promise.resolve(false)
-      if (index === -1) rows.push(row)
-      else rows[index] = row
+      // A lezárt sor szövegére nincs több újrapróbálás, mint a D1-ben.
+      const stored = OPEN.includes(row.status) ? row : { ...row, text: null }
+      if (index === -1) rows.push(stored)
+      else rows[index] = stored
       return Promise.resolve(true)
     },
     claimJob: (jobId, expect, next) => {
@@ -104,7 +112,7 @@ export function memoryStore(): JobStore {
       const row = rows[index]
       if (row === undefined || row.status !== expect) return Promise.resolve(false)
       // Új objektum, mint a D1-nél: aki a régit tartja, elavult másolatot lát.
-      rows[index] = { ...row, status: next }
+      rows[index] = { ...row, status: next, ...(OPEN.includes(next) ? {} : { text: null }) }
       return Promise.resolve(true)
     },
     due: (now) => Promise.resolve(rows.filter((row) => isDue(row, now))),

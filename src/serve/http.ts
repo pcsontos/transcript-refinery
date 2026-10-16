@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { ServeJob } from './job.js'
+import { isLanguageTag } from '../source/text.js'
 import { NotesUnavailable, type NotesSource } from './notes.js'
 
 export interface ServeGate {
@@ -49,7 +50,7 @@ function readBody(request: IncomingMessage): Promise<string> {
 
 function isJob(value: unknown): value is ServeJob {
   if (typeof value !== 'object' || value === null) return false
-  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown }
+  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown; text?: unknown; title?: unknown; textLang?: unknown }
   if (typeof job.jobId !== 'string' || typeof job.videoId !== 'string' || typeof job.url !== 'string') return false
   // A régi, egyreceptes alakot a felirat-munka helyett hibaként kell látni.
   if (job.recipe !== undefined) return false
@@ -57,6 +58,11 @@ function isJob(value: unknown): value is ServeJob {
     if (!Array.isArray(job.recipes) || job.recipes.length === 0) return false
     if (!job.recipes.every((id) => typeof id === 'string')) return false
   }
+  for (const field of [job.text, job.title, job.textLang]) {
+    if (field !== undefined && typeof field !== 'string') return false
+  }
+  // A nyelvkód a SERVE_OUT fájlnevébe kerül: más érték útvonal-bejárás lenne.
+  if (typeof job.textLang === 'string' && !isLanguageTag(job.textLang)) return false
   return job.lang === undefined || typeof job.lang === 'string'
 }
 

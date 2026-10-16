@@ -3,6 +3,11 @@ export const REJECTED_SECRET = 'A konténer elutasította a hívást.'
 export const PLAYLIST_LINE = 'Lejátszási lista későbbre marad.'
 export const NOT_YOUTUBE_LINE = 'Nem YouTube-cím.'
 export const NO_VIDEO_LINE = 'Nincs YouTube-videó az üzenetben.'
+export const TEXT_ONLY = 'Csak .txt vagy .md fájlt tudok feldolgozni.'
+export const SCAN_EMPTY = 'Írd a /scan után a szöveget, vagy küldd fájlként.'
+export const DOWNLOAD_FAILED = 'A fájlt nem tudtam letölteni, küldd újra.'
+export const SCAN_LONG =
+  'A szöveg elérhette a Telegram-üzenet határát, lehet, hogy csonka. Hosszabb átiratot fájlként küldj.'
 
 export function queuedLine(videoId: string): string {
   return `Sorba került: ${videoId}`
@@ -22,8 +27,8 @@ export function flatTitle(title: string): string {
   return flat.replace(/ {2,}/g, ' ').trim()
 }
 
-export function readyLine(title: string): string {
-  return `${flatTitle(title)}. A felirat megvan.`
+export function readyLine(title: string, text = false): string {
+  return `${flatTitle(title)}. ${text ? 'A szöveg' : 'A felirat'} megvan.`
 }
 
 export function alreadyLine(videoId: string): string {
@@ -148,7 +153,9 @@ export type Probe = { ok: true; ms: number; version: string; busy: string | null
 
 export const HELP_TEXT = [
   'Küldj egy YouTube-linket, és letöltöm a feliratát.',
+  'Csatolt .txt vagy .md átiratot is feldolgozok.',
   '',
+  '/scan <szöveg> – beillesztett átirat feldolgozása (egy üzenetnyi)',
   '/start – a bot összekötése a Google-fiókoddal',
   '/cancel – nyitott munka megszakítása',
   '/status – a szerver állapota és a nyitott munkák',

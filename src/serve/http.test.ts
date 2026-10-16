@@ -93,6 +93,29 @@ describe('createServeServer', () => {
     expect(await post(port, 'titok', { jobId: 'job-2', videoId: job.videoId, url: job.url, recipe: 'summary' })).toBe(400)
   })
 
+  it('a szöveges mezők szövegként 202, más típussal 400', async () => {
+    const seen: unknown[] = []
+    server = createServeServer({
+      secret: 'titok',
+      gate,
+      version: '9.9.9',
+      onJob: (job) => {
+        seen.push(job)
+        return Promise.resolve()
+      },
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const port = (server.address() as { port: number }).port
+    const job = { jobId: '5:t-0123456789abcdef', videoId: 't-0123456789abcdef', url: '' }
+    expect(await post(port, 'titok', { ...job, text: 1 })).toBe(400)
+    expect(await post(port, 'titok', { ...job, title: 1 })).toBe(400)
+    expect(await post(port, 'titok', { ...job, textLang: 1 })).toBe(400)
+    expect(await post(port, 'titok', { ...job, textLang: '/../../tmp/x' })).toBe(400)
+    expect(await post(port, 'titok', { ...job, text: 'Szöveg.', title: 'Cím', textLang: 'en' })).toBe(202)
+    await vi.waitFor(() => expect(seen).toEqual([{ ...job, text: 'Szöveg.', title: 'Cím', textLang: 'en' }]))
+  })
+
   it('a /ping és a /version titok nélkül válaszol, a /status csak titokkal, a busy a futó job', async () => {
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => {

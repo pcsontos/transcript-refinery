@@ -18,6 +18,10 @@
     "./classify": {
       "types": "./dist/fetch/classify.d.ts",
       "default": "./dist/fetch/classify.js"
+    },
+    "./text": {
+      "types": "./dist/source/text-core.d.ts",
+      "default": "./dist/source/text-core.js"
     }
   },
   "scripts": {

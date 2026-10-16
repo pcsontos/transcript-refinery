@@ -84,7 +84,7 @@ Az implementáció a `feat/szoveges-atirat-telegram` ágon, külön worktree-ben
   - `isTextItemId(id: string): boolean`
   - `readTextSource(path: string): Promise<string>` (csak `./text.js`, változatlan viselkedés)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 A `src/source/text.test.ts`-ben a `textItemId` hívások elé `await` kerül (a `readTextSource és textItemId` blokk három tesztjében: `expect(await textItemId(b)).toBe(await textItemId(a))`, `expect(await textItemId(a)).not.toBe(await textItemId(b))`, `expect(await textItemId(a)).toMatch(...)`, `expect(await textItemId(a)).toBe(await textItemId(b))`). Az import bővül, és a fájl végére új blokk jön:
 
@@ -131,12 +131,12 @@ describe('textItemId (Web Crypto)', () => {
 })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run src/source/text.test.ts`
 Expected: FAIL — `normalizeText` és `isTextItemId` nem exportált.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `src/source/text-core.ts` (új). A `LANGUAGE_TAG` a teljes kommentjével, a `SubtitleName` és a `splitSubtitleName` **szó szerint** átkerül a `src/source/folder.ts`-ből (ma `:16-87`), a `stripFrontmatter` és a `vaultSafeLinks` a `src/source/text.ts`-ből, a dokumentációs kommentjeikkel együtt:
 
@@ -245,12 +245,12 @@ export async function readTextSource(path: string): Promise<string> {
       'transcript-refinery/text': fileURLToPath(new URL('./src/source/text-core.ts', import.meta.url)),
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run src/source` majd a Global Constraints teljes ellenőrzése.
 Expected: PASS; a meglévő `folder.test.ts` (`splitSubtitleName`) és `text.test.ts` esetek változatlanul zöldek; `grep -n "node:" src/source/text-core.ts` üres.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/source/text-core.ts src/source/text.ts src/source/text.test.ts src/source/folder.ts package.json vitest.config.ts
@@ -272,7 +272,7 @@ git commit   # commit-message skill; pl. "refactor(source): Share text normaliza
   - `ServeJob` új opcionális mezői: `text?: string`, `title?: string`, `textLang?: string`
   - a recept nélküli, `text`-es kopogtatásra az R2-ben `text.txt` + `info.json`, majd `ready`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/serve/job.test.ts`, import: `import { textItemId } from '../source/text.js'`; új blokk a fájl végére:
 
@@ -367,12 +367,12 @@ describe('runJob szöveges tétel', () => {
   })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run src/serve/job.test.ts src/serve/http.test.ts`
 Expected: FAIL — a szöveges kopogtatás ma a yt-dlp-utat indítja, a hibás típus 202.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `src/serve/inventory.ts`, az `infoKey` alá:
 
@@ -451,12 +451,12 @@ async function runTextJob(job: ServeJob & { text: string }, effects: JobEffects)
   }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run src/serve` majd a teljes ellenőrzés.
 Expected: PASS; a meglévő felirat- és receptjob-tesztek változatlanul zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/inventory.ts src/serve/job.ts src/serve/http.ts src/serve/job.test.ts src/serve/http.test.ts
@@ -475,7 +475,7 @@ git commit   # commit-message skill; pl. "feat(serve): Store Telegram text trans
 - Consumes: `textKey` (Task 2), `TEXT_EXTENSIONS`, `splitSubtitleName`, `textItemId` (Task 1); `commandRun` `adHoc: { file }` kapcsolója (A szelet, `src/cli.ts:458`)
 - Produces: a szöveges recept-futás a vaultba `Beszéd [t-…]_<fajta>.md`-t ír `item_id: t-…`-vel, és `{ ok: true, noteUrl }`-t ad
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/serve/job.test.ts`, a `runJob szöveges tétel` blokkba:
 
@@ -545,12 +545,12 @@ git commit   # commit-message skill; pl. "feat(serve): Store Telegram text trans
   })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run src/serve/job.test.ts src/serve/summary.test.ts`
 Expected: FAIL — a `loadSummaryPair` csak feliratot ismer (`MISSING_PAIR`), a `runRecipes` a `.txt`-t nem találja.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `src/serve/job.ts`, a `loadSummaryPair` teljes cseréje:
 
@@ -658,12 +658,12 @@ A `runRecipeJob`-ban a felirat kiírása:
 
 A cím fallbackje (`found?.title ?? parsed.base`) marad: a `noteCommitMessage` a `[t-…]` utótagot levágja.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run src/serve` majd a teljes ellenőrzés.
 Expected: PASS; a meglévő `runRecipes` és receptjob-tesztek változatlanul zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/serve/job.ts src/serve/summary.ts src/serve/job.test.ts src/serve/summary.test.ts
@@ -682,7 +682,7 @@ git commit   # commit-message skill; pl. "feat(serve): Run recipes on Telegram t
 **Interfaces:**
 - Produces: `JobRow` új opcionális mezői: `fileId?: string | null`, `fileName?: string | null`, `text?: string | null`. A `save` és a `claimJob` a nem nyitott (`ready`/`failed`/`cancelled`) sor `text`-jét `null`-ra írja.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `worker/src/store.test.ts` (új):
 
@@ -808,12 +808,12 @@ describe('D1: szöveges sor', () => {
     expect(text).toContain('ALTER TABLE jobs ADD COLUMN text TEXT')
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run worker/src/store.test.ts worker/src/d1.test.ts worker/src/entry.test.ts`
 Expected: FAIL — a migráció hiányzik, a szöveg nem ürül, a D1 nem viszi az új oszlopokat.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `worker/migrations/0005_text.sql`:
 
@@ -869,12 +869,12 @@ A `memoryStore`-ban:
     },
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run worker` majd a teljes ellenőrzés.
 Expected: PASS; a meglévő Worker-tesztek változatlanul zöldek (az új mezők opcionálisak, a régi `JobRow` literálok nem változnak).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/migrations/0005_text.sql worker/src/store.ts worker/src/d1.ts worker/src/store.test.ts worker/src/d1.test.ts worker/src/entry.test.ts
@@ -897,7 +897,7 @@ git commit   # commit-message skill; pl. "feat(worker): Keep text job sources un
   - `readyLine(title: string, text?: boolean): string`
   - üzenetek: `TEXT_ONLY`, `SCAN_EMPTY`, `DOWNLOAD_FAILED`, `SCAN_LONG`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `worker/src/handle.test.ts`:
 - import: `import { textItemId } from 'transcript-refinery/text'`; a `plan.js` importba `runReadyMessage`;
@@ -1156,12 +1156,12 @@ describe('szöveges bemenet', () => {
   })
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `pnpm exec vitest run worker`
 Expected: FAIL — a `download` nem része a `WorkerDeps`-nek, a csatolmányra a videós mondat jön, a `/scan` ismeretlen.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 `worker/src/messages.ts`:
 
@@ -1422,12 +1422,12 @@ async function textRow(
 | **Más csatolmány** | Nem indít feladatot | `Csak .txt vagy .md fájlt tudok feldolgozni.` |
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm exec vitest run worker` majd a teljes ellenőrzés (`pnpm build` a Worker típusellenőrzése előtt).
 Expected: PASS; a meglévő link-, recept-, cron- és `/cancel`-tesztek változatlanul zöldek.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add worker/src/messages.ts worker/src/plan.ts worker/src/handle.ts worker/src/index.ts worker/src/handle.test.ts worker/src/entry.test.ts docs/operations/telegram-worker-topology.md
