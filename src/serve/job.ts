@@ -4,7 +4,7 @@ import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
 import { RECIPES } from '../recipe/registry.js'
 import { isLanguageTag, normalizeText, textItemId } from '../source/text.js'
 import { sanitizeSegment } from '../vault/sanitize.js'
-import { infoKey, languageMatches, subtitleKey, textKey, type LocalPair } from './inventory.js'
+import { infoKey, itemPrefix, languageMatches, subtitleKey, textInfoKey, textKey, type LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
 
 export interface ServeJob {
@@ -151,7 +151,7 @@ async function loadSummaryPair(
   | { ok: true; title: string; language: string | null; extension: string; subtitle: Uint8Array; info: Uint8Array }
   | { ok: false; error: string }
 > {
-  const prefix = `videos/${videoId}/`
+  const prefix = itemPrefix(videoId)
   let keys: string[]
   try {
     keys = await effects.store.list(prefix)
@@ -217,9 +217,9 @@ async function loadSummaryPair(
 async function runTextJob(job: ServeJob & { text: string }, effects: JobEffects): Promise<void> {
   const title = job.title ?? job.videoId
   try {
-    const keys = await effects.store.list(`videos/${job.videoId}/`)
+    const keys = await effects.store.list(itemPrefix(job.videoId))
     // ponytail: a kulcs a tartalom hash-e, ezért a megléte elég; üres objektumot a putWithRetry nem hagy.
-    if (keys.includes(textKey(job.videoId)) && keys.includes(infoKey(job.videoId))) {
+    if (keys.includes(textKey(job.videoId)) && keys.includes(textInfoKey(job.videoId))) {
       await report(effects, job.jobId, { status: 'ready', title })
       return
     }
@@ -231,7 +231,7 @@ async function runTextJob(job: ServeJob & { text: string }, effects: JobEffects)
     }
     const info = { id: job.videoId, title, ...(job.textLang === undefined ? {} : { language: job.textLang }) }
     await putWithRetry(effects.store, textKey(job.videoId), new TextEncoder().encode(text))
-    await putWithRetry(effects.store, infoKey(job.videoId), new TextEncoder().encode(JSON.stringify(info)))
+    await putWithRetry(effects.store, textInfoKey(job.videoId), new TextEncoder().encode(JSON.stringify(info)))
     console.log(`[job] Szöveges tétel az R2-ben: "${title}" (${job.videoId})`)
     await report(effects, job.jobId, { status: 'ready', title })
   } catch (error) {

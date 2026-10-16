@@ -231,7 +231,7 @@ A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden el
 | **Már sorban lévő videó** | Megelőzi a duplikációt | `Már sorban van: <id>.` |
 | **Lejátszási lista URL** | Jelenleg kihagyja | `Lejátszási lista későbbre marad.` |
 | **Nem YouTube webcím** | Érvénytelen forrásként jelzi | `Nem YouTube-cím.` |
-| **Csatolt `.txt`/`.md` fájl** (parancs nélkül, legfeljebb 2 MB) | A Worker letölti, normalizálja, `t-…` azonosítót számol; a serve az R2-be teszi (`videos/<t-id>/text.txt`) | `Sorba került: <cím>`, kész: `<cím>. A szöveg megvan.` |
+| **Csatolt `.txt`/`.md` fájl** (parancs nélkül, legfeljebb 2 MB) | A Worker letölti, normalizálja, `t-…` azonosítót számol; a serve az R2-be teszi (`documents/<t-id>/text.txt`) | `Sorba került: <cím>`, kész: `<cím>. A szöveg megvan.` |
 | **`/scan <szöveg>`** (egy üzenetnyi) | Ugyanígy; a cím az első sor, a szöveg a D1-ben vár, amíg a serve át nem veszi | `Sorba került: <cím>`; 3900 karaktertől figyelmeztetés |
 | **Más csatolmány** | Nem indít feladatot | `Csak .txt vagy .md fájlt tudok feldolgozni.` |
 | **Bármilyen egyéb szöveg** | Nem indít feladatot | `Nincs YouTube-videó az üzenetben.` |
@@ -242,6 +242,17 @@ A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden el
 - **Hiba**: a démon által visszaküldött hibaüzenet (pl. `Nincs felirat` vagy `A konténer elutasította a hívást.`).
 - **Receptgombok** (a felirat kész üzenete alatt): `summary`, `notes`, `qa`, `flashcards`, `bloom`, `clean-mild`, `clean-moderate`, `clean-deep` és `fordítás`. Egy koppintás egy recept, egy futás a konténer `cost_limit_usd` plafonja alatt. A `fordítás` a videó kész jegyzeteit kínálja kapcsolható gombként, a `tovább` után a hét nyelvből (`en`, `hu`, `nl`, `de`, `es`, `fr`, `it`) egyet. A kért jegyzetek egy futásban, egy közös plafon alatt készülnek. A receptenkénti állapot a D1 `runs` táblájában van.
 - **Kész jegyzet:** `<cím> · <recept>. A jegyzet megvan.`, fordításnál `<cím> · <nyelv>. A fordítás megvan.`, és jegyzetenként egy sor: `https://<worker>/notes/<videóazonosító>/<fajta>` (például `notes`, `summary-de`). Az oldal Cloudflare Access mögött van; a Worker a jegyzetet a peter-mba `serve`-étől kéri (`GET /notes/<itemId>/<fajta>`), az a vaultból olvassa és rendereli. A régi, `/notes/<update_id>:<videóazonosító>/<fajta>` alakú linkek is működnek. A `https://<worker>/notes` a vault összes jegyzetének listája, bárhonnan indult a futás, elemenként `telegram`/`cli` címkével és a kész fajtákkal. Ha a peter-mba alszik, az oldal ezt jelzi. A bot csak privát chatben válaszol.
+
+### R2-elrendezés és a szöveges tétel címe
+
+| Tétel | R2-kulcsok |
+|---|---|
+| YouTube-videó | `videos/<videóazonosító>/<nyelv>.vtt` (vagy `.srt`) és `videos/<videóazonosító>/info.json` |
+| Szöveges tétel (csatolmány vagy `/scan`) | `documents/<t-id>/text.txt` és `documents/<t-id>/info.json` (`id`, `title`, `language?`) |
+
+A jegyzet `item_id` mezője egyben az R2-mappa neve: egy jegyzet forrása az `item_id`-ből kereshető meg (`videos/<item_id>/` vagy `documents/<item_id>/`). A `t-…` azonosító a normalizált szöveg hash-e, ezért ugyanaz a tartalom más néven is ugyanaz a tétel, és a jegyzetben az **első** feltöltés neve marad.
+
+A szöveges tétel `title`-je a megjelenítendő név: csatolmánynál a fájlnév alapneve (kiterjesztés és nyelvkód nélkül), `/scan`-nél a szöveg első nem üres sora (legfeljebb 80 karakter). A jegyzet `title`-je és H1-e ez, a Telegramból jött szöveges tételnél nincs `source_file` mező (a belső fájlnév `<cím> [t-…].txt`).
 
 > [!NOTE]
 > **Biztonsági szűrés**: A bot csak attól a Telegram-felhasználótól (`from.id`) fogad parancsot, aki a `/start` után Google-belépéssel kötötte magát, és akinek a kötött e-mailje az `TELEGRAM_ALLOWED_EMAILS` listán van. Mindenki más a `Előbb kösd össze a Google-fiókoddal: /start` sort kapja, sor és kopogtatás nélkül. A kötés útvonala a `/link`, az olvasóé a `/notes`, mindkettőt Cloudflare Access védi. Csoportchatben a bot hallgat.
