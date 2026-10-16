@@ -3,6 +3,33 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.18.1] — 2026-10-16
+
+A Telegramból küldött szöveges átirat jegyzete tiszta címet kap, és az R2-ben
+külön helyre kerül.
+
+### 🐛 Javítások
+
+- **Tiszta cím a jegyzetben:** a Telegramból jött `.txt`/`.md` jegyzet `title`-je
+  és első sora mostantól az átirat neve (csatolmánynál a fájlnév kiterjesztés
+  nélkül, `/scan`-nél az első sor), nem a belső fájlnév a `[t-…]` utótaggal
+  (#254).
+- **Nincs félrevezető `source_file`:** a Telegramból jött szöveges jegyzet
+  frontmatterében nem szerepel a belső, mindig `.txt` kiterjesztésű fájlnév. A
+  parancssorból felvett szöveges fájlnál a `source_file` marad (#254).
+- **Szöveges tételek a `documents/` alatt:** az R2-ben a szöveges átirat és az
+  `info.json` a `documents/<azonosító>/` mappába kerül, külön a videók
+  `videos/<azonosító>/` mappájától (#254).
+
+### ⚠️ Tudnivalók
+
+- A v1.18.0-val küldött szöveges tételek a régi, `videos/` alatti helyen
+  maradtak, és az új kiadás nem keresi ott őket. Újra kell küldeni a fájlt; a régi
+  R2-mappát és a hibás jegyzetet kézzel kell törölni a vaultból (a meglévő jegyzet
+  miatt az új futás kihagyná).
+- Csak a `serve` változik: a kiadáshoz a konténerkép és a `peter-mba` frissítése
+  kell, Worker-telepítés és D1-migráció nem.
+
 ## [1.18.0] — 2026-10-16
 
 Telegramból is feldolgozható szöveges átirat: csatolt `.txt`/`.md` fájlból vagy
@@ -834,6 +861,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.18.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.18.1
 [1.18.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.18.0
 [1.17.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.17.0
 [1.16.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.16.0
