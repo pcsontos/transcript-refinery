@@ -3,6 +3,43 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.18.0] — 2026-10-16
+
+Telegramból is feldolgozható szöveges átirat: csatolt `.txt`/`.md` fájlból vagy
+beillesztett szövegből ugyanúgy lesz jegyzet, mint egy YouTube-linkből.
+
+### ✨ Szöveges átirat Telegramból
+
+- **Csatolt fájl:** egy elküldött `.txt` vagy `.md` fájl parancs nélkül indul,
+  mint a link. A bot „Sorba került: <cím>” üzenetet küld, a kész szövegnél pedig
+  a recept-gombokat. A fájlnévből jön a cím és a nyelvkód (`átirat.en.md`); a fájl
+  mellé írt szöveg nem számít (#206).
+- **`/scan <szöveg>`:** a parancs után beillesztett átirat is feldolgozódik. A
+  cím a szöveg első sora. A Telegram egy üzenetet 4096 karakternél bont, ezért
+  3900 karaktertől a bot figyelmeztet, hogy hosszabb átiratot fájlként érdemes
+  küldeni (#206).
+- **Ugyanazért a szövegért nem fizetsz kétszer:** az azonosító a szövegből jön,
+  így az átnevezett fájl vagy az újraküldött szöveg nem új tétel; ha már
+  folyamatban van, a bot jelzi (#206).
+- **Érthető hibák:** nem `.txt`/`.md` fájlra, 2 MB-nál nagyobb fájlra, nem
+  UTF-8 vagy üres szövegre és sikertelen letöltésre a bot megmondja az okot, nem
+  hallgat (#206).
+- **Várakozás:** ha a gép nem érhető el, a csatolt fájl a `file_id`-jéből, a
+  beillesztett szöveg a tárolt szövegéből indul újra, ahogy a link a mai
+  újrapróbálással (#206).
+- **Súgó:** a `/help` leírja a csatolmányt és a `/scan` parancsot (#206).
+
+### ⚠️ Tudnivalók
+
+- A recept-futás a már ismert úton megy: a jegyzet az átirat időbélyeg nélküli,
+  horgonyzás nélküli változatából készül, az átirat linkje a `/notes` oldalra
+  mutat.
+- Más csatolmány (kép, videó, hang) ma „Nincs YouTube-videó az üzenetben.”
+  választ kap, nem a „Csak .txt vagy .md…” mondatot (#251).
+- **Telepítés:** a `refinery serve` és a Worker együtt frissül. A D1-migrációt
+  (`pnpm worker:migrate`) a Worker telepítése előtt kell lefuttatni, mert az új
+  kód három új oszlopot ír; a `/scan` a BotFather parancslistájára kézzel kerül.
+
 ## [1.17.0] — 2026-10-15
 
 Időbélyeg nélküli `.txt` és `.md` átiratból is készül jegyzet a parancssorból.
@@ -797,6 +834,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.18.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.18.0
 [1.17.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.17.0
 [1.16.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.16.0
 [1.15.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.15.0
