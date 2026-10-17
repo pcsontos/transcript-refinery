@@ -237,11 +237,11 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 
 Nem kód, nem kerül a repóba. **Indítás előtt a felhasználó jóváhagyása kell** (valódi pénz).
 
-- [ ] **1. lépés:** költségbecslés a felhasználónak. Egy hívás `sub2api--claude-sonnet-5`-tel, ~60 s generálás után bontva, legfeljebb néhány ezer kimenő token. A becslést 2× ráhagyással kell megadni.
-- [ ] **2. lépés:** egy eldobható szkript a `$CLAUDE_JOB_DIR/tmp`-ben. A `createModelClient`-tel, `inScope` alatt elindít egy hosszú `generate`-et a peter-mba LiteLLM-jére, és 60 s után `abort`-ol.
-- [ ] **3. lépés:** a peter-mba-n (`ssh peter-mba`, `homelab-litellm-db`, `LiteLLM_SpendLogs`) a hívás sora: a `startTime`–`endTime` és a `completion_tokens`. Ha az idő ~60 s, és a token kevés, a gateway leállt; ha percekkel tovább tart, nem. A sub2api naplójában ugyanez a slot-felszabadulás ideje.
-- [ ] **4. lépés:** az eredmény a spec 5. pontjába. Ha a gateway nem áll le, a felhasználó jóváhagyásával külön issue.
-- [ ] **5. lépés:** commit `docs(plans): Record stream cancel probe result`.
+- [x] **1. lépés:** költségbecslés a felhasználónak. Egy hívás `sub2api--claude-sonnet-5`-tel, ~60 s generálás után bontva, legfeljebb néhány ezer kimenő token. A becslést 2× ráhagyással kell megadni.
+- [x] **2. lépés:** egy eldobható szkript a `$CLAUDE_JOB_DIR/tmp`-ben. A `createModelClient`-tel, `inScope` alatt elindít egy hosszú `generate`-et a peter-mba LiteLLM-jére, és 60 s után `abort`-ol.
+- [x] **3. lépés:** a peter-mba-n (`ssh peter-mba`, `homelab-litellm-db`, `LiteLLM_SpendLogs`) a hívás sora: a `startTime`–`endTime` és a `completion_tokens`. Ha az idő ~60 s, és a token kevés, a gateway leállt; ha percekkel tovább tart, nem. A sub2api naplójában ugyanez a slot-felszabadulás ideje.
+- [x] **4. lépés:** az eredmény a spec 5. pontjába. Ha a gateway nem áll le, a felhasználó jóváhagyásával külön issue.
+- [x] **5. lépés:** commit `docs(plans): Record stream cancel probe result`.
 
 ### 8. feladat: PR és éles ellenőrzés
 

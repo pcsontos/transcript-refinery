@@ -94,10 +94,17 @@ A `src/model/client.ts` mindhárom útvonala (`generate`, a sémás `generateObj
 - **A futás vége, ha nem volt leállás:** a mai módon.
 - A 25 perc miatt leállt recept nem kerül a vaultba. A többi jegyzet a mai módon commitolódik és pusholódik.
 
-## 5. Ami még nincs igazolva
+## 5. A próba eredménye (2026-10-17, peter-mbp, #268)
 
-- **A gateway leállítja-e a generálást, amikor a kliens bontja a streamet?** Ha a LiteLLM és a sub2api a kapcsolat bontására nem állítja le a felső hívást, akkor a 25 percnél leállított recept generálása tovább fut, kifizetjük, és a helyet is foglalja (a következő hívás 429-et kap). Ezt egy próbával kell kideríteni a peter-mba-n (LiteLLM `LiteLLM_SpendLogs`, sub2api napló). Ha nem állítja le, az eredmény kerüljön a spec végére, és nyissunk róla külön issue-t. A 25 perces korlát ettől még a kért módon működik.
-- Az undici 300 s-os `headersTimeout`-ja mint ok: a forrás alapján valószínű, próbával kell megerősíteni.
+Két rövid próba, a valódi kliens (`createModelClient` + `RecipeTimeout`) útján, `sub2api--claude-sonnet-5-5`-tel: egy hosszú generálás megszakítva 30, illetve 15 másodpercnél. A LiteLLM, a LiteLLM-adatbázis és a sub2api itt mind helyben fut (OrbStack), ezért a naplók közvetlenül olvashatók. A LiteLLM-ben ennek a modellnek nincs ára, ezért a `/key/info` elköltése nem mozdul: a spend-alapú mérés nem használható.
+
+- **A kliens oldal rendben van:** a hívás pontosan a korlátnál állt le `RecipeTimeout`-tal (30,0 s, 14,9 s), újrapróbálkozás nélkül.
+- **A LiteLLM leállítja a saját hívását:** a `LiteLLM_SpendLogs`-ban a két hívás 30,0 s és 14,9 s hosszú, vagyis a bontáskor lezárult. (A streaming nélküli éles esetnél ez 9 perc 20 mp volt.)
+- **A sub2api nem állítja le a felső hívást.** Naplója: `Client disconnected during streaming, continuing to drain upstream for billing`. Az elhagyott generálás végigfutott: 2 perc 7 mp, illetve 1 perc 51 mp után fejeződött be. **A megszakított recept generálásáért tehát továbbra is fizetünk**, és a költségőr nem látja (a megszakított stream nem ad használati adatot).
+- **A hely foglaltsága nem igazolt:** a megszakítás után 1,4 mp-cel egy új kérés hibátlanul átment, még az elhagyott hívás lefutása közben is. A helyi sub2api-ban a 2-es felhasználó `concurrency` értéke 1, az 1-esé 5; a naplóból nem derül ki, melyik felhasználón futott a próba, ezért a peter-mba-n (2-es felhasználó, `concurrency` 1) a 429 veszélye továbbra is fennáll: egy leállított recept után a futás következő receptjének hívása 429-et kaphat, amíg az elhagyott generálás be nem fejeződik (kb. 2 perc).
+- **Az undici-ok** a próbával közvetve megerősítve: streameléssel a hívás percekig él fejléc-időkorlát nélkül (a 30 másodperces próba ezt nem bizonyítja 5 percre; a bizonyíték az éles `zgWUhE6HjrI` futás lesz, #269).
+
+**Következmény:** a 25 perces korlát a kért módon működik, de két nyitott pont maradt (külön döntés kell): (1) a megszakított generálás költsége ismeretlen marad; (2) a következő recept 429-et kaphat egy leállítás után, ha a felhasználó `concurrency` értéke 1.
 
 ## 6. A két időkorlát a configban
 
