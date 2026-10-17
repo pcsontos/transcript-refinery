@@ -13,6 +13,7 @@ import {
   MISSING_NOTE_URL,
   NOTHING_TO_CANCEL,
   NOTHING_TO_TRANSLATE,
+  DROPPED_LINE,
   PICK_LINE,
   REJECTED_SECRET,
   TOKEN_TTL,
@@ -714,6 +715,12 @@ export async function handleTap(
   }
   const row = await findRow(deps.store, tap.jobId)
   if (row === null || row.sub !== binding.sub || row.status !== 'ready') return []
+  if (tap.type === 'drop') {
+    // A leállt recept eldobása: nem indul futás; a gombok eltűnnek. Az Újra a receptgombok útján megy (`requestRun`).
+    const messageId = update.callback_query.message?.message_id
+    if (typeof messageId === 'number') await deps.edit(row.chatId, messageId, DROPPED_LINE, [])
+    return []
+  }
   if (tap.type === 'recipe') return requestRun(row, [tap.recipe], null, deps)
   if (tap.type === 'lang') {
     const recipes = maskRecipes(tap.mask)

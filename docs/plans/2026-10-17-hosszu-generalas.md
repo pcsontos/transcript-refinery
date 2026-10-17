@@ -223,15 +223,15 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 - `handleTap`: a sor- és jogosultság-ellenőrzés után `drop` → ha van `messageId`, `edit(row.chatId, messageId, DROPPED_LINE, [])`; futást nem kér.
 - Az Újra külön kód nélkül a meglévő `recipe`/`lang` tapon megy: `requestRun` → `decideRun(failed)` → `retry`.
 
-- [ ] **1. lépés: a bukó tesztek**
+- [x] **1. lépés: a bukó tesztek**
   - `plan.test.ts`: `parseTap('d:1:abcdefghijk')` → `{ type: 'drop', jobId: '1:abcdefghijk' }`; `parseTap('d:')` → `null`.
   - `handle.test.ts`: az Eldobás → egy `edit` a `DROPPED_LINE`-nal és üres billentyűzettel, `knock` nincs.
   - `handle.test.ts`: egy `failed` alapreceptfutásra az Újra (`r:clean-deep:<jobId>`) → egy kopogtatás ugyanazzal a `runId`-vel, és a futás `queued`.
   - `handle.test.ts`: egy `accepted` futásra az Újra → `alreadyLine`, kopogtatás nincs (a review 1. pontja).
-- [ ] **2. lépés:** → FAIL.
-- [ ] **3. lépés:** megvalósítás, a `retryKeyboard` fölé `// ponytail: futás közben az Újra „már folyamatban”-t ad; sorba állítás, ha zavaró lesz.`
-- [ ] **4. lépés:** `pnpm test` → PASS.
-- [ ] **5. lépés:** commit `feat(worker): Add retry and drop buttons for stalled recipes`.
+- [x] **2. lépés:** → FAIL.
+- [x] **3. lépés:** megvalósítás, a `retryKeyboard` fölé `// ponytail: futás közben az Újra „már folyamatban”-t ad; sorba állítás, ha zavaró lesz.`
+- [x] **4. lépés:** `pnpm test` → PASS.
+- [x] **5. lépés:** commit `feat(worker): Add retry and drop buttons for stalled recipes`.
 
 ### 7. feladat: Próba — leállítja-e a gateway a bontott streamet? (kézi, valódi költéssel)
 

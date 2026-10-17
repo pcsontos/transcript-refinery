@@ -116,6 +116,7 @@ export function retryKeyboard(run: { jobId: string; recipes: readonly string[]; 
     run.lang === null
       ? `r:${run.recipes[0] ?? ''}:${run.jobId}`
       : `l:${mask.toString(16)}:${run.lang}:${run.jobId}`
+  // ponytail: futás közben az Újra „már folyamatban”-t ad (decideRun: busy); sorba állítás, ha zavaró lesz.
   // ponytail: alaprecept-futás egy recepttel indul (a receptgomb is így); több alaprecept közös futása nincs.
   return [[
     { text: 'Újra', data: retry },

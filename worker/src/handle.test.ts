@@ -12,11 +12,13 @@ import {
   type WorkerDeps,
 } from './handle.js'
 import {
+  DROPPED_LINE,
   langKeyboard,
   maskRecipes,
   parseTap,
   pickKeyboard,
   recipeKeyboard,
+  retryKeyboard,
   runId,
   runReadyMessage,
   hashToken,
@@ -571,6 +573,43 @@ describe('handleTap', () => {
     await rejected.insertRun(readyRun(['qa'], null, { status: 'queued', notified: false }))
     await handleCron(deps(rejected, { knock: () => Promise.resolve(401) }))
     expect(await rejected.run(`5:${ID}:qa`)).toMatchObject({ status: 'failed', error: 'A konténer elutasította a hívást.' })
+  })
+})
+
+describe('handleTap — leállt recept: Újra és Eldobás', () => {
+  it('az Eldobás átírja az üzenetet, és nem kér futást', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['qa'], null, { status: 'failed', error: 'Leállt.', notified: false }))
+    const d = deps(store)
+    const knocks = await handleTap(tap(30, `d:5:${ID}`, 42, 77), d)
+    expect(knocks).toEqual([])
+    expect(d.edits).toEqual([{ chatId: '42', messageId: 77, text: DROPPED_LINE, keyboard: [] }])
+    expect((await store.run(`5:${ID}:qa`))?.status).toBe('failed')
+  })
+
+  it('az Újra a leállt (failed) futást ugyanazzal az azonosítóval újraindítja', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['qa'], null, { status: 'failed', error: 'Leállt.', notified: false })
+    await store.insertRun(run)
+    const d = deps(store)
+    const retry = retryKeyboard(run)[0]![0]!.data
+    const knocks = await handleTap(tap(31, retry), d)
+    expect(knocks.map((knock) => knock.jobId)).toEqual([run.runId])
+    expect((await store.run(run.runId))?.status).toBe('queued')
+  })
+
+  it('futás közben az Újra „már folyamatban” üzenetet ad, és nem kopogtat', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['qa'], null, { status: 'accepted', noteUrl: null, notified: false })
+    await store.insertRun(run)
+    const d = deps(store)
+    const knocks = await handleTap(tap(32, retryKeyboard(run)[0]![0]!.data), d)
+    expect(knocks).toEqual([])
+    expect(d.sent).toHaveLength(1)
+    expect((await store.run(run.runId))?.status).toBe('accepted')
   })
 })
 

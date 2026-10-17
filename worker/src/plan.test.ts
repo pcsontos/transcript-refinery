@@ -204,6 +204,11 @@ describe('futások', () => {
     }
   })
 
+  it('az eldobás gombadata a futás azonosítóját viszi, üresen null', () => {
+    expect(parseTap(`d:5:${ID}`)).toEqual({ type: 'drop', jobId: `5:${ID}` })
+    expect(parseTap('d:')).toBeNull()
+  })
+
   it('a maszk a receptlista bitjei, az azonosító és a fajták a kérésből', () => {
     expect(maskRecipes(0b101)).toEqual(['summary', 'qa'])
     expect(maskRecipes(0)).toEqual([])

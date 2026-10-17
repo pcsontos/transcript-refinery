@@ -62,6 +62,7 @@ export type Tap =
   | { type: 'translate'; jobId: string }
   | { type: 'toggle' | 'next'; mask: number; jobId: string }
   | { type: 'cancel'; jobId: string }
+  | { type: 'drop'; jobId: string }
   | { type: 'lang'; mask: number; lang: string; jobId: string }
 
 const MASK = /^[0-9a-f]{1,2}$/
@@ -79,6 +80,10 @@ export function parseTap(data: string): Tap | null {
     const [recipe, ...job] = rest
     if (recipe === undefined || !(RECIPES as readonly string[]).includes(recipe)) return null
     return { type: 'recipe', recipe, jobId: job.join(':') }
+  }
+  if (head === 'd') {
+    const jobId = rest.join(':')
+    return jobId === '' ? null : { type: 'drop', jobId }
   }
   if (head === 'c') {
     const jobId = rest.join(':')
