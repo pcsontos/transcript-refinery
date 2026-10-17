@@ -122,17 +122,17 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 - A `processItem` recept-`catch`-ága az `item:failed` eseménybe `...(error instanceof RecipeTimeout ? { timedOut: true as const } : {})`-t tesz.
 - A `render`: `case 'item:progress': return \`  … ${event.itemId}: ${progressText(event)}\``.
 
-- [ ] **1. lépés: a bukó tesztek** a `pipeline.test.ts`-ben, `describe('hosszú recept')`, `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })`. A hamis `ModelClient` `generate`-je egy ígéretet old fel, amikor meghívják (ebből tudja a teszt, hogy a hívás elindult, és csak utána léptet órát). Utána `currentScope()!.signal` megszakításáig vár, és annak `reason`-jével bukik.
+- [x] **1. lépés: a bukó tesztek** a `pipeline.test.ts`-ben, `describe('hosszú recept')`, `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })`. A hamis `ModelClient` `generate`-je egy ígéretet old fel, amikor meghívják (ebből tudja a teszt, hogy a hívás elindult, és csak utána léptet órát). Utána `currentScope()!.signal` megszakításáig vár, és annak `reason`-jével bukik.
   - `a beállított korlátot tartja`: `recipeTimeoutMinutes: 40` mellett 25 perc léptetés után a hívás még fut, 40 percnél leáll, az `error` a `40 perc` szöveget tartalmazza; `heartbeatMinutes: 3` mellett 3 percnél jön az első `item:progress`.
   - `alapból 25 perc után megáll, újrapróbálkozás nélkül`: a mezők nélkül `await vi.advanceTimersByTimeAsync(25 * 60_000)` után a `processItem` eredménye `failed`. A `generate` hívásszáma 1. Az `item:failed` eseményben `timedOut: true`, a `kind` a recept azonosítója, az `error` tartalmazza a `25 perc` szöveget.
   - `10 percenként életjel a szószámmal`: a hamis `generate` a hívás elején `currentScope()!.text = 'egy két három'`. 10 perc léptetés után (alapérték) pontosan egy `item:progress` jön, `{ recipe, words: 3 }`. Újabb 10 perc után kettő.
   - `10 percen belül kész recept: nincs életjel, és nem marad óra`: azonnal válaszoló kliens → nincs `item:progress`, és `vi.getTimerCount() === 0`.
   - `a korlát a visszalépési várakozás alatt jár le`: az első hívás 503-at dob, a `recipeDeps.sleep` valódi `setTimeout` (fake). A 25 perces léptetés után az eredmény `failed`, `timedOut: true`.
   - `render`: `progressText({ recipe: 'clean-deep', words: 9000 })` → `clean-deep: kb. 9 000 szó kész, még dolgozik` (a `hu-HU` elválasztója nem törő szóköz: az elvárt értéket is `toLocaleString('hu-HU')`-val kell előállítani); `words: 0` → `Még dolgozik: clean-deep`.
-- [ ] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL.
-- [ ] **3. lépés:** megvalósítás a fentiek szerint.
-- [ ] **4. lépés:** `pnpm test` → PASS.
-- [ ] **5. lépés:** commit `feat(pipeline): Stop recipes after 25 minutes with heartbeat`.
+- [x] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL.
+- [x] **3. lépés:** megvalósítás a fentiek szerint.
+- [x] **4. lépés:** `pnpm test` → PASS.
+- [x] **5. lépés:** commit `feat(pipeline): Stop recipes after 25 minutes with heartbeat`.
 
 ### 4. feladat: A serve továbbítja az életjelet és a leállást
 

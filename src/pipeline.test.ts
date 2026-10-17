@@ -1,11 +1,13 @@
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { NoObjectGeneratedError } from 'ai'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { APICallError, NoObjectGeneratedError } from 'ai'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ModelConfig } from './config.js'
 import { collectEvents, type RunEvent } from './events.js'
 import { createCostGuard } from './model/budget.js'
 import { modelClientFrom, type ModelClient } from './model/client.js'
+import { currentScope } from './model/deadline.js'
 import { streamingMock } from './model/streaming.mock.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type PipelineDeps } from './pipeline.js'
 import { anchorParagraphs } from './recipe/anchor.js'
@@ -1105,5 +1107,140 @@ describe('normalizeItem — szöveges tétel', () => {
     )
     expect(outcome).toMatchObject({ status: 'failed', error: 'a fájl üres' })
     expect(events).toContainEqual(expect.objectContaining({ type: 'item:failed', error: 'a fájl üres' }))
+  })
+})
+
+describe('hosszú recept: 25 perces korlát és életjel', () => {
+  afterEach(() => vi.useRealTimers())
+
+  /** Kliens, ami a hívás elején beírja a már „legenerált” szöveget, jelez, hogy elindult, és a megszakításig vár. */
+  function beragadtKliens(szoveg: string): { client: ModelClient; elindult: Promise<void>; hivasok: () => number } {
+    let hivasok = 0
+    let jelez!: () => void
+    const elindult = new Promise<void>((resolve) => (jelez = resolve))
+    const client: ModelClient = {
+      generate: () => {
+        hivasok++
+        const scope = currentScope()!
+        scope.text = szoveg
+        jelez()
+        return new Promise((_resolve, reject) => {
+          scope.signal.addEventListener('abort', () => reject(scope.signal.reason as Error))
+        })
+      },
+      generateObject: () => Promise.reject(new Error('nem hívjuk')),
+    }
+    return { client, elindult, hivasok: () => hivasok }
+  }
+
+  const fakeTimers = () =>
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })
+  const PERC = 60_000
+
+  function futas(client: ModelClient, modelConfig: ModelConfig = MODELL_CFG, sleep?: (ms: number) => Promise<void>) {
+    const { sink, events } = collectEvents()
+    const run = processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: { recipe: ATMENO_RECEPT, client, modelConfig, guard: createCostGuard(5), sleep },
+    })
+    return { run, events }
+  }
+
+  it('alapból 25 perc után megáll, újrapróbálkozás nélkül', async () => {
+    fakeTimers()
+    const be = beragadtKliens('')
+    const { run, events } = futas(be.client)
+    await be.elindult
+    await vi.advanceTimersByTimeAsync(25 * PERC)
+    await run
+    const hiba = events.find((e) => e.type === 'item:failed')
+    expect(hiba).toMatchObject({ type: 'item:failed', kind: 'proba', timedOut: true })
+    expect((hiba as { error: string }).error).toContain('25 perc')
+    expect(be.hivasok()).toBe(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('a beállított korlátot és életjel-időközt tartja', async () => {
+    fakeTimers()
+    const be = beragadtKliens('')
+    const { run, events } = futas(be.client, { ...MODELL_CFG, recipeTimeoutMinutes: 40, heartbeatMinutes: 3 })
+    await be.elindult
+    await vi.advanceTimersByTimeAsync(3 * PERC)
+    expect(events.filter((e) => e.type === 'item:progress')).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(22 * PERC)
+    expect(events.some((e) => e.type === 'item:failed')).toBe(false)
+    await vi.advanceTimersByTimeAsync(15 * PERC)
+    await run
+    const hiba = events.find((e) => e.type === 'item:failed') as { error: string; timedOut?: boolean }
+    expect(hiba.timedOut).toBe(true)
+    expect(hiba.error).toContain('40 perc')
+  })
+
+  it('10 percenként életjelet ad a szószámmal', async () => {
+    fakeTimers()
+    const be = beragadtKliens('egy két három')
+    const { run, events } = futas(be.client)
+    await be.elindult
+    await vi.advanceTimersByTimeAsync(10 * PERC)
+    expect(events.filter((e) => e.type === 'item:progress')).toEqual([
+      { type: 'item:progress', itemId: 'a1b2c3', recipe: 'proba', words: 3 },
+    ])
+    await vi.advanceTimersByTimeAsync(10 * PERC)
+    expect(events.filter((e) => e.type === 'item:progress')).toHaveLength(2)
+    await vi.advanceTimersByTimeAsync(5 * PERC)
+    await run
+    expect(events.filter((e) => e.type === 'item:progress')).toHaveLength(2)
+  })
+
+  it('10 percen belül kész recept: nincs életjel, és nem marad óra', async () => {
+    fakeTimers()
+    const { sink, events } = collectEvents()
+    await processItem(item(), {
+      ...alapDeps(),
+      sink,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: probaKliens('## Jegyzet\n'),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+    expect(events.some((e) => e.type === 'item:progress')).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('a korlát a visszalépési várakozás alatt jár le: a következő hívás el sem indul', async () => {
+    fakeTimers()
+    let hivasok = 0
+    const client = modelClientFrom({
+      draft: streamingMock({
+        doGenerate: () => {
+          hivasok++
+          return Promise.reject(
+            new APICallError({
+              message: 'overloaded',
+              url: 'http://localhost:4000/v1/chat/completions',
+              requestBodyValues: {},
+              statusCode: 503,
+              isRetryable: false,
+            }),
+          )
+        },
+      }),
+      judge: fixModell('nem hívjuk'),
+    })
+    let elaludt!: () => void
+    const vart = new Promise<void>((resolve) => (elaludt = resolve))
+    const { run, events } = futas(client, MODELL_CFG, () => {
+      elaludt()
+      return new Promise((resolve) => setTimeout(resolve, 60 * PERC))
+    })
+    await vart
+    await vi.advanceTimersByTimeAsync(25 * PERC)
+    await vi.advanceTimersByTimeAsync(40 * PERC)
+    await run
+    expect(events.find((e) => e.type === 'item:failed')).toMatchObject({ timedOut: true })
+    expect(hivasok).toBe(1)
   })
 })

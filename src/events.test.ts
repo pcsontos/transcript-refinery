@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collectEvents, summarize } from './events.js'
+import { collectEvents, progressText, summarize } from './events.js'
 
 describe('collectEvents', () => {
   it('sorrendben gyűjti az eseményeket', () => {
@@ -210,5 +210,17 @@ describe('summarize — elemszintű összegzés', () => {
       succeeded: 1,
       byCaptionSource: { creator: 1, auto: 0 },
     })
+  })
+})
+
+describe('progressText', () => {
+  it('a szószámmal mondja meg, hol tart a recept', () => {
+    expect(progressText({ recipe: 'clean-deep', words: 9000 })).toBe(
+      `clean-deep: kb. ${(9000).toLocaleString('hu-HU')} szó kész, még dolgozik`,
+    )
+  })
+
+  it('szószám nélkül csak azt mondja, hogy még dolgozik', () => {
+    expect(progressText({ recipe: 'clean-deep', words: 0 })).toBe('Még dolgozik: clean-deep')
   })
 })

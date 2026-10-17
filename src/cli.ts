@@ -12,7 +12,7 @@ import {
   type Config,
   type ModelConfig,
 } from './config.js'
-import { collectEvents, summarize, type RunEvent } from './events.js'
+import { collectEvents, progressText, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
 import { createModelClient, type ModelClient, type ModelClientOptions } from './model/client.js'
 import { applyPricingFix, comparePricing, fetchLivePricing } from './model/pricing-check.js'
@@ -123,6 +123,8 @@ function render(event: RunEvent): string | null {
       return `▸ ${event.itemId}: ${event.title}`
     case 'item:generating':
       return `  … ${event.itemId}: ${event.recipe} generálás #${String(event.generation)}`
+    case 'item:progress':
+      return `  … ${event.itemId}: ${progressText(event)}`
     case 'item:scored':
       return `  · ${event.itemId}: ${event.recipe} kör ${event.score.toFixed(2)}, ${String(event.gaps)} hiány`
     case 'item:normalized':
