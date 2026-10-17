@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadConfig } from '../config.js'
+import { currentScope, RecipeTimeout } from '../model/deadline.js'
 import type { RunRuntime } from '../cli.js'
 import { textItemId } from '../source/text.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
+import type { CallbackBody } from './job.js'
 import { runRecipes } from './summary.js'
 
 const ID = 'abcdefghijk'
@@ -53,7 +55,7 @@ function gitWith(push: typeof gitPush = gitPush) {
 
 const TRANSCRIPT = 'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md'
 
-async function scene(costLimitUsd = 5) {
+async function scene(costLimitUsd = 5, modelExtra: Record<string, unknown> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'refinery-summary-'))
   const origin = join(root, 'origin.git')
   const vault = join(root, 'vault')
@@ -85,6 +87,7 @@ async function scene(costLimitUsd = 5) {
       base_url: 'http://localhost:4000/v1',
       draft: 'proba-draft',
       judge: 'proba-judge',
+      ...modelExtra,
     },
     pricing: {
       'proba-draft': { input_per_million: 3, output_per_million: 15 },
@@ -459,5 +462,99 @@ describe('runRecipes', () => {
       .filter(Boolean)
     expect(names).toHaveLength(2)
     expect(names).toContain('Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md')
+  })
+})
+
+describe('runRecipes — életjel és leállás', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  /** A qa receptnél a korlát miatt leáll, a summary rendben lefut. */
+  function leallo(): ReturnType<RunRuntime['createClient'] & object> {
+    const calls = { generate: 0 }
+    return {
+      ...client(calls),
+      generate(role, prompt) {
+        if (prompt.startsWith('Write a question-and-answer study note')) {
+          return Promise.reject(new RecipeTimeout('qa', 25))
+        }
+        return client(calls).generate(role, prompt)
+      },
+    }
+  }
+
+  it('a leállt recept rögtön „stalled” üzenetet küld, és a kész jegyzeteket megnevezi', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, outDir, load } = await scene()
+    roots.push(root)
+    const bodies: CallbackBody[] = []
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['summary', 'qa'],
+      createClient: () => leallo(),
+      load,
+      git: gitWith(),
+      notify: (body) => bodies.push(body),
+    })
+    expect(result).toMatchObject({ ok: false, done: ['summary'] })
+    expect((result as { error: string }).error).toContain('„qa"')
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]!.status).toBe('stalled')
+    expect((bodies[0] as { text: string }).text).toMatch(/„qa" recept 25 perc után sem készült el.*Újra próbáljam\?$/)
+  })
+
+  it('egyetlen leállt recept után nincs kész jegyzet', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, outDir, load } = await scene()
+    roots.push(root)
+    const bodies: CallbackBody[] = []
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['qa'],
+      createClient: () => leallo(),
+      load,
+      git: gitWith(),
+      notify: (body) => bodies.push(body),
+    })
+    expect(result).toMatchObject({ ok: false, done: [] })
+    expect(bodies.map((body) => body.status)).toEqual(['stalled'])
+  })
+
+  it('az életjel „progress” üzenetként megy a Workernek, a szószámmal', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    // 0,002 perc = 120 ms: a 450 ms-os generálás alatt legalább egyszer jelez.
+    const { root, outDir, load } = await scene(5, { heartbeat_minutes: 0.002 })
+    roots.push(root)
+    const calls = { generate: 0 }
+    const lassu: ReturnType<RunRuntime['createClient'] & object> = {
+      ...client(calls),
+      async generate(role, prompt) {
+        const scope = currentScope()
+        if (scope !== undefined) scope.text = 'egy két három'
+        await new Promise((resolve) => setTimeout(resolve, 450))
+        return client(calls).generate(role, prompt)
+      },
+    }
+    const bodies: CallbackBody[] = []
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['summary'],
+      createClient: () => lassu,
+      load,
+      git: gitWith(),
+      notify: (body) => bodies.push(body),
+    })
+    expect(result.ok).toBe(true)
+    expect(bodies.length).toBeGreaterThanOrEqual(1)
+    expect(bodies[0]).toEqual({ status: 'progress', text: 'summary: kb. 3 szó kész, még dolgozik' })
   })
 })

@@ -422,6 +422,8 @@ export interface RunRuntime {
   createClient?: (cfg: ModelConfig, opts?: ModelClientOptions) => ModelClient
   /** Kívülről jövő megszakítás (a `serve` cancel végpontja): a következő egység előtt áll meg. */
   signal?: AbortSignal
+  /** Minden futás-eseményt megkap, a naplózás és a kiírás mellett (a `serve` ebből küld életjelet). */
+  onEvent?: (event: RunEvent) => void
 }
 
 /** A modellréteg egy futásra: receptenkénti kliens, egy közös költségőr. */
@@ -547,6 +549,7 @@ export async function commandRun(
   const printing = (e: RunEvent) => {
     sink(e)
     log.sink(e)
+    runtime.onEvent?.(e)
     const line = render(e)
     if (line !== null) console.log(line)
   }

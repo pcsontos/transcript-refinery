@@ -163,15 +163,15 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 - A futás végén, a push-ellenőrzés után, de a `code !== 0` ág előtt: ha a `stalled` nem üres, akkor `{ ok: false, error: <az első leállás üzenete>, done: ids.filter(id => !stalled.has(id) && <a jegyzetfájl létezik>) }`.
 - `runRecipeJob`: a `notify` = `(body) => void report(effects, job.jobId, body)`; a `failed` kimenet `done`-ját továbbadja a callbackben.
 
-- [ ] **1. lépés: a bukó tesztek**
+- [x] **1. lépés: a bukó tesztek**
   - `summary.test.ts`: egy `createClient`, amelynek receptje `RecipeTimeout`-tal bukik (a hamis kliens maga dobja, óra nélkül). A `notify` egy `stalled` testet kap, a `text` a `Újra próbáljam?` szöveggel végződik. Az eredmény `{ ok: false, done: [] }`.
   - `summary.test.ts`: két fordítás (`summary-hu`, `notes-hu`), az egyik leáll → `done` = a másik azonosítója.
   - `summary.test.ts`: egy `item:progress` eseményből `progress` test lesz, a `progressText` szövegével.
   - `job.test.ts`: `refine` → `{ ok: false, error, done: ['x'] }` → a callback `{ status: 'failed', error, done: ['x'] }`.
-- [ ] **2. lépés:** a tesztek → FAIL.
-- [ ] **3. lépés:** megvalósítás.
-- [ ] **4. lépés:** `pnpm test` → PASS.
-- [ ] **5. lépés:** commit `feat(serve): Forward heartbeat and stalled recipes`.
+- [x] **2. lépés:** a tesztek → FAIL.
+- [x] **3. lépés:** megvalósítás.
+- [x] **4. lépés:** `pnpm test` → PASS.
+- [x] **5. lépés:** commit `feat(serve): Forward heartbeat and stalled recipes`.
 
 ### 5. feladat: A Worker fogadja az új callbackeket
 
