@@ -6,7 +6,7 @@ import { commandFetch } from '../fetch/command.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { VERSION } from '../meta.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
-import { runJob, subtitleArgv, type JobEffects, type RecipesOutcome, type ServeJob } from './job.js'
+import { runJob, subtitleArgv, type CallbackBody, type JobEffects, type RecipesOutcome, type ServeJob } from './job.js'
 import { createR2Store, type R2Config } from './r2.js'
 import { claimGate, createServeServer, type ServeGate } from './http.js'
 import { createNotesSource } from './notes.js'
@@ -18,6 +18,7 @@ type RecipesRun = (input: {
   recipes: readonly string[]
   lang?: LanguageTag
   signal?: AbortSignal
+  notify?: (body: CallbackBody) => void
   load?: () => Promise<{ cfg: Config; raw: unknown }>
 }) => Promise<RecipesOutcome>
 
@@ -39,6 +40,7 @@ export function serveEffects(input: {
     recipes: readonly string[],
     lang?: LanguageTag,
     signal?: AbortSignal,
+    notify?: (body: CallbackBody) => void,
   ) => Promise<RecipesOutcome>
 } {
   const refineWith = input.runRecipes ?? defaultRunRecipes
@@ -55,8 +57,16 @@ export function serveEffects(input: {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, body)
     },
-    refine: (videoId, recipes, lang, signal) =>
-      refineWith({ videoId, outDir: input.outDir, recipes, lang, signal, load: () => loadCliConfig(input.configArg) }),
+    refine: (videoId, recipes, lang, signal, notify) =>
+      refineWith({
+        videoId,
+        outDir: input.outDir,
+        recipes,
+        lang,
+        signal,
+        notify,
+        load: () => loadCliConfig(input.configArg),
+      }),
   }
 }
 

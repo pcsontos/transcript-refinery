@@ -22,9 +22,14 @@ export interface ServeJob {
 
 export type CallbackBody =
   | { status: 'ready'; title: string; noteUrl?: string }
-  | { status: 'failed'; error: string }
+  /** `done`: a futás elkészült jegyzetei, ha a futás recept-leállás miatt bukott; a záró üzenet csak ezeket linkeli. */
+  | { status: 'failed'; error: string; done?: string[] }
+  /** Életjel: a futás még dolgozik; a Worker változatlan állapot mellett továbbítja. */
+  | { status: 'progress'; text: string }
+  /** Egy recept a futásidő-korlát miatt leállt; a Worker rákérdez az újrapróbálásra. */
+  | { status: 'stalled'; text: string }
 
-export type RecipesOutcome = { ok: true; noteUrl: string } | { ok: false; error: string }
+export type RecipesOutcome = { ok: true; noteUrl: string } | { ok: false; error: string; done?: string[] }
 
 export interface JobEffects {
   store: ObjectStore
@@ -41,6 +46,7 @@ export interface JobEffects {
     recipes: readonly string[],
     lang?: LanguageTag,
     signal?: AbortSignal,
+    notify?: (body: CallbackBody) => void,
   ) => Promise<RecipesOutcome>
 }
 
@@ -279,7 +285,9 @@ async function runRecipeJob(
   }
   let outcome: RecipesOutcome
   try {
-    outcome = await effects.refine(job.videoId, job.recipes, lang, signal)
+    outcome = await effects.refine(job.videoId, job.recipes, lang, signal, (body) => {
+      void report(effects, job.jobId, body)
+    })
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await forgetWork(effects, job.videoId)
@@ -291,7 +299,11 @@ async function runRecipeJob(
     await report(effects, job.jobId, { status: 'ready', title: loaded.title, noteUrl: outcome.noteUrl })
     return
   }
-  await report(effects, job.jobId, { status: 'failed', error: outcome.error })
+  await report(effects, job.jobId, {
+    status: 'failed',
+    error: outcome.error,
+    ...(outcome.done === undefined ? {} : { done: outcome.done }),
+  })
 }
 
 /** A `signal` csak a receptjobot állítja meg; a felirat-job lefut, az eredményét a Worker elnyeli. */

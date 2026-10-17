@@ -6,6 +6,7 @@ import {
   handleLink,
   handleTap,
   handleUpdate,
+  type CallbackBody,
   type WorkerDeps,
 } from './handle.js'
 import { LINK_INVALID_PAGE, newToken, type Key } from './plan.js'
@@ -214,16 +215,18 @@ function isUpdate(value: unknown): value is {
   return hasNumericId(message.chat)
 }
 
-function isCallback(
-  value: unknown,
-): value is { status: 'ready'; title: string; noteUrl?: string } | { status: 'failed'; error: string } {
+function isCallback(value: unknown): value is CallbackBody {
   if (typeof value !== 'object' || value === null) return false
-  const body = value as { status?: unknown; title?: unknown; error?: unknown; noteUrl?: unknown }
+  const body = value as { status?: unknown; title?: unknown; error?: unknown; noteUrl?: unknown; text?: unknown; done?: unknown }
   if (body.status === 'ready') {
     if (typeof body.title !== 'string') return false
     return body.noteUrl === undefined || typeof body.noteUrl === 'string'
   }
-  if (body.status === 'failed') return typeof body.error === 'string'
+  if (body.status === 'failed') {
+    if (typeof body.error !== 'string') return false
+    return body.done === undefined || (Array.isArray(body.done) && body.done.every((kind) => typeof kind === 'string'))
+  }
+  if (body.status === 'progress' || body.status === 'stalled') return typeof body.text === 'string'
   return false
 }
 

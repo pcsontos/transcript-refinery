@@ -105,6 +105,27 @@ export function pickKeyboard(mask: number, ready: readonly string[], jobId: stri
   return [...inRows(keys, 3), [{ text: 'tovább', data: `n:${mask.toString(16)}:${jobId}` }]]
 }
 
+/**
+ * A leállt recept rákérdezése. Az Újra a mai receptgomb adatával megy (alaprecept: `r:`,
+ * fordítás: `l:` a futás nyelvével és az összes receptjével), tehát nincs új indítási út:
+ * a `failed` futás a `decideRun` szerint újraindul.
+ */
+export function retryKeyboard(run: { jobId: string; recipes: readonly string[]; lang: string | null }): Key[][] {
+  const mask = run.recipes.reduce((all, recipe) => all | (1 << (RECIPES as readonly string[]).indexOf(recipe)), 0)
+  const retry =
+    run.lang === null
+      ? `r:${run.recipes[0] ?? ''}:${run.jobId}`
+      : `l:${mask.toString(16)}:${run.lang}:${run.jobId}`
+  // ponytail: futás közben az Újra „már folyamatban”-t ad (decideRun: busy); sorba állítás, ha zavaró lesz.
+  // ponytail: alaprecept-futás egy recepttel indul (a receptgomb is így); több alaprecept közös futása nincs.
+  return [[
+    { text: 'Újra', data: retry },
+    { text: 'Eldobás', data: `d:${run.jobId}` },
+  ]]
+}
+
+export const DROPPED_LINE = 'Eldobva, nem próbálom újra.'
+
 export function langKeyboard(mask: number, jobId: string): Key[][] {
   return inRows(
     LANGS.map((lang) => ({ text: lang, data: `l:${mask.toString(16)}:${lang}:${jobId}` })),

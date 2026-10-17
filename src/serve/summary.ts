@@ -2,6 +2,7 @@ import { access, readdir, readFile, rm } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import { commandRun, type RunRuntime } from '../cli.js'
 import { loadCliConfig, type Config } from '../config.js'
+import { progressText, type RunEvent as CoreEvent } from '../events.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { recipesFor } from '../recipe/registry.js'
 import { discoverAll, splitSubtitleName } from '../source/folder.js'
@@ -10,7 +11,7 @@ import type { SourceItem } from '../types.js'
 import { noteCommitMessage } from '../vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
 import { noteFile } from '../vault/paths.js'
-import type { RecipesOutcome } from './job.js'
+import type { CallbackBody, RecipesOutcome } from './job.js'
 
 type SummaryGit = {
   pull(repo: string): Promise<void>
@@ -24,7 +25,7 @@ const defaultGit: SummaryGit = {
   push: gitPush,
 }
 
-type RunEvent = { type?: string; reason?: string; spentUsd?: number; limitUsd?: number; error?: string }
+type RunEvent = { type?: string; reason?: string; spentUsd?: number; limitUsd?: number; error?: string; timedOut?: boolean }
 
 export function firstLine(text: string): string {
   const line = text.split('\n').find((item) => item.trim() !== '')
@@ -102,6 +103,8 @@ export async function runRecipes(input: {
   load?: () => Promise<{ cfg: Config; raw: unknown }>
   /** A `serve` cancel végpontjának jele: a futás a következő egység előtt áll meg. */
   signal?: AbortSignal
+  /** Életjel és leállás a futás közben, rögtön (nem a futás végén). */
+  notify?: (body: CallbackBody) => void
 }): Promise<RecipesOutcome> {
   const git = input.git ?? defaultGit
   let loaded: { cfg: Config; raw: unknown }
@@ -134,6 +137,15 @@ export async function runRecipes(input: {
       )
     : undefined
   const logsBefore = new Set(await logNames(cfg.logsDir))
+  // A futásidő-korlát miatt leállt receptek: az első üzenete lesz a hiba, a többi kész jegyzet marad.
+  const stalled = new Map<string, string>()
+  const onEvent = (event: CoreEvent): void => {
+    if (event.type === 'item:progress') input.notify?.({ status: 'progress', text: progressText(event) })
+    if (event.type === 'item:failed' && event.timedOut === true) {
+      stalled.set(event.kind, event.error)
+      input.notify?.({ status: 'stalled', text: `${firstLine(event.error)} Újra próbáljam?` })
+    }
+  }
   const code = await commandRun(
     cfg,
     loaded.raw,
@@ -146,7 +158,7 @@ export async function runRecipes(input: {
       origin: 'telegram',
       ...(textName === undefined ? {} : { adHoc: { file: join(input.outDir, textName) } }),
     },
-    { createClient: input.createClient, signal: input.signal },
+    { createClient: input.createClient, signal: input.signal, onEvent },
   )
   const events = await runEvents(cfg.logsDir, logsBefore)
   const names = await readdir(input.outDir)
@@ -189,7 +201,21 @@ export async function runRecipes(input: {
   }
   const pushed = await git.push(cfg.vaultPath)
   if (!pushed.pushed) return { ok: false, error: 'A push nem sikerült, a commit lokálisan maradt.' }
-  if (code !== 0) return { ok: false, error: failureLine(events, 'A futás megállt.') }
+  // Ha a leállás mellett más recept közönséges hibával bukott, az a hibasorba kerül (a leállásról a rákérdezés már szólt):
+  // a `done` nélküli, hagyományos hibaút a hibát mondja, nem csak a leállást.
+  const otherFailure = events.some((event) => event.type === 'item:failed' && event.timedOut !== true)
+  if (stalled.size > 0 && !otherFailure) {
+    const done: string[] = []
+    for (const [index, id] of ids.entries()) {
+      const path = notePaths[index]
+      if (!stalled.has(id) && path !== undefined && (await exists(path))) done.push(id)
+    }
+    return { ok: false, error: firstLine([...stalled.values()][0]!), done }
+  }
+  if (code !== 0) {
+    const reported = stalled.size > 0 ? events.filter((event) => !(event.type === 'item:failed' && event.timedOut === true)) : events
+    return { ok: false, error: failureLine(reported, 'A futás megállt.') }
+  }
   if (transcriptPath === null) return { ok: false, error: 'A jegyzet nem készült el.' }
   for (const path of notePaths) {
     if (!(await exists(path))) return { ok: false, error: failureLine(events, 'A jegyzet nem készült el.') }

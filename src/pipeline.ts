@@ -5,6 +5,13 @@ import type { EventSink } from './events.js'
 import { identifyLanguage } from './lang/identify.js'
 import type { CostGuard } from './model/budget.js'
 import type { ModelClient } from './model/client.js'
+import {
+  DEFAULT_HEARTBEAT_MINUTES,
+  DEFAULT_RECIPE_TIMEOUT_MINUTES,
+  inScope,
+  RecipeTimeout,
+  type CallScope,
+} from './model/deadline.js'
 import { costOf } from './model/pricing.js'
 import { retrying } from './model/retry.js'
 import { classifyCaptions, punctuationDensity } from './normalize/classify.js'
@@ -236,15 +243,44 @@ async function runRecipe(
 
   // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
-  const result = await refine(recipe, input, client, {
-    // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
-    // alatt — a futásidő nagyobb részében — nem jönne esemény.
-    onGenerate: (generation) =>
-      deps.sink({ type: 'item:generating', itemId: item.itemId, recipe: recipe.id, generation }),
-    onScore: (score, gaps) =>
-      deps.sink({ type: 'item:scored', itemId: item.itemId, recipe: recipe.id, score, gaps }),
-    skipJudge: recipeDeps.skipJudge,
-  })
+  // A recept saját órája: a korlát után a hívás megszakad (a `RecipeTimeout`
+  // véglegesnek számít, tehát nincs újrapróba), az életjel pedig addig jelez,
+  // amíg a recept fut. Az óra a recepttel indul és vele áll le.
+  const timeoutMinutes = modelConfig.recipeTimeoutMinutes ?? DEFAULT_RECIPE_TIMEOUT_MINUTES
+  const heartbeatMinutes = modelConfig.heartbeatMinutes ?? DEFAULT_HEARTBEAT_MINUTES
+  const controller = new AbortController()
+  const scope: CallScope = { signal: controller.signal, text: '' }
+  const stop = setTimeout(
+    () => controller.abort(new RecipeTimeout(recipe.id, timeoutMinutes)),
+    timeoutMinutes * 60_000,
+  )
+  const beat = setInterval(
+    () =>
+      deps.sink({
+        type: 'item:progress',
+        itemId: item.itemId,
+        recipe: recipe.id,
+        words: countWords(scope.text),
+      }),
+    heartbeatMinutes * 60_000,
+  )
+  let result: Awaited<ReturnType<typeof refine>>
+  try {
+    result = await inScope(scope, () =>
+      refine(recipe, input, client, {
+        // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
+        // alatt — a futásidő nagyobb részében — nem jönne esemény.
+        onGenerate: (generation) =>
+          deps.sink({ type: 'item:generating', itemId: item.itemId, recipe: recipe.id, generation }),
+        onScore: (score, gaps) =>
+          deps.sink({ type: 'item:scored', itemId: item.itemId, recipe: recipe.id, score, gaps }),
+        skipJudge: recipeDeps.skipJudge,
+      }),
+    )
+  } finally {
+    clearTimeout(stop)
+    clearInterval(beat)
+  }
 
   // Körönként és szerepenként könyvelünk: a generálás a recept szerepén, a
   // pontozás a bíróén. Az összevont `result.usage` a bíró tokenjeit is a
@@ -445,6 +481,7 @@ export async function processItem(
           error: message,
           stack,
           ...detailOf(error),
+          ...(error instanceof RecipeTimeout ? { timedOut: true as const } : {}),
         })
         // A recept hibája nem ronthatja el az átirat már sikeres állapotát —
         // az `outcome` a már elért eredményt (vagy a kezdeti 'skipped'-et) tartja meg.
