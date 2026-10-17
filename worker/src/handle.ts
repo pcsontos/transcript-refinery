@@ -38,6 +38,7 @@ import {
   readyBases,
   readyLine,
   recipeKeyboard,
+  retryKeyboard,
   runId,
   runFailedLine,
   runQueuedLine,
@@ -543,19 +544,44 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
   }
 }
 
-type CallbackBody = { status: 'ready'; title: string; noteUrl?: string } | { status: 'failed'; error: string }
+export type CallbackBody =
+  | { status: 'ready'; title: string; noteUrl?: string }
+  | { status: 'failed'; error: string; done?: string[] }
+  | { status: 'progress'; text: string }
+  | { status: 'stalled'; text: string }
 
 async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): Promise<void> {
   const row = await findRow(deps.store, run.jobId)
   if (row === null) return
   // A megszakított futás késői eredménye csak üzenet: az állapot marad, a cron nem kopogtatja.
   if (run.status === 'cancelled') {
+    if (body.status === 'progress' || body.status === 'stalled') return
     await deps.send(
       row.chatId,
       body.status === 'failed'
         ? runFailedLine(run.recipes, run.lang, body.error)
         : runReadyMessage(body.title, run, deps.linkBase),
     )
+    return
+  }
+  // Az életjel és a leállás nem változtat állapotot: a záró üzenet (ready/failed) dönt.
+  if (body.status === 'progress') {
+    await deps.send(row.chatId, body.text)
+    return
+  }
+  if (body.status === 'stalled') {
+    await deps.send(row.chatId, body.text, retryKeyboard(run))
+    return
+  }
+  if (body.status === 'failed' && body.done !== undefined) {
+    // Recept-leállás: a rákérdezés már kiment, a záró üzenet csak az elkészült jegyzeteket linkeli (ha van).
+    if (body.done.length > 0) {
+      const sent = await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase, body.done))
+      if (!sent) return
+    }
+    run.status = 'failed'
+    run.error = body.error
+    await deps.store.saveRun(run)
     return
   }
   if (body.status === 'failed') {
@@ -596,6 +622,8 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
   const row = await findRow(deps.store, id)
   // A megszakított felirat-job késői eredményét elnyeljük.
   if (!row || row.status === 'cancelled') return 200
+  // A felirat-jobnak nincs életjele és leállása; ha mégis érkezik, nem teszünk vele semmit.
+  if (body.status === 'progress' || body.status === 'stalled') return 200
   if (body.status === 'failed') {
     const sent = await deps.send(row.chatId, body.error)
     if (!sent) return 200

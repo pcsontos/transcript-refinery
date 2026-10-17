@@ -38,6 +38,8 @@ export {
   CANCEL_RETRY,
   cancelledLine,
   cancelKeyboard,
+  retryKeyboard,
+  DROPPED_LINE,
   type Probe,
   HELP_TEXT,
   pingLine,
@@ -126,12 +128,14 @@ export function runReadyMessage(
   title: string,
   run: Pick<RunRow, 'jobId' | 'recipes' | 'lang'>,
   linkBase: string,
+  /** Az elkészült jegyzetek fajtái; hiányában a futás összes fajtája. Leállt futásnál csak a kész részek. */
+  kinds: readonly string[] = runKinds(run),
 ): string {
   const head =
     run.lang === null
       ? `${flatTitle(title)} · ${run.recipes.join(', ')}. A jegyzet megvan.`
       : `${flatTitle(title)} · ${run.lang}. A fordítás megvan.`
-  return [head, ...runKinds(run).map((kind) => `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`)].join('\n')
+  return [head, ...kinds.map((kind) => `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`)].join('\n')
 }
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/

@@ -198,7 +198,7 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
   - `failed` és `done !== undefined` → az állapot `failed` + `error` (mint ma), de üzenet csak akkor megy, ha `done.length > 0`: `runReadyMessage(row.title ?? row.videoId, run, linkBase, done)`.
 - `handleCallback`: a futás nélküli (felirat-) sorhoz érkező `progress`/`stalled` → `200`, semmi más.
 
-- [ ] **1. lépés: a bukó tesztek** (`handle.test.ts`):
+- [x] **1. lépés: a bukó tesztek** (`handle.test.ts`):
   - `progress` → egy üzenet a szöveggel, a futás állapota nem változik;
   - `stalled` → egy üzenet két gombbal; alapreceptnél az Újra adata `r:clean-deep:<jobId>`, fordításnál `l:<hex>:<lang>:<jobId>`, amit a `parseTap` ugyanarra a receptlistára fejt vissza;
   - `failed` + `done: []` → nincs üzenet, a futás `failed`;
@@ -206,10 +206,10 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
   - `stalled` a `failed` **után** érkezik → ugyanúgy megy a gombos üzenet, a futás `failed` marad;
   - `cancelled` futás `progress`-e → nincs üzenet;
   - `isCallback`: `{ status: 'progress' }` szöveg nélkül → `400`.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL.
-- [ ] **3. lépés:** megvalósítás.
-- [ ] **4. lépés:** `pnpm test` → PASS.
-- [ ] **5. lépés:** commit `feat(worker): Relay heartbeat and ask before retrying`.
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL.
+- [x] **3. lépés:** megvalósítás.
+- [x] **4. lépés:** `pnpm test` → PASS.
+- [x] **5. lépés:** commit `feat(worker): Relay heartbeat and ask before retrying`.
 
 ### 6. feladat: Újra és Eldobás gomb
 

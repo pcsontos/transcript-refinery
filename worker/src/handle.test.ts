@@ -13,6 +13,8 @@ import {
 } from './handle.js'
 import {
   langKeyboard,
+  maskRecipes,
+  parseTap,
   pickKeyboard,
   recipeKeyboard,
   runId,
@@ -364,6 +366,92 @@ describe('handleCallback', () => {
     expect(own.sent).toEqual(['qa: A futás megállt.'])
     expect(await store.run(`5:${ID}:qa`)).toMatchObject({ status: 'failed', error: 'A futás megállt.' })
     expect((await store.listByUpdate(5))[0]?.status).toBe('ready')
+  })
+})
+
+describe('handleCallback — életjel és leállás', () => {
+  async function accepted(recipes: string[], lang: string | null = null) {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(recipes, lang, { status: 'accepted', noteUrl: null, notified: false })
+    await store.insertRun(run)
+    return { store, run }
+  }
+
+  it('az életjel új üzenetként megy, az állapot nem változik', async () => {
+    const { store, run } = await accepted(['qa'])
+    const d = deps(store)
+    await handleCallback(run.runId, { status: 'progress', text: 'qa: kb. 9 000 szó kész, még dolgozik' }, d)
+    expect(d.sent).toEqual(['qa: kb. 9 000 szó kész, még dolgozik'])
+    expect(d.keyboards).toEqual([])
+    expect((await store.run(run.runId))?.status).toBe('accepted')
+  })
+
+  it('a leállás üzenete Újra és Eldobás gombot visz, az állapot nem változik', async () => {
+    const { store, run } = await accepted(['qa'])
+    const d = deps(store)
+    await handleCallback(run.runId, { status: 'stalled', text: 'Leállt. Újra próbáljam?' }, d)
+    expect(d.sent).toEqual(['Leállt. Újra próbáljam?'])
+    expect(d.keyboards[0]!.flat().map((key) => key.text)).toEqual(['Újra', 'Eldobás'])
+    expect(parseTap(d.keyboards[0]![0]![0]!.data)).toEqual({ type: 'recipe', recipe: 'qa', jobId: `5:${ID}` })
+    expect(d.keyboards[0]![0]![1]!.data).toBe(`d:5:${ID}`)
+    expect((await store.run(run.runId))?.status).toBe('accepted')
+  })
+
+  it('fordításfutás leállásánál az Újra a nyelvvel és az összes recepttel indul', async () => {
+    const { store, run } = await accepted(['summary', 'qa'], 'de')
+    const d = deps(store)
+    await handleCallback(run.runId, { status: 'stalled', text: 'Leállt. Újra próbáljam?' }, d)
+    const retry = parseTap(d.keyboards[0]![0]![0]!.data)
+    expect(retry).toMatchObject({ type: 'lang', lang: 'de', jobId: `5:${ID}` })
+    expect(maskRecipes((retry as { mask: number }).mask)).toEqual(['summary', 'qa'])
+  })
+
+  it('kész jegyzet nélküli leállás után a záró hiba nem küld üzenetet, a futás failed', async () => {
+    const { store, run } = await accepted(['qa'])
+    const d = deps(store)
+    await handleCallback(run.runId, { status: 'failed', error: 'Leállt.', done: [] }, d)
+    expect(d.sent).toEqual([])
+    expect(await store.run(run.runId)).toMatchObject({ status: 'failed', error: 'Leállt.' })
+  })
+
+  it('kész jegyzetekkel zárt leállásnál csak az elkészültek linkje megy', async () => {
+    const { store, run } = await accepted(['summary', 'qa'], 'hu')
+    const d = deps(store)
+    await handleCallback(run.runId, { status: 'failed', error: 'Leállt.', done: ['summary-hu'] }, d)
+    expect(d.sent).toHaveLength(1)
+    expect(d.sent[0]).toContain(`https://worker.test/notes/${ID}/summary-hu`)
+    expect(d.sent[0]).not.toContain('qa-hu')
+    expect((await store.run(run.runId))?.status).toBe('failed')
+  })
+
+  it('a leállás üzenete a záró hiba után is kimegy, a futás failed marad', async () => {
+    const { store, run } = await accepted(['qa'])
+    await handleCallback(run.runId, { status: 'failed', error: 'Leállt.', done: [] }, deps(store))
+    const late = deps(store)
+    await handleCallback(run.runId, { status: 'stalled', text: 'Leállt. Újra próbáljam?' }, late)
+    expect(late.sent).toEqual(['Leállt. Újra próbáljam?'])
+    expect((await store.run(run.runId))?.status).toBe('failed')
+  })
+
+  it('a megszakított futás életjelét és leállását elnyeli', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const run = readyRun(['qa'], null, { status: 'cancelled', notified: false })
+    await store.insertRun(run)
+    const d = deps(store)
+    await handleCallback(run.runId, { status: 'progress', text: 'még dolgozik' }, d)
+    await handleCallback(run.runId, { status: 'stalled', text: 'Leállt.' }, d)
+    expect(d.sent).toEqual([])
+  })
+
+  it('a felirat sorához érkező életjel semmit nem csinál', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    const d = deps(store)
+    expect(await handleCallback(`5:${ID}`, { status: 'progress', text: 'még dolgozik' }, d)).toBe(200)
+    expect(d.sent).toEqual([])
+    expect((await findRow(store, `5:${ID}`))?.status).toBe('accepted')
   })
 })
 
