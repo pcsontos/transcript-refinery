@@ -291,6 +291,10 @@ export function createModelClient(
     // akkor `{ type: "json_object" }` megy ki a `json_schema` helyett
     // (`:569`). A pilótán ettől lett a `flashcards` 0/5.
     supportsStructuredOutputs: true,
+    // Streamelve a szerver csak kérésre küld használati adatot. E nélkül a
+    // tokenszám nulla, és a költségőr nem látna semmit (a `usageOf` a hiányzót
+    // nullának veszi).
+    includeUsage: true,
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
   })
 

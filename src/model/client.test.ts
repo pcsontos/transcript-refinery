@@ -281,6 +281,8 @@ describe('createModelClient', () => {
     expect(result.value).toEqual({ answer: 'igen' })
     // A streamelt kérésnél a fejléc azonnal megérkezik: ez védi az 5 perces fejléc-időkorlát ellen (#258).
     expect(elkapo.torzs().stream).toBe(true)
+    // Enélkül a szerver nem küld használati adatot, a tokenszám 0 lenne, és a költségőr vak maradna.
+    expect(elkapo.torzs().stream_options).toEqual({ include_usage: true })
 
     const rf = elkapo.torzs().response_format as {
       type: string

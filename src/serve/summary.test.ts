@@ -510,6 +510,32 @@ describe('runRecipes — életjel és leállás', () => {
     expect((bodies[0] as { text: string }).text).toMatch(/„qa" recept 25 perc után sem készült el.*Újra próbáljam\?$/)
   })
 
+  it('a leállás mellett egy másik recept közönséges hibája is a hibasorba kerül', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, outDir, load } = await scene()
+    roots.push(root)
+    const bodies: CallbackBody[] = []
+    const calls = { generate: 0 }
+    const vegyes: ReturnType<RunRuntime['createClient'] & object> = {
+      ...client(calls),
+      generate(_role, prompt) {
+        if (prompt.startsWith('Write a question-and-answer study note')) return Promise.reject(new Error('kaboom'))
+        return Promise.reject(new RecipeTimeout('summary', 25))
+      },
+    }
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['summary', 'qa'],
+      createClient: () => vegyes,
+      load,
+      git: gitWith(),
+      notify: (body) => bodies.push(body),
+    })
+    expect(result).toEqual({ ok: false, error: 'kaboom' })
+    expect(bodies.map((body) => body.status)).toEqual(['stalled'])
+  })
+
   it('egyetlen leállt recept után nincs kész jegyzet', async () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, outDir, load } = await scene()

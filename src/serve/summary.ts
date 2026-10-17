@@ -25,7 +25,7 @@ const defaultGit: SummaryGit = {
   push: gitPush,
 }
 
-type RunEvent = { type?: string; reason?: string; spentUsd?: number; limitUsd?: number; error?: string }
+type RunEvent = { type?: string; reason?: string; spentUsd?: number; limitUsd?: number; error?: string; timedOut?: boolean }
 
 export function firstLine(text: string): string {
   const line = text.split('\n').find((item) => item.trim() !== '')
@@ -201,7 +201,10 @@ export async function runRecipes(input: {
   }
   const pushed = await git.push(cfg.vaultPath)
   if (!pushed.pushed) return { ok: false, error: 'A push nem sikerült, a commit lokálisan maradt.' }
-  if (stalled.size > 0) {
+  // Ha a leállás mellett más recept közönséges hibával bukott, az a hibasorba kerül (a leállásról a rákérdezés már szólt):
+  // a `done` nélküli, hagyományos hibaút a hibát mondja, nem csak a leállást.
+  const otherFailure = events.some((event) => event.type === 'item:failed' && event.timedOut !== true)
+  if (stalled.size > 0 && !otherFailure) {
     const done: string[] = []
     for (const [index, id] of ids.entries()) {
       const path = notePaths[index]
@@ -209,7 +212,10 @@ export async function runRecipes(input: {
     }
     return { ok: false, error: firstLine([...stalled.values()][0]!), done }
   }
-  if (code !== 0) return { ok: false, error: failureLine(events, 'A futás megállt.') }
+  if (code !== 0) {
+    const reported = stalled.size > 0 ? events.filter((event) => !(event.type === 'item:failed' && event.timedOut === true)) : events
+    return { ok: false, error: failureLine(reported, 'A futás megállt.') }
+  }
   if (transcriptPath === null) return { ok: false, error: 'A jegyzet nem készült el.' }
   for (const path of notePaths) {
     if (!(await exists(path))) return { ok: false, error: failureLine(events, 'A jegyzet nem készült el.') }
