@@ -90,16 +90,16 @@
 
 A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.text = ''`. A hívás `abortSignal: currentScope()?.signal`-lal megy. Utána `await result.finishReason` → `ellenorizdAVeget`, majd `await result.text` / `await result.output` / `await result.toolCalls` / `await result.usage` / `await result.response`.
 
-- [ ] **1. lépés: a mockok átállítása, még `generateText` mellett.** A `streamingMock` a `doGenerate`-et is megtartja, ezért a csere után minden teszt zöld marad. Ez a lépés biztosítja, hogy a 4. lépés kódváltása ne a mockok miatt bukjon: `pnpm test` → PASS.
-- [ ] **2. lépés: a bukó tesztek** a `client.test.ts`-ben, új `describe('streamelt hívás')`:
+- [x] **1. lépés: a mockok átállítása, még `generateText` mellett.** A `streamingMock` a `doGenerate`-et is megtartja, ezért a csere után minden teszt zöld marad. Ez a lépés biztosítja, hogy a 4. lépés kódváltása ne a mockok miatt bukjon: `pnpm test` → PASS.
+- [x] **2. lépés: a bukó tesztek** a `client.test.ts`-ben, új `describe('streamelt hívás')`:
   - `a hívás streamel`: egy `MockLanguageModelV4`, amelynek csak `doStream`-je van → `generate('draft', 'p')` visszaadja a szöveget és a használatot.
   - `a vázlat szövege a hatókörbe kerül, a judge-é nem`: `inScope(s, …)` alatt egy `draft` hívás után `s.text === 'egy két három'`; egy utána jövő `judge` hívás után is ugyanannyi.
   - `a megszakítás oka jön vissza, egyetlen hívással`: a `doStream` addig nem zár, amíg az `abortSignal` nem jelez; `retrying(client)` alatt `controller.abort(new RecipeTimeout('clean-deep', 25))` → a hívás `RecipeTimeout` példánnyal bukik, a `doStream` hívásszáma 1.
   - `az 503 a streamen át is újrapróbálódik`: a `doStream` első hívása `new APICallError({ statusCode: 503, … })`-t dob, a második szöveget ad → `retrying(client).generate` sikeres, a hívásszám 2.
-- [ ] **3. lépés:** `pnpm vitest run src/model/client.test.ts` → az új tesztek FAIL.
-- [ ] **4. lépés:** a `client.ts` három útvonala `streamText`-re vált, a `drain`-nel. A `createModelClient` fetch-alapú tesztjei (`keresElkapo`, `sorosFetch`) SSE-választ kapnak: `content-type: text/event-stream`, `data: {chat.completion.chunk}\n\n` sorok, végül `data: [DONE]\n\n`. A kérés törzsére vonatkozó állítások maradnak, a törzsben ezentúl `stream: true` is van.
-- [ ] **5. lépés:** `pnpm test` → PASS (a régi `finishReason`-, visszaesés- és sémás tesztek változatlan állításokkal).
-- [ ] **6. lépés:** commit `feat(model): Stream model calls to avoid header timeout`. A törzsbe: `Refs #258`.
+- [x] **3. lépés:** `pnpm vitest run src/model/client.test.ts` → az új tesztek FAIL.
+- [x] **4. lépés:** a `client.ts` három útvonala `streamText`-re vált, a `drain`-nel. A `createModelClient` fetch-alapú tesztjei (`keresElkapo`, `sorosFetch`) SSE-választ kapnak: `content-type: text/event-stream`, `data: {chat.completion.chunk}\n\n` sorok, végül `data: [DONE]\n\n`. A kérés törzsére vonatkozó állítások maradnak, a törzsben ezentúl `stream: true` is van.
+- [x] **5. lépés:** `pnpm test` → PASS (a régi `finishReason`-, visszaesés- és sémás tesztek változatlan állításokkal).
+- [x] **6. lépés:** commit `feat(model): Stream model calls to avoid header timeout`. A törzsbe: `Refs #258`.
 
 ### 3. feladat: 25 perces óra és életjel a `runRecipe`-ben
 

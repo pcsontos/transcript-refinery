@@ -1,9 +1,9 @@
-import { MockLanguageModelV4 } from 'ai/test'
+import { streamingMock } from '../src/model/streaming.mock.js'
 import { modelClientFrom, type ModelClient } from '../src/model/client.js'
 import type { Fixture } from './fixtures/transcripts.js'
 
 function cannedModel(next: () => string) {
-  return new MockLanguageModelV4({
+  return streamingMock({
     doGenerate: () =>
       Promise.resolve({
         content: [{ type: 'text' as const, text: next() }],

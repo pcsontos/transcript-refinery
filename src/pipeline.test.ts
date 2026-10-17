@@ -2,11 +2,11 @@ import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { NoObjectGeneratedError } from 'ai'
-import { MockLanguageModelV4 } from 'ai/test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { collectEvents, type RunEvent } from './events.js'
 import { createCostGuard } from './model/budget.js'
 import { modelClientFrom, type ModelClient } from './model/client.js'
+import { streamingMock } from './model/streaming.mock.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type PipelineDeps } from './pipeline.js'
 import { anchorParagraphs } from './recipe/anchor.js'
 import { translationOf } from './recipe/translate.js'
@@ -205,7 +205,7 @@ function alapDeps(): PipelineDeps {
 
 /** Fixture-modell: rögzített szöveget ad vissza, rögzített használattal. */
 function fixModell(text: string, inputTokens = 100, outputTokens = 20) {
-  return new MockLanguageModelV4({
+  return streamingMock({
     // A `doGenerate` a `LanguageModelV4` interfészhez igazodva Promise-t vár
     // vissza; itt nincs mire várni, de az `async` a szerződés, nem hiba.
     // eslint-disable-next-line @typescript-eslint/require-await
