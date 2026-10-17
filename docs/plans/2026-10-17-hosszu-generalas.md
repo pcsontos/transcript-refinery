@@ -2,7 +2,7 @@
 
 > **Az ügynöknek:** KÖTELEZŐ al-skill: `superpowers:subagent-driven-development` (ajánlott) vagy `superpowers:executing-plans`. A lépések jelölőnégyzetesek (`- [ ]`).
 
-**Cél:** egy hosszú recept streamelt hívással végigfusson; 25 percnél újrapróbálkozás nélkül álljon meg, és a Telegram kérdezzen rá (Újra / Eldobás); közben 10 percenként jöjjön életjel a terminálba és a Telegramra.
+**Cél:** egy hosszú recept streamelt hívással végigfusson; 25 percnél újrapróbálkozás nélkül álljon meg, és a Telegram kérdezzen rá (Újra / Eldobás); közben 10 percenként jöjjön életjel a terminálba és a Telegramra. Mindkét idő configból állítható (`model.recipe_timeout_minutes`, `model.heartbeat_minutes`).
 
 **Felépítés:** a 25 perces óra és az életjel órája a `runRecipe`-ben indul (ezen megy át a `run` és a `serve` is). Az óra jele és a legenerált szöveg egy `AsyncLocalStorage`-hatókörben jut el a modellkliensig, így sem a `ModelClient` felülete, sem a `refine`/rubrika nem változik. A serve az életjel- és a leállás-eseményt a `commandRun` új `onEvent` horgán kapja, és a meglévő callback-úton küldi a Workernek. Az Újra gomb a mai receptgombok tap-adatát használja újra.
 
@@ -14,7 +14,7 @@
 
 ## Globális megkötések
 
-- A receptkorlát: **25 perc** (`25 * 60_000` ms). Az életjel időköze: **10 perc** (`10 * 60_000` ms). Mindkettő konstans, nincs config.
+- A receptkorlát: `model.recipe_timeout_minutes`, alapból **25**. Az életjel időköze: `model.heartbeat_minutes`, alapból **10**. Mindkettő elhagyható pozitív szám (tört is lehet); a nulla, a negatív vagy a nem szám config-hiba a mező nevével. Az üzenetek a beállított értéket mondják.
 - A 25 perces leállás után nincs újrapróbálkozás (se a `retry.ts`, se az SDK `maxRetries`-e). Az átmeneti hibák (503, 429, kapcsolati hiba) a korláton belül a mai módon újrapróbálódnak.
 - A `finishReason`-kapu, a tool-visszaesés és a `supportsStructuredOutputs: true` viselkedése nem változik.
 - Új függőség nincs.
@@ -31,19 +31,25 @@
 
 ---
 
-### 1. feladat: Hatókör és `RecipeTimeout`
+### 1. feladat: Hatókör, `RecipeTimeout` és a két config-mező
 
 **Fájlok:**
 - Új: `src/model/deadline.ts`
-- Teszt: `src/model/deadline.test.ts`
+- Módosul: `src/config.ts` (`ModelSchema.model`, `ModelConfig`, `loadModelConfig` visszatérése), `refinery.config.example.yaml` (a `judge_enabled` alá, kikommentezve, mint a spec 6. pontjában), `docs/usage.md` (a `judge_enabled` bekezdése mellé két mondat)
+- Teszt: `src/model/deadline.test.ts`, `src/config.test.ts`
 
 **Interfészek:**
 - Létrehozza:
   ```ts
-  export const RECIPE_LIMIT_MS = 25 * 60_000
-  export const PROGRESS_MS = 10 * 60_000
+  // deadline.ts — az alapértékek egyetlen helye
+  export const DEFAULT_RECIPE_TIMEOUT_MINUTES = 25
+  export const DEFAULT_HEARTBEAT_MINUTES = 10
   export class RecipeTimeout extends Error // name: 'RecipeTimeoutError'
-  //   constructor(recipe: string), message: `A(z) „${recipe}" recept 25 perc után sem készült el, ezért leállt.`
+  //   constructor(recipe: string, minutes: number),
+  //   message: `A(z) „${recipe}" recept ${minutes} perc után sem készült el, ezért leállt.`
+  // config.ts — ModelConfig két opcionális mezővel (így a meglévő ~8 tesztfixture érintetlen):
+  //   recipeTimeoutMinutes?: number; heartbeatMinutes?: number
+  // ModelSchema.model: recipe_timeout_minutes / heartbeat_minutes: z.number().positive(<mezőnevet tartalmazó üzenet>).optional()
   export interface CallScope { signal: AbortSignal; text: string }
   export function inScope<T>(scope: CallScope, fn: () => Promise<T>): Promise<T>
   export function currentScope(): CallScope | undefined
@@ -52,11 +58,12 @@
 
 - [ ] **1. lépés: a bukó teszt**
   - `currentScope()` hatókörön kívül `undefined`; `inScope(s, async () => { await Promise.resolve(); return currentScope() })` → `s` (ugyanaz az objektum).
-  - `isTransient(new RecipeTimeout('clean-deep'))` → `false`; az üzenet tartalmazza a `„clean-deep"` szöveget és a `25 perc` szöveget.
-- [ ] **2. lépés:** `pnpm vitest run src/model/deadline.test.ts` → FAIL (nincs modul).
-- [ ] **3. lépés:** megírni a `src/model/deadline.ts`-t.
+  - `isTransient(new RecipeTimeout('clean-deep', 40))` → `false`; az üzenet tartalmazza a `„clean-deep"` és a `40 perc` szöveget.
+  - `config.test.ts`: a `model.recipe_timeout_minutes: 40`, `heartbeat_minutes: 0.5` → `recipeTimeoutMinutes === 40`, `heartbeatMinutes === 0.5`; hiányukban mindkettő `undefined`; a `recipe_timeout_minutes: 0` és a `heartbeat_minutes: -1` config-hibát ad, az üzenetben a mező nevével.
+- [ ] **2. lépés:** `pnpm vitest run src/model/deadline.test.ts src/config.test.ts` → FAIL.
+- [ ] **3. lépés:** megírni a `src/model/deadline.ts`-t és a config-mezőket, a példa-configot és a `docs/usage.md`-t.
 - [ ] **4. lépés:** a teszt → PASS.
-- [ ] **5. lépés:** commit `feat(model): Add recipe deadline scope`.
+- [ ] **5. lépés:** commit `feat(model): Add configurable recipe deadline`.
 
 ### 2. feladat: Streamelt modellhívás
 
@@ -87,7 +94,7 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 - [ ] **2. lépés: a bukó tesztek** a `client.test.ts`-ben, új `describe('streamelt hívás')`:
   - `a hívás streamel`: egy `MockLanguageModelV4`, amelynek csak `doStream`-je van → `generate('draft', 'p')` visszaadja a szöveget és a használatot.
   - `a vázlat szövege a hatókörbe kerül, a judge-é nem`: `inScope(s, …)` alatt egy `draft` hívás után `s.text === 'egy két három'`; egy utána jövő `judge` hívás után is ugyanannyi.
-  - `a megszakítás oka jön vissza, egyetlen hívással`: a `doStream` addig nem zár, amíg az `abortSignal` nem jelez; `retrying(client)` alatt `controller.abort(new RecipeTimeout('clean-deep'))` → a hívás `RecipeTimeout` példánnyal bukik, a `doStream` hívásszáma 1.
+  - `a megszakítás oka jön vissza, egyetlen hívással`: a `doStream` addig nem zár, amíg az `abortSignal` nem jelez; `retrying(client)` alatt `controller.abort(new RecipeTimeout('clean-deep', 25))` → a hívás `RecipeTimeout` példánnyal bukik, a `doStream` hívásszáma 1.
   - `az 503 a streamen át is újrapróbálódik`: a `doStream` első hívása `new APICallError({ statusCode: 503, … })`-t dob, a második szöveget ad → `retrying(client).generate` sikeres, a hívásszám 2.
 - [ ] **3. lépés:** `pnpm vitest run src/model/client.test.ts` → az új tesztek FAIL.
 - [ ] **4. lépés:** a `client.ts` három útvonala `streamText`-re vált, a `drain`-nel. A `createModelClient` fetch-alapú tesztjei (`keresElkapo`, `sorosFetch`) SSE-választ kapnak: `content-type: text/event-stream`, `data: {chat.completion.chunk}\n\n` sorok, végül `data: [DONE]\n\n`. A kérés törzsére vonatkozó állítások maradnak, a törzsben ezentúl `stream: true` is van.
@@ -101,7 +108,7 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 - Teszt: `src/pipeline.test.ts`
 
 **Interfészek:**
-- Felhasználja: `RecipeTimeout`, `RECIPE_LIMIT_MS`, `PROGRESS_MS`, `inScope` (1. feladat); `countWords` (`src/normalize/dedupe.ts`).
+- Felhasználja: `RecipeTimeout`, `DEFAULT_RECIPE_TIMEOUT_MINUTES`, `DEFAULT_HEARTBEAT_MINUTES`, `inScope` (1. feladat); `recipeDeps.modelConfig.recipeTimeoutMinutes` / `heartbeatMinutes`; `countWords` (`src/normalize/dedupe.ts`). A percek: `modelConfig.recipeTimeoutMinutes ?? DEFAULT_RECIPE_TIMEOUT_MINUTES`, ugyanígy az életjelé; ms-ra `* 60_000`.
 - Létrehozza:
   ```ts
   // events.ts — új eseménytag és mező
@@ -111,15 +118,16 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
   //   words > 0: `${recipe}: kb. ${words.toLocaleString('hu-HU')} szó kész, még dolgozik`
   //   különben:  `Még dolgozik: ${recipe}`
   ```
-- A `runRecipe` a `refine(...)` hívást így öleli körbe: `AbortController`, egy `setTimeout(RECIPE_LIMIT_MS)`, ami `controller.abort(new RecipeTimeout(recipe.id))`-t hív, és egy `setInterval(PROGRESS_MS)`, ami `item:progress`-t küld `countWords(scope.text)`-tel. A hívás `inScope({ signal, text: '' }, () => refine(...))`, a `finally` mindkét órát törli.
+- A `runRecipe` a `refine(...)` hívást így öleli körbe: `AbortController`, egy `setTimeout(<korlát ms>)`, ami `controller.abort(new RecipeTimeout(recipe.id, <korlát perc>))`-t hív, és egy `setInterval(<életjel ms>)`, ami `item:progress`-t küld `countWords(scope.text)`-tel. A hívás `inScope({ signal, text: '' }, () => refine(...))`, a `finally` mindkét órát törli.
 - A `processItem` recept-`catch`-ága az `item:failed` eseménybe `...(error instanceof RecipeTimeout ? { timedOut: true as const } : {})`-t tesz.
 - A `render`: `case 'item:progress': return \`  … ${event.itemId}: ${progressText(event)}\``.
 
 - [ ] **1. lépés: a bukó tesztek** a `pipeline.test.ts`-ben, `describe('hosszú recept')`, `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })`. A hamis `ModelClient` `generate`-je egy ígéretet old fel, amikor meghívják (ebből tudja a teszt, hogy a hívás elindult, és csak utána léptet órát). Utána `currentScope()!.signal` megszakításáig vár, és annak `reason`-jével bukik.
-  - `25 perc után megáll, újrapróbálkozás nélkül`: `await vi.advanceTimersByTimeAsync(RECIPE_LIMIT_MS)` után a `processItem` eredménye `failed`. A `generate` hívásszáma 1. Az `item:failed` eseményben `timedOut: true`, a `kind` a recept azonosítója, az `error` tartalmazza a `25 perc` szöveget.
-  - `10 percenként életjel a szószámmal`: a hamis `generate` a hívás elején `currentScope()!.text = 'egy két három'`. `PROGRESS_MS` léptetés után pontosan egy `item:progress` jön, `{ recipe, words: 3 }`. Újabb `PROGRESS_MS` után kettő.
+  - `a beállított korlátot tartja`: `recipeTimeoutMinutes: 40` mellett 25 perc léptetés után a hívás még fut, 40 percnél leáll, az `error` a `40 perc` szöveget tartalmazza; `heartbeatMinutes: 3` mellett 3 percnél jön az első `item:progress`.
+  - `alapból 25 perc után megáll, újrapróbálkozás nélkül`: a mezők nélkül `await vi.advanceTimersByTimeAsync(25 * 60_000)` után a `processItem` eredménye `failed`. A `generate` hívásszáma 1. Az `item:failed` eseményben `timedOut: true`, a `kind` a recept azonosítója, az `error` tartalmazza a `25 perc` szöveget.
+  - `10 percenként életjel a szószámmal`: a hamis `generate` a hívás elején `currentScope()!.text = 'egy két három'`. 10 perc léptetés után (alapérték) pontosan egy `item:progress` jön, `{ recipe, words: 3 }`. Újabb 10 perc után kettő.
   - `10 percen belül kész recept: nincs életjel, és nem marad óra`: azonnal válaszoló kliens → nincs `item:progress`, és `vi.getTimerCount() === 0`.
-  - `a korlát a visszalépési várakozás alatt jár le`: az első hívás 503-at dob, a `recipeDeps.sleep` valódi `setTimeout` (fake). A `RECIPE_LIMIT_MS` léptetés után az eredmény `failed`, `timedOut: true`.
+  - `a korlát a visszalépési várakozás alatt jár le`: az első hívás 503-at dob, a `recipeDeps.sleep` valódi `setTimeout` (fake). A 25 perces léptetés után az eredmény `failed`, `timedOut: true`.
   - `render`: `progressText({ recipe: 'clean-deep', words: 9000 })` → `clean-deep: kb. 9 000 szó kész, még dolgozik` (a `hu-HU` elválasztója nem törő szóköz: az elvárt értéket is `toLocaleString('hu-HU')`-val kell előállítani); `words: 0` → `Még dolgozik: clean-deep`.
 - [ ] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL.
 - [ ] **3. lépés:** megvalósítás a fentiek szerint.

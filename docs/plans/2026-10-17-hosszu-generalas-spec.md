@@ -18,7 +18,6 @@ A felhasználónak az a fontos, hogy a hosszú munka végigfusson, és legyen er
 
 - A bemenet darabolása: a fordításé a #259, az önálló szójegyzék-recept a #260. A `clean-*` darabolása sehol sincs betervezve.
 - A sub2api `concurrency` értékének emelése (homelab-beállítás, és csak tünetkezelés lenne).
-- A 25 és a 10 perc configból állíthatósága.
 
 ## Döntések a tervezésből
 
@@ -40,7 +39,8 @@ A felhasználónak az a fontos, hogy a hosszú munka végigfusson, és legyen er
 | A megszakított hívás költsége | A költségőr nem becsüli (a megszakított stream nem ad használati adatot). Az esemény jelzi, hogy a költség ismeretlen. | tervező |
 | Mit csinál az „Eldobás”? | Semmit sem futtat. Az üzenet gombjai eltűnnek, és jelzi, hogy eldobva. | tervező |
 | CLI-ből indított futás | Ugyanez a 25 perc érvényes, de nincs kit megkérdezni: sima hiba, újrapróbálkozás nélkül. | tervező |
-| A 25 és a 10 perc | Konstans a kódban. | tervező |
+| A 25 és a 10 perc | Configból állítható (6. pont). | felhasználó |
+| A beállítások neve és helye | `model.recipe_timeout_minutes` (alap 25) és `model.heartbeat_minutes` (alap 10), a `judge_enabled` mellett. Mindkettő elhagyható. | tervező |
 
 ## 1. Streamelt modellhívás
 
@@ -99,6 +99,22 @@ A `src/model/client.ts` mindhárom útvonala (`generate`, a sémás `generateObj
 - **A gateway leállítja-e a generálást, amikor a kliens bontja a streamet?** Ha a LiteLLM és a sub2api a kapcsolat bontására nem állítja le a felső hívást, akkor a 25 percnél leállított recept generálása tovább fut, kifizetjük, és a helyet is foglalja (a következő hívás 429-et kap). Ezt egy próbával kell kideríteni a peter-mba-n (LiteLLM `LiteLLM_SpendLogs`, sub2api napló). Ha nem állítja le, az eredmény kerüljön a spec végére, és nyissunk róla külön issue-t. A 25 perces korlát ettől még a kért módon működik.
 - Az undici 300 s-os `headersTimeout`-ja mint ok: a forrás alapján valószínű, próbával kell megerősíteni.
 
+## 6. A két időkorlát a configban
+
+```yaml
+model:
+  # Egy recept leghosszabb futásideje percben; utána újrapróbálkozás nélkül leáll.
+  # recipe_timeout_minutes: 25
+  # Az életjel időköze percben, amíg egy recept fut.
+  # heartbeat_minutes: 10
+```
+
+- Mindkettő pozitív szám, tört is lehet (pl. `0.5` egy gyors próbához). A nulla, a negatív és a nem szám érték config-hiba, a mai config-hibák módján, a mező nevével.
+- Ha hiányzik, az alapérték érvényes: 25, illetve 10 perc.
+- Az üzenetek a beállított értéket mondják, nem a 25-öt (pl. `… 40 perc után sem készült el …`).
+- A `serve` a configot receptfutásonként tölti be, mint ma. A változás tehát újraindítás nélkül hat.
+- A `refinery.config.example.yaml` és a `docs/usage.md` leírja mindkettőt.
+
 ## Elfogadási feltételek
 
 Megfigyelhető viselkedés, nem fájltartalom:
@@ -109,8 +125,9 @@ Megfigyelhető viselkedés, nem fájltartalom:
 4. Tesztben: a Worker a leállás üzenetére két gombos üzenetet küld. Az **Újra** ugyanazt a futást indítja újra, és az újrafuttatás csak a leállt receptre hív modellt. Az **Eldobás** nem kér futást. Egy egyreceptes futás leállása után nem megy külön hibaüzenet. Egy kétnyelvű fordításfutásnál, ahol az egyik nyelv leállt, a záró üzenet csak a kész nyelv linkjét tartalmazza.
 5. Tesztben (rövidített órával): egy `refinery run` futás, amelynek a receptje az életjel-időköznél tovább tart, kiír a terminálba egy életjelsort a recept nevével. Egy ennél rövidebb futás nem ír ilyet.
 6. Tesztben: egy átmeneti hiba (503) a korláton belül a mai módon újrapróbálódik.
-7. A meglévő tesztek a `finishReason`-kapura, a tool-visszaesésre és a sémás útra változatlanul zöldek.
-8. Az 5. pont próbája lefutott, és az eredménye le van írva.
+7. Tesztben: `model.recipe_timeout_minutes: 40` mellett a recept 25 percnél még fut, 40-nél leáll, és az üzenetben `40 perc` áll. A `recipe_timeout_minutes: 0` config-hibát ad a mező nevével.
+8. A meglévő tesztek a `finishReason`-kapura, a tool-visszaesésre és a sémás útra változatlanul zöldek.
+9. Az 5. pont próbája lefutott, és az eredménye le van írva.
 
 ## Az építőre bízva
 
