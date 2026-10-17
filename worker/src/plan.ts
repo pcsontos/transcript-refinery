@@ -38,6 +38,8 @@ export {
   CANCEL_RETRY,
   cancelledLine,
   cancelKeyboard,
+  retryKeyboard,
+  DROPPED_LINE,
   type Probe,
   HELP_TEXT,
   pingLine,
@@ -60,6 +62,7 @@ export type Tap =
   | { type: 'translate'; jobId: string }
   | { type: 'toggle' | 'next'; mask: number; jobId: string }
   | { type: 'cancel'; jobId: string }
+  | { type: 'drop'; jobId: string }
   | { type: 'lang'; mask: number; lang: string; jobId: string }
 
 const MASK = /^[0-9a-f]{1,2}$/
@@ -77,6 +80,10 @@ export function parseTap(data: string): Tap | null {
     const [recipe, ...job] = rest
     if (recipe === undefined || !(RECIPES as readonly string[]).includes(recipe)) return null
     return { type: 'recipe', recipe, jobId: job.join(':') }
+  }
+  if (head === 'd') {
+    const jobId = rest.join(':')
+    return jobId === '' ? null : { type: 'drop', jobId }
   }
   if (head === 'c') {
     const jobId = rest.join(':')
@@ -126,12 +133,14 @@ export function runReadyMessage(
   title: string,
   run: Pick<RunRow, 'jobId' | 'recipes' | 'lang'>,
   linkBase: string,
+  /** Az elkészült jegyzetek fajtái; hiányában a futás összes fajtája. Leállt futásnál csak a kész részek. */
+  kinds: readonly string[] = runKinds(run),
 ): string {
   const head =
     run.lang === null
       ? `${flatTitle(title)} · ${run.recipes.join(', ')}. A jegyzet megvan.`
       : `${flatTitle(title)} · ${run.lang}. A fordítás megvan.`
-  return [head, ...runKinds(run).map((kind) => `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`)].join('\n')
+  return [head, ...kinds.map((kind) => `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`)].join('\n')
 }
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/

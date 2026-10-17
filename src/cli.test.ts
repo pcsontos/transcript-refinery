@@ -18,6 +18,7 @@ import { COMMANDS, helpText, overview } from './help.js'
 import { VERSION } from './meta.js'
 import { estimateItemUsd } from './model/budget.js'
 import type { ModelClient } from './model/client.js'
+import { currentScope } from './model/deadline.js'
 import { normalizeItem } from './pipeline.js'
 import { queuePath } from './queue/file.js'
 import { renumberQueue } from './queue/renumber.js'
@@ -3035,5 +3036,53 @@ describe('ad hoc forrás — kapcsolóhibák', () => {
     } finally {
       errorSpy.mockRestore()
     }
+  })
+})
+
+describe('commandRun — életjel a terminálon', () => {
+  /** Kliens, ami a „generálás” közben beírja a már kész szöveget, és `ms` ideig dolgozik. */
+  function lassuKliens(ms: number): ModelClient {
+    const gyors = hamisKliens({ generate: 0 })
+    return {
+      ...gyors,
+      async generate(role, prompt) {
+        const scope = currentScope()
+        if (scope !== undefined) scope.text = 'egy két három'
+        await new Promise((resolve) => setTimeout(resolve, ms))
+        return gyors.generate(role, prompt)
+      },
+    }
+  }
+
+  async function futtat(heartbeatMinutes: number | undefined, ms: number): Promise<string[]> {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const base = rawWithVault(5)
+    const raw = {
+      ...base,
+      model: { ...base.model, ...(heartbeatMinutes === undefined ? {} : { heartbeat_minutes: heartbeatMinutes }) },
+    }
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await commandRun(
+        loadConfig(raw, '/p/refinery.config.yaml'),
+        raw,
+        { recipe: 'summary', dryRun: false, force: false, commit: false },
+        { createClient: () => lassuKliens(ms) },
+      )
+      return logSpy.mock.calls.map(([line]) => String(line)).filter((line) => line.includes('még dolgozik'))
+    } finally {
+      logSpy.mockRestore()
+    }
+  }
+
+  it('az életjel-időköznél tovább tartó recept életjelsort ír a terminálra', async () => {
+    // 0,002 perc = 120 ms: a 450 ms-os generálás alatt legalább egyszer jelez.
+    const sorok = await futtat(0.002, 450)
+    expect(sorok.length).toBeGreaterThanOrEqual(1)
+    expect(sorok[0]).toContain('summary: kb. 3 szó kész, még dolgozik')
+  })
+
+  it('az életjel-időköznél rövidebb recept nem ír életjelsort', async () => {
+    expect(await futtat(undefined, 50)).toEqual([])
   })
 })

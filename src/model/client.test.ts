@@ -3,7 +3,9 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createModelClient, modelClientFrom } from './client.js'
+import { inScope, RecipeTimeout, type CallScope } from './deadline.js'
 import { retrying } from './retry.js'
+import { streamingMock } from './streaming.mock.js'
 import { toolChoiceFallback } from './tool-fallback.js'
 import type { ModelConfig } from '../config.js'
 import { structuredOutput } from '../recipe/structured.js'
@@ -11,7 +13,7 @@ import { judgeCriterion } from '../rubric/judge.js'
 
 /** Fixture-modell: rögzített szöveget ad vissza, rögzített használattal. */
 function fixModell(text: string, inputTokens = 100, outputTokens = 20) {
-  return new MockLanguageModelV4({
+  return streamingMock({
     // A `doGenerate` a `LanguageModelV4` interfészhez igazodva Promise-t vár
     // vissza; itt nincs mire várni, de az `async` a szerződés, nem hiba.
     // eslint-disable-next-line @typescript-eslint/require-await
@@ -72,7 +74,7 @@ describe('modelClientFrom', () => {
  * szöveget — ezért a szöveg minden ilyen tesztben ép marad.
  */
 function vegModell(ok: FinishReason, text: string) {
-  return new MockLanguageModelV4({
+  return streamingMock({
     // eslint-disable-next-line @typescript-eslint/require-await
     doGenerate: async () => ({
       content: [{ type: 'text' as const, text }],
@@ -166,7 +168,7 @@ describe('a nem teljes válasz kapuja', () => {
     let hivasok = 0
     const client = retrying(
       modelClientFrom({
-        draft: new MockLanguageModelV4({
+        draft: streamingMock({
           // eslint-disable-next-line @typescript-eslint/require-await
           doGenerate: async () => {
             hivasok++
@@ -206,6 +208,33 @@ const CFG: ModelConfig = {
 }
 
 /**
+ * A kliens streamel, ezért a hamis `fetch` SSE-t ad: a konzerv `chat.completion`
+ * törzsből két darab (tartalom, majd befejezés a használattal) és `[DONE]` lesz.
+ */
+function sseValasz(body: {
+  id: string
+  created: number
+  model: string
+  choices: { message: { tool_calls?: unknown[] } & Record<string, unknown>; finish_reason: string }[]
+  usage: unknown
+}): Response {
+  const choice = body.choices[0]!
+  const base = { id: body.id, object: 'chat.completion.chunk', created: body.created, model: body.model }
+  const delta = {
+    ...choice.message,
+    ...(choice.message.tool_calls === undefined
+      ? {}
+      : { tool_calls: choice.message.tool_calls.map((t, index) => ({ index, ...(t as object) })) }),
+  }
+  const chunks = [
+    { ...base, choices: [{ index: 0, delta, finish_reason: null }] },
+    { ...base, choices: [{ index: 0, delta: {}, finish_reason: choice.finish_reason }], usage: body.usage },
+  ]
+  const text = [...chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`), 'data: [DONE]\n\n'].join('')
+  return new Response(text, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+/**
  * Hamis `fetch`: elkapja a kimenő kérés törzsét, és konzerv választ ad.
  *
  * Ez az egyetlen módja annak, hogy a **ténylegesen elküldött** kérésről
@@ -221,23 +250,18 @@ function keresElkapo(): {
   const fetch: typeof globalThis.fetch = (_input, init) => {
     latott = JSON.parse(init?.body as string) as Record<string, unknown>
     return Promise.resolve(
-      new Response(
-        JSON.stringify({
-          id: 'chatcmpl-1',
-          object: 'chat.completion',
-          created: 1,
-          model: 'draft-model',
-          choices: [
-            {
-              index: 0,
-              message: { role: 'assistant', content: '{"answer":"igen"}' },
-              finish_reason: 'stop',
-            },
-          ],
-          usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
+      sseValasz({
+        id: 'chatcmpl-1',
+        created: 1,
+        model: 'draft-model',
+        choices: [
+          {
+            message: { role: 'assistant', content: '{"answer":"igen"}' },
+            finish_reason: 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+      }),
     )
   }
   return { torzs: () => latott!, fetch }
@@ -255,6 +279,10 @@ describe('createModelClient', () => {
     )
 
     expect(result.value).toEqual({ answer: 'igen' })
+    // A streamelt kérésnél a fejléc azonnal megérkezik: ez védi az 5 perces fejléc-időkorlát ellen (#258).
+    expect(elkapo.torzs().stream).toBe(true)
+    // Enélkül a szerver nem küld használati adatot, a tokenszám 0 lenne, és a költségőr vak maradna.
+    expect(elkapo.torzs().stream_options).toEqual({ include_usage: true })
 
     const rf = elkapo.torzs().response_format as {
       type: string
@@ -298,7 +326,7 @@ function opusModell(opts: {
   latott?: Latott[]
 }) {
   const latott = opts.latott ?? []
-  return new MockLanguageModelV4({
+  return streamingMock({
     modelId: opts.modelId ?? 'opus-proba',
     // eslint-disable-next-line @typescript-eslint/require-await
     doGenerate: async (options) => {
@@ -342,7 +370,7 @@ function opusModell(opts: {
 
 /** Sémát támogató fixture, ami elteszi, sémás kérés jött-e. */
 function semaModell(text: string, latott: Latott[]) {
-  return new MockLanguageModelV4({
+  return streamingMock({
     modelId: 'sonnet-proba',
     // eslint-disable-next-line @typescript-eslint/require-await
     doGenerate: async (options) => {
@@ -524,6 +552,7 @@ function sorosFetch(valaszok: { status: number; body: unknown }[]): {
   const fetch: typeof globalThis.fetch = (_input, init) => {
     torzsek.push(JSON.parse(init?.body as string) as Record<string, unknown>)
     const valasz = valaszok[i++]!
+    if (valasz.status === 200) return Promise.resolve(sseValasz(valasz.body as Parameters<typeof sseValasz>[0]))
     return Promise.resolve(
       new Response(JSON.stringify(valasz.body), {
         status: valasz.status,
@@ -577,5 +606,124 @@ describe('createModelClient — visszaesés a valódi kérésformán', () => {
     expect(torzsek[1]!.response_format).toBeUndefined()
     const tools = torzsek[1]!.tools as { function: { name: string } }[]
     expect(tools.map((t) => t.function.name)).toEqual(['submit_result'])
+  })
+})
+
+type StreamResult = Awaited<ReturnType<MockLanguageModelV4['doStream']>>
+type Part = StreamResult['stream'] extends ReadableStream<infer P> ? P : never
+
+const STREAM_USAGE = {
+  inputTokens: { total: 100, noCache: 100, cacheRead: undefined, cacheWrite: undefined },
+  outputTokens: { total: 20, text: 20, reasoning: undefined },
+}
+
+/** Csak streamelni tudó modell: a `doGenerate`-et nem implementálja, tehát a nem streamelő kliens rajta elbukik. */
+function csakStream(words: string[]): MockLanguageModelV4 {
+  const parts: Part[] = [
+    { type: 'stream-start', warnings: [] },
+    { type: 'text-start', id: 'a' },
+    ...words.map((delta): Part => ({ type: 'text-delta', id: 'a', delta })),
+    { type: 'text-end', id: 'a' },
+    { type: 'finish', usage: STREAM_USAGE, finishReason: { unified: 'stop', raw: undefined } },
+  ]
+  return new MockLanguageModelV4({
+    doStream: () =>
+      Promise.resolve({
+        stream: new ReadableStream<Part>({
+          start(controller) {
+            for (const part of parts) controller.enqueue(part)
+            controller.close()
+          },
+        }),
+      }),
+  })
+}
+
+describe('streamelt hívás', () => {
+  it('a hívás streamel: csak doStream-mel is visszaadja a szöveget és a használatot', async () => {
+    const client = modelClientFrom({ draft: csakStream(['egy ', 'két']), judge: csakStream(['x']) })
+    const result = await client.generate('draft', 'p')
+    expect(result.value).toBe('egy két')
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 20 })
+  })
+
+  it('a vázlat szövege a hatókörbe kerül, a judge-é nem', async () => {
+    const client = modelClientFrom({
+      draft: csakStream(['egy ', 'két ', 'három']),
+      judge: csakStream(['ez ne kerüljön be']),
+    })
+    const scope: CallScope = { signal: new AbortController().signal, text: '' }
+    await inScope(scope, async () => {
+      await client.generate('draft', 'p')
+      await client.generate('judge', 'p')
+    })
+    expect(scope.text).toBe('egy két három')
+  })
+
+  it('a megszakítás oka jön vissza, és a hívás nem indul újra', async () => {
+    let hivasok = 0
+    const lassu = new MockLanguageModelV4({
+      doStream: (options) => {
+        hivasok++
+        return Promise.resolve({
+          stream: new ReadableStream<Part>({
+            start(controller) {
+              controller.enqueue({ type: 'stream-start', warnings: [] })
+              options.abortSignal?.addEventListener('abort', () => controller.error(options.abortSignal?.reason))
+            },
+          }),
+        })
+      },
+    })
+    const client = retrying(modelClientFrom({ draft: lassu, judge: csakStream(['x']) }), {
+      attempts: 3,
+      sleep: () => Promise.resolve(),
+    })
+    const controller = new AbortController()
+    const futas = inScope({ signal: controller.signal, text: '' }, () => client.generate('draft', 'p'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    controller.abort(new RecipeTimeout('clean-deep', 25))
+    await expect(futas).rejects.toBeInstanceOf(RecipeTimeout)
+    expect(hivasok).toBe(1)
+  })
+
+  it('már megszakított jellel nem indul hívás', async () => {
+    const model = csakStream(['x'])
+    const client = modelClientFrom({ draft: model, judge: csakStream(['x']) })
+    const controller = new AbortController()
+    controller.abort(new RecipeTimeout('clean-deep', 25))
+    await expect(
+      inScope({ signal: controller.signal, text: '' }, () => client.generate('draft', 'p')),
+    ).rejects.toBeInstanceOf(RecipeTimeout)
+    expect(model.doStreamCalls).toHaveLength(0)
+  })
+
+  it('az 503 a streamen át is újrapróbálódik', async () => {
+    let hivasok = 0
+    const ok = csakStream(['sikerült'])
+    const modell = new MockLanguageModelV4({
+      doStream: (options) => {
+        hivasok++
+        if (hivasok === 1) {
+          return Promise.reject(
+            new APICallError({
+              message: 'overloaded',
+              url: 'http://localhost:4000/v1/chat/completions',
+              requestBodyValues: {},
+              statusCode: 503,
+              isRetryable: false,
+            }),
+          )
+        }
+        return ok.doStream(options)
+      },
+    })
+    const client = retrying(modelClientFrom({ draft: modell, judge: csakStream(['x']) }), {
+      attempts: 3,
+      sleep: () => Promise.resolve(),
+    })
+    const result = await client.generate('draft', 'p')
+    expect(result.value).toBe('sikerült')
+    expect(hivasok).toBe(2)
   })
 })

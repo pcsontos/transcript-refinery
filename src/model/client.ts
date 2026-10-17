@@ -2,7 +2,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import {
   NoObjectGeneratedError,
   Output,
-  generateText,
+  streamText,
   tool,
   type FinishReason,
   type LanguageModel,
@@ -10,6 +10,7 @@ import {
 import type { ZodType } from 'zod'
 import type { ModelConfig } from '../config.js'
 import { MODEL_ROLES, type ModelRole } from '../types.js'
+import { currentScope } from './deadline.js'
 import {
   extractObject,
   isForcedToolChoiceRejection,
@@ -100,6 +101,57 @@ function ellenorizdAVeget(role: ModelRole, finishReason: FinishReason): void {
   )
 }
 
+
+/**
+ * A stream egy része, annyira, amennyire a végigolvasáshoz kell. A `text-delta`
+ * a `text`, a `tool-input-delta` a `delta` mezőt viszi.
+ */
+interface StreamPartLike {
+  type: string
+  error?: unknown
+  text?: string
+  delta?: string
+}
+
+/**
+ * Egy hívás elején: ha a recept órája már lejárt, a hívás el sem indul (a
+ * `retry.ts` várakozása alatt lejárt korlátnál ez nem fizetett hívás). A
+ * vázlat szövege nulláról indul; a judge nem írja felül, így az életjel a
+ * kész vázlat szószámát mutatja, amíg a judge dolgozik.
+ */
+function beginCall(role: ModelRole): AbortSignal | undefined {
+  const scope = currentScope()
+  scope?.signal.throwIfAborted()
+  if (scope !== undefined && role !== 'judge') scope.text = ''
+  return scope?.signal
+}
+
+/**
+ * Végigolvassa a streamet. Miért kell: a `streamText` a hibát nem dobja,
+ * hanem `error` részként a streambe teszi, az eredmény-ígéretek pedig egy
+ * homályos „nincs kimenet" hibával buknának. Az **eredeti** hibát dobjuk
+ * tovább, mert a `retry.ts` (`isTransient`) és a tool-visszaesés
+ * (`isForcedToolChoiceRejection`) a státuszkódot és a hibaüzenetet nézi.
+ * Megszakításnál a megszakítás oka a hiba (a `RecipeTimeout`), nem a stream
+ * lezárásának mellékhatása.
+ */
+async function drain(parts: AsyncIterable<StreamPartLike>, role: ModelRole): Promise<void> {
+  const scope = currentScope()
+  const track = scope !== undefined && role !== 'judge'
+  try {
+    for await (const part of parts) {
+      if (part.type === 'error') throw part.error
+      if (!track) continue
+      if (part.type === 'text-delta' && part.text !== undefined) scope.text += part.text
+      else if (part.type === 'tool-input-delta' && part.delta !== undefined) scope.text += part.delta
+    }
+  } catch (error) {
+    if (scope?.signal.aborted) throw scope.signal.reason
+    throw error
+  }
+  if (scope?.signal.aborted) throw scope.signal.reason
+}
+
 /**
  * A tool-úton a séma ezen a néven megy ki. A modell látja, ezért beszédes; a
  * válaszból csak ezt az egy tool-hívást fogadjuk el.
@@ -140,9 +192,10 @@ export function modelClientFrom(
     prompt: string,
     schema: ZodType<T>,
   ): Promise<ModelResult<T>> {
-    const result = await generateText({
+    const result = streamText({
       model: models[role],
       prompt,
+      abortSignal: beginCall(role),
       tools: {
         [RESULT_TOOL]: tool({
           description: 'Submit the result. Call this tool exactly once with the complete result.',
@@ -151,31 +204,32 @@ export function modelClientFrom(
       },
       toolChoice: 'auto',
     })
+    await drain(result.fullStream, role)
+    const finishReason = await result.finishReason
     // A `tool-calls` itt a rendes vég; a csonkolást ugyanúgy elzárjuk.
-    ellenorizdAVeget(role, result.finishReason)
-    const call = result.toolCalls.find((c) => c.toolName === RESULT_TOOL)
-    const extracted = extractObject(schema, call?.input, result.text)
+    ellenorizdAVeget(role, finishReason)
+    const [toolCalls, text, usage] = await Promise.all([result.toolCalls, result.text, result.usage])
+    const call = toolCalls.find((c) => c.toolName === RESULT_TOOL)
+    const extracted = extractObject(schema, call?.input, text)
     if (!extracted.ok) {
       throw new NoObjectGeneratedError({
         message: 'No object generated: the response did not match the schema.',
         cause: new Error(extracted.reason),
-        text: call === undefined ? result.text : JSON.stringify(call.input),
-        response: result.response,
-        usage: result.usage,
-        finishReason: result.finishReason,
+        text: call === undefined ? text : JSON.stringify(call.input),
+        response: await result.response,
+        usage,
+        finishReason,
       })
     }
-    return { value: extracted.value, usage: usageOf(result.usage) }
+    return { value: extracted.value, usage: usageOf(usage) }
   }
 
   return {
     async generate(role, prompt) {
-      const { text, usage, finishReason } = await generateText({
-        model: models[role],
-        prompt,
-      })
-      ellenorizdAVeget(role, finishReason)
-      return { value: text, usage: usageOf(usage) }
+      const result = streamText({ model: models[role], prompt, abortSignal: beginCall(role) })
+      await drain(result.fullStream, role)
+      ellenorizdAVeget(role, await result.finishReason)
+      return { value: await result.text, usage: usageOf(await result.usage) }
     },
 
     async generateObject(role, prompt, schema) {
@@ -185,23 +239,28 @@ export function modelClientFrom(
       // Csak ez az egy elutasítás vált utat; minden más hiba a mai módon megy
       // tovább. A 400 nem átmeneti, tehát sem az SDK, sem a `retry.ts` nem
       // próbálja újra — a visszaesés ezért itt, a kliensen belül történik.
-      const result = await generateText({
+      const result = streamText({
         model: models[role],
         prompt,
+        abortSignal: beginCall(role),
         output: Output.object({ schema }),
-      }).catch((error: unknown) => {
-        if (!isForcedToolChoiceRejection(error)) throw error
-        return null
       })
-      if (result === null) {
+      const rejected = await drain(result.fullStream, role).then(
+        () => false,
+        (error: unknown) => {
+          if (!isForcedToolChoiceRejection(error)) throw error
+          return true
+        },
+      )
+      if (rejected) {
         fallback.add(name)
         return viaTool(role, prompt, schema)
       }
-      // A vég ellenőrzése megelőzi az `output` kiolvasását: az egy getter,
-      // ami csonka válasznál a homályos „nincs kimenet" hibával száll el.
-      // Így a naplóba a tényleges ok kerül, nem a következménye.
-      ellenorizdAVeget(role, result.finishReason)
-      return { value: result.output, usage: usageOf(result.usage) }
+      // A vég ellenőrzése megelőzi az `output` kiolvasását: az csonka
+      // válasznál a homályos „nincs kimenet" hibával száll el. Így a naplóba
+      // a tényleges ok kerül, nem a következménye.
+      ellenorizdAVeget(role, await result.finishReason)
+      return { value: await result.output, usage: usageOf(await result.usage) }
     },
   }
 }
@@ -232,6 +291,10 @@ export function createModelClient(
     // akkor `{ type: "json_object" }` megy ki a `json_schema` helyett
     // (`:569`). A pilótán ettől lett a `flashcards` 0/5.
     supportsStructuredOutputs: true,
+    // Streamelve a szerver csak kérésre küld használati adatot. E nélkül a
+    // tokenszám nulla, és a költségőr nem látna semmit (a `usageOf` a hiányzót
+    // nullának veszi).
+    includeUsage: true,
     ...(opts.fetch ? { fetch: opts.fetch } : {}),
   })
 

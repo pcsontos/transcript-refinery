@@ -59,6 +59,13 @@ model:
   # futnak). false esetén egy futásra sem kapcsolható vissza parancssorból;
   # a --no-judge csak kikapcsolni tud.
   # judge_enabled: true
+  # Egy recept leghosszabb futásideje percben (tört is lehet). Ennél tovább
+  # nem fut: újrapróbálkozás nélkül leáll, a Telegram rákérdez, hogy újra
+  # próbálja-e. Hiányában 25.
+  # recipe_timeout_minutes: 25
+  # Az életjel időköze percben, amíg egy recept fut (terminál és Telegram).
+  # Hiányában 10.
+  # heartbeat_minutes: 10
   # Receptenkénti modell (opcionális): a `draft` felülbírálása egy-egy
   # receptnél. A kulcs pontos receptazonosító; a fordítás (pl. notes-hu)
   # külön kulcs, nem örököl a forrásrecepttől. A bíró mindig a `judge`.

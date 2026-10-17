@@ -144,6 +144,11 @@ refinery run --queue
   `true`). Visszafelé nincs kapcsoló: `false` mellett egy futásra
   parancssorból nem kapcsolható vissza a bíró, ahhoz a configot kell
   átírni
+- A recept időkorlátja és az életjel a `model:` blokkban állítható:
+  `recipe_timeout_minutes` (alapból 25) és `heartbeat_minutes` (alapból 10),
+  percben, törtszám is lehet. Egy recept a korlát után újrapróbálkozás nélkül
+  leáll; amíg fut, az életjel ennyi percenként ír egy sort (és a Telegramra
+  üzenetet)
 
 ### A futás nyoma
 

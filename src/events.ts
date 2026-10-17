@@ -37,6 +37,8 @@ export type RunEvent =
        * egy sémahibából csak az általános üzenet marad meg.
        */
       detail?: string
+      /** Igaz, ha a recept a futásidő-korlát miatt állt le (nem hibázott): a Telegram ilyenkor rákérdez az újrapróbálásra. */
+      timedOut?: true
     }
   | { type: 'run:done'; succeeded: number; skipped: number; failed: number }
   | {
@@ -65,6 +67,13 @@ export type RunEvent =
       recipe: string
       /** Hányadik generálás; egytől számozva. */
       generation: number
+    }
+  | {
+      type: 'item:progress'
+      itemId: string
+      recipe: string
+      /** A már legenerált szöveg hozzávetőleges szószáma; 0, ha épp nincs folyamatban generálás. */
+      words: number
     }
   | {
       type: 'item:scored'
@@ -244,4 +253,11 @@ export function summarize(events: readonly RunEvent[]): RunSummary {
     autoItems,
     failures: [...failures.values()],
   }
+}
+
+/** Az életjel szövege: a terminálsor és a Telegram-üzenet közös forrása. */
+export function progressText(e: { recipe: string; words: number }): string {
+  return e.words > 0
+    ? `${e.recipe}: kb. ${e.words.toLocaleString('hu-HU')} szó kész, még dolgozik`
+    : `Még dolgozik: ${e.recipe}`
 }

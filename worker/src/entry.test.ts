@@ -320,6 +320,31 @@ describe('worker belépés', () => {
     )
   })
 
+  it('az életjel szöveg nélkül 400, érvényesen 200-ig jut', async () => {
+    const env = {
+      DB: {} as never,
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const post = (body: unknown) =>
+      worker.fetch(
+        new Request('https://worker.test/internal/jobs/5%3Aabcdefghijk%3Asummary', {
+          method: 'POST',
+          headers: { authorization: 'Bearer titok' },
+          body: JSON.stringify(body),
+        }),
+        env,
+        { waitUntil: () => undefined },
+      )
+    expect((await post({ status: 'progress' })).status).toBe(400)
+    expect((await post({ status: 'stalled', text: 5 })).status).toBe(400)
+    expect((await post({ status: 'failed', error: 'x', done: 'nem lista' })).status).toBe(400)
+  })
+
   it('a felirat kész üzenete gombsort küld, a kapcsoló editMessageText-et', async () => {
     const calls: { url: string; body: unknown }[] = []
     globalThis.fetch = (input, init) => {

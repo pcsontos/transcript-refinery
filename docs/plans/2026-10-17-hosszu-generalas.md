@@ -56,14 +56,14 @@
   ```
   A `currentScope` egy modulszintű `AsyncLocalStorage<CallScope>` `getStore()`-ja.
 
-- [ ] **1. lépés: a bukó teszt**
+- [x] **1. lépés: a bukó teszt**
   - `currentScope()` hatókörön kívül `undefined`; `inScope(s, async () => { await Promise.resolve(); return currentScope() })` → `s` (ugyanaz az objektum).
   - `isTransient(new RecipeTimeout('clean-deep', 40))` → `false`; az üzenet tartalmazza a `„clean-deep"` és a `40 perc` szöveget.
   - `config.test.ts`: a `model.recipe_timeout_minutes: 40`, `heartbeat_minutes: 0.5` → `recipeTimeoutMinutes === 40`, `heartbeatMinutes === 0.5`; hiányukban mindkettő `undefined`; a `recipe_timeout_minutes: 0` és a `heartbeat_minutes: -1` config-hibát ad, az üzenetben a mező nevével.
-- [ ] **2. lépés:** `pnpm vitest run src/model/deadline.test.ts src/config.test.ts` → FAIL.
-- [ ] **3. lépés:** megírni a `src/model/deadline.ts`-t és a config-mezőket, a példa-configot és a `docs/usage.md`-t.
-- [ ] **4. lépés:** a teszt → PASS.
-- [ ] **5. lépés:** commit `feat(model): Add configurable recipe deadline`.
+- [x] **2. lépés:** `pnpm vitest run src/model/deadline.test.ts src/config.test.ts` → FAIL.
+- [x] **3. lépés:** megírni a `src/model/deadline.ts`-t és a config-mezőket, a példa-configot és a `docs/usage.md`-t.
+- [x] **4. lépés:** a teszt → PASS.
+- [x] **5. lépés:** commit `feat(model): Add configurable recipe deadline`.
 
 ### 2. feladat: Streamelt modellhívás
 
@@ -90,16 +90,16 @@
 
 A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.text = ''`. A hívás `abortSignal: currentScope()?.signal`-lal megy. Utána `await result.finishReason` → `ellenorizdAVeget`, majd `await result.text` / `await result.output` / `await result.toolCalls` / `await result.usage` / `await result.response`.
 
-- [ ] **1. lépés: a mockok átállítása, még `generateText` mellett.** A `streamingMock` a `doGenerate`-et is megtartja, ezért a csere után minden teszt zöld marad. Ez a lépés biztosítja, hogy a 4. lépés kódváltása ne a mockok miatt bukjon: `pnpm test` → PASS.
-- [ ] **2. lépés: a bukó tesztek** a `client.test.ts`-ben, új `describe('streamelt hívás')`:
+- [x] **1. lépés: a mockok átállítása, még `generateText` mellett.** A `streamingMock` a `doGenerate`-et is megtartja, ezért a csere után minden teszt zöld marad. Ez a lépés biztosítja, hogy a 4. lépés kódváltása ne a mockok miatt bukjon: `pnpm test` → PASS.
+- [x] **2. lépés: a bukó tesztek** a `client.test.ts`-ben, új `describe('streamelt hívás')`:
   - `a hívás streamel`: egy `MockLanguageModelV4`, amelynek csak `doStream`-je van → `generate('draft', 'p')` visszaadja a szöveget és a használatot.
   - `a vázlat szövege a hatókörbe kerül, a judge-é nem`: `inScope(s, …)` alatt egy `draft` hívás után `s.text === 'egy két három'`; egy utána jövő `judge` hívás után is ugyanannyi.
   - `a megszakítás oka jön vissza, egyetlen hívással`: a `doStream` addig nem zár, amíg az `abortSignal` nem jelez; `retrying(client)` alatt `controller.abort(new RecipeTimeout('clean-deep', 25))` → a hívás `RecipeTimeout` példánnyal bukik, a `doStream` hívásszáma 1.
   - `az 503 a streamen át is újrapróbálódik`: a `doStream` első hívása `new APICallError({ statusCode: 503, … })`-t dob, a második szöveget ad → `retrying(client).generate` sikeres, a hívásszám 2.
-- [ ] **3. lépés:** `pnpm vitest run src/model/client.test.ts` → az új tesztek FAIL.
-- [ ] **4. lépés:** a `client.ts` három útvonala `streamText`-re vált, a `drain`-nel. A `createModelClient` fetch-alapú tesztjei (`keresElkapo`, `sorosFetch`) SSE-választ kapnak: `content-type: text/event-stream`, `data: {chat.completion.chunk}\n\n` sorok, végül `data: [DONE]\n\n`. A kérés törzsére vonatkozó állítások maradnak, a törzsben ezentúl `stream: true` is van.
-- [ ] **5. lépés:** `pnpm test` → PASS (a régi `finishReason`-, visszaesés- és sémás tesztek változatlan állításokkal).
-- [ ] **6. lépés:** commit `feat(model): Stream model calls to avoid header timeout`. A törzsbe: `Refs #258`.
+- [x] **3. lépés:** `pnpm vitest run src/model/client.test.ts` → az új tesztek FAIL.
+- [x] **4. lépés:** a `client.ts` három útvonala `streamText`-re vált, a `drain`-nel. A `createModelClient` fetch-alapú tesztjei (`keresElkapo`, `sorosFetch`) SSE-választ kapnak: `content-type: text/event-stream`, `data: {chat.completion.chunk}\n\n` sorok, végül `data: [DONE]\n\n`. A kérés törzsére vonatkozó állítások maradnak, a törzsben ezentúl `stream: true` is van.
+- [x] **5. lépés:** `pnpm test` → PASS (a régi `finishReason`-, visszaesés- és sémás tesztek változatlan állításokkal).
+- [x] **6. lépés:** commit `feat(model): Stream model calls to avoid header timeout`. A törzsbe: `Refs #258`.
 
 ### 3. feladat: 25 perces óra és életjel a `runRecipe`-ben
 
@@ -122,17 +122,17 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 - A `processItem` recept-`catch`-ága az `item:failed` eseménybe `...(error instanceof RecipeTimeout ? { timedOut: true as const } : {})`-t tesz.
 - A `render`: `case 'item:progress': return \`  … ${event.itemId}: ${progressText(event)}\``.
 
-- [ ] **1. lépés: a bukó tesztek** a `pipeline.test.ts`-ben, `describe('hosszú recept')`, `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })`. A hamis `ModelClient` `generate`-je egy ígéretet old fel, amikor meghívják (ebből tudja a teszt, hogy a hívás elindult, és csak utána léptet órát). Utána `currentScope()!.signal` megszakításáig vár, és annak `reason`-jével bukik.
+- [x] **1. lépés: a bukó tesztek** a `pipeline.test.ts`-ben, `describe('hosszú recept')`, `vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] })`. A hamis `ModelClient` `generate`-je egy ígéretet old fel, amikor meghívják (ebből tudja a teszt, hogy a hívás elindult, és csak utána léptet órát). Utána `currentScope()!.signal` megszakításáig vár, és annak `reason`-jével bukik.
   - `a beállított korlátot tartja`: `recipeTimeoutMinutes: 40` mellett 25 perc léptetés után a hívás még fut, 40 percnél leáll, az `error` a `40 perc` szöveget tartalmazza; `heartbeatMinutes: 3` mellett 3 percnél jön az első `item:progress`.
   - `alapból 25 perc után megáll, újrapróbálkozás nélkül`: a mezők nélkül `await vi.advanceTimersByTimeAsync(25 * 60_000)` után a `processItem` eredménye `failed`. A `generate` hívásszáma 1. Az `item:failed` eseményben `timedOut: true`, a `kind` a recept azonosítója, az `error` tartalmazza a `25 perc` szöveget.
   - `10 percenként életjel a szószámmal`: a hamis `generate` a hívás elején `currentScope()!.text = 'egy két három'`. 10 perc léptetés után (alapérték) pontosan egy `item:progress` jön, `{ recipe, words: 3 }`. Újabb 10 perc után kettő.
   - `10 percen belül kész recept: nincs életjel, és nem marad óra`: azonnal válaszoló kliens → nincs `item:progress`, és `vi.getTimerCount() === 0`.
   - `a korlát a visszalépési várakozás alatt jár le`: az első hívás 503-at dob, a `recipeDeps.sleep` valódi `setTimeout` (fake). A 25 perces léptetés után az eredmény `failed`, `timedOut: true`.
   - `render`: `progressText({ recipe: 'clean-deep', words: 9000 })` → `clean-deep: kb. 9 000 szó kész, még dolgozik` (a `hu-HU` elválasztója nem törő szóköz: az elvárt értéket is `toLocaleString('hu-HU')`-val kell előállítani); `words: 0` → `Még dolgozik: clean-deep`.
-- [ ] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL.
-- [ ] **3. lépés:** megvalósítás a fentiek szerint.
-- [ ] **4. lépés:** `pnpm test` → PASS.
-- [ ] **5. lépés:** commit `feat(pipeline): Stop recipes after 25 minutes with heartbeat`.
+- [x] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL.
+- [x] **3. lépés:** megvalósítás a fentiek szerint.
+- [x] **4. lépés:** `pnpm test` → PASS.
+- [x] **5. lépés:** commit `feat(pipeline): Stop recipes after 25 minutes with heartbeat`.
 
 ### 4. feladat: A serve továbbítja az életjelet és a leállást
 
@@ -163,15 +163,15 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 - A futás végén, a push-ellenőrzés után, de a `code !== 0` ág előtt: ha a `stalled` nem üres, akkor `{ ok: false, error: <az első leállás üzenete>, done: ids.filter(id => !stalled.has(id) && <a jegyzetfájl létezik>) }`.
 - `runRecipeJob`: a `notify` = `(body) => void report(effects, job.jobId, body)`; a `failed` kimenet `done`-ját továbbadja a callbackben.
 
-- [ ] **1. lépés: a bukó tesztek**
+- [x] **1. lépés: a bukó tesztek**
   - `summary.test.ts`: egy `createClient`, amelynek receptje `RecipeTimeout`-tal bukik (a hamis kliens maga dobja, óra nélkül). A `notify` egy `stalled` testet kap, a `text` a `Újra próbáljam?` szöveggel végződik. Az eredmény `{ ok: false, done: [] }`.
   - `summary.test.ts`: két fordítás (`summary-hu`, `notes-hu`), az egyik leáll → `done` = a másik azonosítója.
   - `summary.test.ts`: egy `item:progress` eseményből `progress` test lesz, a `progressText` szövegével.
   - `job.test.ts`: `refine` → `{ ok: false, error, done: ['x'] }` → a callback `{ status: 'failed', error, done: ['x'] }`.
-- [ ] **2. lépés:** a tesztek → FAIL.
-- [ ] **3. lépés:** megvalósítás.
-- [ ] **4. lépés:** `pnpm test` → PASS.
-- [ ] **5. lépés:** commit `feat(serve): Forward heartbeat and stalled recipes`.
+- [x] **2. lépés:** a tesztek → FAIL.
+- [x] **3. lépés:** megvalósítás.
+- [x] **4. lépés:** `pnpm test` → PASS.
+- [x] **5. lépés:** commit `feat(serve): Forward heartbeat and stalled recipes`.
 
 ### 5. feladat: A Worker fogadja az új callbackeket
 
@@ -198,7 +198,7 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
   - `failed` és `done !== undefined` → az állapot `failed` + `error` (mint ma), de üzenet csak akkor megy, ha `done.length > 0`: `runReadyMessage(row.title ?? row.videoId, run, linkBase, done)`.
 - `handleCallback`: a futás nélküli (felirat-) sorhoz érkező `progress`/`stalled` → `200`, semmi más.
 
-- [ ] **1. lépés: a bukó tesztek** (`handle.test.ts`):
+- [x] **1. lépés: a bukó tesztek** (`handle.test.ts`):
   - `progress` → egy üzenet a szöveggel, a futás állapota nem változik;
   - `stalled` → egy üzenet két gombbal; alapreceptnél az Újra adata `r:clean-deep:<jobId>`, fordításnál `l:<hex>:<lang>:<jobId>`, amit a `parseTap` ugyanarra a receptlistára fejt vissza;
   - `failed` + `done: []` → nincs üzenet, a futás `failed`;
@@ -206,10 +206,10 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
   - `stalled` a `failed` **után** érkezik → ugyanúgy megy a gombos üzenet, a futás `failed` marad;
   - `cancelled` futás `progress`-e → nincs üzenet;
   - `isCallback`: `{ status: 'progress' }` szöveg nélkül → `400`.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL.
-- [ ] **3. lépés:** megvalósítás.
-- [ ] **4. lépés:** `pnpm test` → PASS.
-- [ ] **5. lépés:** commit `feat(worker): Relay heartbeat and ask before retrying`.
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL.
+- [x] **3. lépés:** megvalósítás.
+- [x] **4. lépés:** `pnpm test` → PASS.
+- [x] **5. lépés:** commit `feat(worker): Relay heartbeat and ask before retrying`.
 
 ### 6. feladat: Újra és Eldobás gomb
 
@@ -223,25 +223,25 @@ A `track` akkor igaz, ha `role !== 'judge'`. A nem judge hívás elején `scope.
 - `handleTap`: a sor- és jogosultság-ellenőrzés után `drop` → ha van `messageId`, `edit(row.chatId, messageId, DROPPED_LINE, [])`; futást nem kér.
 - Az Újra külön kód nélkül a meglévő `recipe`/`lang` tapon megy: `requestRun` → `decideRun(failed)` → `retry`.
 
-- [ ] **1. lépés: a bukó tesztek**
+- [x] **1. lépés: a bukó tesztek**
   - `plan.test.ts`: `parseTap('d:1:abcdefghijk')` → `{ type: 'drop', jobId: '1:abcdefghijk' }`; `parseTap('d:')` → `null`.
   - `handle.test.ts`: az Eldobás → egy `edit` a `DROPPED_LINE`-nal és üres billentyűzettel, `knock` nincs.
   - `handle.test.ts`: egy `failed` alapreceptfutásra az Újra (`r:clean-deep:<jobId>`) → egy kopogtatás ugyanazzal a `runId`-vel, és a futás `queued`.
   - `handle.test.ts`: egy `accepted` futásra az Újra → `alreadyLine`, kopogtatás nincs (a review 1. pontja).
-- [ ] **2. lépés:** → FAIL.
-- [ ] **3. lépés:** megvalósítás, a `retryKeyboard` fölé `// ponytail: futás közben az Újra „már folyamatban”-t ad; sorba állítás, ha zavaró lesz.`
-- [ ] **4. lépés:** `pnpm test` → PASS.
-- [ ] **5. lépés:** commit `feat(worker): Add retry and drop buttons for stalled recipes`.
+- [x] **2. lépés:** → FAIL.
+- [x] **3. lépés:** megvalósítás, a `retryKeyboard` fölé `// ponytail: futás közben az Újra „már folyamatban”-t ad; sorba állítás, ha zavaró lesz.`
+- [x] **4. lépés:** `pnpm test` → PASS.
+- [x] **5. lépés:** commit `feat(worker): Add retry and drop buttons for stalled recipes`.
 
 ### 7. feladat: Próba — leállítja-e a gateway a bontott streamet? (kézi, valódi költéssel)
 
 Nem kód, nem kerül a repóba. **Indítás előtt a felhasználó jóváhagyása kell** (valódi pénz).
 
-- [ ] **1. lépés:** költségbecslés a felhasználónak. Egy hívás `sub2api--claude-sonnet-5`-tel, ~60 s generálás után bontva, legfeljebb néhány ezer kimenő token. A becslést 2× ráhagyással kell megadni.
-- [ ] **2. lépés:** egy eldobható szkript a `$CLAUDE_JOB_DIR/tmp`-ben. A `createModelClient`-tel, `inScope` alatt elindít egy hosszú `generate`-et a peter-mba LiteLLM-jére, és 60 s után `abort`-ol.
-- [ ] **3. lépés:** a peter-mba-n (`ssh peter-mba`, `homelab-litellm-db`, `LiteLLM_SpendLogs`) a hívás sora: a `startTime`–`endTime` és a `completion_tokens`. Ha az idő ~60 s, és a token kevés, a gateway leállt; ha percekkel tovább tart, nem. A sub2api naplójában ugyanez a slot-felszabadulás ideje.
-- [ ] **4. lépés:** az eredmény a spec 5. pontjába. Ha a gateway nem áll le, a felhasználó jóváhagyásával külön issue.
-- [ ] **5. lépés:** commit `docs(plans): Record stream cancel probe result`.
+- [x] **1. lépés:** költségbecslés a felhasználónak. Egy hívás `sub2api--claude-sonnet-5`-tel, ~60 s generálás után bontva, legfeljebb néhány ezer kimenő token. A becslést 2× ráhagyással kell megadni.
+- [x] **2. lépés:** egy eldobható szkript a `$CLAUDE_JOB_DIR/tmp`-ben. A `createModelClient`-tel, `inScope` alatt elindít egy hosszú `generate`-et a peter-mba LiteLLM-jére, és 60 s után `abort`-ol.
+- [x] **3. lépés:** a peter-mba-n (`ssh peter-mba`, `homelab-litellm-db`, `LiteLLM_SpendLogs`) a hívás sora: a `startTime`–`endTime` és a `completion_tokens`. Ha az idő ~60 s, és a token kevés, a gateway leállt; ha percekkel tovább tart, nem. A sub2api naplójában ugyanez a slot-felszabadulás ideje.
+- [x] **4. lépés:** az eredmény a spec 5. pontjába. Ha a gateway nem áll le, a felhasználó jóváhagyásával külön issue.
+- [x] **5. lépés:** commit `docs(plans): Record stream cancel probe result`.
 
 ### 8. feladat: PR és éles ellenőrzés
 

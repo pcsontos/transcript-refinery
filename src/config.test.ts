@@ -170,6 +170,30 @@ describe('loadModelConfig', () => {
     expect(loadModelConfig(RAW, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml').judgeEnabled).toBe(true)
   })
 
+  it('a recept-időkorlát és az életjel időköze állítható, törttel is', () => {
+    const raw = { ...RAW, model: { ...RAW.model, recipe_timeout_minutes: 40, heartbeat_minutes: 0.5 } }
+    const cfg = loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')
+    expect(cfg.recipeTimeoutMinutes).toBe(40)
+    expect(cfg.heartbeatMinutes).toBe(0.5)
+  })
+
+  it('a recept-időkorlát és az életjel hiányában nincs érték (az alapérték a hívóé)', () => {
+    const cfg = loadModelConfig(RAW, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')
+    expect(cfg.recipeTimeoutMinutes).toBeUndefined()
+    expect(cfg.heartbeatMinutes).toBeUndefined()
+  })
+
+  it.each([
+    ['recipe_timeout_minutes', 0],
+    ['recipe_timeout_minutes', 'sok'],
+    ['heartbeat_minutes', -1],
+  ])('a(z) %s = %s érték config-hiba, a mező nevével', (field, value) => {
+    const raw = { ...RAW, model: { ...RAW.model, [field]: value } }
+    expect(() => loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')).toThrow(
+      new RegExp(field),
+    )
+  })
+
   it('a judge_enabled kikapcsolható a YAML-ból', () => {
     const raw = { ...RAW, model: { ...RAW.model, judge_enabled: false } }
     expect(loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml').judgeEnabled).toBe(false)

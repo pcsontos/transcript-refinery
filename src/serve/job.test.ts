@@ -540,3 +540,44 @@ describe('runJob szöveges tétel', () => {
     expect(callbacks).toEqual([{ status: 'failed', error: 'A szöveg azonosítója nem egyezik.' }])
   })
 })
+
+describe('runJob — leállt recept és életjel', () => {
+  async function run(refine: JobEffects['refine']): Promise<CallbackBody[]> {
+    const callbacks: CallbackBody[] = []
+    const store = memoryStore()
+    const effects: JobEffects = {
+      ...emptyEffects(store),
+      readPair: () => Promise.resolve(pair({})),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+      refine,
+    }
+    const pairInR2 = {
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' })),
+    }
+    Object.assign(store.objects, pairInR2)
+    await runJob({ ...job, recipes: ['summary'] }, effects)
+    return callbacks
+  }
+
+  it('a leállt futás záró üzenete viszi az elkészült jegyzeteket', async () => {
+    const callbacks = await run(() => Promise.resolve({ ok: false, error: 'leállt', done: ['summary-hu'] }))
+    expect(callbacks).toEqual([{ status: 'failed', error: 'leállt', done: ['summary-hu'] }])
+  })
+
+  it('a hagyományos hiba nem visz „done” mezőt', async () => {
+    const callbacks = await run(() => Promise.resolve({ ok: false, error: 'hiba' }))
+    expect(callbacks).toEqual([{ status: 'failed', error: 'hiba' }])
+  })
+
+  it('a refine közben küldött életjel a Workerhez megy, a záró üzenet előtt', async () => {
+    const callbacks = await run((_videoId, _recipes, _lang, _signal, notify) => {
+      notify?.({ status: 'progress', text: 'még dolgozik' })
+      return Promise.resolve({ ok: true, noteUrl: 'a.md' })
+    })
+    expect(callbacks.map((body) => body.status)).toEqual(['progress', 'ready'])
+  })
+})

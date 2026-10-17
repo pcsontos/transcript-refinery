@@ -243,6 +243,16 @@ const ModelSchema = z.object({
     judge: z.string().min(1, 'A model.judge kötelező.'),
     /** Hamisra állítva a bíró pontozói nem futnak; a determinisztikus kapuk igen. */
     judge_enabled: z.boolean().default(true),
+    /** Egy recept leghosszabb futásideje percben; törtszám is lehet. Hiányában 25. */
+    recipe_timeout_minutes: z
+      .number('A model.recipe_timeout_minutes szám kell legyen.')
+      .positive('A model.recipe_timeout_minutes pozitív kell legyen.')
+      .optional(),
+    /** Az életjel időköze percben, amíg egy recept fut. Hiányában 10. */
+    heartbeat_minutes: z
+      .number('A model.heartbeat_minutes szám kell legyen.')
+      .positive('A model.heartbeat_minutes pozitív kell legyen.')
+      .optional(),
     /**
      * Receptazonosító → modell: a `draft` felülbírálása az adott receptnél.
      * A kulcsokat a futás regisztere ellenőrzi (`assertRecipeModels`), hogy
@@ -274,6 +284,10 @@ export interface ModelConfig {
   recipeModels: Readonly<Record<string, string>>
   /** Fusson-e a bíró. A `--no-judge` kapcsoló felülírja. */
   judgeEnabled: boolean
+  /** Egy recept leghosszabb futásideje percben; hiányában a `deadline.ts` alapértéke. */
+  recipeTimeoutMinutes?: number
+  /** Az életjel időköze percben; hiányában a `deadline.ts` alapértéke. */
+  heartbeatMinutes?: number
   /** Szerep → ár: a `models` két modelljének ára, a `modelPricing`-ből. */
   pricing: Record<ModelRole, ModelPricing>
   /** Modellnév → ár. */
@@ -382,6 +396,10 @@ export function loadModelConfig(
     models: { draft: c.model.draft, judge: c.model.judge },
     recipeModels: c.model.recipes,
     judgeEnabled: c.model.judge_enabled,
+    ...(c.model.recipe_timeout_minutes === undefined
+      ? {}
+      : { recipeTimeoutMinutes: c.model.recipe_timeout_minutes }),
+    ...(c.model.heartbeat_minutes === undefined ? {} : { heartbeatMinutes: c.model.heartbeat_minutes }),
     pricing: { draft: priceOf(c.model.draft), judge: priceOf(c.model.judge) },
     modelPricing,
     costLimitUsd: c.cost_limit_usd,
