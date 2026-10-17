@@ -56,14 +56,14 @@
   ```
   A `currentScope` egy modulszintű `AsyncLocalStorage<CallScope>` `getStore()`-ja.
 
-- [ ] **1. lépés: a bukó teszt**
+- [x] **1. lépés: a bukó teszt**
   - `currentScope()` hatókörön kívül `undefined`; `inScope(s, async () => { await Promise.resolve(); return currentScope() })` → `s` (ugyanaz az objektum).
   - `isTransient(new RecipeTimeout('clean-deep', 40))` → `false`; az üzenet tartalmazza a `„clean-deep"` és a `40 perc` szöveget.
   - `config.test.ts`: a `model.recipe_timeout_minutes: 40`, `heartbeat_minutes: 0.5` → `recipeTimeoutMinutes === 40`, `heartbeatMinutes === 0.5`; hiányukban mindkettő `undefined`; a `recipe_timeout_minutes: 0` és a `heartbeat_minutes: -1` config-hibát ad, az üzenetben a mező nevével.
-- [ ] **2. lépés:** `pnpm vitest run src/model/deadline.test.ts src/config.test.ts` → FAIL.
-- [ ] **3. lépés:** megírni a `src/model/deadline.ts`-t és a config-mezőket, a példa-configot és a `docs/usage.md`-t.
-- [ ] **4. lépés:** a teszt → PASS.
-- [ ] **5. lépés:** commit `feat(model): Add configurable recipe deadline`.
+- [x] **2. lépés:** `pnpm vitest run src/model/deadline.test.ts src/config.test.ts` → FAIL.
+- [x] **3. lépés:** megírni a `src/model/deadline.ts`-t és a config-mezőket, a példa-configot és a `docs/usage.md`-t.
+- [x] **4. lépés:** a teszt → PASS.
+- [x] **5. lépés:** commit `feat(model): Add configurable recipe deadline`.
 
 ### 2. feladat: Streamelt modellhívás
 
