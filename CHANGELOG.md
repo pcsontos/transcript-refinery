@@ -3,6 +3,44 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.19.0] — 2026-10-17
+
+A hosszú receptek (például egy egyórás webinár `clean-deep`-je) mostantól
+egyetlen hívással végigfutnak, nem szakadnak el 5 perc után. Ami mégis túl
+sokáig tartana, az leáll, és a Telegram rákérdez, hogy újra próbálja-e.
+
+### ✨ Hosszú generálás
+
+- **Nincs 5 perces vágás:** a modellhívások streamelve mennek, ezért a
+  fejléc azonnal megérkezik, és a Node 5 perces időkorlátja nem vág. A
+  `zgWUhE6HjrI`-hez hasonló, 10–15 percig tartó munka egy hívással lefut, 429 és
+  dupla fizetés nélkül (#258).
+- **Receptenként 25 perc:** egy recept a korlát után újrapróbálkozás nélkül
+  leáll. A futás többi receptje fut tovább. Állítható: `model.recipe_timeout_minutes`
+  (alapból 25, törtszám is lehet).
+- **Életjel 10 percenként:** amíg egy recept fut, a `refinery run` terminálja és a
+  Telegram is jelez, például `clean-deep: kb. 9 000 szó kész, még dolgozik`.
+  Állítható: `model.heartbeat_minutes` (alapból 10).
+- **Telegram: Újra vagy Eldobás:** a leállt receptről azonnal jön a kérdés két
+  gombbal. Az **Újra** ugyanazt a futást indítja újra (csak a leállt recept fut le
+  újra), az **Eldobás** nem indít semmit. A záró üzenet csak az elkészült
+  jegyzeteket linkeli.
+
+### 🐛 Javítások
+
+- **Költségőr a streamelt hívásoknál:** a kérés használati adatot kér
+  (`include_usage`), így a token- és költségszámolás streamelve is pontos.
+- **Vegyes hiba nem vész el:** ha egy recept leáll, egy másik recept közönséges
+  hibája ugyanabban a futásban is megjelenik a hibasorban.
+
+### ⚠️ Tudnivalók
+
+- A konténer (`serve`) és a Worker is változik: kép-feltöltés, a `peter-mba`
+  frissítése és Worker-telepítés kell. D1-migráció nincs.
+- A megszakított recept generálása a sub2api-ban végigfut, és a fiók keretét
+  fogyasztja, amíg a sub2api forkba tervezett javítás (`gateway.cancel_upstream_on_client_disconnect`)
+  nincs telepítve. A refinery oldalán a költsége nem látszik.
+
 ## [1.18.1] — 2026-10-16
 
 A Telegramból küldött szöveges átirat jegyzete tiszta címet kap, és az R2-ben
@@ -861,6 +899,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.19.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.19.0
 [1.18.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.18.1
 [1.18.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.18.0
 [1.17.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.17.0
