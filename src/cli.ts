@@ -196,7 +196,7 @@ async function textDetail(cfg: Config, item: SourceItem): Promise<string> {
   const words = (await normalizeItem({ ...item })).wordsNormalized
   let taken = false
   try {
-    const existing = await readFile(transcriptFile(cfg.notesRoot, item), 'utf8')
+    const existing = await readFile(transcriptFile(cfg.notesRoot, item, { layout: cfg.layout }), 'utf8')
     taken = !existing.includes(`item_id: ${item.itemId}\n`)
   } catch {
     // Nincs ilyen jegyzet: a név szabad.
@@ -595,7 +595,12 @@ export async function commandRun(
     !flags.force &&
     (store.isDone(unit.item.itemId, unitKind(unit)) ||
       (unit.recipe?.publishable === true &&
-        existsSync(noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile))))
+        existsSync(
+          noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile, {
+            layout: cfg.layout,
+            pinnedDir: store.noteDirOf(unit.item.itemId),
+          }),
+        )))
 
   let wroteBack = false
   /**
@@ -926,6 +931,7 @@ export async function commandRun(
       }
       const outcome = await processItem(unit.item, {
         notesRoot: cfg.notesRoot,
+        layout: cfg.layout,
         store,
         sink: printing,
         version: VERSION,

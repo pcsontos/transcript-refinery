@@ -11,6 +11,11 @@ vault:
   path: /Users/valaki/vault
   # A jegyzetek gyökere a vaulton belül. Elhagyható; ez az alapértelmezés.
   notes_dir: Inbox/transcript-refinery
+  # Az elemenkénti mappa a jegyzetgyökéren belül: <forrás>/<sablon>/. Csak
+  # {mező} szegmensek, `/`-lel elválasztva; ismert mezők: item_id, title,
+  # channel, video_id, uploaded. A hiányzó mező szegmense kimarad. Elhagyható;
+  # ez az alapértelmezés. Az elem mappája az első kimenetnél rögzül.
+  layout: "{channel}/{item_id}"
 
 # Feliratmappák. Az app rekurzívan minden .srt és .vtt fájlt felszed alattuk,
 # és nem érdekli, mi állította elő őket. A mappa **neve** (az útvonal utolsó

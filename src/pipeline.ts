@@ -26,7 +26,7 @@ import type { StateStore } from './state/db.js'
 import type { NormalizedTranscript, SourceItem } from './types.js'
 import { lintVaultMarkdown } from './vault/lint.js'
 import { noteBody, type NoteBody } from './vault/note-body.js'
-import { noteFile } from './vault/paths.js'
+import { noteFile, type NoteFileOptions } from './vault/paths.js'
 import { exists, publishNote, type PublishOptions } from './vault/publish.js'
 import { renderRecipeNote, renderTranscriptNote, type NoteOrigin } from './vault/render.js'
 
@@ -43,6 +43,8 @@ export interface RecipeDeps {
 
 export interface PipelineDeps {
   notesRoot: string
+  /** A `vault.layout` sablon; hiányában az alapértelmezett. */
+  layout?: string
   store: StateStore
   sink: EventSink
   version: string
@@ -196,6 +198,11 @@ async function readSourceNote(
   return noteBody(markdown)
 }
 
+/** Az elem célútjának beállításai: a sablon, és az elem már rögzített mappája. */
+function placement(deps: PipelineDeps, item: SourceItem): NoteFileOptions {
+  return { layout: deps.layout, pinnedDir: deps.store.noteDirOf(item.itemId) }
+}
+
 /** A 6. csővezeték-lépés: recept futtatása és publikálása. */
 async function runRecipe(
   item: SourceItem,
@@ -209,7 +216,7 @@ async function runRecipe(
   // fizetünk. A `force` felülírja a fájlt, ezért ott a hívás is kell. A fájlt
   // nem a pipeline írta, ezért nem kerül a commitra várók közé.
   if (recipe.publishable && !deps.options.force) {
-    const target = noteFile(deps.notesRoot, item, recipe.outputFile)
+    const target = noteFile(deps.notesRoot, item, recipe.outputFile, placement(deps, item))
     if (await exists(target)) {
       if (!deps.options.dryRun) {
         deps.store.recordArtifact(item.itemId, recipe.id, 'done', target, null)
@@ -361,7 +368,7 @@ async function runRecipe(
     throw new Error(`a jegyzet megsérti a vault írási szabályait: ${lintErrors.join('; ')}`)
   }
 
-  const target = noteFile(deps.notesRoot, item, recipe.outputFile)
+  const target = noteFile(deps.notesRoot, item, recipe.outputFile, placement(deps, item))
   const published = await publishNote(target, markdown, deps.options)
 
   if (!deps.options.dryRun) {
@@ -453,7 +460,7 @@ export async function processItem(
 
     if (kellAtirat) {
       outcome = await publishRendered(
-        noteFile(deps.notesRoot, item, '_transcript.md'),
+        noteFile(deps.notesRoot, item, '_transcript.md', placement(deps, item)),
         renderTranscriptNote(item, transcript, version, deps.origin),
         item,
         ARTIFACT_KIND,

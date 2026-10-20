@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { noteFile, transcriptFile } from './paths.js'
+import { DEFAULT_LAYOUT, layoutError, noteFile, transcriptFile } from './paths.js'
 import type { SourceItem } from '../types.js'
 
 const item = (overrides: Partial<SourceItem> = {}): SourceItem => {
@@ -23,43 +23,63 @@ const item = (overrides: Partial<SourceItem> = {}): SourceItem => {
 }
 
 describe('noteFile', () => {
-  it('a forrás nevét és a forráson belüli mappát tükrözi', () => {
-    expect(noteFile('/v/Inbox/transcript-refinery', item(), '_transcript.md')).toBe(
-      '/v/Inbox/transcript-refinery/youtube/3Blue1Brown/Transformers_transcript.md',
+  const withChannel = (extra: Partial<SourceItem['metadata']> = {}) =>
+    item({ metadata: { channel: '3Blue1Brown', ...extra } })
+
+  it('csatornával: forrás/csatorna/item_id/alapnév', () => {
+    expect(noteFile('/v/gy', withChannel(), '_transcript.md')).toBe(
+      '/v/gy/youtube/3Blue1Brown/a1b2c3/Transformers_transcript.md',
+    )
+  })
+
+  it('csatorna nélkül: forrás/item_id/alapnév', () => {
+    expect(noteFile('/v/gy', item(), '_transcript.md')).toBe(
+      '/v/gy/youtube/a1b2c3/Transformers_transcript.md',
+    )
+  })
+
+  it('a csak szóközt tartalmazó csatorna is hiányzik', () => {
+    expect(noteFile('/v/gy', withChannel({ channel: '  ' }), '_transcript.md')).toBe(
+      '/v/gy/youtube/a1b2c3/Transformers_transcript.md',
     )
   })
 
   it('a fájlnevet az alapnévből képzi, nem a metaadat címéből', () => {
-    const path = noteFile('/v/gyökér', item({ title: 'Egészen más cím' }), '_transcript.md')
+    const path = noteFile('/v/gy', item({ title: 'Egészen más cím' }), '_transcript.md')
     expect(path.endsWith('/Transformers_transcript.md')).toBe(true)
   })
 
-  it('metaadattal és nélküle ugyanoda ír', () => {
-    const withMeta = item({ metadata: { videoId: 'q6p', channel: 'Cs', url: 'https://x' } })
-    expect(noteFile('/v/gy', withMeta, '_transcript.md')).toBe(
-      noteFile('/v/gy', item(), '_transcript.md'),
+  it('a pinnedDir felülírja a sablont', () => {
+    expect(noteFile('/v/gy', withChannel(), '_notes.md', { pinnedDir: '/v/gy/régi/mappa' })).toBe(
+      '/v/gy/régi/mappa/Transformers_notes.md',
     )
   })
 
-  it('a forrás gyökerében álló feliratot nem teszi almappába', () => {
-    expect(noteFile('/v/gy', item({ sourceFile: 'Egy.en.srt' }), '_transcript.md')).toBe(
-      '/v/gy/youtube/Egy_transcript.md',
+  it('a megadott sablont használja', () => {
+    expect(noteFile('/v/gy', withChannel({ videoId: 'q6p' }), '_x.md', { layout: '{video_id}' })).toBe(
+      '/v/gy/youtube/q6p/Transformers_x.md',
     )
-  })
-
-  it('a mélyebb mappaszerkezetet is tükrözi', () => {
-    const deep = item({ sourceFile: 'a/b/c/Mély.en.srt', baseName: 'Mély' })
-    expect(noteFile('/v/gy', deep, '_transcript.md')).toBe('/v/gy/youtube/a/b/c/Mély_transcript.md')
   })
 
   it('a fájlrendszerre veszélyes karaktereket minden szegmensben cseréli', () => {
-    const risky = item({ source: 'a:b', sourceFile: 'c?d/E*F.en.srt', baseName: 'E*F' })
-    const path = noteFile('/v/gy', risky, '_transcript.md')
-    expect(path).toBe('/v/gy/a：b/c？d/E＊F_transcript.md')
+    const risky = item({ source: 'a:b', baseName: 'E*F', metadata: { channel: 'c?d' } })
+    expect(noteFile('/v/gy', risky, '_transcript.md')).toBe('/v/gy/a：b/c？d/a1b2c3/E＊F_transcript.md')
   })
 
   it('a recept utótagját változatlanul fűzi hozzá', () => {
     expect(noteFile('/v/gy', item(), '_summary.md').endsWith('Transformers_summary.md')).toBe(true)
+  })
+})
+
+describe('layoutError', () => {
+  it('az elírt mezőnevet megnevezi', () => {
+    expect(layoutError('{chanel}/{item_id}')).toContain('{chanel}')
+  })
+  it('a nem {mező} szegmens hiba', () => {
+    expect(layoutError('videos/{item_id}')).not.toBeNull()
+  })
+  it('az alapértelmezés érvényes', () => {
+    expect(layoutError(DEFAULT_LAYOUT)).toBeNull()
   })
 })
 

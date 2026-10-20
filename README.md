@@ -71,8 +71,8 @@ A terv nem feltevéseken áll, hanem egy valós, 153 videós korpusz végigmér�
 A `scan` felderíti a konfigurált feliratmappák elemeit — metaadatfájl
 nélkülieket is —, és hálózat nélkül kiírja mindegyikhez a forrást, a címet, a
 nyers és normalizált szószámot és a felirat-minőséget. A `run` átiratot
-készít, és a vault `Inbox/transcript-refinery/<forrás>/` fája alá írja, a
-forrásmappa szerkezetét tükrözve: nulla duplikált sor, érvényes frontmatter
+készít, és a vault `Inbox/transcript-refinery/<forrás>/<csatorna>/<elem azonosítója>/`
+mappájába írja (a sablon a `vault.layout`-tal állítható): nulla duplikált sor, érvényes frontmatter
 metaadat nélkül is, nulla wikilink. Másodszor futtatva nem ír semmit. Sérült feliratfájl nem állítja meg
 a futást, a záró riport megnevezi a hibás elemet és az okát. Recept nélkül ez
 bit-azonos a Fázis 0 kimenetével — a Fázis 1 ezt nem törte el.

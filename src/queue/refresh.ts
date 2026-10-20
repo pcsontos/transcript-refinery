@@ -97,6 +97,7 @@ export async function refreshQueue(
         items: new Map(items.map((item) => [item.itemId, item] as const)),
         registry,
         notesRoot: cfg.notesRoot,
+        layout: cfg.layout,
         artifactOf: (itemId, kind) => store?.artifactOf(itemId, kind) ?? null,
         exists: existsSync,
       }),

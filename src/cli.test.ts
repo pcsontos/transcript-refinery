@@ -1108,7 +1108,7 @@ const HAROM_KARTYA = [
 
 /** A kártyajegyzet útvonala a vaultban, a `makeVideo` mappaszerkezetéhez. */
 const kartyaJegyzet = (notesRoot: string) =>
-  join(notesRoot, 'downloads', 'youtube', 'Csatorna A', 'Első videó_flashcards.md')
+  join(notesRoot, 'downloads', 'Csatorna A', 'a1', 'Első videó_flashcards.md')
 
 describe('commandRun — a kártyarecept a vaultban', () => {
   it('minden kártya `##` fejléc plusz bekezdés, és a frontmatter megnevezi a receptet', async () => {
@@ -1221,7 +1221,7 @@ describe('commandRun — a kártyarecept a vaultban', () => {
 
 /** A Q&A jegyzet útvonala a vaultban, a `makeVideo` mappaszerkezetéhez. */
 const qaJegyzet = (notesRoot: string) =>
-  join(notesRoot, 'downloads', 'youtube', 'Csatorna A', 'Első videó_qa.md')
+  join(notesRoot, 'downloads', 'Csatorna A', 'a1', 'Első videó_qa.md')
 
 const QA_KIMENET = '**Mit magyaráz a beszélő?**\n\nAz A fogalmat, majd a B-t.\n'
 

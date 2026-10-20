@@ -159,6 +159,8 @@ export interface StateStore {
     pendingCommit?: boolean,
   ): void
   artifactOf(itemId: string, kind: string): ArtifactRecord | null
+  /** Az elem bármely kimenetének mappája (abszolút), vagy `null`. Ez rögzíti az elem mappáját. */
+  noteDirOf(itemId: string): string | null
   /** A `done` sorok nem üres útja, abszolútként. */
   trackedPaths(): { itemId: string; kind: string; path: string }[]
   /** Egy kész jegyzet új útja (abszolút; a határ relatívvá alakítja). */
@@ -385,6 +387,15 @@ export function openState(path: string, vaultPath?: string): StateStore {
           )
           .all() as { item_id: string; kind: string; path: string }[]
       ).map((r) => ({ itemId: r.item_id, kind: r.kind, path: fromStored(vaultPath, r.path) }))
+    },
+
+    noteDirOf(itemId) {
+      const row = db
+        .prepare(
+          "SELECT path FROM artifacts WHERE item_id = ? AND status = 'done' AND path IS NOT NULL AND path != '' ORDER BY created_at LIMIT 1",
+        )
+        .get(itemId) as { path: string } | undefined
+      return row === undefined ? null : dirname(fromStored(vaultPath, row.path))
     },
 
     movePath(itemId, kind, path) {

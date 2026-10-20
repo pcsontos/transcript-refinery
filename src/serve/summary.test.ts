@@ -53,7 +53,7 @@ function gitWith(push: typeof gitPush = gitPush) {
   return { pull: gitPullFfOnly, commit: gitCommitPaths, push }
 }
 
-const TRANSCRIPT = 'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md'
+const TRANSCRIPT = 'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md'
 
 async function scene(costLimitUsd = 5, modelExtra: Record<string, unknown> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'refinery-summary-'))
@@ -129,8 +129,8 @@ describe('runRecipes', () => {
     )
     const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
     expect(names.split('\n').filter(Boolean).sort()).toEqual([
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_summary.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md',
     ].sort())
     expect(execFileSync('git', ['log', '-2', '--format=%s'], { cwd: vault, encoding: 'utf8' }).trim().split('\n')).toEqual([
       'docs(transcript-refinery): summary | Beszéd [abcdefghijk]',
@@ -163,8 +163,8 @@ describe('runRecipes', () => {
     const run = (createClient: RunRuntime['createClient']) =>
       runRecipes({ videoId: id, recipes: ['summary'], outDir, createClient, load, git: gitWith() })
     const result = await run(() => client(calls))
-    expect(result).toEqual({ ok: true, noteUrl: `Inbox/transcript-refinery/telegram/Beszéd [${id}]_transcript.md` })
-    const note = await readFile(join(vault, `Inbox/transcript-refinery/telegram/Beszéd [${id}]_summary.md`), 'utf8')
+    expect(result).toEqual({ ok: true, noteUrl: `Inbox/transcript-refinery/telegram/${id}/Beszéd [${id}]_transcript.md` })
+    const note = await readFile(join(vault, `Inbox/transcript-refinery/telegram/${id}/Beszéd [${id}]_summary.md`), 'utf8')
     expect(note).toMatch(new RegExp(`item_id: "?${id}"?\\n`))
     expect(note).toContain('origin: telegram\n')
     // A cím az info.json tiszta címe, a belső fájlnév utótagja és kiterjesztése nem szivároghat be.
@@ -226,8 +226,8 @@ describe('runRecipes', () => {
     })
     expect(names).not.toContain('zzzzzzzzzzz')
     expect(names.split('\n').filter(Boolean).sort()).toEqual([
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_summary.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md',
     ].sort())
   })
 
@@ -259,7 +259,7 @@ describe('runRecipes', () => {
     })
     expect(result.ok).toBe(true)
     for (const kind of ['transcript', 'summary']) {
-      const note = await readFile(join(vault, 'Inbox/transcript-refinery/telegram', `Beszéd [${ID}]_${kind}.md`), 'utf8')
+      const note = await readFile(join(vault, 'Inbox/transcript-refinery/telegram', ID, `Beszéd [${ID}]_${kind}.md`), 'utf8')
       expect(note).toContain('origin: telegram\n')
     }
   })
@@ -296,8 +296,8 @@ describe('runRecipes', () => {
     expect(result).toEqual({ ok: false, error: 'A push nem sikerült, a commit lokálisan maradt.' })
     const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
     expect(names.split('\n').filter(Boolean).sort()).toEqual([
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_summary.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md',
     ].sort())
   })
 
@@ -336,7 +336,7 @@ describe('runRecipes', () => {
       git: gitWith(),
     })
     expect(result).toEqual({ ok: false, error: 'szimulált hiba' })
-    const transcript = join(vault, 'Inbox/transcript-refinery/telegram', `Beszéd [${ID}]_transcript.md`)
+    const transcript = join(vault, 'Inbox/transcript-refinery/telegram', ID, `Beszéd [${ID}]_transcript.md`)
     expect(execFileSync('git', ['cat-file', '-e', `HEAD:${transcript.slice(vault.length + 1)}`], { cwd: vault, encoding: 'utf8' })).toBe('')
   })
 
@@ -398,9 +398,9 @@ describe('runRecipes', () => {
     expect(calls.generate).toBe(2)
     const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
     expect(names.split('\n').filter(Boolean).sort()).toEqual([
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_qa.md',
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary.md',
-      'Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_qa.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_summary.md',
+      'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md',
     ].sort())
   })
 
@@ -416,7 +416,7 @@ describe('runRecipes', () => {
     expect(result.ok).toBe(true)
     expect(german.generate).toBe(1)
     const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
-    expect(names).toContain('Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_summary-de.md')
+    expect(names).toContain('Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_summary-de.md')
   })
 
   it('a videó saját nyelvére kért fordítás a kihagyás okát adja', async () => {
@@ -461,7 +461,7 @@ describe('runRecipes', () => {
       .split('\n')
       .filter(Boolean)
     expect(names).toHaveLength(2)
-    expect(names).toContain('Inbox/transcript-refinery/telegram/Beszéd [abcdefghijk]_transcript.md')
+    expect(names).toContain('Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md')
   })
 })
 

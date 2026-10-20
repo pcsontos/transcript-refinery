@@ -4,13 +4,11 @@ import { commandRun, type RunRuntime } from '../cli.js'
 import { loadCliConfig, type Config } from '../config.js'
 import { progressText, type RunEvent as CoreEvent } from '../events.js'
 import type { LanguageTag } from '../lang/identify.js'
-import { recipesFor } from '../recipe/registry.js'
 import { discoverAll, splitSubtitleName } from '../source/folder.js'
 import { isTextItemId, TEXT_EXTENSIONS } from '../source/text.js'
-import type { SourceItem } from '../types.js'
+import { openState } from '../state/db.js'
 import { noteCommitMessage } from '../vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
-import { noteFile } from '../vault/paths.js'
 import type { CallbackBody, RecipesOutcome } from './job.js'
 
 type SummaryGit = {
@@ -170,22 +168,16 @@ export async function runRecipes(input: {
     })
   const parsed =
     fileName === undefined ? null : (splitSubtitleName(fileName) ?? splitSubtitleName(fileName, TEXT_EXTENSIONS))
-  let transcriptPath: string | null = null
-  const notePaths: string[] = []
-  if (fileName !== undefined && parsed !== null) {
-    const item: SourceItem = {
-      itemId: input.videoId,
-      source: basename(input.outDir),
-      sourceFile: fileName,
-      subtitlePath: join(input.outDir, fileName),
-      baseName: parsed.base,
-      title: parsed.base,
-      language: parsed.language,
-      metadata: {},
-    }
-    const registry = recipesFor(cfg)
-    transcriptPath = noteFile(cfg.notesRoot, item, '_transcript.md')
-    for (const id of ids) notePaths.push(noteFile(cfg.notesRoot, item, registry[id]!.outputFile))
+  // A commitolandó utak a tárból jönnek, nem újraszámolásból: az elem mappája az első kimenetnél rögzül.
+  const store = openState(cfg.statePath, cfg.vaultPath)
+  let transcriptPath: string | null
+  let notePaths: (string | null)[]
+  try {
+    const stored = (kind: string): string | null => store.artifactOf(input.videoId, kind)?.path ?? null
+    transcriptPath = stored('transcript')
+    notePaths = ids.map(stored)
+  } finally {
+    store.close()
   }
   if (transcriptPath !== null && parsed !== null) {
     // A cím az info.json-ból jön, ha a letöltés írt ilyet; különben a fájl alapneve.
@@ -194,7 +186,7 @@ export async function runRecipes(input: {
     // Jegyzetenként külön commit, az üzenetben a fajtával: az átirat elöl, utána a receptek.
     const kinds = ['transcript', ...ids]
     for (const [index, path] of [transcriptPath, ...notePaths].entries()) {
-      if (await exists(path)) {
+      if (path !== null && (await exists(path))) {
         await git.commit(cfg.vaultPath, [path], noteCommitMessage(kinds[index]!, title, input.videoId))
       }
     }
@@ -208,7 +200,7 @@ export async function runRecipes(input: {
     const done: string[] = []
     for (const [index, id] of ids.entries()) {
       const path = notePaths[index]
-      if (!stalled.has(id) && path !== undefined && (await exists(path))) done.push(id)
+      if (!stalled.has(id) && path != null && (await exists(path))) done.push(id)
     }
     return { ok: false, error: firstLine([...stalled.values()][0]!), done }
   }
@@ -218,7 +210,7 @@ export async function runRecipes(input: {
   }
   if (transcriptPath === null) return { ok: false, error: 'A jegyzet nem készült el.' }
   for (const path of notePaths) {
-    if (!(await exists(path))) return { ok: false, error: failureLine(events, 'A jegyzet nem készült el.') }
+    if (path === null || !(await exists(path))) return { ok: false, error: failureLine(events, 'A jegyzet nem készült el.') }
   }
   // A vaulton belüli út forge-független: a Worker nem olvassa, csak eltárolja.
   const noteUrl = relative(cfg.vaultPath, transcriptPath).split(sep).join('/')

@@ -4,6 +4,7 @@ import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 import type { ModelRole } from './types.js'
 import { LANGUAGE_NAMES, type LanguageTag } from './lang/identify.js'
+import { DEFAULT_LAYOUT, layoutError } from './vault/paths.js'
 
 /** A konfigurációs fájl alapértelmezett neve a projekt gyökerében. */
 export const CONFIG_FILENAME = 'refinery.config.yaml'
@@ -73,6 +74,13 @@ const CoreSchema = z.object({
   vault: z.object({
     path: absolutePath('vault.path'),
     notes_dir: z.string().min(1).default(DEFAULT_NOTES_DIR),
+    layout: z
+      .string()
+      .default(DEFAULT_LAYOUT)
+      .superRefine((layout, ctx) => {
+        const error = layoutError(layout)
+        if (error !== null) ctx.addIssue({ code: 'custom', message: error })
+      }),
   }),
   sources: z
     .array(absolutePath('sources eleme'))
@@ -107,6 +115,8 @@ export interface Config {
   configPath: string
   vaultPath: string
   notesRoot: string
+  /** A jegyzetek elemenkénti mappájának sablonja (`vault.layout`). */
+  layout: string
   sources: SourceDir[]
   /** Nyelvi preferencia-sorrend; üres lista esetén a determinisztikus tartalék dönt. */
   languages: string[]
@@ -177,6 +187,7 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
     configPath,
     vaultPath: c.vault.path,
     notesRoot: join(c.vault.path, c.vault.notes_dir),
+    layout: c.vault.layout,
     sources: c.sources.map((p) => ({ name: basename(p), path: p })),
     languages: c.languages,
     statePath: resolve(baseDir, c.state.path),

@@ -444,6 +444,15 @@ describe('relatív utak az állapottár határán', () => {
     s.close()
   })
 
+  it('noteDirOf egy kész kimenet mappáját adja, kimenet nélkül null', () => {
+    const s = openState(dbPath, '/v')
+    s.recordItem(item())
+    expect(s.noteDirOf('a1b2c3')).toBeNull()
+    s.recordArtifact('a1b2c3', 'transcript', 'done', '/v/Inbox/cs/a1b2c3/x_transcript.md', null)
+    expect(s.noteDirOf('a1b2c3')).toBe('/v/Inbox/cs/a1b2c3')
+    s.close()
+  })
+
   it('vault nélkül a user_version 0 marad', () => {
     openState(dbPath).close()
     expect(userVersion()).toBe(0)

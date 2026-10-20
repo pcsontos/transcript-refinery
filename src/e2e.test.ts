@@ -126,8 +126,12 @@ describe('végponttól végpontig', () => {
     const { written, notesRoot: root } = await processAll([subsA])
 
     expect(root).toBe(join(vault, DEFAULT_NOTES_DIR))
-    expect(written).toEqual([
-      join(root, 'youtube', '3Blue1Brown', 'Transformers_transcript.md'),
+    // Csatorna nélkül: forrás/item_id/alapnév.
+    expect(written).toHaveLength(1)
+    expect(relative(root, written[0]!).split('/')).toEqual([
+      'youtube',
+      expect.stringMatching(/^[0-9a-f]+$/),
+      'Transformers_transcript.md',
     ])
 
     const note = await readFile(written[0]!, 'utf8')
@@ -174,8 +178,8 @@ describe('végponttól végpontig', () => {
 
     const { written, notesRoot: root } = await processAll([subsA, subsB])
 
-    expect(written).toContain(join(root, 'youtube', 'A_transcript.md'))
-    expect(written).toContain(join(root, 'meetings', 'B_transcript.md'))
+    expect(written.some((p) => p.startsWith(join(root, 'youtube') + '/') && p.endsWith('/A_transcript.md'))).toBe(true)
+    expect(written.some((p) => p.startsWith(join(root, 'meetings') + '/') && p.endsWith('/B_transcript.md'))).toBe(true)
   })
 
   it('a notes_dir felülírja az alapértelmezett mappát, és az alapértelmezett létre sem jön', async () => {
