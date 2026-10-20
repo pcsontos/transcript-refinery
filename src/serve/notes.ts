@@ -93,7 +93,7 @@ function shown(value: unknown): string {
   return JSON.stringify(value) ?? ''
 }
 
-function frontmatter(source: string): Record<string, unknown> | null {
+export function frontmatter(source: string): Record<string, unknown> | null {
   const match = FRONTMATTER.exec(source)
   if (match === null) return null
   try {
@@ -140,7 +140,7 @@ const HEAD_LIMIT = 1024 * 1024
  * A fájl eleje a frontmatter végéig. A jegyzet törzse (egy átirat több száz KB
  * is lehet) nem kell a listához, ezért nem olvassuk be.
  */
-async function readHead(path: string): Promise<string> {
+export async function readHead(path: string): Promise<string> {
   const handle = await open(path, 'r')
   try {
     const chunks: Buffer[] = []
