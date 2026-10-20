@@ -159,6 +159,10 @@ export interface StateStore {
     pendingCommit?: boolean,
   ): void
   artifactOf(itemId: string, kind: string): ArtifactRecord | null
+  /** A `done` sorok nem üres útja, abszolútként. */
+  trackedPaths(): { itemId: string; kind: string; path: string }[]
+  /** Egy kész jegyzet új útja (abszolút; a határ relatívvá alakítja). */
+  movePath(itemId: string, kind: string, path: string): void
   /**
    * Minden még commitra váró műtermék útvonala, rögzítés sorrendjében —
    * FÜGGETLENÜL attól, hogy a hívó futás mely elemeket válogatta be. Egy
@@ -371,6 +375,24 @@ export function openState(path: string, vaultPath?: string): StateStore {
 
     artifactOf(itemId, kind) {
       return selectArtifact(db, itemId, kind, vaultPath)
+    },
+
+    trackedPaths() {
+      return (
+        db
+          .prepare(
+            "SELECT item_id, kind, path FROM artifacts WHERE status = 'done' AND path IS NOT NULL AND path != '' ORDER BY item_id, kind",
+          )
+          .all() as { item_id: string; kind: string; path: string }[]
+      ).map((r) => ({ itemId: r.item_id, kind: r.kind, path: fromStored(vaultPath, r.path) }))
+    },
+
+    movePath(itemId, kind, path) {
+      db.prepare('UPDATE artifacts SET path = ? WHERE item_id = ? AND kind = ?').run(
+        toStored(vaultPath, path),
+        itemId,
+        kind,
+      )
     },
 
     listPendingCommits() {

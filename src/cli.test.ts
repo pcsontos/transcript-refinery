@@ -12,7 +12,7 @@ import {
   commandScanQueue,
   main,
 } from './cli.js'
-import { loadConfig, loadModelConfig } from './config.js'
+import { loadConfig, loadModelConfig, type Config } from './config.js'
 import type { RunEvent } from './events.js'
 import { COMMANDS, helpText, overview } from './help.js'
 import { VERSION } from './meta.js'
@@ -3084,5 +3084,53 @@ describe('commandRun — életjel a terminálon', () => {
 
   it('az életjel-időköznél rövidebb recept nem ír életjelsort', async () => {
     expect(await futtat(undefined, 50)).toEqual([])
+  })
+})
+
+describe('áthelyezett jegyzetek követése', () => {
+  /** Egy kész átirat a régi helyén a tárban, a jegyzet viszont már az Uj/ alatt van. */
+  async function elmozdult() {
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+    const regi = join(cfg.vaultPath, 'Regi', 'a.md')
+    const uj = join(cfg.vaultPath, 'Uj', 'a.md')
+    await mkdir(dirname(uj), { recursive: true })
+    await writeFile(uj, '---\nitem_id: a1\n---\ntörzs\n', 'utf8')
+    const pre = openState(cfg.statePath, cfg.vaultPath)
+    pre.recordItem({
+      itemId: 'a1', source: 'downloads', sourceFile: 'f', subtitlePath: '/s/f', baseName: 'f',
+      title: 't', language: 'en', metadata: {},
+    })
+    pre.recordArtifact('a1', 'transcript', 'done', regi, null)
+    pre.close()
+    return { cfg, regi, uj }
+  }
+  const pathOf = (cfg: Config): string | null | undefined => {
+    const store = openState(cfg.statePath, cfg.vaultPath)
+    try {
+      return store.artifactOf('a1', 'transcript')?.path
+    } finally {
+      store.close()
+    }
+  }
+
+  it('a scan jelenti az elmozdulást, de nem ír', async () => {
+    const { cfg, regi } = await elmozdult()
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await commandScan(cfg)
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    naplo.mockRestore()
+    expect(pathOf(cfg)).toBe(regi)
+  })
+
+  it('a run --dry-run nem írja át, a run igen', async () => {
+    const { cfg, uj, regi } = await elmozdult()
+    const raw = rawWithVault(5)
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await commandRun(cfg, raw, { dryRun: true, force: false, commit: false })
+    expect(pathOf(cfg)).toBe(regi)
+    await commandRun(cfg, raw, { dryRun: false, force: false, commit: false })
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    naplo.mockRestore()
+    expect(pathOf(cfg)).toBe(uj)
   })
 })

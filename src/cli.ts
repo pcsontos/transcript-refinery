@@ -69,6 +69,7 @@ import { writeFileAtomic } from './vault/atomic.js'
 import { commitPending } from './vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 import { noteFile, transcriptFile } from './vault/paths.js'
+import { relinkNotes } from './vault/relink.js'
 import type { NoteOrigin } from './vault/render.js'
 import { readItems, type CellStatus } from './view/items.js'
 import {
@@ -228,6 +229,14 @@ export async function commandScan(cfg: Config, adHoc?: AdHoc): Promise<number> {
     console.log(`  ${item.source}  ${item.itemId}  ${item.title}`)
     console.log(`      ${item.sourceFile}`)
     console.log(`      ${detail}`)
+  }
+  if (existsSync(cfg.statePath)) {
+    const store = openState(cfg.statePath, cfg.vaultPath)
+    try {
+      for (const line of await relinkNotes(store, cfg.vaultPath, false)) console.log(line)
+    } finally {
+      store.close()
+    }
   }
   return 0
 }
@@ -536,6 +545,7 @@ export async function commandRun(
   }
 
   const store = openState(cfg.statePath, cfg.vaultPath)
+  for (const line of await relinkNotes(store, cfg.vaultPath, !flags.dryRun)) console.log(line)
 
   const startedAt = new Date()
   // Ütközésmentes név: két azonos másodpercben induló futás nem írhat

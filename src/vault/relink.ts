@@ -1,6 +1,8 @@
+import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join, relative } from 'node:path'
 import { frontmatter, readHead } from '../serve/notes.js'
+import type { StateStore } from '../state/db.js'
 
 /** Egy jegyzet a vaultban, a frontmatteréből. */
 export interface FoundNote {
@@ -81,4 +83,17 @@ export function describeRelink(report: RelinkReport, vaultPath: string): string[
       (c) => `ütközés: ${c.itemId} ${c.kind}: ${c.candidates.map(rel).join(', ')}`,
     ),
   ]
+}
+
+/** Bejár, összevet, és ha `apply`, a `moved` utakat átírja. A jelentés sorait adja. */
+export async function relinkNotes(
+  store: StateStore,
+  vaultPath: string,
+  apply: boolean,
+): Promise<string[]> {
+  const tracked = store.trackedPaths()
+  if (tracked.length === 0 || !existsSync(vaultPath)) return []
+  const report = planRelink(tracked, await findNotes(vaultPath), existsSync)
+  if (apply) for (const m of report.moved) store.movePath(m.itemId, m.kind, m.to)
+  return describeRelink(report, vaultPath)
 }

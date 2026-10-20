@@ -432,6 +432,18 @@ describe('relatív utak az állapottár határán', () => {
     expect(userVersion()).toBe(1)
   })
 
+  it('trackedPaths a done sorokat adja abszolútként, movePath átírja', () => {
+    const s = openState(dbPath, '/v')
+    s.recordItem(item())
+    s.recordArtifact('a1b2c3', 'transcript', 'done', '/v/Inbox/a.md', null)
+    s.recordArtifact('a1b2c3', 'notes', 'failed', null, 'hiba')
+    expect(s.trackedPaths()).toEqual([{ itemId: 'a1b2c3', kind: 'transcript', path: '/v/Inbox/a.md' }])
+    s.movePath('a1b2c3', 'transcript', '/v/Masik/a.md')
+    expect(s.artifactOf('a1b2c3', 'transcript')?.path).toBe('/v/Masik/a.md')
+    expect(rawPaths('artifacts')).toEqual([null, 'Masik/a.md'])
+    s.close()
+  })
+
   it('vault nélkül a user_version 0 marad', () => {
     openState(dbPath).close()
     expect(userVersion()).toBe(0)

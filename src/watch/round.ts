@@ -10,6 +10,7 @@ import type { SourceItem } from '../types.js'
 import { writeFileAtomic } from '../vault/atomic.js'
 import { commitPending } from '../vault/commit.js'
 import { gitHeadShort, gitPullFfOnly, gitPush } from '../vault/git.js'
+import { relinkNotes } from '../vault/relink.js'
 
 export interface RoundOptions {
   cfg: Config
@@ -52,6 +53,7 @@ export async function watchRound(opts: RoundOptions): Promise<RoundResult> {
   const discovered = await discoverAll(sources, cfg.languages)
   const store = openState(cfg.statePath, cfg.vaultPath)
   try {
+    for (const line of await relinkNotes(store, cfg.vaultPath, true)) out(line)
     let transcripts = 0
     let failed = 0
     for (const item of discovered) {

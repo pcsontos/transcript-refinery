@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { findNotes, noteKey, planRelink, type FoundNote, type Tracked } from './relink.js'
+import { openState } from '../state/db.js'
+import { findNotes, noteKey, planRelink, relinkNotes, type FoundNote, type Tracked } from './relink.js'
 
 const tracked = (path: string): Tracked => ({ itemId: 'a1', kind: 'transcript', path })
 const found = (path: string, fields: Record<string, unknown> = { item_id: 'a1' }): FoundNote => ({
@@ -64,5 +65,33 @@ describe('findNotes', () => {
     const notes = await findNotes(dir)
     expect(notes.map((n) => n.path)).toEqual([join(dir, 'a/b/n.md')])
     expect(notes[0]!.fields.item_id).toBe('x1')
+  })
+})
+
+describe('relinkNotes', () => {
+  let dir: string
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'refinery-relink-'))
+  })
+  afterEach(() => rm(dir, { recursive: true, force: true }))
+
+  it('scan-módban jelent, apply-módban átírja a tárat', async () => {
+    const vault = join(dir, 'vault')
+    await mkdir(join(vault, 'Uj'), { recursive: true })
+    await writeFile(join(vault, 'Uj/a.md'), '---\nitem_id: a1\n---\n')
+    const store = openState(join(dir, 'state.db'), vault)
+    store.recordItem({
+      itemId: 'a1', source: 's', sourceFile: 'f', subtitlePath: '/s/f', baseName: 'f',
+      title: 't', language: 'en', metadata: {},
+    })
+    store.recordArtifact('a1', 'transcript', 'done', join(vault, 'Regi/a.md'), null)
+
+    expect(await relinkNotes(store, vault, false)).toEqual(['áthelyezve: Regi/a.md → Uj/a.md'])
+    expect(store.artifactOf('a1', 'transcript')?.path).toBe(join(vault, 'Regi/a.md'))
+
+    await relinkNotes(store, vault, true)
+    expect(store.artifactOf('a1', 'transcript')?.path).toBe(join(vault, 'Uj/a.md'))
+    expect(await relinkNotes(store, vault, true)).toEqual([])
+    store.close()
   })
 })
