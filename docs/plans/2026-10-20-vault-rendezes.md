@@ -236,7 +236,7 @@ noteDirOf(itemId: string): string | null
 
 - [ ] **1. lépés:** PR a `feat/vault-rendezes` ágról, `Closes #273, #275, #276`; `gh pr checks` zöld; merge után kiadás a bevált menettel (v1.20.0).
 - [ ] **2. lépés (telepítés a peter-mba-n):** a `serve` leállítása → `mv tmp/serve-out tmp/telegram` → ha a `SERVE_OUT` máshol (launchd, compose) is be van állítva, ott is átírni → `serve` indítása. Ellenőrzés: `GET /version` az új verziót adja.
-- [ ] **3. lépés (#275 éles):** az első `refinery scan` után az állapotfájl mellett van `.bak`, a `sqlite3 <állapotfájl> "select count(*) from artifacts where path like '/%'"` → 0 (vagy a kiírt, vaulton kívüli sorok száma). A webes elemoldal mutatja egy jegyzet törzsét.
+- [ ] **3. lépés (#275 éles):** az első `refinery run` (a `scan` nem migrál és nem ír) után az állapotfájl mellett van `.bak`, a `sqlite3 <állapotfájl> "select count(*) from artifacts where path like '/%'"` → 0 (vagy a kiírt, vaulton kívüli sorok száma). A webes elemoldal mutatja egy jegyzet törzsét.
 - [ ] **4. lépés (#273 éles):** a pinchflat-minta duplikátum kézi törlése a vaultból; `scripts/move-notes.ts` próbafuttatása, átnézése, majd `--apply`; vault-commit; `refinery run` (recept nélkül is lefut a követés) → minden mozgatás `áthelyezve:` sorként jelenik meg; utána a `refinery scan` nem jelez elmozdulást.
 - [ ] **5. lépés (#276 éles):** egy jegyzetet Obsidianban másik mappába húzva a `scan` jelzi, a `run` frissíti; a webes elemoldal és a queue-link az új helyre mutat.
 - [ ] **6. lépés:** egy Telegramról kért új videó jegyzetei a `telegram/<csatorna>/<videóazonosító>/` alá kerülnek, és a vault-commit felveszi őket.

@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -3120,6 +3121,27 @@ describe('áthelyezett jegyzetek követése', () => {
     expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
     naplo.mockRestore()
     expect(pathOf(cfg)).toBe(regi)
+  })
+
+  it('a scan nem migrálja az állapottárat és nem készít .bak-ot', async () => {
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+    await mkdir(join(cfg.vaultPath, 'Uj'), { recursive: true })
+    await writeFile(join(cfg.vaultPath, 'Uj', 'a.md'), '---\nitem_id: a1\n---\n', 'utf8')
+    const pre = openState(cfg.statePath) // vault nélkül: abszolút utak, user_version 0
+    pre.recordItem({
+      itemId: 'a1', source: 'downloads', sourceFile: 'f', subtitlePath: '/s/f', baseName: 'f',
+      title: 't', language: 'en', metadata: {},
+    })
+    pre.recordArtifact('a1', 'transcript', 'done', join(cfg.vaultPath, 'Regi', 'a.md'), null)
+    pre.close()
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await commandScan(cfg)
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    naplo.mockRestore()
+    expect(existsSync(`${cfg.statePath}.bak`)).toBe(false)
+    const raw = new DatabaseSync(cfg.statePath, { readOnly: true })
+    expect((raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(0)
+    raw.close()
   })
 
   it('a run --dry-run nem írja át, a run igen', async () => {

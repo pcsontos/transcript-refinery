@@ -63,6 +63,7 @@ import {
   type AdHoc,
 } from './source/folder.js'
 import { openState } from './state/db.js'
+import { openStateReader } from './state/reader.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
@@ -230,12 +231,13 @@ export async function commandScan(cfg: Config, adHoc?: AdHoc): Promise<number> {
     console.log(`      ${item.sourceFile}`)
     console.log(`      ${detail}`)
   }
-  if (existsSync(cfg.statePath)) {
-    const store = openState(cfg.statePath, cfg.vaultPath)
+  // Csak olvasó kapcsolat: a scan nem migrál, nem készít .bak-ot, nem ír semmit.
+  const reader = openStateReader(cfg.statePath, cfg.vaultPath)
+  if (reader !== null) {
     try {
-      for (const line of await relinkNotes(store, cfg.vaultPath, false)) console.log(line)
+      for (const line of await relinkNotes(reader, cfg.vaultPath, false)) console.log(line)
     } finally {
-      store.close()
+      reader.close()
     }
   }
   return 0

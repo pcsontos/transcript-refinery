@@ -87,7 +87,7 @@ export function describeRelink(report: RelinkReport, vaultPath: string): string[
 
 /** Bejár, összevet, és ha `apply`, a `moved` utakat átírja. A jelentés sorait adja. */
 export async function relinkNotes(
-  store: StateStore,
+  store: Pick<StateStore, 'trackedPaths'> & Partial<Pick<StateStore, 'movePath'>>,
   vaultPath: string,
   apply: boolean,
 ): Promise<string[]> {
@@ -101,6 +101,6 @@ export async function relinkNotes(
     return [`követés kihagyva: ${(error as Error).message}`]
   }
   const report = planRelink(tracked, found, existsSync)
-  if (apply) for (const m of report.moved) store.movePath(m.itemId, m.kind, m.to)
+  if (apply) for (const m of report.moved) store.movePath?.(m.itemId, m.kind, m.to)
   return describeRelink(report, vaultPath)
 }

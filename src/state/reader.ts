@@ -18,6 +18,8 @@ export interface StateReader {
   readonly path: string
   items(): ItemRow[]
   artifacts(): ArtifactRow[]
+  /** A `done` sorok nem üres útja, abszolútként. */
+  trackedPaths(): { itemId: string; kind: string; path: string }[]
   /**
    * A rögzített hiánylista. `null`, ha nincs rögzítve — vagy ha az állapotfájlban
    * még nincs meg a tábla, mert a változás óta nem futott a CLI.
@@ -52,6 +54,10 @@ export function openStateReader(path: string, vaultPath?: string): StateReader |
     path,
     items: () => selectItemRows(db),
     artifacts: () => selectArtifactRows(db, vaultPath),
+    trackedPaths: () =>
+      selectArtifactRows(db, vaultPath).flatMap((r) =>
+        r.status === 'done' && r.path ? [{ itemId: r.itemId, kind: r.kind, path: r.path }] : [],
+      ),
     gapsOf: (itemId, kind) => (gapsTable ? selectGaps(db, itemId, kind) : null),
     corpusStatus: (items, kind) => selectCorpusStatus(db, items, kind),
     close() {
