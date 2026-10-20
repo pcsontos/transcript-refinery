@@ -99,14 +99,14 @@ describe('watchRound', () => {
     await round(null)
     const [regi] = await atiratok()
     const from = join(cfg.notesRoot, regi!)
-    const to = join(cfg.vaultPath, 'Mas', 'atirat.md')
+    const to = join(cfg.vaultPath, 'Mas', 'atirat_transcript.md')
     await mkdir(dirname(to), { recursive: true })
     await rename(from, to)
     lines = []
 
     await round(null)
 
-    expect(lines.some((l) => l.startsWith('áthelyezve: ') && l.endsWith('→ Mas/atirat.md'))).toBe(true)
+    expect(lines.some((l) => l.startsWith('áthelyezve: ') && l.endsWith('→ Mas/atirat_transcript.md'))).toBe(true)
     lines = []
     await round(null)
     expect(lines).toEqual([])
