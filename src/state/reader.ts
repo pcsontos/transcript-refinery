@@ -18,6 +18,8 @@ export interface StateReader {
   readonly path: string
   items(): ItemRow[]
   artifacts(): ArtifactRow[]
+  /** A `done` sorok nem üres útja, abszolútként. */
+  trackedPaths(): { itemId: string; kind: string; path: string }[]
   /**
    * A rögzített hiánylista. `null`, ha nincs rögzítve — vagy ha az állapotfájlban
    * még nincs meg a tábla, mert a változás óta nem futott a CLI.
@@ -41,7 +43,7 @@ export function openReadOnlyDatabase(path: string): DatabaseSync {
  * állít — ez az író dolga. Hiányzó fájlnál `null`: még nem futott semmi, ez nem
  * hiba.
  */
-export function openStateReader(path: string): StateReader | null {
+export function openStateReader(path: string, vaultPath?: string): StateReader | null {
   if (!existsSync(path)) return null
   const db = openReadOnlyDatabase(path)
   assertCurrentSchema(db, path)
@@ -51,7 +53,11 @@ export function openStateReader(path: string): StateReader | null {
   return {
     path,
     items: () => selectItemRows(db),
-    artifacts: () => selectArtifactRows(db),
+    artifacts: () => selectArtifactRows(db, vaultPath),
+    trackedPaths: () =>
+      selectArtifactRows(db, vaultPath).flatMap((r) =>
+        r.status === 'done' && r.path ? [{ itemId: r.itemId, kind: r.kind, path: r.path }] : [],
+      ),
     gapsOf: (itemId, kind) => (gapsTable ? selectGaps(db, itemId, kind) : null),
     corpusStatus: (items, kind) => selectCorpusStatus(db, items, kind),
     close() {

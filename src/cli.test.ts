@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,7 @@ import {
   commandScanQueue,
   main,
 } from './cli.js'
-import { loadConfig, loadModelConfig } from './config.js'
+import { loadConfig, loadModelConfig, type Config } from './config.js'
 import type { RunEvent } from './events.js'
 import { COMMANDS, helpText, overview } from './help.js'
 import { VERSION } from './meta.js'
@@ -246,7 +247,7 @@ describe('commandRun — a recept-becslés költségkapui', () => {
 
     expect(code).toBe(2)
 
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf(item!.itemId, 'summary')).toBeNull()
     store.close()
   })
@@ -267,7 +268,7 @@ describe('commandRun — a recept-becslés költségkapui', () => {
     // receptre —, mielőtt a `commandRun` a saját store-ját megnyitná. Ez
     // szimulálja a hibajelentésben leírt helyzetet: egy köteg, ami egyszer
     // már sikeresen lefutott.
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     pre.recordItem(item!)
     pre.recordArtifact(item!.itemId, 'transcript', 'done', '/valahol/_transcript.md', null)
     pre.recordArtifact(item!.itemId, recipe.id, 'done', null, null, {
@@ -413,7 +414,7 @@ describe('commandRun — napló és riport', () => {
     // egyenesen a generálásnál tart, amikor a jel érkezik, és a riportnak
     // pontosan egy elkészült elemet kell számolnia.
     const items = await folderSource({ name: 'downloads', path: downloads }, []).discover()
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     const masodik = items.find((i) => i.itemId === 'a2')!
     pre.recordItem(masodik)
     pre.recordArtifact('a2', 'transcript', 'done', join(vault, 'a2_transcript.md'), null)
@@ -653,7 +654,7 @@ describe('commandRun — --retry-failed', () => {
     const raw = rawWithVault(5)
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     for (const i of await folderSource({ name: 'downloads', path: downloads }, []).discover()) {
       pre.recordItem(i)
     }
@@ -706,7 +707,7 @@ describe('commandRun — --retry-failed', () => {
     const raw = rawWithVault(5)
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     for (const i of await folderSource({ name: 'downloads', path: downloads }, []).discover()) {
       pre.recordItem(i)
     }
@@ -1108,7 +1109,7 @@ const HAROM_KARTYA = [
 
 /** A kártyajegyzet útvonala a vaultban, a `makeVideo` mappaszerkezetéhez. */
 const kartyaJegyzet = (notesRoot: string) =>
-  join(notesRoot, 'downloads', 'youtube', 'Csatorna A', 'Első videó_flashcards.md')
+  join(notesRoot, 'downloads', 'Csatorna A', 'a1', 'Első videó_flashcards.md')
 
 describe('commandRun — a kártyarecept a vaultban', () => {
   it('minden kártya `##` fejléc plusz bekezdés, és a frontmatter megnevezi a receptet', async () => {
@@ -1221,7 +1222,7 @@ describe('commandRun — a kártyarecept a vaultban', () => {
 
 /** A Q&A jegyzet útvonala a vaultban, a `makeVideo` mappaszerkezetéhez. */
 const qaJegyzet = (notesRoot: string) =>
-  join(notesRoot, 'downloads', 'youtube', 'Csatorna A', 'Első videó_qa.md')
+  join(notesRoot, 'downloads', 'Csatorna A', 'a1', 'Első videó_qa.md')
 
 const QA_KIMENET = '**Mit magyaráz a beszélő?**\n\nAz A fogalmat, majd a B-t.\n'
 
@@ -2270,7 +2271,7 @@ describe('commandRun — a commit tartalma', () => {
       'szimulált git hiba',
     )
 
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     try {
       expect(store.listPendingNotes().map((note) => note.id)).toEqual(['b1'])
     } finally {
@@ -2574,7 +2575,7 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
     const item = await elsoElem()
     const jegyzet = noteFile(cfg.notesRoot, item, '_summary.md')
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     pre.recordItem(item)
     pre.recordArtifact('a1', 'summary', 'done', jegyzet, null, {
       iterations: 1,
@@ -2635,7 +2636,7 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     expect(hivasok.generate).toBe(0)
     expect(await readFile(jegyzet, 'utf8')).toBe('# Kézzel írt jegyzet\n')
     expect(await readFile(sor, 'utf8')).toBe(scanUtan)
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf('a1', 'summary')).toMatchObject({ status: 'done', path: jegyzet })
     store.close()
   })
@@ -2692,7 +2693,7 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     expect(hivasok.generate).toBe(0)
     expect(runUtan).toBe(scanUtan)
     expect(await readFile(sor, 'utf8')).toBe(scanUtan)
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf('a1', 'clean-moderate-hu')).toMatchObject({ status: 'done', path: jegyzet })
     store.close()
   })
@@ -2704,7 +2705,7 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     const item = await elsoElem()
     // A jegyzetfájl szándékosan hiányzik: a pár késznek a rekord miatt kész.
     const jegyzet = noteFile(cfg.notesRoot, item, '_clean-moderate-hu.md')
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     pre.recordItem(item)
     pre.recordArtifact('a1', 'clean-moderate', 'failed', null, 'időtúllépés')
     pre.recordArtifact('a1', 'clean-moderate-hu', 'done', jegyzet, null, {
@@ -2761,7 +2762,7 @@ describe('commandList', () => {
     const cfg = loadConfig(rawConfig(5), '/p/refinery.config.yaml')
     const items = await discoverAll(cfg.sources, cfg.languages)
     const idOf = (title: string) => items.find((i) => i.title === title)!.itemId
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     try {
       for (const item of items) store.recordItem(item)
       store.recordArtifact(idOf('Első videó'), 'summary', 'done', '/v/a.md', null, {
@@ -2934,7 +2935,7 @@ describe('commandRun — több recept egy futásban', () => {
 
     expect(hivasok.generate).toBe(2)
     const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf(item!.itemId, 'summary')?.status).toBe('done')
     expect(store.artifactOf(item!.itemId, 'qa')).not.toBeNull()
     store.close()
@@ -2960,7 +2961,7 @@ describe('commandRun — több recept egy futásban', () => {
     )
 
     expect(hivasok.generate).toBe(1)
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf(item!.itemId, 'qa')).toBeNull()
     store.close()
   })
@@ -3084,5 +3085,74 @@ describe('commandRun — életjel a terminálon', () => {
 
   it('az életjel-időköznél rövidebb recept nem ír életjelsort', async () => {
     expect(await futtat(undefined, 50)).toEqual([])
+  })
+})
+
+describe('áthelyezett jegyzetek követése', () => {
+  /** Egy kész átirat a régi helyén a tárban, a jegyzet viszont már az Uj/ alatt van. */
+  async function elmozdult() {
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+    const regi = join(cfg.vaultPath, 'Regi', 'a.md')
+    const uj = join(cfg.vaultPath, 'Uj', 'a.md')
+    await mkdir(dirname(uj), { recursive: true })
+    await writeFile(uj, '---\nitem_id: a1\n---\ntörzs\n', 'utf8')
+    const pre = openState(cfg.statePath, cfg.vaultPath)
+    pre.recordItem({
+      itemId: 'a1', source: 'downloads', sourceFile: 'f', subtitlePath: '/s/f', baseName: 'f',
+      title: 't', language: 'en', metadata: {},
+    })
+    pre.recordArtifact('a1', 'transcript', 'done', regi, null)
+    pre.close()
+    return { cfg, regi, uj }
+  }
+  const pathOf = (cfg: Config): string | null | undefined => {
+    const store = openState(cfg.statePath, cfg.vaultPath)
+    try {
+      return store.artifactOf('a1', 'transcript')?.path
+    } finally {
+      store.close()
+    }
+  }
+
+  it('a scan jelenti az elmozdulást, de nem ír', async () => {
+    const { cfg, regi } = await elmozdult()
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await commandScan(cfg)
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    naplo.mockRestore()
+    expect(pathOf(cfg)).toBe(regi)
+  })
+
+  it('a scan nem migrálja az állapottárat és nem készít .bak-ot', async () => {
+    const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+    await mkdir(join(cfg.vaultPath, 'Uj'), { recursive: true })
+    await writeFile(join(cfg.vaultPath, 'Uj', 'a.md'), '---\nitem_id: a1\n---\n', 'utf8')
+    const pre = openState(cfg.statePath) // vault nélkül: abszolút utak, user_version 0
+    pre.recordItem({
+      itemId: 'a1', source: 'downloads', sourceFile: 'f', subtitlePath: '/s/f', baseName: 'f',
+      title: 't', language: 'en', metadata: {},
+    })
+    pre.recordArtifact('a1', 'transcript', 'done', join(cfg.vaultPath, 'Regi', 'a.md'), null)
+    pre.close()
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await commandScan(cfg)
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    naplo.mockRestore()
+    expect(existsSync(`${cfg.statePath}.bak`)).toBe(false)
+    const raw = new DatabaseSync(cfg.statePath, { readOnly: true })
+    expect((raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(0)
+    raw.close()
+  })
+
+  it('a run --dry-run nem írja át, a run igen', async () => {
+    const { cfg, uj, regi } = await elmozdult()
+    const raw = rawWithVault(5)
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    await commandRun(cfg, raw, { dryRun: true, force: false, commit: false })
+    expect(pathOf(cfg)).toBe(regi)
+    await commandRun(cfg, raw, { dryRun: false, force: false, commit: false })
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    naplo.mockRestore()
+    expect(pathOf(cfg)).toBe(uj)
   })
 })

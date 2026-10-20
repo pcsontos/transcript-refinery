@@ -16,6 +16,8 @@ export interface DoneLookupDeps {
   items: ReadonlyMap<string, SourceItem>
   registry: Registry
   notesRoot: string
+  /** A `vault.layout` sablon. */
+  layout: string
   artifactOf: (
     itemId: string,
     kind: string,
@@ -37,7 +39,9 @@ export function doneLookup(deps: DoneLookupDeps): DoneLookup {
     const record = deps.artifactOf(itemId, kind)
     if (record?.status === 'done') return doneStatus(record, deps.notesRoot)
     if (!recipe.publishable) return null
-    const path = noteFile(deps.notesRoot, item, recipe.outputFile)
+    // ponytail: a tár nélküli fallback (állapotrekord nélküli kész fájl keresése) a sablon szerinti úton keres;
+    // egy régi szerkezetű, rekord nélküli fájlt nem talál meg.
+    const path = noteFile(deps.notesRoot, item, recipe.outputFile, { layout: deps.layout })
     return deps.exists(path) ? doneStatus({ score: null, costUsd: null, path }, deps.notesRoot) : null
   }
 }

@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { recipesFor } from '../recipe/registry.js'
 import type { SourceItem } from '../types.js'
-import { noteFile } from '../vault/paths.js'
+import { DEFAULT_LAYOUT, noteFile } from '../vault/paths.js'
 import { doneLookup, markDone, type DoneLookup } from './done.js'
 import { pairKey } from './status.js'
 
@@ -165,6 +165,7 @@ describe('doneLookup', () => {
       items,
       registry,
       notesRoot,
+      layout: DEFAULT_LAYOUT,
       artifactOf: () => ({ status: 'done', score: 1, costUsd: 0.1, path: null }),
       exists: () => true,
     })
@@ -178,6 +179,7 @@ describe('doneLookup', () => {
       items,
       registry,
       notesRoot,
+      layout: DEFAULT_LAYOUT,
       artifactOf: () => ({ status: 'done', score: 0.95, costUsd: 0.0719, path: regiUt }),
       exists: () => false,
     })
@@ -191,11 +193,12 @@ describe('doneLookup', () => {
       items,
       registry,
       notesRoot,
+      layout: DEFAULT_LAYOUT,
       artifactOf: () => null,
       exists: (path) => path === summaryUt,
     })
     expect(lookup('a1', 'summary')).toBe(
-      '✓ már a vaultban · [jegyzet](<transcripts/youtube/Csatorna/Elso_summary.md>)',
+      '✓ már a vaultban · [jegyzet](<transcripts/a1/Elso_summary.md>)',
     )
     expect(lookup('a1', 'qa')).toBeNull()
   })
@@ -203,11 +206,11 @@ describe('doneLookup', () => {
   it('failed rekord: fájl nélkül null, fájllal már a vaultban', () => {
     const failed = () => ({ status: 'failed', score: null, costUsd: null, path: null })
     expect(
-      doneLookup({ items, registry, notesRoot, artifactOf: failed, exists: () => false })('a1', 'summary'),
+      doneLookup({ items, registry, notesRoot, layout: DEFAULT_LAYOUT, artifactOf: failed, exists: () => false })('a1', 'summary'),
     ).toBeNull()
     expect(
-      doneLookup({ items, registry, notesRoot, artifactOf: failed, exists: () => true })('a1', 'summary'),
-    ).toBe('✓ már a vaultban · [jegyzet](<transcripts/youtube/Csatorna/Elso_summary.md>)')
+      doneLookup({ items, registry, notesRoot, layout: DEFAULT_LAYOUT, artifactOf: failed, exists: () => true })('a1', 'summary'),
+    ).toBe('✓ már a vaultban · [jegyzet](<transcripts/a1/Elso_summary.md>)')
   })
 
   it('a fordítás célútja a fordítórecept fájlneve', () => {
@@ -215,11 +218,12 @@ describe('doneLookup', () => {
       items,
       registry,
       notesRoot,
+      layout: DEFAULT_LAYOUT,
       artifactOf: () => null,
       exists: (path) => path === noteFile(notesRoot, elem, '_clean-moderate-hu.md'),
     })
     expect(lookup('a1', 'clean-moderate-hu')).toBe(
-      '✓ már a vaultban · [jegyzet](<transcripts/youtube/Csatorna/Elso_clean-moderate-hu.md>)',
+      '✓ már a vaultban · [jegyzet](<transcripts/a1/Elso_clean-moderate-hu.md>)',
     )
   })
 })

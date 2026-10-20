@@ -88,7 +88,7 @@ export async function refreshQueue(
   // már az újat látja.
   const legacy = current === null ? null : migrateLegacy(current, layout)
   const merged = mergeQueue(legacy?.text ?? null, items, layout)
-  const store = existsSync(cfg.statePath) ? openState(cfg.statePath) : null
+  const store = existsSync(cfg.statePath) ? openState(cfg.statePath, cfg.vaultPath) : null
   let done: ReturnType<typeof markDone>
   try {
     done = markDone(
@@ -97,6 +97,7 @@ export async function refreshQueue(
         items: new Map(items.map((item) => [item.itemId, item] as const)),
         registry,
         notesRoot: cfg.notesRoot,
+        layout: cfg.layout,
         artifactOf: (itemId, kind) => store?.artifactOf(itemId, kind) ?? null,
         exists: existsSync,
       }),

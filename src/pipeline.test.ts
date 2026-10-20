@@ -74,7 +74,7 @@ describe('processItem', () => {
     expect(md).toContain('Ez egy másik sor.')
   })
 
-  it('a célutat a forrásmappa adja, a metaadat nem írja felül', async () => {
+  it('a célutat a sablon adja a metaadatból: forrás/csatorna/item_id', async () => {
     const { sink } = collectEvents()
     const outcome = await processItem(
       item({
@@ -86,7 +86,24 @@ describe('processItem', () => {
       }),
       { notesRoot, store, sink, version: '0.1.0', options: {} },
     )
-    expect(outcome.path).toBe(join(notesRoot, 'youtube', 'csatorna', 'Beszéd_transcript.md'))
+    expect(outcome.path).toBe(join(notesRoot, 'youtube', 'Egészen Más Csatorna', 'a1b2c3', 'Beszéd_transcript.md'))
+  })
+
+  it('a már rögzített mappa nyer a sablon fölött (az átirat a régi helyén marad)', async () => {
+    const { sink } = collectEvents()
+    const regi = join(notesRoot, 'régi', 'mappa')
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'notes', 'done', join(regi, 'Beszéd_notes.md'), null)
+
+    const outcome = await processItem(item({ metadata: { channel: 'Csatorna' } }), {
+      notesRoot,
+      store,
+      sink,
+      version: '0.1.0',
+      options: {},
+    })
+
+    expect(outcome.path).toBe(join(regi, 'Beszéd_transcript.md'))
   })
 
   it('másodszor futtatva kihagy, és nem ír semmit', async () => {
@@ -164,7 +181,7 @@ describe('processItem', () => {
     expect(outcome.error).toContain('nyelvkód')
   })
 
-  it('metaadat nélküli elemet is végigvisz, és a forrás fája alá ír', async () => {
+  it('metaadat nélküli elemet is végigvisz, és a forrás/item_id alá ír', async () => {
     const { sink, events } = collectEvents()
     const outcome = await processItem(item(), {
       notesRoot,
@@ -174,7 +191,7 @@ describe('processItem', () => {
       options: { force: false, dryRun: false },
     })
     expect(outcome.status).toBe('published')
-    expect(outcome.path).toBe(join(notesRoot, 'youtube', 'csatorna', 'Beszéd_transcript.md'))
+    expect(outcome.path).toBe(join(notesRoot, 'youtube', 'a1b2c3', 'Beszéd_transcript.md'))
     expect(events.some((e) => e.type === 'item:published')).toBe(true)
   })
 
@@ -930,7 +947,7 @@ describe('processItem fordítással', () => {
 
     const record = deps.store.artifactOf(item().itemId, 'proba-hu')!
     expect(record.status).toBe('failed')
-    expect(record.error).toBe('a forrásjegyzet nem található: youtube/csatorna/Beszéd_proba.md')
+    expect(record.error).toBe('a forrásjegyzet nem található: youtube/a1b2c3/Beszéd_proba.md')
   })
 
   it('kész forrás nélkül a pipeline sem fordít', async () => {

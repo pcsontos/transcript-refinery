@@ -105,6 +105,13 @@ refinery run --queue
 
 ## 3. Feldolgozás (`run`)
 
+A jegyzetek elemenként egy mappába kerülnek: `<jegyzetgyökér>/<forrás>/<sablon>/<alapnév><utótag>`.
+A sablon a `vault.layout` (alapértelmezés: `{channel}/{item_id}`; ismert mezők: `item_id`,
+`title`, `channel`, `video_id`, `uploaded`), a hiányzó mező szegmense kimarad. Az elem mappája
+az első kimenetnél rögzül: a további receptek ugyanoda kerülnek, akkor is, ha a sablon közben
+változott. A vaulton belül átmozgatott jegyzetet a `run` és a `watch` az `item_id` alapján
+követi (a `scan` csak jelzi).
+
 ### Módok
 
 - **Csak átirat készítése (modellhívás nélkül, ingyenes):**  

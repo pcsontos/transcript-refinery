@@ -109,11 +109,11 @@ export function buildItemRows(
 }
 
 export async function readItems(
-  cfg: Pick<Config, 'sources' | 'languages' | 'statePath' | 'translate' | 'configPath'>,
+  cfg: Pick<Config, 'sources' | 'languages' | 'statePath' | 'translate' | 'configPath' | 'vaultPath'>,
 ): Promise<ItemListRow[]> {
   const registry = recipesFor(cfg)
   const discovered = await discoverAll(cfg.sources, cfg.languages)
-  const reader = openStateReader(cfg.statePath)
+  const reader = openStateReader(cfg.statePath, cfg.vaultPath)
   try {
     return buildItemRows(discovered, reader?.items() ?? [], reader?.artifacts() ?? [], registry)
   } finally {
@@ -182,14 +182,14 @@ async function readNote(path: string | null): Promise<{ body: string | null; mis
  * Ismeretlen elemre `null`.
  */
 export async function readItemDetail(
-  cfg: Pick<Config, 'sources' | 'languages' | 'statePath' | 'translate' | 'configPath'>,
+  cfg: Pick<Config, 'sources' | 'languages' | 'statePath' | 'translate' | 'configPath' | 'vaultPath'>,
   itemId: string,
 ): Promise<ItemDetail | null> {
   const registry = recipesFor(cfg)
   const discovered = (await discoverAll(cfg.sources, cfg.languages)).find(
     (item) => item.itemId === itemId,
   )
-  const reader = openStateReader(cfg.statePath)
+  const reader = openStateReader(cfg.statePath, cfg.vaultPath)
   try {
     const row = reader?.items().find((item) => item.itemId === itemId)
     if (!discovered && !row) return null

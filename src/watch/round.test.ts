@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { commandScanQueue } from '../cli.js'
@@ -91,6 +91,24 @@ describe('watchRound', () => {
     const result = await round(null)
     expect(result.transcripts).toBe(0)
     expect(result.queueChanged).toBe(false)
+    expect(lines).toEqual([])
+  })
+
+  it('az átmozgatott jegyzet útját frissíti, és kiírja', async () => {
+    await felirat('Csatorna', 'Egy videó')
+    await round(null)
+    const [regi] = await atiratok()
+    const from = join(cfg.notesRoot, regi!)
+    const to = join(cfg.vaultPath, 'Mas', 'atirat.md')
+    await mkdir(dirname(to), { recursive: true })
+    await rename(from, to)
+    lines = []
+
+    await round(null)
+
+    expect(lines.some((l) => l.startsWith('áthelyezve: ') && l.endsWith('→ Mas/atirat.md'))).toBe(true)
+    lines = []
+    await round(null)
     expect(lines).toEqual([])
   })
 

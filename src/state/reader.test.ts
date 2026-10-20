@@ -68,6 +68,16 @@ describe('openStateReader', () => {
     reader.close()
   })
 
+  it('a relatív tárolt utat a vaulthoz fűzve adja vissza', () => {
+    const store = openState(path, '/v')
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'transcript', 'done', '/v/Inbox/a.md', null)
+    store.close()
+    const reader = openStateReader(path, '/v')!
+    expect(reader.artifacts().map((a) => a.path)).toEqual(['/v/Inbox/a.md'])
+    reader.close()
+  })
+
   it('minden műtermék sorát visszaadja, elem és típus szerint rendezve', () => {
     seed()
     const reader = openStateReader(path)!

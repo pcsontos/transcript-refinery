@@ -63,12 +63,14 @@ import {
   type AdHoc,
 } from './source/folder.js'
 import { openState } from './state/db.js'
+import { openStateReader } from './state/reader.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
 import { commitPending } from './vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 import { noteFile, transcriptFile } from './vault/paths.js'
+import { relinkNotes } from './vault/relink.js'
 import type { NoteOrigin } from './vault/render.js'
 import { readItems, type CellStatus } from './view/items.js'
 import {
@@ -195,7 +197,7 @@ async function textDetail(cfg: Config, item: SourceItem): Promise<string> {
   const words = (await normalizeItem({ ...item })).wordsNormalized
   let taken = false
   try {
-    const existing = await readFile(transcriptFile(cfg.notesRoot, item), 'utf8')
+    const existing = await readFile(transcriptFile(cfg.notesRoot, item, { layout: cfg.layout }), 'utf8')
     taken = !existing.includes(`item_id: ${item.itemId}\n`)
   } catch {
     // Nincs ilyen jegyzet: a név szabad.
@@ -228,6 +230,15 @@ export async function commandScan(cfg: Config, adHoc?: AdHoc): Promise<number> {
     console.log(`  ${item.source}  ${item.itemId}  ${item.title}`)
     console.log(`      ${item.sourceFile}`)
     console.log(`      ${detail}`)
+  }
+  // Csak olvasó kapcsolat: a scan nem migrál, nem készít .bak-ot, nem ír semmit.
+  const reader = openStateReader(cfg.statePath, cfg.vaultPath)
+  if (reader !== null) {
+    try {
+      for (const line of await relinkNotes(reader, cfg.vaultPath, false)) console.log(line)
+    } finally {
+      reader.close()
+    }
   }
   return 0
 }
@@ -535,7 +546,8 @@ export async function commandRun(
     return 1
   }
 
-  const store = openState(cfg.statePath)
+  const store = openState(cfg.statePath, cfg.vaultPath)
+  for (const line of await relinkNotes(store, cfg.vaultPath, !flags.dryRun)) console.log(line)
 
   const startedAt = new Date()
   // Ütközésmentes név: két azonos másodpercben induló futás nem írhat
@@ -585,7 +597,12 @@ export async function commandRun(
     !flags.force &&
     (store.isDone(unit.item.itemId, unitKind(unit)) ||
       (unit.recipe?.publishable === true &&
-        existsSync(noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile))))
+        existsSync(
+          noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile, {
+            layout: cfg.layout,
+            pinnedDir: store.noteDirOf(unit.item.itemId),
+          }),
+        )))
 
   let wroteBack = false
   /**
@@ -916,6 +933,7 @@ export async function commandRun(
       }
       const outcome = await processItem(unit.item, {
         notesRoot: cfg.notesRoot,
+        layout: cfg.layout,
         store,
         sink: printing,
         version: VERSION,

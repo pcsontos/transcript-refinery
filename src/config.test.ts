@@ -33,6 +33,20 @@ describe('loadConfig', () => {
     expect(cfg.notesRoot).toBe('/v/Inbox/masik')
   })
 
+  it('a záró perjeles vault.path perjel nélküli lesz', () => {
+    expect(loadConfig({ ...MIN, vault: { path: '/v/' } }, '/p/refinery.config.yaml').vaultPath).toBe('/v')
+  })
+
+  it('layout nélkül az alapértelmezett sablont adja', () => {
+    expect(loadConfig(MIN, '/p/refinery.config.yaml').layout).toBe('{channel}/{item_id}')
+  })
+
+  it('az elírt layout mezőnév config-hiba a vault.layout névvel', () => {
+    expect(() =>
+      loadConfig({ ...MIN, vault: { path: '/v', layout: '{chanel}/{item_id}' } }, '/p/refinery.config.yaml'),
+    ).toThrow(/vault\.layout: .*\{chanel\}/)
+  })
+
   it('a forrás nevét az útvonal utolsó szegmenséből veszi', () => {
     const cfg = loadConfig(
       { ...MIN, sources: ['/s/youtube', '/s/whisper-out'] },
