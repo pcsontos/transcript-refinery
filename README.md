@@ -280,7 +280,7 @@ A projekt két külön futtatókörnyezetet használ a háttérmunkákhoz: a hel
 
 #### 1. `refinery serve` debuggolása
 
-A `refinery serve` az Infisical titkokkal (`R2_*`, `REFINERY_SERVE_SECRET`) indul, és a 8787-es porton fogadja a Worker felől érkező feliratletöltési munkákat a helyi `tmp/serve-out` mappába.
+A `refinery serve` az Infisical titkokkal (`R2_*`, `REFINERY_SERVE_SECRET`) indul, és a 8787-es porton fogadja a Worker felől érkező feliratletöltési munkákat a helyi `tmp/telegram` mappába.
 
 - **Parancssorból:**
   ```bash

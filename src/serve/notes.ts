@@ -17,7 +17,8 @@ export const KIND = /^[a-z]+(-[a-z]+)*$/
 const TRANSCRIPT_END = '_transcript.md'
 
 /** A `serve` kimeneti mappájának neve: az `origin` nélküli régi jegyzeteknél ebből látszik a Telegram. */
-const SERVE_SOURCE = 'serve-out'
+/** A `serve` kimeneti mappájának régi (`serve-out`) és mai (`telegram`) neve; az `origin` nélküli jegyzeteknél ez dönt. */
+const SERVE_SOURCES = ['serve-out', 'telegram']
 
 const PULL_TIMEOUT_MS = 10_000
 
@@ -80,7 +81,7 @@ function text(value: unknown): string | null {
 
 export function originOf(fields: Record<string, unknown>): NoteOrigin {
   if (fields.origin === 'telegram' || fields.origin === 'cli') return fields.origin
-  return fields.source === SERVE_SOURCE ? 'telegram' : 'cli'
+  return typeof fields.source === 'string' && SERVE_SOURCES.includes(fields.source) ? 'telegram' : 'cli'
 }
 
 /** Egy YAML-érték megjeleníthető szövege: a lista vesszős, a dátum ISO, a többsoros szöveg többsoros marad. */
