@@ -50,7 +50,7 @@ export async function watchRound(opts: RoundOptions): Promise<RoundResult> {
   if (commit) await gitPullFfOnly(cfg.vaultPath)
 
   const discovered = await discoverAll(sources, cfg.languages)
-  const store = openState(cfg.statePath)
+  const store = openState(cfg.statePath, cfg.vaultPath)
   try {
     let transcripts = 0
     let failed = 0

@@ -246,7 +246,7 @@ describe('commandRun — a recept-becslés költségkapui', () => {
 
     expect(code).toBe(2)
 
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf(item!.itemId, 'summary')).toBeNull()
     store.close()
   })
@@ -267,7 +267,7 @@ describe('commandRun — a recept-becslés költségkapui', () => {
     // receptre —, mielőtt a `commandRun` a saját store-ját megnyitná. Ez
     // szimulálja a hibajelentésben leírt helyzetet: egy köteg, ami egyszer
     // már sikeresen lefutott.
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     pre.recordItem(item!)
     pre.recordArtifact(item!.itemId, 'transcript', 'done', '/valahol/_transcript.md', null)
     pre.recordArtifact(item!.itemId, recipe.id, 'done', null, null, {
@@ -413,7 +413,7 @@ describe('commandRun — napló és riport', () => {
     // egyenesen a generálásnál tart, amikor a jel érkezik, és a riportnak
     // pontosan egy elkészült elemet kell számolnia.
     const items = await folderSource({ name: 'downloads', path: downloads }, []).discover()
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     const masodik = items.find((i) => i.itemId === 'a2')!
     pre.recordItem(masodik)
     pre.recordArtifact('a2', 'transcript', 'done', join(vault, 'a2_transcript.md'), null)
@@ -653,7 +653,7 @@ describe('commandRun — --retry-failed', () => {
     const raw = rawWithVault(5)
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     for (const i of await folderSource({ name: 'downloads', path: downloads }, []).discover()) {
       pre.recordItem(i)
     }
@@ -706,7 +706,7 @@ describe('commandRun — --retry-failed', () => {
     const raw = rawWithVault(5)
     const cfg = loadConfig(raw, '/p/refinery.config.yaml')
 
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     for (const i of await folderSource({ name: 'downloads', path: downloads }, []).discover()) {
       pre.recordItem(i)
     }
@@ -2270,7 +2270,7 @@ describe('commandRun — a commit tartalma', () => {
       'szimulált git hiba',
     )
 
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     try {
       expect(store.listPendingNotes().map((note) => note.id)).toEqual(['b1'])
     } finally {
@@ -2574,7 +2574,7 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
     const item = await elsoElem()
     const jegyzet = noteFile(cfg.notesRoot, item, '_summary.md')
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     pre.recordItem(item)
     pre.recordArtifact('a1', 'summary', 'done', jegyzet, null, {
       iterations: 1,
@@ -2635,7 +2635,7 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     expect(hivasok.generate).toBe(0)
     expect(await readFile(jegyzet, 'utf8')).toBe('# Kézzel írt jegyzet\n')
     expect(await readFile(sor, 'utf8')).toBe(scanUtan)
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf('a1', 'summary')).toMatchObject({ status: 'done', path: jegyzet })
     store.close()
   })
@@ -2692,7 +2692,7 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     expect(hivasok.generate).toBe(0)
     expect(runUtan).toBe(scanUtan)
     expect(await readFile(sor, 'utf8')).toBe(scanUtan)
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf('a1', 'clean-moderate-hu')).toMatchObject({ status: 'done', path: jegyzet })
     store.close()
   })
@@ -2704,7 +2704,7 @@ describe('commandScanQueue — a kész párok bepipálása', () => {
     const item = await elsoElem()
     // A jegyzetfájl szándékosan hiányzik: a pár késznek a rekord miatt kész.
     const jegyzet = noteFile(cfg.notesRoot, item, '_clean-moderate-hu.md')
-    const pre = openState(cfg.statePath)
+    const pre = openState(cfg.statePath, cfg.vaultPath)
     pre.recordItem(item)
     pre.recordArtifact('a1', 'clean-moderate', 'failed', null, 'időtúllépés')
     pre.recordArtifact('a1', 'clean-moderate-hu', 'done', jegyzet, null, {
@@ -2761,7 +2761,7 @@ describe('commandList', () => {
     const cfg = loadConfig(rawConfig(5), '/p/refinery.config.yaml')
     const items = await discoverAll(cfg.sources, cfg.languages)
     const idOf = (title: string) => items.find((i) => i.title === title)!.itemId
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     try {
       for (const item of items) store.recordItem(item)
       store.recordArtifact(idOf('Első videó'), 'summary', 'done', '/v/a.md', null, {
@@ -2934,7 +2934,7 @@ describe('commandRun — több recept egy futásban', () => {
 
     expect(hivasok.generate).toBe(2)
     const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf(item!.itemId, 'summary')?.status).toBe('done')
     expect(store.artifactOf(item!.itemId, 'qa')).not.toBeNull()
     store.close()
@@ -2960,7 +2960,7 @@ describe('commandRun — több recept egy futásban', () => {
     )
 
     expect(hivasok.generate).toBe(1)
-    const store = openState(cfg.statePath)
+    const store = openState(cfg.statePath, cfg.vaultPath)
     expect(store.artifactOf(item!.itemId, 'qa')).toBeNull()
     store.close()
   })

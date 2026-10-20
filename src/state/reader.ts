@@ -41,7 +41,7 @@ export function openReadOnlyDatabase(path: string): DatabaseSync {
  * állít — ez az író dolga. Hiányzó fájlnál `null`: még nem futott semmi, ez nem
  * hiba.
  */
-export function openStateReader(path: string): StateReader | null {
+export function openStateReader(path: string, vaultPath?: string): StateReader | null {
   if (!existsSync(path)) return null
   const db = openReadOnlyDatabase(path)
   assertCurrentSchema(db, path)
@@ -51,7 +51,7 @@ export function openStateReader(path: string): StateReader | null {
   return {
     path,
     items: () => selectItemRows(db),
-    artifacts: () => selectArtifactRows(db),
+    artifacts: () => selectArtifactRows(db, vaultPath),
     gapsOf: (itemId, kind) => (gapsTable ? selectGaps(db, itemId, kind) : null),
     corpusStatus: (items, kind) => selectCorpusStatus(db, items, kind),
     close() {

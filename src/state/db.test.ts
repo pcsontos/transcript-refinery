@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { existsSync, statSync } from 'node:fs'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -339,5 +340,100 @@ describe('StateStore — commitra váró műtermékek', () => {
       { id: 'masik', title: 'Második', kind: 'transcript', path: '/v/m-t.md' },
       { id: 'dQw4w9WgXcQ', title: 'Első', kind: 'summary', path: '/v/a-s.md' },
     ])
+  })
+})
+
+describe('relatív utak az állapottár határán', () => {
+  let dir: string
+  let dbPath: string
+  const rawPaths = (table: 'artifacts' | 'pending_commits'): (string | null)[] => {
+    const raw = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      return (raw.prepare(`SELECT path FROM ${table} ORDER BY path`).all() as { path: string | null }[]).map(
+        (r) => r.path,
+      )
+    } finally {
+      raw.close()
+    }
+  }
+  const userVersion = (): number => {
+    const raw = new DatabaseSync(dbPath, { readOnly: true })
+    try {
+      return (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
+    } finally {
+      raw.close()
+    }
+  }
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'refinery-rel-'))
+    dbPath = join(dir, 'state.db')
+  })
+
+  const seed = (s: StateStore, ...paths: string[]): void => {
+    s.recordItem(item())
+    paths.forEach((p, i) => s.recordArtifact('a1b2c3', `k${i}`, 'done', p, null, undefined, true))
+  }
+
+  it('a vault alatti utat relatívan tárolja, abszolútként adja vissza', () => {
+    const s = openState(dbPath, '/v')
+    seed(s, '/v/Inbox/a.md')
+    expect(rawPaths('artifacts')).toEqual(['Inbox/a.md'])
+    expect(rawPaths('pending_commits')).toEqual(['Inbox/a.md'])
+    expect(s.artifactOf('a1b2c3', 'k0')?.path).toBe('/v/Inbox/a.md')
+    expect(s.listPendingCommits()).toEqual(['/v/Inbox/a.md'])
+    expect(s.listPendingNotes().map((n) => n.path)).toEqual(['/v/Inbox/a.md'])
+    s.clearPendingCommits(['/v/Inbox/a.md'])
+    expect(s.listPendingCommits()).toEqual([])
+    s.close()
+  })
+
+  it('a vaulton kívüli (és az előtagra hasonlító) út abszolút marad', () => {
+    const s = openState(dbPath, '/v')
+    seed(s, '/v-masik/a.md')
+    expect(rawPaths('artifacts')).toEqual(['/v-masik/a.md'])
+    expect(s.artifactOf('a1b2c3', 'k0')?.path).toBe('/v-masik/a.md')
+    s.close()
+  })
+
+  it('vaulttal megnyitva átírja a régi abszolút sorokat, előtte .bak készül', () => {
+    const old = openState(dbPath)
+    seed(old, '/v/Inbox/a.md', '/regi/b.md')
+    old.close()
+    expect(userVersion()).toBe(0)
+
+    const s = openState(dbPath, '/v')
+    s.close()
+    expect(rawPaths('artifacts')).toEqual(['/regi/b.md', 'Inbox/a.md'])
+    expect(rawPaths('pending_commits')).toEqual(['/regi/b.md', 'Inbox/a.md'])
+    expect(userVersion()).toBe(1)
+    const bak = new DatabaseSync(`${dbPath}.bak`, { readOnly: true })
+    expect((bak.prepare('SELECT path FROM artifacts ORDER BY path').all() as { path: string }[]).map((r) => r.path)).toEqual([
+      '/regi/b.md',
+      '/v/Inbox/a.md',
+    ])
+    bak.close()
+  })
+
+  it('a második megnyitás nem nyúl a .bak-hoz', async () => {
+    const old = openState(dbPath)
+    seed(old, '/v/Inbox/a.md')
+    old.close()
+    openState(dbPath, '/v').close()
+    const before = statSync(`${dbPath}.bak`).mtimeMs
+    await new Promise((r) => setTimeout(r, 20))
+    openState(dbPath, '/v').close()
+    expect(statSync(`${dbPath}.bak`).mtimeMs).toBe(before)
+  })
+
+  it('friss tárnál nincs .bak, de a user_version beáll', () => {
+    openState(dbPath, '/v').close()
+    expect(existsSync(`${dbPath}.bak`)).toBe(false)
+    expect(userVersion()).toBe(1)
+  })
+
+  it('vault nélkül a user_version 0 marad', () => {
+    openState(dbPath).close()
+    expect(userVersion()).toBe(0)
   })
 })

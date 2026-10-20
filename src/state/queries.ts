@@ -1,3 +1,4 @@
+import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { CaptionSource, SourceItem } from '../types.js'
 import type { ArtifactRecord, CorpusStatus, SourceStatus } from './db.js'
@@ -5,6 +6,16 @@ import type { ArtifactRecord, CorpusStatus, SourceStatus } from './db.js'
 // Az állapottár lekérdezései egy helyen. Az író (`openState`) és a csak olvasó
 // (`openStateReader`) ugyanezt hívja, így a felület pontosan azt a
 // korpusz-állapotot mutatja, amit a futás riportja.
+
+/** A tárolt út: a `vaultPath` alatti relatív, minden más változatlan. */
+export function toStored(vaultPath: string | undefined, path: string): string {
+  return vaultPath && path.startsWith(vaultPath + '/') ? path.slice(vaultPath.length + 1) : path
+}
+
+/** A tárolt út abszolútként. */
+export function fromStored(vaultPath: string | undefined, path: string): string {
+  return vaultPath === undefined || isAbsolute(path) ? path : join(vaultPath, path)
+}
 
 /** Egy elem sora az átirat mérőszámaival. */
 export interface ItemRow {
@@ -72,6 +83,7 @@ export function selectArtifact(
   db: DatabaseSync,
   itemId: string,
   kind: string,
+  vaultPath?: string,
 ): ArtifactRecord | null {
   const row = db
     .prepare(
@@ -92,7 +104,7 @@ export function selectArtifact(
   if (!row) return null
   return {
     status: row.status,
-    path: row.path,
+    path: row.path === null ? null : fromStored(vaultPath, row.path),
     error: row.error,
     iterations: row.iterations,
     score: row.score,
@@ -219,7 +231,7 @@ export function selectItemRows(db: DatabaseSync): ItemRow[] {
 }
 
 /** Minden műtermék sora, elem és típus szerint rendezve. */
-export function selectArtifactRows(db: DatabaseSync): ArtifactRow[] {
+export function selectArtifactRows(db: DatabaseSync, vaultPath?: string): ArtifactRow[] {
   const rows = db
     .prepare(
       `SELECT item_id, kind, status, path, error, iterations, score, cost_usd, model, created_at
@@ -242,7 +254,7 @@ export function selectArtifactRows(db: DatabaseSync): ArtifactRow[] {
     itemId: r.item_id,
     kind: r.kind,
     status: r.status,
-    path: r.path,
+    path: r.path === null ? null : fromStored(vaultPath, r.path),
     error: r.error,
     iterations: r.iterations,
     score: r.score,

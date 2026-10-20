@@ -535,7 +535,7 @@ export async function commandRun(
     return 1
   }
 
-  const store = openState(cfg.statePath)
+  const store = openState(cfg.statePath, cfg.vaultPath)
 
   const startedAt = new Date()
   // Ütközésmentes név: két azonos másodpercben induló futás nem írhat

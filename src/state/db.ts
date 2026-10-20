@@ -1,8 +1,15 @@
 import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { CaptionSource, SourceItem } from '../types.js'
-import { assertCurrentSchema, selectArtifact, selectCorpusStatus, selectGaps } from './queries.js'
+import {
+  assertCurrentSchema,
+  fromStored,
+  selectArtifact,
+  selectCorpusStatus,
+  selectGaps,
+  toStored,
+} from './queries.js'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS items (
@@ -176,10 +183,61 @@ export interface StateStore {
 }
 
 /**
- * Megnyitja (és szükség esetén létrehozza) az állapottárat. A séma
- * idempotens, tehát az újranyitás biztonságos.
+ * A `user_version` 0 → 1 migrációja: a `vaultPath` alatti abszolút utak
+ * relatívvá válnak. Csak valódi átírnivalónál készül `.bak` (`VACUUM INTO`,
+ * mert a WAL-ban ülő adatot egy fájlmásolás elveszítené). `substr`, nem
+ * `LIKE`: a `_` és a `%` ott helyettesítő karakter.
  */
-export function openState(path: string): StateStore {
+function migrateToRelativePaths(db: DatabaseSync, path: string, vaultPath: string): void {
+  const prefix = vaultPath + '/'
+  const tables = ['artifacts', 'pending_commits']
+  const count = tables.reduce(
+    (sum, t) =>
+      sum +
+      (
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE substr(path, 1, length(?)) = ?`)
+          .get(prefix, prefix) as { n: number }
+      ).n,
+    0,
+  )
+  if (count > 0) {
+    rmSync(`${path}.bak`, { force: true })
+    db.exec(`VACUUM INTO '${`${path}.bak`.replaceAll("'", "''")}'`)
+  }
+  db.exec('BEGIN')
+  try {
+    for (const t of tables) {
+      db.prepare(
+        `UPDATE ${t} SET path = substr(path, length(?) + 1) WHERE substr(path, 1, length(?)) = ?`,
+      ).run(prefix, prefix, prefix)
+    }
+    db.exec('PRAGMA user_version = 1')
+    db.exec('COMMIT')
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
+  const left = db
+    .prepare("SELECT path FROM artifacts WHERE path LIKE '/%' UNION SELECT path FROM pending_commits WHERE path LIKE '/%'")
+    .all() as { path: string }[]
+  if (left.length > 0) {
+    console.error(
+      `${left.length} tárolt út a vaulton kívül marad (abszolút): ${left
+        .slice(0, 3)
+        .map((r) => r.path)
+        .join(', ')}`,
+    )
+  }
+}
+
+/**
+ * Megnyitja (és szükség esetén létrehozza) az állapottárat. A séma
+ * idempotens, tehát az újranyitás biztonságos. A `vaultPath`-szal a jegyzetek
+ * útját a vaulthoz relatívan tárolja; nélküle (mérőszkript, régi teszt) a
+ * viselkedés a régi, és a migráció nem fut.
+ */
+export function openState(path: string, vaultPath?: string): StateStore {
   mkdirSync(dirname(path), { recursive: true })
   const db = new DatabaseSync(path)
   db.exec('PRAGMA journal_mode = WAL')
@@ -187,6 +245,10 @@ export function openState(path: string): StateStore {
   db.exec(SCHEMA)
 
   assertCurrentSchema(db, path)
+
+  const version = (db.prepare('PRAGMA user_version').get() as { user_version: number })
+    .user_version
+  if (vaultPath !== undefined && version < 1) migrateToRelativePaths(db, path, vaultPath)
 
   const now = () => new Date().toISOString()
 
@@ -274,7 +336,7 @@ export function openState(path: string): StateStore {
           itemId,
           kind,
           status,
-          path,
+          path === null ? null : toStored(vaultPath, path),
           error,
           metrics?.iterations ?? null,
           metrics?.score ?? null,
@@ -294,7 +356,7 @@ export function openState(path: string): StateStore {
           db.prepare(
             `INSERT INTO pending_commits (item_id, kind, path) VALUES (?, ?, ?)
              ON CONFLICT(item_id, kind) DO UPDATE SET path = excluded.path`,
-          ).run(itemId, kind, path)
+          ).run(itemId, kind, toStored(vaultPath, path))
         }
         db.exec('COMMIT')
       } catch (error) {
@@ -308,13 +370,13 @@ export function openState(path: string): StateStore {
     },
 
     artifactOf(itemId, kind) {
-      return selectArtifact(db, itemId, kind)
+      return selectArtifact(db, itemId, kind, vaultPath)
     },
 
     listPendingCommits() {
       return (db.prepare('SELECT path FROM pending_commits ORDER BY rowid').all() as {
         path: string
-      }[]).map((row) => row.path)
+      }[]).map((row) => fromStored(vaultPath, row.path))
     },
 
     listPendingNotes() {
@@ -323,13 +385,19 @@ export function openState(path: string): StateStore {
           `SELECT COALESCE(i.video_id, p.item_id) AS id, COALESCE(i.title, p.item_id) AS title, p.kind, p.path
            FROM pending_commits p LEFT JOIN items i ON i.item_id = p.item_id ORDER BY p.rowid`,
         )
-        .all() as unknown as PendingNote[]
+        .all()
+        .map((row) => ({
+          ...(row as unknown as PendingNote),
+          path: fromStored(vaultPath, (row as unknown as PendingNote).path),
+        }))
     },
 
     clearPendingCommits(paths) {
       if (paths.length === 0) return
       const placeholders = paths.map(() => '?').join(', ')
-      db.prepare(`DELETE FROM pending_commits WHERE path IN (${placeholders})`).run(...paths)
+      db.prepare(`DELETE FROM pending_commits WHERE path IN (${placeholders})`).run(
+        ...paths.map((p) => toStored(vaultPath, p)),
+      )
     },
 
     transcriptOf(itemId) {
