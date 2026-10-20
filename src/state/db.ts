@@ -159,7 +159,7 @@ export interface StateStore {
     pendingCommit?: boolean,
   ): void
   artifactOf(itemId: string, kind: string): ArtifactRecord | null
-  /** Az elem bármely kimenetének mappája (abszolút), vagy `null`. Ez rögzíti az elem mappáját. */
+  /** Az elem mappája (abszolút): az átirat mappája, annak híján egy másik kimenet mappája; `null`, ha nincs. Ez rögzíti az elem mappáját. */
   noteDirOf(itemId: string): string | null
   /** A `done` sorok nem üres útja, abszolútként. */
   trackedPaths(): { itemId: string; kind: string; path: string }[]
@@ -254,7 +254,16 @@ export function openState(path: string, vaultPath?: string): StateStore {
 
   const version = (db.prepare('PRAGMA user_version').get() as { user_version: number })
     .user_version
-  if (vaultPath !== undefined && version < 1) migrateToRelativePaths(db, path, vaultPath)
+  if (vaultPath !== undefined && version < 1) {
+    try {
+      // ponytail: a verzióvizsgálat a tranzakción kívül van; két folyamat egyidejű első megnyitása
+      // elveszítheti a .bak-ot. BEGIN IMMEDIATE-re cserélhető, ha ez gyakorlatban előjön.
+      migrateToRelativePaths(db, path, vaultPath)
+    } catch (error) {
+      db.close()
+      throw error
+    }
+  }
 
   const now = () => new Date().toISOString()
 
@@ -392,7 +401,7 @@ export function openState(path: string, vaultPath?: string): StateStore {
     noteDirOf(itemId) {
       const row = db
         .prepare(
-          "SELECT path FROM artifacts WHERE item_id = ? AND status = 'done' AND path IS NOT NULL AND path != '' ORDER BY created_at LIMIT 1",
+          "SELECT path FROM artifacts WHERE item_id = ? AND status = 'done' AND path IS NOT NULL AND path != '' ORDER BY (kind = 'transcript') DESC, kind LIMIT 1",
         )
         .get(itemId) as { path: string } | undefined
       return row === undefined ? null : dirname(fromStored(vaultPath, row.path))

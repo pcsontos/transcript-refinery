@@ -49,6 +49,11 @@ describe('noteFile', () => {
     expect(path.endsWith('/Transformers_transcript.md')).toBe(true)
   })
 
+  it('a ponttal kezdődő metaadat nem ad rejtett mappát', () => {
+    const path = noteFile('/v/gy', item({ metadata: { channel: '.NET Foundation' } }), '_t.md')
+    expect(path).toBe('/v/gy/youtube/NET Foundation/a1b2c3/Transformers_t.md')
+  })
+
   it('a pinnedDir felülírja a sablont', () => {
     expect(noteFile('/v/gy', withChannel(), '_notes.md', { pinnedDir: '/v/gy/régi/mappa' })).toBe(
       '/v/gy/régi/mappa/Transformers_notes.md',

@@ -185,7 +185,7 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
   const c = parsed.data
   return {
     configPath,
-    vaultPath: c.vault.path,
+    vaultPath: resolve(c.vault.path),
     notesRoot: join(c.vault.path, c.vault.notes_dir),
     layout: c.vault.layout,
     sources: c.sources.map((p) => ({ name: basename(p), path: p })),

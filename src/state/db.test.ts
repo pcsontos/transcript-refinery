@@ -453,6 +453,23 @@ describe('relatív utak az állapottár határán', () => {
     s.close()
   })
 
+  it('noteDirOf az átirat mappáját adja, akkor is, ha egy korábbi sor máshová mutat', () => {
+    const s = openState(dbPath, '/v')
+    s.recordItem(item())
+    s.recordArtifact('a1b2c3', '–', 'done', '/v/regi/x.md', null)
+    s.recordArtifact('a1b2c3', 'notes', 'done', '/v/mas/n.md', null)
+    s.recordArtifact('a1b2c3', 'transcript', 'done', '/v/uj/t.md', null)
+    expect(s.noteDirOf('a1b2c3')).toBe('/v/uj')
+    s.close()
+  })
+
+  it('a záró perjel nélküli vaultPath-szal a _ és % jeles útvonal is relatív lesz', () => {
+    const s = openState(dbPath, '/v_%x')
+    seed(s, '/v_%x/Inbox/a.md')
+    expect(rawPaths('artifacts')).toEqual(['Inbox/a.md'])
+    s.close()
+  })
+
   it('vault nélkül a user_version 0 marad', () => {
     openState(dbPath).close()
     expect(userVersion()).toBe(0)

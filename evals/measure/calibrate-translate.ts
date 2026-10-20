@@ -72,7 +72,7 @@ interface Sample {
 
 // 1. Minta a vaultban kész forrásjegyzetekből, azonosító szerinti sorrendben.
 //    Nulla modellhívás.
-const reader = openStateReader(cfg.statePath)
+const reader = openStateReader(cfg.statePath, cfg.vaultPath)
 if (reader === null) {
   console.error(`Nincs állapottár: ${cfg.statePath}`)
   process.exit(2)

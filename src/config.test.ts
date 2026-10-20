@@ -33,6 +33,10 @@ describe('loadConfig', () => {
     expect(cfg.notesRoot).toBe('/v/Inbox/masik')
   })
 
+  it('a záró perjeles vault.path perjel nélküli lesz', () => {
+    expect(loadConfig({ ...MIN, vault: { path: '/v/' } }, '/p/refinery.config.yaml').vaultPath).toBe('/v')
+  })
+
   it('layout nélkül az alapértelmezett sablont adja', () => {
     expect(loadConfig(MIN, '/p/refinery.config.yaml').layout).toBe('{channel}/{item_id}')
   })

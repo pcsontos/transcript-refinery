@@ -26,6 +26,7 @@ const { cfg } = await loadCliConfig(values.config)
 const root = cfg.notesRoot + '/'
 
 let moved = 0
+const planned = new Set<string>()
 for (const note of await findNotes(cfg.vaultPath)) {
   if (!note.path.startsWith(root)) continue
   const source = text(note.fields.source)
@@ -44,14 +45,20 @@ for (const note of await findNotes(cfg.vaultPath)) {
   )
   if (target === note.path) continue
   const pair = `${relative(cfg.notesRoot, note.path)} → ${relative(cfg.notesRoot, target)}`
-  if (existsSync(target)) {
+  if (existsSync(target) || planned.has(target)) {
     console.log(`kihagyva, létezik: ${pair}`)
     continue
   }
+  planned.add(target)
   console.log(pair)
   if (values.apply) {
-    await mkdir(dirname(target), { recursive: true })
-    await git('git', ['-C', cfg.vaultPath, 'mv', note.path, target])
+    try {
+      await mkdir(dirname(target), { recursive: true })
+      await git('git', ['-C', cfg.vaultPath, 'mv', note.path, target])
+    } catch (error) {
+      console.log(`  HIBA, kihagyva: ${(error as Error).message.split('\n')[0]!}`)
+      continue
+    }
   }
   moved++
 }

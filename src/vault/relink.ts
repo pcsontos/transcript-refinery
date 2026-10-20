@@ -93,7 +93,14 @@ export async function relinkNotes(
 ): Promise<string[]> {
   const tracked = store.trackedPaths()
   if (tracked.length === 0 || !existsSync(vaultPath)) return []
-  const report = planRelink(tracked, await findNotes(vaultPath), existsSync)
+  let found: FoundNote[]
+  try {
+    found = await findNotes(vaultPath)
+  } catch (error) {
+    // A követés nem létfontosságú: egy olvashatatlan almappa ne állítsa meg a futást.
+    return [`követés kihagyva: ${(error as Error).message}`]
+  }
+  const report = planRelink(tracked, found, existsSync)
   if (apply) for (const m of report.moved) store.movePath(m.itemId, m.kind, m.to)
   return describeRelink(report, vaultPath)
 }

@@ -23,7 +23,8 @@ export function layoutError(layout: string): string | null {
 /** A kitöltött szegmensek; a hiányzó vagy üres mező szegmense kimarad. */
 export function layoutSegments(layout: string, fields: Partial<Record<LayoutField, string>>): string[] {
   return layout.split('/').flatMap((segment) => {
-    const value = fields[FIELD_SEGMENT.exec(segment)![1] as LayoutField]?.trim()
+    // Vezető pont nélkül: a ponttal kezdődő mappa rejtett lenne, a követés pedig kihagyná.
+    const value = fields[FIELD_SEGMENT.exec(segment)![1] as LayoutField]?.trim().replace(/^\.+/, '').trim()
     return value ? [sanitizeSegment(value)] : []
   })
 }
