@@ -78,7 +78,7 @@ A `vaultPath` elhagyható: így a meglévő tesztek és a `web/test/e2e/fixture.
   4. Ha marad `/`-rel kezdődő út, egy `console.error` sor: darabszám és az első három út.
 - `PRAGMA user_version = 1` akkor is beáll, ha nem volt mit átírni (friss tár), így a `.bak` csak valódi migrációnál készül.
 
-- [ ] **1. lépés: a bukó tesztek** (`db.test.ts`, ideiglenes mappában)
+- [x] **1. lépés: a bukó tesztek** (`db.test.ts`, ideiglenes mappában)
   - Vaulttal nyitott tár, `recordArtifact(…, '/v/Inbox/a.md', …, pendingCommit: true)`: a nyers SQLite-sorban `Inbox/a.md` áll (külön `DatabaseSync`-kel olvasva), az `artifactOf` és a `listPendingCommits` `/v/Inbox/a.md`-t ad; `clearPendingCommits(['/v/Inbox/a.md'])` után a lista üres.
   - `'/v-masik/a.md'` a `/v` vaulttal abszolút marad a nyers sorban is.
   - Migráció: vault nélkül nyitott tárba két sor (`/v/Inbox/a.md`, `/regi/b.md`), bezárás, újranyitás `/v`-vel → a nyers sorok `Inbox/a.md` és `/regi/b.md`; megvan a `.bak`, benne az eredeti abszolút sor; a `user_version` 1.
@@ -86,10 +86,10 @@ A `vaultPath` elhagyható: így a meglévő tesztek és a `web/test/e2e/fixture.
   - Friss tár vaulttal: nincs `.bak`, a `user_version` 1.
   - Vault nélküli nyitás: a `user_version` 0 marad.
   - `reader.test.ts`: relatív sor a `openStateReader(path, '/v')` `artifacts()`-ában abszolút.
-- [ ] **2. lépés:** `pnpm vitest run src/state` → FAIL.
-- [ ] **3. lépés:** a fenti viselkedés megírása, a hívók átállítása.
-- [ ] **4. lépés:** teszt → PASS; teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(state): Store vault note paths relative to the vault`).
+- [x] **2. lépés:** `pnpm vitest run src/state` → FAIL.
+- [x] **3. lépés:** a fenti viselkedés megírása, a hívók átállítása.
+- [x] **4. lépés:** teszt → PASS; teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(state): Store vault note paths relative to the vault`).
 
 ### 2. feladat: A vault bejárása és az összevetés (#276)
 
@@ -121,14 +121,14 @@ export function describeRelink(report: RelinkReport, vaultPath: string): string[
 - `planRelink`: ha `exists(t.path)` → semmi. Különben a kulcs jelöltjei: 0 → `missing`, 1 → `moved`, több → `conflicts`.
 - `describeRelink`: `áthelyezve: <régi> → <új>`, `eltűnt: <út>`, `ütközés: <item_id> <kind>: <jelölt>, <jelölt>`; az utak a `vaultPath`-hoz relatívak.
 
-- [ ] **1. lépés: a bukó tesztek**
+- [x] **1. lépés: a bukó tesztek**
   - `planRelink`: létező tárolt út → üres jelentés; hiányzó út + egy jelölt → `moved`; nulla jelölt → `missing`; két jelölt → `conflicts`, és nincs `moved`.
   - `noteKey`: `recipe` nélkül `transcript`; `recipe: notes-hu` + `translation_of: notes` + `language: hu` → `notes-hu`; `item_id` nélkül `null`.
   - `findNotes` ideiglenes vaultban: `.obsidian/x.md`, `.trash/y.md` és egy frontmatter nélküli fájl kimarad; egy almappás, `item_id`-s jegyzet megvan.
-- [ ] **2. lépés:** `pnpm vitest run src/vault/relink.test.ts` → FAIL.
-- [ ] **3. lépés:** megírás.
-- [ ] **4. lépés:** PASS; teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(vault): Detect moved notes by frontmatter`).
+- [x] **2. lépés:** `pnpm vitest run src/vault/relink.test.ts` → FAIL.
+- [x] **3. lépés:** megírás.
+- [x] **4. lépés:** PASS; teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(vault): Detect moved notes by frontmatter`).
 
 ### 3. feladat: Követés a `scan`-ben, a `run`-ban és a `watch`-ban (#276)
 
@@ -152,15 +152,15 @@ export async function relinkNotes(store: StateStore, vaultPath: string, apply: b
 - `commandRun`: rögtön az `openState` után, a `--dry-run`-tól függetlenül csak `apply = !flags.dryRun`; a sorok `console.log`-gal.
 - `watchRound`: az `openState` után `relinkNotes(store, cfg.vaultPath, true)`, a sorok `out`-tal.
 
-- [ ] **1. lépés: a bukó tesztek**
+- [x] **1. lépés: a bukó tesztek**
   - `db.test.ts`: `movePath` után az `artifactOf` az új utat adja, a nyers sor relatív.
   - `relink.test.ts`: ideiglenes vault + tár; egy kész jegyzetet átmozgatva `relinkNotes(…, false)` jelenti, és a tár változatlan; `true`-val a tár az új utat adja.
   - `cli.test.ts`: a `scan` kimenetében megjelenik az `áthelyezve:` sor; a `run --dry-run` nem írja át az utat.
   - `round.test.ts`: egy kör után az átmozgatott jegyzet útja frissül, és az `out` megkapja a sort.
-- [ ] **2. lépés:** FAIL.
-- [ ] **3. lépés:** megírás.
-- [ ] **4. lépés:** PASS; teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(cli): Follow moved notes in scan, run and watch`).
+- [x] **2. lépés:** FAIL.
+- [x] **3. lépés:** megírás.
+- [x] **4. lépés:** PASS; teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(cli): Follow moved notes in scan, run and watch`).
 
 ### 4. feladat: Sablonos célút és a mappa rögzítése (#273)
 
@@ -198,24 +198,24 @@ noteDirOf(itemId: string): string | null
 - Rögzítés: ahol van tár (a pipeline három helye, `cli.ts:588`), a hívás `{ layout: cfg.layout, pinnedDir: store.noteDirOf(item.itemId) }`. A `queue/done.ts` és a `cli.ts:198` csak `layout`-ot ad. `// ponytail: a tár nélküli fallback (állapotrekord nélküli kész fájl keresése) a sablon szerinti úton keres; egy régi szerkezetű, rekord nélküli fájlt nem talál meg.`
 - `serve/summary.ts`: a commitolandó utak nem újraszámolással jönnek, hanem a `commandRun` után nyitott tárból: `openState(cfg.statePath, cfg.vaultPath)`, `artifactOf(input.videoId, kind)?.path` a `transcript` és az `ids` fajtáira, a `null` kimarad. A csak az útszámításhoz összerakott `SourceItem` törlődik; a címkeresés (`discoverAll`) marad.
 
-- [ ] **1. lépés: a bukó tesztek**
+- [x] **1. lépés: a bukó tesztek**
   - `paths.test.ts`: `channel`-lel `<root>/<forrás>/<csatorna>/<item_id>/<alapnév>_notes.md`; `channel` nélkül `<root>/<forrás>/<item_id>/…`; a csak szóköz `channel` is hiányzik; `pinnedDir` esetén `<pinnedDir>/<alapnév>_notes.md`.
   - `layoutError('{chanel}/{item_id}')` a mezőnevet tartalmazó hibát ad; `'videos/{item_id}'` hiba; `DEFAULT_LAYOUT` → `null`.
   - `config.test.ts`: hiányzó `layout` → `DEFAULT_LAYOUT`; `{chanel}` → config-hiba a `vault.layout` névvel.
   - `db.test.ts`: `noteDirOf` egy kész kimenet mappáját adja; kimenet nélkül `null`.
   - `pipeline.test.ts`: egy elem, amelynek az átirata a régi helyen van a tárban, az új receptjét ugyanabba a mappába írja.
   - `summary.test.ts`: a commit a tárban rögzített úton lévő fájlt veszi fel.
-- [ ] **2. lépés:** FAIL.
-- [ ] **3. lépés:** megírás; a régi útra számító tesztelvárások frissítése (ahol a teszt maga is `noteFile`-lal számol, azt nem kell).
-- [ ] **4. lépés:** PASS; teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(vault): Place notes by a configurable per-item layout`).
+- [x] **2. lépés:** FAIL.
+- [x] **3. lépés:** megírás; a régi útra számító tesztelvárások frissítése (ahol a teszt maga is `noteFile`-lal számol, azt nem kell).
+- [x] **4. lépés:** PASS; teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(vault): Place notes by a configurable per-item layout`).
 
 ### 5. feladat: `telegram/` forrásnév
 
 **Fájlok:** `package.json` (`serve`, `serve:inspect`: `tmp/serve-out` → `tmp/telegram`), `README.md:283`, `.env.example` (ha a mappát említi)
 
-- [ ] **1. lépés:** csere, `grep -rn "serve-out" --exclude-dir=node_modules --exclude-dir=dist .` → csak a `docs/plans/` régi dokumentumai és a CHANGELOG maradhat.
-- [ ] **2. lépés:** teljes ellenőrzés zöld; commit (`chore(serve): Rename serve output folder to telegram`).
+- [x] **1. lépés:** csere, `grep -rn "serve-out" --exclude-dir=node_modules --exclude-dir=dist .` → csak a `docs/plans/` régi dokumentumai és a CHANGELOG maradhat.
+- [x] **2. lépés:** teljes ellenőrzés zöld; commit (`chore(serve): Rename serve output folder to telegram`).
 
 ### 6. feladat: Egyszeri mozgató szkript
 
@@ -228,9 +228,9 @@ noteDirOf(itemId: string): string | null
 - `--apply`: `mkdir -p` a célmappára, majd `git -C <vault> mv <régi> <új>` (`execFile`). Commitot nem készít, a végén kiírja: `Commitold a vaultot, aztán futtasd: refinery run`.
 - Teszt nincs: egyszer futó, próbafuttatással ellenőrzött szkript, a logikája (`findNotes`, `layoutSegments`) tesztelt.
 
-- [ ] **1. lépés:** megírás; `pnpm typecheck && pnpm lint` zöld.
-- [ ] **2. lépés:** próbafuttatás a valódi vaulton (`--apply` nélkül): a kimenetben a `serve-out/…` jegyzetek `telegram/<csatorna>/<id>/` alá mennének, a `chapters/…` a `chapters/<id>/` alá; nincs `kihagyva` sor a pinchflat-minta duplikátumon kívül.
-- [ ] **3. lépés:** commit (`chore(scripts): Add one-off note move script`).
+- [x] **1. lépés:** megírás; `pnpm typecheck && pnpm lint` zöld.
+- [x] **2. lépés:** próbafuttatás a valódi vaulton (`--apply` nélkül): a kimenetben a `serve-out/…` jegyzetek `telegram/<csatorna>/<id>/` alá mennének, a `chapters/…` a `chapters/<id>/` alá; nincs `kihagyva` sor a pinchflat-minta duplikátumon kívül.
+- [x] **3. lépés:** commit (`chore(scripts): Add one-off note move script`).
 
 ### 7. feladat: PR, kiadás, telepítés és éles ellenőrzés
 
