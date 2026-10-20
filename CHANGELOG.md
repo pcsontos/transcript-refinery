@@ -3,6 +3,56 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.20.0] — 2026-10-20
+
+A vault rendezettebb lett: a jegyzetek videónként egy mappába kerülnek, az
+átmozgatott jegyzeteket a program magától követi, és az állapottár nem köti
+magát a vault pontos helyéhez.
+
+### ✨ Új vault-szerkezet
+
+- **Elemenként egy mappa:** a jegyzetek mostantól a
+  `<forrás>/<csatorna>/<elem azonosítója>/` mappába kerülnek (#273). A sablon a
+  `vault.layout` beállítással módosítható, alapértéke `{channel}/{item_id}`;
+  ismert mezők: `item_id`, `title`, `channel`, `video_id`, `uploaded`. Ha egy
+  mező hiányzik, a szegmense kimarad. Elírt mezőnévnél a program induláskor
+  megáll, és felsorolja az ismert mezőket.
+- **Egy elem fájljai együtt maradnak:** a mappa az elem első kimenetével
+  rögzül, a további receptek és fordítások ugyanoda kerülnek.
+- **A Telegram jegyzetei a `telegram/` alá kerülnek** (a `serve` kimeneti
+  mappája `tmp/serve-out` helyett `tmp/telegram`).
+- **Egyszeri mozgató szkript:** `pnpm exec tsx scripts/move-notes.ts` a meglévő
+  jegyzeteket az új szerkezetbe viszi. Alapból csak kiírja, mit mozgatna;
+  `--apply` mellett `git mv`-vel mozgat.
+
+### 🔧 Áthelyezett jegyzetek követése
+
+- **Átmozgatott jegyzet nem vész el** (#276): ha a vaulton belül (például
+  Obsidianban) másik mappába húzol egy kész jegyzetet, a `refinery run` és a
+  `watch` az `item_id` alapján megtalálja, és frissíti az útját. A webes
+  elemoldal és a queue-link az új helyre mutat.
+- **`scan`:** csak jelzi az elmozdulást, az eltűnt jegyzetet és az ütközést,
+  semmit nem ír.
+
+### 🛠️ Állapottár
+
+- **Relatív utak** (#275): az állapottár a jegyzetek útját a vaulthoz képest
+  tárolja, így a vault áthelyezése vagy máshova klónozása nem töri el a
+  felületet. Az első megnyitáskor a régi sorok automatikusan átíródnak, előtte
+  az állapotfájl mellé `.bak` mentés készül.
+
+### ⚠️ Tudnivalók
+
+- A konténer (`serve`) is változik: kép-feltöltés és a `peter-mba` frissítése
+  kell; a mappa átnevezése miatt a `SERVE_OUT` mappát át kell nevezni
+  `tmp/telegram`-ra.
+- A webes felület a lefordított kódot használja, ezért az első migráló futás
+  előtt `pnpm build` kell.
+- Régebbi verzióra visszaállni a migráció után csak az állapotfájl `.bak`
+  mentéséből lehet.
+- A `scripts/move-notes.ts` futtatása előtt a vaultban lévő kézi duplikátumokat
+  rendezni kell.
+
 ## [1.19.0] — 2026-10-17
 
 A hosszú receptek (például egy egyórás webinár `clean-deep`-je) mostantól
@@ -899,6 +949,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.20.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.0
 [1.19.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.19.0
 [1.18.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.18.1
 [1.18.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.18.0
