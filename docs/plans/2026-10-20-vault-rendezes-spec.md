@@ -16,7 +16,7 @@ A három szakasz egymásra épül, ezért a kód szakaszonként, ebben a sorrend
 2. **#276 követés.** Erre épül a #273 migrációja: a meglévő jegyzeteket csak át kell mozgatni, az utakat a következő futás frissíti. Így a #273-nak nem kell saját DB-migráció.
 3. **#273 új szerkezet.**
 
-A szakaszok külön kód-PR-ben is mehetnek. Ez a terv kérdése.
+A kód egy PR-ben megy, szakaszonkénti feladatokkal (felhasználói döntés).
 
 ## Mért kiinduló állapot (2026-10-20)
 
@@ -43,15 +43,14 @@ A szakaszok külön kód-PR-ben is mehetnek. Ez a terv kérdése.
 | Vegyes állapot (relatív és abszolút sorok) | Megengedett. Az abszolút út változatlanul érvényes, a relatív a `vault.path`-hoz fűződik. A megmaradt abszolút sorokat a #276 követése javítja. | felhasználó |
 | Mikor keres a refinery áthelyezett jegyzeteket? | Minden `run` és `watch`-kör elején, kapcsoló nélkül, mert a bejárás 0,55 s. A `scan` csak jelent. | tervező, a mérés alapján |
 | Hol jelenik meg a követés eredménye? | Csak a `scan` és a `run` konzolkimenetében. | felhasználó |
-| Illesztési kulcs | `(item_id, kind)`. `recipe` nélkül `kind = transcript`, `translation_of` jelenlétében `kind = <recipe>-<language>`, egyébként `kind = <recipe>`. | tervező, a mérés alapján |
+| Illesztési kulcs | `(item_id, kind)`, ahol `kind = recipe ?? 'transcript'`. A fordítás `recipe` mezője már a teljes fajta (`notes-hu`). | tervező, a mérés alapján |
 | Rögzül-e az elem mappája? | Igen, az első kimenet megírásakor. Ha egy elemnek már van kimenete az állapottárban, a további receptek annak a mappájába kerülnek. A sablon csak új elemre számolódik. | felhasználó |
-| A sablon szintje | Globális alapérték, forrásonként felülírható. | felhasználó |
+| A sablon szintje | Csak globális `vault.layout`. A forrásonkénti felülírás akkor jön, ha konkrét igény lesz rá. | felhasználó (a tervezéskor módosítva) |
 | Fájlnév a mappán belül | Marad `<alapnév><utótag>`, hogy az Obsidianban egyedi legyen. | felhasználó |
-| A meglévő jegyzetek | Egyszeri mozgató szkript (`scripts/`), alapértelmezetten próbafuttatással, a végleges utakat a következő `run` követése írja be. A pinchflat-minta duplikátumot előtte kézzel töröljük. | felhasználó |
+| A meglévő jegyzetek | Egyszeri mozgató szkript (`scripts/`), alapértelmezetten próbafuttatással, a végleges utakat a következő `run` követése írja be. A pinchflat-minta duplikátumot előtte kézzel töröljük. A szkript a vault frontmatteréből számol, nem az állapottárból (abban csak 114 út van a 198 jegyzetből). | felhasználó |
 | A célút szerkezete | `<notesRoot>/<forrásnév>/<sablon>/<alapnév><utótag>`. A forrásnév előtag marad. | tervező, jóváhagyva |
 | Sablon-szintaxis | `{mező}` szegmensek `/`-rel elválasztva, pl. `{channel}/{item_id}`. Ismeretlen mezőnév esetén config-hiba induláskor. | tervező, jóváhagyva |
-| Forrásnév | Forrásonként megadható `name:` mezővel. Hiánya esetén a mai érték marad, vagyis az útvonal utolsó szegmense. | tervező, jóváhagyva |
-| A hash-alapú `itemId` | Továbbra is a **lemezen lévő mappa nevéből** számolódik, nem a `name:`-ből. Ellenkező esetben az átnevezés minden metaadat nélküli elemnek (kézi, felvétel, könyvfejezet, szöveges átirat) új azonosítót adna, és azok újra feldolgozódnának. | tervező |
+| Forrásnév | Nincs `name:` mező. A `SERVE_OUT` mappa `tmp/serve-out` → `tmp/telegram`, így a forrásnév magától `telegram`. A Telegram-tételek azonosítója a videóazonosító vagy a tartalom hash-e, a mappanév nem számít bele. | felhasználó (a tervezéskor módosítva) |
 
 ## 1. szakasz — #275: relatív utak az állapottárban
 
@@ -92,7 +91,7 @@ A kész/kihagyás döntés csak a `status`-t nézi (`isDone`, `src/state/db.ts:1
 
 ### Új viselkedés
 
-- **Bejárás:** a teljes `vault.path`, a `.git` kivételével. A `.md` fájlok frontmatterét olvassa: `item_id`, `recipe`, `translation_of`, `language`. Frontmatter vagy `item_id` nélküli fájlt kihagy.
+- **Bejárás:** a teljes `vault.path`, a `.git` kivételével. A `.md` fájlok frontmatterét olvassa: `item_id` és `recipe`. Frontmatter vagy `item_id` nélküli fájlt kihagy. Minden ponttal kezdődő mappa kimarad (`.git`, `.obsidian`, `.trash`), hogy a lomtárba tett jegyzet ne számítson elmozdultnak.
 - **Kulcs:** `(item_id, kind)`, a döntési táblázat szerint.
 - **Összevetés** az állapottár `done` státuszú, nem üres utú `artifacts` soraival:
   - *elmozdult:* a tárolt úton nincs fájl, a kulcs pontosan egy másik helyen megvan;
@@ -100,7 +99,7 @@ A kész/kihagyás döntés csak a `status`-t nézi (`isDone`, `src/state/db.ts:1
   - *ütközés:* a kulcs több fájlban is megvan, és a tárolt úton nincs fájl. Ha a tárolt úton van fájl, a többi példány nem számít ütközésnek, mert a tárolt út érvényes.
 - **`scan`:** kiírja az elmozdultakat (`régi út → új út`), az eltűnteket és az ütközéseket. Nem ír semmit, a „nem ír semmit” ígérete marad.
 - **`run` és a `watch` köre:** a feldolgozás előtt frissíti az elmozdultak útját (relatívan, az 1. szakasz szerint), és soronként kiírja. Az ütközést és az eltűntet csak kiírja, nem ír rájuk. A frissítés csak az állapottárat érinti, a vaultban nincs mit commitolni.
-- A `serve` saját futásai is a feldolgozás előtt követnek, ha a terv ezt egy közös belépési ponton meg tudja oldani. Ha nem, ez a terv nyitott kérdése.
+- A `serve` futásai is követnek, mert a `serve` a `commandRun`-t hívja (`src/serve/summary.ts:149`).
 - A `pending_commits` sorait a követés nem módosítja. Egy félbemaradt commit után átmozgatott jegyzetet a commit nem talál, és ezt a mai módon jelzi.
 
 ### Elfogadási feltételek
@@ -108,7 +107,7 @@ A kész/kihagyás döntés csak a `status`-t nézi (`isDone`, `src/state/db.ts:1
 - Egy kész jegyzetet a vaulton belül másik mappába mozgatva a `refinery scan` kiírja az elmozdulást, és nem ír semmit.
 - Utána a `refinery run` frissíti az utat: a webes elemoldal újra mutatja a törzset, a queue-link az új helyre mutat, és a jegyzet fordítása lefut.
 - Ugyanazt a jegyzetet két helyre másolva, az eredetit törölve a `run` ütközést jelez, és a párt nem írja át.
-- Egy átirat (`recipe` nélkül) és egy fordítás (`translation_of`-fal) mozgatása is felismerődik, a forrásnyelvi `language` mező nem téveszti meg az illesztést.
+- Egy átirat (`recipe` nélkül) és egy fordítás (`recipe: notes-hu`) mozgatása is felismerődik.
 
 ## 3. szakasz — #273: új vault-szerkezet
 
@@ -129,14 +128,10 @@ vault:
   # Elhagyható; ez az alapértelmezés.
   layout: "{channel}/{item_id}"
 
-sources:
-  - /Users/valaki/Downloads/transcripts          # a mai rövid alak marad
-  - path: /Users/valaki/books/es6/chapters
-    layout: "{item_id}"                           # forrásonkénti felülírás
 ```
 
-- A `sources:` eleme lehet a mai szöveg, vagy egy `{ path, name?, layout? }` objektum.
-- A `serve` forrásneve és sablona a serve configjában állítható be ugyanígy. Alapértelmezetten a forrásnév `telegram`. A pontos hely (env vagy a `serve` config-szakasza) a terv kérdése.
+- A `sources:` formátuma nem változik. A sablon minden forrásra ugyanaz.
+- A `serve` forrásneve a `SERVE_OUT` mappa nevéből jön; a mappa `tmp/telegram` lesz (`package.json`).
 - **Helyettesíthető mezők:** `item_id`, `title`, `channel`, `video_id`, `uploaded`. Ismeretlen mezőnév esetén a program induláskor config-hibával áll meg, és a hibaüzenet felsorolja az ismert mezőket.
 - **Hiányzó érték:** ha egy mező nincs meg, vagy üres, vagy csak szóközt tartalmaz, a szegmense kimarad. Pl. `{channel}/{item_id}` `channel` nélkül → `<item_id>/…`. Minden szegmens a meglévő `sanitizeSegment`-en megy át.
 
@@ -148,11 +143,11 @@ sources:
 - Ezt a szabályt egyetlen függvény valósítja meg, amelyet az író hely és az összes újraszámoló hely hív. A `serve/summary.ts` commitja a tárolt utakat olvassa, nem számol újra üres metaadattal.
 - Ennek mellékhatása, hogy egy régi szerkezetben lévő elem új receptje a régi mappába kerül, amíg a mozgató szkript le nem fut. Ez szándékos: egy elem fájljai egy helyen maradnak.
 
-**A `serve` olvasói:** a `readLocalPair` és a `deleteLocalPair` (`src/serve/inventory.ts`) a felirat-mappát olvassa, nem a vaultot, ezért nem érinti őket a változás. A `/notes` listázó (`scanNotes`, `src/serve/notes.ts:207`) rekurzívan járja be a `notesRoot`-ot, és mappánként csoportosít. A terv ellenőrzi, hogy a videónkénti mappával is helyesen csoportosít-e.
+**A `serve` olvasói:** a `readLocalPair` és a `deleteLocalPair` (`src/serve/inventory.ts`) a felirat-mappát olvassa, nem a vaultot, ezért nem érinti őket a változás. A `/notes` listázó (`scanNotes`, `src/serve/notes.ts:207`) rekurzívan járja be a `notesRoot`-ot, és mappánként csoportosít. Mappán és alapnéven belül csoportosít, így a videónkénti mappával is helyesen működik (ellenőrizve).
 
 **Mozgató szkript (egyszeri):** `scripts/` alatt.
 
-- Az állapottár `done` soraiból és az elemek metaadatából kiszámolja az új utat a sablon szerint, és kiírja a `régi → új` párokat. Alapértelmezetten csak ennyit tesz.
+- A vault jegyzeteinek frontmatteréből (`source`, `item_id`, `channel`, `video_id`, `title`, `uploaded`) kiszámolja az új utat a sablon szerint, a `serve-out` forrásnevet `telegram`-ra cserélve, és kiírja a `régi → új` párokat. Alapértelmezetten csak ennyit tesz.
 - `--apply` kapcsolóval mozgat is (`git mv` a vault-repóban, hogy a történet megmaradjon). Ha a célfájl már létezik, a párt kihagyja és kiírja.
 - Az állapottárhoz nem nyúl. Az utakat a következő `refinery run` követése (2. szakasz) frissíti.
 - A `_queue.md`-t a következő `run` írja újra a frissített utakkal.
@@ -165,12 +160,9 @@ sources:
 - A Telegramról indított futás jegyzetei a `telegram/` alá kerülnek, és a `serve` commitja megtalálja őket.
 - Egy régi szerkezetben lévő, már feldolgozott elem új receptje a meglévő jegyzetei mellé kerül.
 - Egy `{chanel}` elírás esetén a program induláskor hibával áll meg.
-- A `name: telegram` beállítása nem változtatja meg a meglévő metaadat nélküli elemek `itemId`-jét: a `refinery run` nem dolgozza fel őket újra.
+- A `SERVE_OUT` átnevezése után a már feldolgozott Telegram-tételek `itemId`-je nem változik: a `serve` nem dolgozza fel őket újra.
 - A mozgató szkript próbafuttatása semmit sem mozgat. Az `--apply` utáni `refinery run` minden mozgatott jegyzet útját frissíti, és a `scan` utána nem jelez elmozdulást.
 
-## Nyitott kérdések a tervre
+## Terv
 
-- A szakaszok egy vagy három kód-PR-ben menjenek?
-- A `serve` követése (2. szakasz) közös belépési ponton megoldható-e?
-- A `serve` forrásnevének és sablonjának config-helye.
-- A `scanNotes` csoportosítása a videónkénti mappával.
+`docs/plans/2026-10-20-vault-rendezes.md`. A tervezés közbeni eltéréseket a terv táblázata sorolja fel; ez a spec már ezekkel összhangban van.
