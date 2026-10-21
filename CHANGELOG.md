@@ -3,6 +3,17 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.20.1] — 2026-10-21
+
+Javítás a v1.20.0 áthelyezett jegyzeteket követő részében.
+
+### 🐛 Javítások
+
+- **A régebbi jegyzetek is követhetők:** a szeptemberi jegyzetek frontmatterében
+  nincs `recipe:` mező, ezért a követés mindet átiratnak vette. Ebből hamis
+  „ütközés” és „eltűnt” sor lett, és a `run` nem frissítette az útjukat. Mostantól
+  ilyenkor a fájlnév `_<fajta>.md` utótagja adja a fajtát (#276).
+
 ## [1.20.0] — 2026-10-20
 
 A vault rendezettebb lett: a jegyzetek videónként egy mappába kerülnek, az
@@ -949,6 +960,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.20.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.1
 [1.20.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.0
 [1.19.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.19.0
 [1.18.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.18.1
