@@ -92,7 +92,15 @@ export function renderFrontmatter(fields: readonly FrontmatterField[]): string {
     }
 
     const text = value.replace(/\r\n/g, '\n').replace(/\n+$/, '')
-    lines.push(text.includes('\n') ? block(name, text) : `${name}: ${scalar(text)}`)
+    if (!text.includes('\n')) {
+      lines.push(`${name}: ${scalar(text)}`)
+    } else if (text.split('\n').some((line) => line.trim() === '---')) {
+      // Egy behúzott `---` sor érvényes YAML, de a sorokra bontó eszközök (pl. a vault hookja)
+      // lezárónak olvassák és széttörik a frontmattert; ezért idézett, `\n`-es skalár.
+      lines.push(`${name}: ${JSON.stringify(text)}`)
+    } else {
+      lines.push(block(name, text))
+    }
   }
 
   lines.push('---')
