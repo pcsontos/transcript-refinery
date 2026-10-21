@@ -172,12 +172,12 @@ tmp=$(mktemp "$root/worker/.dev.vars.XXXXXX")
 chmod 600 "$tmp"
 mv "$tmp" "$dest"
 
-mkdir -p "$logdir" "$root/tmp/serve-out"
+mkdir -p "$logdir" "$root/tmp/telegram"
 
 # A serve a 8787-en hallgat. A visszahívás a helyi Wrangler 8788-as portjára megy, nem az éles Worker D1-jébe.
 # A --inspect csak a tsx folyamatra kerül. A NODE_OPTIONS a pnpm-et is inspectorra tenné, és a 9230 foglalt maradna.
 infisical run --env=dev --path=/peter-mbp --projectId="$project_id" -- \
-  env SERVE_OUT="$root/tmp/serve-out" WORKER_CALLBACK_URL="http://127.0.0.1:8788" \
+  env SERVE_OUT="$root/tmp/telegram" WORKER_CALLBACK_URL="http://127.0.0.1:8788" \
   pnpm exec tsx --inspect=127.0.0.1:9230 src/cli.ts serve >"$logdir/serve.log" 2>&1 &
 serve_pid=$!
 wait_port 8787
