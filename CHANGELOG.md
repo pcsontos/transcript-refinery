@@ -3,6 +3,20 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.20.2] — 2026-10-21
+
+Javítás a jegyzetek frontmatterében: a videóleírásban lévő `---` sor már nem
+vágja szét a frontmattert.
+
+### 🐛 Javítások
+
+- **`---` sor a leírásban:** a YouTube-leírások gyakran tartalmaznak `---`
+  elválasztót. Ez eddig behúzva került a frontmatter `description` blokkjába, és
+  sorokra bontó eszközök (például a vault frontmatter-hookja) lezárónak
+  olvasták, így a leírás fele a törzsbe csúszott. Mostantól az ilyen leírás
+  idézett, `\n`-es értékként íródik, a `---` nélküli többsoros leírás változatlan.
+  A már sérült jegyzeteket a vaultban külön helyre kellett állítani.
+
 ## [1.20.1] — 2026-10-21
 
 Javítás a v1.20.0 áthelyezett jegyzeteket követő részében.
@@ -960,6 +974,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.20.2]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.2
 [1.20.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.1
 [1.20.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.0
 [1.19.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.19.0
