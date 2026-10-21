@@ -31,6 +31,18 @@ describe('renderFrontmatter', () => {
     )
   })
 
+  it('a --- sort tartalmazó többsoros érték idézett skalár, nincs behúzott --- sor', () => {
+    const description = 'Elöl\n\n---\n\nHátul\n  ---  \nVég'
+    const out = renderFrontmatter([['title', 'T'], ['description', description], ['url', 'u']])
+    // Sorokra bontó eszköz (pl. a vault hookja) sem találhat benne lezárónak látszó sort.
+    expect(out.split('\n').slice(1, -1).some((line) => line.trim() === '---')).toBe(false)
+    expect(parseYaml(out.split('\n').slice(1, -1).join('\n'))).toEqual({ title: 'T', description, url: 'u' })
+  })
+
+  it('a --- nélküli többsoros érték marad blokk-skalár', () => {
+    expect(renderFrontmatter([['description', 'a\nb-c\n--- x']])).toBe('---\ndescription: |2-\n  a\n  b-c\n  --- x\n---')
+  })
+
   it('a CRLF-et normalizálja, és a záró üres sorokat levágja', () => {
     expect(renderFrontmatter([['description', 'Első\r\nMásodik\n\n']])).toBe(
       '---\ndescription: |2-\n  Első\n  Második\n---',
