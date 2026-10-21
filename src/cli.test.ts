@@ -3092,8 +3092,8 @@ describe('áthelyezett jegyzetek követése', () => {
   /** Egy kész átirat a régi helyén a tárban, a jegyzet viszont már az Uj/ alatt van. */
   async function elmozdult() {
     const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
-    const regi = join(cfg.vaultPath, 'Regi', 'a.md')
-    const uj = join(cfg.vaultPath, 'Uj', 'a.md')
+    const regi = join(cfg.vaultPath, 'Regi', 'a_transcript.md')
+    const uj = join(cfg.vaultPath, 'Uj', 'a_transcript.md')
     await mkdir(dirname(uj), { recursive: true })
     await writeFile(uj, '---\nitem_id: a1\n---\ntörzs\n', 'utf8')
     const pre = openState(cfg.statePath, cfg.vaultPath)
@@ -3118,7 +3118,7 @@ describe('áthelyezett jegyzetek követése', () => {
     const { cfg, regi } = await elmozdult()
     const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     await commandScan(cfg)
-    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a_transcript.md → Uj/a_transcript.md')
     naplo.mockRestore()
     expect(pathOf(cfg)).toBe(regi)
   })
@@ -3126,17 +3126,17 @@ describe('áthelyezett jegyzetek követése', () => {
   it('a scan nem migrálja az állapottárat és nem készít .bak-ot', async () => {
     const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
     await mkdir(join(cfg.vaultPath, 'Uj'), { recursive: true })
-    await writeFile(join(cfg.vaultPath, 'Uj', 'a.md'), '---\nitem_id: a1\n---\n', 'utf8')
+    await writeFile(join(cfg.vaultPath, 'Uj', 'a_transcript.md'), '---\nitem_id: a1\n---\n', 'utf8')
     const pre = openState(cfg.statePath) // vault nélkül: abszolút utak, user_version 0
     pre.recordItem({
       itemId: 'a1', source: 'downloads', sourceFile: 'f', subtitlePath: '/s/f', baseName: 'f',
       title: 't', language: 'en', metadata: {},
     })
-    pre.recordArtifact('a1', 'transcript', 'done', join(cfg.vaultPath, 'Regi', 'a.md'), null)
+    pre.recordArtifact('a1', 'transcript', 'done', join(cfg.vaultPath, 'Regi', 'a_transcript.md'), null)
     pre.close()
     const naplo = vi.spyOn(console, 'log').mockImplementation(() => undefined)
     await commandScan(cfg)
-    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a_transcript.md → Uj/a_transcript.md')
     naplo.mockRestore()
     expect(existsSync(`${cfg.statePath}.bak`)).toBe(false)
     const raw = new DatabaseSync(cfg.statePath, { readOnly: true })
@@ -3151,7 +3151,7 @@ describe('áthelyezett jegyzetek követése', () => {
     await commandRun(cfg, raw, { dryRun: true, force: false, commit: false })
     expect(pathOf(cfg)).toBe(regi)
     await commandRun(cfg, raw, { dryRun: false, force: false, commit: false })
-    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a.md → Uj/a.md')
+    expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a_transcript.md → Uj/a_transcript.md')
     naplo.mockRestore()
     expect(pathOf(cfg)).toBe(uj)
   })

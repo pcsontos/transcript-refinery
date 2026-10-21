@@ -21,7 +21,7 @@ export async function findNotes(vaultPath: string): Promise<FoundNote[]> {
     const path = join(vaultPath, file)
     try {
       const fields = frontmatter(await readHead(path))
-      if (fields !== null && noteKey(fields) !== null) {
+      if (fields !== null && noteKey(fields, path) !== null) {
         notes.push({ path, fields })
       }
     } catch {
@@ -31,12 +31,17 @@ export async function findNotes(vaultPath: string): Promise<FoundNote[]> {
   return notes
 }
 
-/** `(item_id, kind)` kulcs; a `recipe` hiánya átiratot jelent. `null`, ha nincs `item_id`. */
-export function noteKey(fields: Record<string, unknown>): string | null {
+/**
+ * `(item_id, kind)` kulcs. A fajta a `recipe` mezőből jön; a régebbi jegyzetekben
+ * ez nincs, ott a fájlnév `_<fajta>.md` utótagja adja (átirat: `_transcript.md`).
+ * `null`, ha nincs `item_id` vagy a fajta nem állapítható meg.
+ */
+export function noteKey(fields: Record<string, unknown>, path: string): string | null {
   const itemId = fields.item_id
   if (typeof itemId !== 'string' && typeof itemId !== 'number') return null
-  const recipe = fields.recipe
-  return `${String(itemId)}\u0000${typeof recipe === 'string' ? recipe : 'transcript'}`
+  const kind =
+    typeof fields.recipe === 'string' ? fields.recipe : /_([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path)?.[1]
+  return kind === undefined ? null : `${String(itemId)}\u0000${kind}`
 }
 
 export interface Tracked {
@@ -59,7 +64,7 @@ export function planRelink(
 ): RelinkReport {
   const byKey = new Map<string, string[]>()
   for (const note of found) {
-    const key = noteKey(note.fields)
+    const key = noteKey(note.fields, note.path)
     if (key !== null) byKey.set(key, [...(byKey.get(key) ?? []), note.path])
   }
   const report: RelinkReport = { moved: [], missing: [], conflicts: [] }
