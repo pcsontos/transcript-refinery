@@ -185,6 +185,30 @@ describe('runRecipes', () => {
       expect(started?.command).toBe('serve recipes summary=proba-sonnet')
     })
 
+    it('a fordítás a translate-nek megfelelő recept-azonosítón kapja a felülírást', async () => {
+      process.env.LITELLM_API_KEY = 'sk-proba'
+      const { root, vault, outDir, load } = await scene(5, SWITCH, EXTRA)
+      roots.push(root)
+      const git = gitWith()
+      await runRecipes({ videoId: ID, outDir, recipes: ['summary'], createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
+      const result = await runRecipes({
+        videoId: ID,
+        outDir,
+        recipes: ['summary'],
+        lang: 'de',
+        models: { 'summary-de': 'proba-draft' },
+        createClient: () => writer({ generate: 0 }, HUNGARIAN),
+        load,
+        git,
+      })
+      expect(result.ok).toBe(true)
+      const note = await readFile(
+        join(vault, 'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_summary-de.md'),
+        'utf8',
+      )
+      expect(note).toMatch(/\nmodel: proba-draft\n/)
+    })
+
     it.each([
       ['ár nélküli modell', 'summary', 'nincs-ara', 'pricing: nincs ára'],
       ['nem váltható modell', 'summary', 'proba-judge', 'model: nem váltható modell'],

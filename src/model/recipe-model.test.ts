@@ -90,6 +90,7 @@ describe('assertOverrideModels', () => {
   it('sémás receptnél text modellre, ismeretlen modellre dob', () => {
     expect(() => assertOverrideModels(cfg, registry, { notes: 'szoveg' })).toThrow('notes=szoveg')
     expect(() => assertOverrideModels(cfg, registry, { summary: 'ismeretlen' })).toThrow('nem váltható modell')
+    expect(() => assertOverrideModels(cfg, registry, { summary: 'constructor' })).toThrow('nem váltható modell')
   })
 
   it('a megengedett párosítást átengedi', () => {

@@ -89,8 +89,8 @@ export interface JobStore {
   overridesFor(sub: string): Promise<ModelOverride[]>
   /** Beszúr vagy cserél a `(sub, recipe, mode)` kulcson. */
   setOverride(override: ModelOverride): Promise<void>
-  /** `mode` nélkül a recept mindkét felülírását törli. */
-  clearOverride(sub: string, recipe: string, mode?: OverrideMode): Promise<void>
+  /** `mode` nélkül a recept mindkét felülírását törli; `model`-lel csak azt a modellt, amelyet a hívó látott. */
+  clearOverride(sub: string, recipe: string, mode?: OverrideMode, model?: string): Promise<void>
 }
 
 export const OPEN: readonly JobStatus[] = ['queued', 'waiting', 'accepted']
@@ -210,9 +210,15 @@ export function memoryStore(): JobStore {
       overrides.push({ ...override })
       return Promise.resolve()
     },
-    clearOverride: (sub, recipe, mode) => {
+    clearOverride: (sub, recipe, mode, model) => {
       overrides = overrides.filter(
-        (item) => !(item.sub === sub && item.recipe === recipe && (mode === undefined || item.mode === mode)),
+        (item) =>
+          !(
+            item.sub === sub &&
+            item.recipe === recipe &&
+            (mode === undefined || item.mode === mode) &&
+            (model === undefined || item.model === model)
+          ),
       )
       return Promise.resolve()
     },

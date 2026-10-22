@@ -176,12 +176,12 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     secret,
     gate,
     version: VERSION,
-    // A config kérésenként töltődik, mint a receptfuttatásnál: a vault-config szerkesztése újraindítás nélkül hat.
     // A config kérésenként töltődik, mint a receptfuttatásnál; a kaput nem foglalja, mert csak olvas.
     models: async () => {
       const { cfg, raw } = await loadCliConfig(configArg)
       return modelsView(loadModelConfig(raw, process.env, cfg.configPath), recipesFor(cfg))
     },
+    // A config kérésenként töltődik, mint a receptfuttatásnál: a vault-config szerkesztése újraindítás nélkül hat.
     notes: createNotesSource({ load: () => loadCliConfig(configArg), claim: () => claimGate(gate, 'notes') }),
     onJob: async (job: ServeJob, signal: AbortSignal) => {
       console.log(`[serve] Munka végrehajtása indult: ${job.jobId} (${job.url})`)

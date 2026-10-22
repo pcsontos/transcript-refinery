@@ -341,11 +341,18 @@ export function createD1Store(db: D1Like): JobStore {
         .bind(override.sub, override.recipe, override.mode, override.model)
         .run()
     },
-    async clearOverride(sub, recipe, mode) {
-      await (mode === undefined
-        ? db.prepare('DELETE FROM model_overrides WHERE sub = ? AND recipe = ?').bind(sub, recipe)
-        : db.prepare('DELETE FROM model_overrides WHERE sub = ? AND recipe = ? AND mode = ?').bind(sub, recipe, mode)
-      ).run()
+    async clearOverride(sub, recipe, mode, model) {
+      const where = ['sub = ?', 'recipe = ?']
+      const values: unknown[] = [sub, recipe]
+      if (mode !== undefined) {
+        where.push('mode = ?')
+        values.push(mode)
+      }
+      if (model !== undefined) {
+        where.push('model = ?')
+        values.push(model)
+      }
+      await db.prepare(`DELETE FROM model_overrides WHERE ${where.join(' AND ')}`).bind(...values).run()
     },
     async runsFor(jobId) {
       const result = await db.prepare('SELECT * FROM runs WHERE job_id = ? ORDER BY rowid').bind(jobId).all<RunRecord>()

@@ -721,7 +721,10 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     return []
   }
   // ponytail: két egyidejű koppintás ugyanazt az egyszerit kétszer is felhasználhatja; tranzakció, ha zavaró lesz.
-  if (override?.mode === 'once' && row.sub !== null) await deps.store.clearOverride(row.sub, override.recipe, 'once')
+  // A modellel együtt töröl, hogy a közben beállított másik egyszeri ne vesszen el.
+  if (override?.mode === 'once' && row.sub !== null) {
+    await deps.store.clearOverride(row.sub, override.recipe, 'once', override.model)
+  }
   await deps.send(row.chatId, runQueuedLine(row, fresh))
   return [knockFor(fresh, row)]
 }
@@ -751,15 +754,20 @@ async function modelTap(
     return
   }
   const view = await deps.models()
+  const reset = (await deps.store.overridesFor(sub)).some((item) => item.recipe === tap.key)
+  // A visszaállítás a serve nélkül és üres listánál is elérhető, különben egy beragadt felülírást nem lehet levenni.
+  const resetOnly = modelPickKeyboard(tap.key, [], reset)
   if (!view.ok) {
-    await show(probeFailure(view))
+    await show(probeFailure(view), resetOnly)
     return
   }
   const strict = view.structuredRecipes.includes(tap.key)
   const names = view.models.filter((model) => !strict || model.structured).map((model) => model.name)
   const fitting = names.filter((name) => fitsTap(tap.key, name))
-  const reset = (await deps.store.overridesFor(sub)).some((item) => item.recipe === tap.key)
-  if (fitting.length === 0) await show(noModelLine(tap.key))
+  for (const name of names) {
+    if (!fitting.includes(name)) console.warn(`[model] ${name}: a gombadat nem fér a Telegram 64 bájtjába, kimarad a listáról`)
+  }
+  if (fitting.length === 0) await show(noModelLine(tap.key), resetOnly)
   else await show(modelPickLine(tap.key), modelPickKeyboard(tap.key, fitting, reset))
 }
 

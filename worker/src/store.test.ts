@@ -62,6 +62,8 @@ describe('a modellfelülírások (memoryStore)', () => {
     const store = memoryStore()
     await store.setOverride(own())
     await store.setOverride(own({ mode: 'always', model: 'b' }))
+    await store.clearOverride('sub-42', 'notes', 'once', 'másik')
+    expect(await store.overridesFor('sub-42')).toHaveLength(2)
     await store.clearOverride('sub-42', 'notes', 'once')
     expect(await store.overridesFor('sub-42')).toEqual([own({ mode: 'always', model: 'b' })])
     await store.setOverride(own())

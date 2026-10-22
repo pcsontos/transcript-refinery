@@ -1406,6 +1406,43 @@ describe('modellfelülírás a futásnál (#292)', () => {
     expect(await store.overridesFor('sub-42')).toHaveLength(1)
   })
 
+  it('az újrapróba is elfogyasztja az egyszerit', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['notes'], null, { status: 'failed', error: 'Leállt.', notified: false }))
+    await store.setOverride(sub42('notes', 'once', 'sonnet'))
+    const knocks = await handleTap(tap(20, `r:notes:5:${ID}`), deps(store))
+    expect(knocks[0]?.models).toEqual({ notes: 'sonnet' })
+    expect(await store.overridesFor('sub-42')).toEqual([])
+  })
+
+  it('a sikertelen újrapróba-foglalás (claimRun) nem fogyasztja az egyszerit', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['notes'], null, { status: 'failed', error: 'Leállt.', notified: false }))
+    await store.setOverride(sub42('notes', 'once', 'sonnet'))
+    const lost = { ...store, claimRun: () => Promise.resolve(false) }
+    expect(await handleTap(tap(20, `r:notes:5:${ID}`), deps(lost))).toEqual([])
+    expect(await store.overridesFor('sub-42')).toHaveLength(1)
+  })
+
+  it('a közben beállított másik egyszeri nem vész el a fogyasztáskor', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.setOverride(sub42('notes', 'once', 'a'))
+    const racing = {
+      ...store,
+      overridesFor: async (sub: string) => {
+        const seen = await store.overridesFor(sub)
+        await store.setOverride(sub42('notes', 'once', 'b'))
+        return seen
+      },
+    }
+    const knocks = await handleTap(tap(20, `r:notes:5:${ID}`), deps(racing))
+    expect(knocks[0]?.models).toEqual({ notes: 'a' })
+    expect(await store.overridesFor('sub-42')).toEqual([sub42('notes', 'once', 'b')])
+  })
+
   it('a leállt futás újrapróbája a felülírást kapja', async () => {
     const store = await boundStore()
     await store.insert(readyRow())
@@ -1502,6 +1539,43 @@ describe('/model parancs és gombok (#292)', () => {
     })
     await handleTap(tap(20, 'm:notes', 42, 9), d)
     expect(d.edits[0]?.text).toBe(noModelLine('notes'))
+    expect(d.edits[0]?.keyboard).toEqual([])
+  })
+
+  it('beragadt felülírásnál a noModelLine mellett a visszaállítás gomb is ott van', async () => {
+    const store = await boundStore()
+    await store.setOverride(sub42('notes', 'always', 'régi'))
+    const d = deps(store, {
+      models: () => Promise.resolve({ ...MODELS, models: [{ name: 'grok', structured: false }] } as ModelsReply),
+    })
+    await handleTap(tap(20, 'm:notes', 42, 9), d)
+    expect(d.edits[0]?.text).toBe(noModelLine('notes'))
+    expect(d.edits[0]?.keyboard).toEqual([[{ text: 'visszaállítás', data: 'x:notes' }]])
+  })
+
+  it('ha a serve nem érhető el, a visszaállítás gomb akkor is megvan', async () => {
+    const store = await boundStore()
+    await store.setOverride(sub42('notes', 'always', 'régi'))
+    const d = deps(store, { models: () => Promise.resolve({ ok: false, reason: 'down' }) })
+    await handleTap(tap(20, 'm:notes', 42, 9), d)
+    expect(d.edits[0]?.text).toBe('A szerver nem válaszol.')
+    expect(d.edits[0]?.keyboard).toEqual([[{ text: 'visszaállítás', data: 'x:notes' }]])
+  })
+
+  it('a gombadatba nem férő modell kimarad, és naplóba kerül', async () => {
+    const long = 'x'.repeat(80)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const d = deps(await boundStore(), {
+        models: () =>
+          Promise.resolve({ ...MODELS, models: [{ name: long, structured: true }, { name: 'sonnet', structured: true }] } as ModelsReply),
+      })
+      await handleTap(tap(20, 'm:notes', 42, 9), d)
+      expect(d.edits[0]?.keyboard.flat().map((key) => key.text)).toEqual(['sonnet'])
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining(long))
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('végponttól végpontig: az o:o:notes:sonnet után az r:notes a modellel kopogtat', async () => {

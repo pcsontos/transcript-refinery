@@ -60,7 +60,7 @@ export function assertOverrideModels(
 ): void {
   const switchable = cfg.switchable ?? {}
   const bad = Object.entries(overrides).filter(([id, model]) => {
-    const kind = switchable[model]
+    const kind = Object.hasOwn(switchable, model) ? switchable[model] : undefined
     return kind === undefined || (registry[id]?.structured !== undefined && kind !== 'structured')
   })
   if (bad.length === 0) return

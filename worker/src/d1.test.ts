@@ -94,6 +94,24 @@ describe('D1: modellfelülírás', () => {
     expect(db.calls[1]?.sql).not.toContain('model')
   })
 
+  it('az overridesFor a felhasználó sorait kéri', async () => {
+    const db = capture()
+    await createD1Store(db).overridesFor('s')
+    expect(db.calls[0]?.sql).toContain('FROM model_overrides WHERE sub = ?')
+    expect(db.calls[0]?.values).toEqual(['s'])
+  })
+
+  it.each([
+    [undefined, undefined, 'sub = ? AND recipe = ?', ['s', 'notes']],
+    ['once', undefined, 'sub = ? AND recipe = ? AND mode = ?', ['s', 'notes', 'once']],
+    ['once', 'm', 'sub = ? AND recipe = ? AND mode = ? AND model = ?', ['s', 'notes', 'once', 'm']],
+  ] as const)('a clearOverride feltétele: mód %s, modell %s', async (mode, model, where, values) => {
+    const db = capture()
+    await createD1Store(db).clearOverride('s', 'notes', mode, model)
+    expect(db.calls[0]?.sql).toBe(`DELETE FROM model_overrides WHERE ${where}`)
+    expect(db.calls[0]?.values).toEqual(values)
+  })
+
   it('a setOverride a (sub, recipe, mode) kulcson cserél', async () => {
     const db = capture()
     await createD1Store(db).setOverride({ sub: 's', recipe: 'notes', mode: 'once', model: 'm' })
