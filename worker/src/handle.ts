@@ -51,6 +51,19 @@ import {
   waitingLine,
   type Key,
   type Probe,
+  type ModelsReply,
+  type Tap,
+  modelText,
+  modelKeyboard,
+  fitsTap,
+  modelPickLine,
+  noModelLine,
+  modelPickKeyboard,
+  modeLine,
+  modeKeyboard,
+  modelSetLine,
+  modelResetLine,
+  probeFailure,
 } from './plan.js'
 import {
   MAX_TEXT_BYTES,
@@ -89,6 +102,8 @@ export interface WorkerDeps {
   cancel: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>
   /** A serve `GET /status`-a, mért válaszidővel; ebből dolgozik a `/ping`, a `/version` és a `/status`. */
   probe: () => Promise<Probe>
+  /** A serve `GET /models`-a: a YAML-alap és a választható modellek. */
+  models: () => Promise<ModelsReply>
   /** A Telegram-csatolmány bájtjai (`getFile`, majd a fájl-URL); `null`, ha nem sikerült. */
   download: (fileId: string) => Promise<Uint8Array | null>
   send: (chatId: string, text: string, keyboard?: Key[][]) => Promise<boolean>
@@ -99,7 +114,7 @@ export interface WorkerDeps {
 type KnockResult = 202 | 409 | 401 | 'down'
 
 const START = /^\/start(?:\s+(\S+))?\s*$/
-const COMMAND = /^\/(help|cancel|ping|version|status)(?:@\w+)?\s*$/
+const COMMAND = /^\/(help|cancel|ping|version|status|model)(?:@\w+)?\s*$/
 
 const SCAN = /^\/scan(?:@\w+)?(?:\s+([\s\S]*))?$/
 /** A Telegram 4096 karakternél bont, mondathatáron, így az első darab rövidebb is lehet. */
@@ -259,6 +274,12 @@ async function handleCommand(
     const open = await deps.store.openFor(binding.sub)
     if (open.jobs.length === 0) await deps.send(chatId, NOTHING_TO_CANCEL)
     else await deps.send(chatId, CANCEL_LINE, cancelKeyboard(open.jobs))
+    return
+  }
+  if (command === 'model') {
+    const view = await deps.models()
+    if (!view.ok) await deps.send(chatId, probeFailure(view))
+    else await deps.send(chatId, modelText(view, await deps.store.overridesFor(binding.sub)), modelKeyboard())
     return
   }
   const probe = await deps.probe()
@@ -705,6 +726,43 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
   return [knockFor(fresh, row)]
 }
 
+/** A `/model` gombjai: ugyanazt az üzenetet szerkesztik, ha a Telegram megadta, különben újat küldenek. */
+async function modelTap(
+  tap: Extract<Tap, { type: 'model' | 'modelPick' | 'modelSet' | 'modelReset' }>,
+  sub: string,
+  chatId: string,
+  messageId: number | undefined,
+  deps: WorkerDeps,
+): Promise<void> {
+  const show = (text: string, keyboard: Key[][] = []) =>
+    typeof messageId === 'number' ? deps.edit(chatId, messageId, text, keyboard) : deps.send(chatId, text, keyboard)
+  if (tap.type === 'modelPick') {
+    await show(modeLine(tap.key, tap.model), modeKeyboard(tap.key, tap.model))
+    return
+  }
+  if (tap.type === 'modelSet') {
+    await deps.store.setOverride({ sub, recipe: tap.key, mode: tap.mode, model: tap.model })
+    await show(modelSetLine(tap.key, tap.model, tap.mode))
+    return
+  }
+  if (tap.type === 'modelReset') {
+    await deps.store.clearOverride(sub, tap.key)
+    await show(modelResetLine(tap.key))
+    return
+  }
+  const view = await deps.models()
+  if (!view.ok) {
+    await show(probeFailure(view))
+    return
+  }
+  const strict = view.structuredRecipes.includes(tap.key)
+  const names = view.models.filter((model) => !strict || model.structured).map((model) => model.name)
+  const fitting = names.filter((name) => fitsTap(tap.key, name))
+  const reset = (await deps.store.overridesFor(sub)).some((item) => item.recipe === tap.key)
+  if (fitting.length === 0) await show(noModelLine(tap.key))
+  else await show(modelPickLine(tap.key), modelPickKeyboard(tap.key, fitting, reset))
+}
+
 export async function handleTap(
   update: {
     update_id: number
@@ -727,6 +785,10 @@ export async function handleTap(
   // A privát chatben a chat azonosítója a feladóé.
   if (tap.type === 'cancel') {
     if (from !== undefined) await cancelTap(tap.jobId, binding.sub, String(from.id), deps)
+    return []
+  }
+  if (tap.type === 'model' || tap.type === 'modelPick' || tap.type === 'modelSet' || tap.type === 'modelReset') {
+    if (from !== undefined) await modelTap(tap, binding.sub, String(from.id), update.callback_query.message?.message_id, deps)
     return []
   }
   const row = await findRow(deps.store, tap.jobId)

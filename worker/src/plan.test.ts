@@ -24,6 +24,9 @@ import {
   runQueuedLine,
   runFailedLine,
   runStartedLine,
+  fitsTap,
+  modelText,
+  type ModelsReply,
   runReadyMessage,
   videoIdOf,
   waitingLine,
@@ -323,5 +326,43 @@ describe('futások', () => {
       `1:${ID}:notes`,
     ])
     expect(await store.run('nincs')).toBeNull()
+  })
+})
+
+describe('/model gombok', () => {
+  it('a parseTap a kulcsot, a módot és a kettőspontos modellt is érti', () => {
+    expect(parseTap('m:notes')).toEqual({ type: 'model', key: 'notes' })
+    expect(parseTap('m:translate')).toEqual({ type: 'model', key: 'translate' })
+    expect(parseTap('m:ismeretlen')).toBeNull()
+    expect(parseTap('p:notes:a:b')).toEqual({ type: 'modelPick', key: 'notes', model: 'a:b' })
+    expect(parseTap('o:o:notes:x')).toEqual({ type: 'modelSet', mode: 'once', key: 'notes', model: 'x' })
+    expect(parseTap('o:a:notes:x')).toEqual({ type: 'modelSet', mode: 'always', key: 'notes', model: 'x' })
+    expect(parseTap('o:z:notes:x')).toBeNull()
+    expect(parseTap('o:o:notes:')).toBeNull()
+    expect(parseTap('x:qa')).toEqual({ type: 'modelReset', key: 'qa' })
+  })
+
+  it('a fitsTap bájtban számol: 64 bájt belefér, 65 nem, az ékezet kettő', () => {
+    expect(fitsTap('clean-moderate', 'm'.repeat(45))).toBe(true)
+    expect(fitsTap('clean-moderate', 'm'.repeat(46))).toBe(false)
+    expect(fitsTap('clean-moderate', 'é'.repeat(23))).toBe(false)
+  })
+
+  it('a modelText a felülírást mutatja, az egyszeri elöl; különben a config modelljét', () => {
+    const view: Extract<ModelsReply, { ok: true }> = {
+      ok: true,
+      draft: 'd',
+      recipes: { notes: 'cfg-notes' },
+      models: [],
+      structuredRecipes: [],
+    }
+    const text = modelText(view, [
+      { sub: 's', recipe: 'summary', mode: 'always', model: 'b' },
+      { sub: 's', recipe: 'summary', mode: 'once', model: 'a' },
+    ])
+    expect(text).toContain('summary: a (egyszeri) · b (állandó)')
+    expect(text).toContain('notes: cfg-notes')
+    expect(text).toContain('qa: d')
+    expect(text).toContain('fordítás: a config szerint')
   })
 })

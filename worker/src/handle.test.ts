@@ -12,6 +12,7 @@ import {
   type WorkerDeps,
 } from './handle.js'
 import {
+  BIND_FIRST,
   DROPPED_LINE,
   langKeyboard,
   maskRecipes,
@@ -22,12 +23,29 @@ import {
   runId,
   runReadyMessage,
   hashToken,
+  modelKeyboard,
+  modelPickLine,
+  modelResetLine,
+  modelSetLine,
+  modelText,
+  noModelLine,
   type Key,
+  type ModelsReply,
   type Probe,
 } from './plan.js'
 import { memoryStore, type JobRow, type RunRow } from './store.js'
 
 const ID = 'abcdefghijk'
+const MODELS: ModelsReply = {
+  ok: true,
+  draft: 'draft-modell',
+  recipes: { notes: 'sonnet' },
+  models: [
+    { name: 'sonnet', structured: true },
+    { name: 'grok', structured: false },
+  ],
+  structuredRecipes: ['notes', 'flashcards', 'bloom'],
+}
 const TOKEN_A = 'A'.repeat(43)
 const TOKEN_B = 'B'.repeat(43)
 const INVALID = 'A link lejárt vagy már nem érvényes. Kérj újat: /start'
@@ -71,6 +89,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
       return Promise.resolve('ok')
     },
     probe: () => Promise.resolve({ ok: true, ms: 7, version: '1.16.0', busy: null }),
+    models: () => Promise.resolve(MODELS),
     answerTap: (callbackQueryId) => {
       answered.push(callbackQueryId)
       return Promise.resolve()
@@ -1053,6 +1072,7 @@ describe('tájékoztató parancsok', () => {
     '/scan <szöveg> – beillesztett átirat feldolgozása (egy üzenetnyi)',
     '/start – a bot összekötése a Google-fiókoddal',
     '/cancel – nyitott munka megszakítása',
+    '/model – a receptek modelljének megtekintése és váltása',
     '/status – a szerver állapota és a nyitott munkák',
     '/ping – a szerver elérhetősége',
     '/version – a szerver verziója',
@@ -1410,5 +1430,87 @@ describe('modellfelülírás a futásnál (#292)', () => {
     await store.insert(readyRow())
     await store.setOverride({ sub: 'sub-9', recipe: 'notes', mode: 'always', model: 'x' })
     expect((await handleTap(tap(20, `r:notes:5:${ID}`), deps(store)))[0]?.models).toBeUndefined()
+  })
+})
+
+describe('/model parancs és gombok (#292)', () => {
+  const sub42 = (recipe: string, mode: 'once' | 'always', model: string) => ({ sub: 'sub-42', recipe, mode, model })
+
+  it('összekötött felhasználónál a modelText és a modelKeyboard megy', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(1, '/model'), d)
+    expect(d.sent).toEqual([modelText(MODELS, [])])
+    expect(d.keyboards).toEqual([modelKeyboard()])
+  })
+
+  it('összekötés nélkül BIND_FIRST, a models nincs meghívva', async () => {
+    const models = vi.fn(() => Promise.resolve(MODELS))
+    const d = deps(memoryStore(), { models })
+    await handleUpdate(command(1, '/model'), d)
+    expect(d.sent).toEqual([BIND_FIRST])
+    expect(models).not.toHaveBeenCalled()
+  })
+
+  it('ha a serve nem érhető el, a szerver nem válaszol', async () => {
+    const d = deps(await boundStore(), { models: () => Promise.resolve({ ok: false, reason: 'down' }) })
+    await handleUpdate(command(1, '/model'), d)
+    expect(d.sent).toEqual(['A szerver nem válaszol.'])
+  })
+
+  it('az m: koppintás szerkeszt: sémás receptnél csak a structured modell, másnál mindkettő', async () => {
+    const store = await boundStore()
+    const strict = deps(store)
+    await handleTap(tap(20, 'm:notes', 42, 9), strict)
+    expect(strict.edits).toEqual([
+      { chatId: '42', messageId: 9, text: modelPickLine('notes'), keyboard: [[{ text: 'sonnet', data: 'p:notes:sonnet' }]] },
+    ])
+    const open = deps(store)
+    await handleTap(tap(21, 'm:summary', 42, 9), open)
+    expect(open.edits[0]?.keyboard.flat().map((key) => key.text)).toEqual(['sonnet', 'grok'])
+  })
+
+  it('a p: a mód kérdése, az o: menti, a szerkesztett szöveg a modelSetLine', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleTap(tap(20, 'p:notes:sonnet', 42, 9), d)
+    await handleTap(tap(21, 'o:o:notes:sonnet', 42, 9), d)
+    expect(await store.overridesFor('sub-42')).toEqual([sub42('notes', 'once', 'sonnet')])
+    expect(d.edits.at(-1)?.text).toBe(modelSetLine('notes', 'sonnet', 'once'))
+  })
+
+  it('az x: mindkét felülírást törli', async () => {
+    const store = await boundStore()
+    await store.setOverride(sub42('notes', 'once', 'a'))
+    await store.setOverride(sub42('notes', 'always', 'b'))
+    const d = deps(store)
+    await handleTap(tap(20, 'x:notes', 42, 9), d)
+    expect(await store.overridesFor('sub-42')).toEqual([])
+    expect(d.edits.at(-1)?.text).toBe(modelResetLine('notes'))
+  })
+
+  it('üzenetazonosító nélkül a koppintás send-del válaszol', async () => {
+    const d = deps(await boundStore())
+    await handleTap(tap(20, 'x:notes'), d)
+    expect(d.edits).toEqual([])
+    expect(d.sent).toEqual([modelResetLine('notes')])
+  })
+
+  it('ha nincs structured modell, a sémás recept a noModelLine-t kapja', async () => {
+    const d = deps(await boundStore(), {
+      models: () => Promise.resolve({ ...MODELS, models: [{ name: 'grok', structured: false }] } as ModelsReply),
+    })
+    await handleTap(tap(20, 'm:notes', 42, 9), d)
+    expect(d.edits[0]?.text).toBe(noModelLine('notes'))
+  })
+
+  it('végponttól végpontig: az o:o:notes:sonnet után az r:notes a modellel kopogtat', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    const d = deps(store)
+    await handleTap(tap(20, 'o:o:notes:sonnet', 42, 9), d)
+    const knocks = await handleTap(tap(21, `r:notes:5:${ID}`), d)
+    expect(knocks[0]?.models).toEqual({ notes: 'sonnet' })
+    expect(d.sent.at(-1)).toBe(`Sorba került [${ID}] Cím: notes (sonnet)`)
   })
 })

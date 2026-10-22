@@ -590,7 +590,7 @@ models: async () => {
 },
 ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `plan.test.ts`:
     - `parseTap`:
       - `m:notes` → `{ type: 'model', key: 'notes' }`;
@@ -615,10 +615,10 @@ models: async () => {
     7. Egy `messageId` nélküli koppintás `send`-del válaszol, nem `edit`-tel.
     8. Ha a válaszban nincs `structured` modell, az `m:notes` a `noModelLine('notes')` szöveget adja.
     9. Végponttól végpontig: `o:o:notes:sonnet`, utána `r:notes` egy kész videón → a kopogtatás `models: { notes: 'sonnet' }`, és a Sorba került üzenet `(sonnet)`-re végződik.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: az `m:` ágban a `!strict ||` kikerül, és a 4. eset (csak `sonnet`) elbukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(worker): Add /model command to switch recipe models`, `Closes #292`).
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: az `m:` ágban a `!strict ||` kikerül, és a 4. eset (csak `sonnet`) elbukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(worker): Add /model command to switch recipe models`, `Closes #292`).
 
 ### 6. feladat: dokumentáció és példa-config
 

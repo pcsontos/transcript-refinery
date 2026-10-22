@@ -1,4 +1,4 @@
-import type { JobRow, RunRow } from './store.js'
+import type { JobRow, ModelOverride, RunRow } from './store.js'
 
 export const REJECTED_SECRET = 'A konténer elutasította a hívást.'
 
@@ -193,6 +193,7 @@ export const HELP_TEXT = [
   '/scan <szöveg> – beillesztett átirat feldolgozása (egy üzenetnyi)',
   '/start – a bot összekötése a Google-fiókoddal',
   '/cancel – nyitott munka megszakítása',
+  '/model – a receptek modelljének megtekintése és váltása',
   '/status – a szerver állapota és a nyitott munkák',
   '/ping – a szerver elérhetősége',
   '/version – a szerver verziója',
@@ -201,7 +202,7 @@ export const HELP_TEXT = [
 
 export const SERVE_SILENT = 'A szerver nem válaszol.'
 
-function probeFailure(probe: { reason: 'secret' | 'down' }): string {
+export function probeFailure(probe: { reason: 'secret' | 'down' }): string {
   return probe.reason === 'secret' ? SERVE_SECRET_MISMATCH : SERVE_SILENT
 }
 
@@ -217,4 +218,80 @@ export function statusText(probe: Probe, jobs: number, runs: number): string {
   const busy = probe.ok && probe.busy !== null ? `Most ezen dolgozik: ${probe.busy}.` : 'Most nem dolgozik.'
   const head = probe.ok ? `${versionLine(probe)} ${busy}` : probeFailure(probe)
   return `${head}\nNyitott videó: ${jobs}, nyitott receptfutás: ${runs}.`
+}
+
+export type ModelsReply =
+  | {
+      ok: true
+      draft: string
+      recipes: Readonly<Record<string, string>>
+      models: readonly { name: string; structured: boolean }[]
+      structuredRecipes: readonly string[]
+    }
+  | { ok: false; reason: 'secret' | 'down' }
+
+export const MODEL_KEYS = [...RECIPES, 'translate'] as const
+const TAP_MAX = 64
+
+function keyLabel(key: string): string {
+  return key === 'translate' ? 'fordítás' : key
+}
+
+/** A `/model` kiírása: felülírás, ha van (az egyszeri elöl), különben a config szerinti modell. */
+export function modelText(view: Extract<ModelsReply, { ok: true }>, overrides: readonly ModelOverride[]): string {
+  const lines = MODEL_KEYS.map((key) => {
+    const own = (['once', 'always'] as const).flatMap((mode) =>
+      overrides.filter((item) => item.recipe === key && item.mode === mode),
+    )
+    if (own.length > 0) {
+      const parts = own.map((item) => `${item.model} (${item.mode === 'once' ? 'egyszeri' : 'állandó'})`)
+      return `${keyLabel(key)}: ${parts.join(' · ')}`
+    }
+    if (key === 'translate') return 'fordítás: a config szerint'
+    return `${key}: ${view.recipes[key] ?? view.draft}`
+  })
+  return ['A receptek modellje:', ...lines].join('\n')
+}
+
+export function modelKeyboard(): Key[][] {
+  return inRows(MODEL_KEYS.map((key) => ({ text: keyLabel(key), data: `m:${key}` })), 3)
+}
+
+/** A modellek, amelyek leghosszabb gombadata is belefér a Telegram 64 bájtjába. */
+export function fitsTap(key: string, model: string): boolean {
+  return new TextEncoder().encode(`o:a:${key}:${model}`).length <= TAP_MAX
+}
+
+export function modelPickLine(key: string): string {
+  return `Melyik modellel fusson: ${keyLabel(key)}?`
+}
+
+export function noModelLine(key: string): string {
+  return `Nincs választható modell: ${keyLabel(key)}. A configban a model.switchable alá kell felvenni, sémás recepthez structured jelzéssel.`
+}
+
+export function modelPickKeyboard(key: string, models: readonly string[], reset: boolean): Key[][] {
+  const rows = models.map((model) => [{ text: model, data: `p:${key}:${model}` }])
+  return reset ? [...rows, [{ text: 'visszaállítás', data: `x:${key}` }]] : rows
+}
+
+export function modeLine(key: string, model: string): string {
+  return `${keyLabel(key)}: ${model}. Egyszer vagy állandóan?`
+}
+
+export function modeKeyboard(key: string, model: string): Key[][] {
+  return [[
+    { text: 'egyszeri', data: `o:o:${key}:${model}` },
+    { text: 'állandó', data: `o:a:${key}:${model}` },
+  ]]
+}
+
+export function modelSetLine(key: string, model: string, mode: 'once' | 'always'): string {
+  return mode === 'once'
+    ? `${keyLabel(key)}: ${model}, egyszeri. A következő ${keyLabel(key)}-futás ezzel megy.`
+    : `${keyLabel(key)}: ${model}, állandó, amíg vissza nem állítod.`
+}
+
+export function modelResetLine(key: string): string {
+  return `${keyLabel(key)}: visszaállítva, a config szerinti modell fut.`
 }
