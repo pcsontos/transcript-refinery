@@ -1,10 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { parseArgs } from 'node:util'
-import { loadCliConfig, type Config } from '../config.js'
+import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { commandFetch } from '../fetch/command.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { VERSION } from '../meta.js'
+import { modelsView } from '../model/recipe-model.js'
+import { recipesFor } from '../recipe/registry.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
 import { runJob, subtitleArgv, type CallbackBody, type JobEffects, type RecipesOutcome, type ServeJob } from './job.js'
 import { createR2Store, type R2Config } from './r2.js'
@@ -19,6 +21,8 @@ type RecipesRun = (input: {
   lang?: LanguageTag
   signal?: AbortSignal
   notify?: (body: CallbackBody) => void
+  /** A Worker felülírása; a YAML `model.recipes` fölé kerül. */
+  models?: Readonly<Record<string, string>>
   load?: () => Promise<{ cfg: Config; raw: unknown }>
 }) => Promise<RecipesOutcome>
 
@@ -41,6 +45,7 @@ export function serveEffects(input: {
     lang?: LanguageTag,
     signal?: AbortSignal,
     notify?: (body: CallbackBody) => void,
+    models?: Readonly<Record<string, string>>,
   ) => Promise<RecipesOutcome>
 } {
   const refineWith = input.runRecipes ?? defaultRunRecipes
@@ -57,7 +62,7 @@ export function serveEffects(input: {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, body)
     },
-    refine: (videoId, recipes, lang, signal, notify) =>
+    refine: (videoId, recipes, lang, signal, notify, models) =>
       refineWith({
         videoId,
         outDir: input.outDir,
@@ -65,6 +70,7 @@ export function serveEffects(input: {
         lang,
         signal,
         notify,
+        models,
         load: () => loadCliConfig(input.configArg),
       }),
   }
@@ -170,6 +176,11 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     secret,
     gate,
     version: VERSION,
+    // A config kérésenként töltődik, mint a receptfuttatásnál; a kaput nem foglalja, mert csak olvas.
+    models: async () => {
+      const { cfg, raw } = await loadCliConfig(configArg)
+      return modelsView(loadModelConfig(raw, process.env, cfg.configPath), recipesFor(cfg))
+    },
     // A config kérésenként töltődik, mint a receptfuttatásnál: a vault-config szerkesztése újraindítás nélkül hat.
     notes: createNotesSource({ load: () => loadCliConfig(configArg), claim: () => claimGate(gate, 'notes') }),
     onJob: async (job: ServeJob, signal: AbortSignal) => {

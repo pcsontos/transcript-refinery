@@ -18,6 +18,8 @@ export interface ServeJob {
   title?: string
   /** A fájlnévből kapott nyelvkód; nem a fordítás `lang`-ja. */
   textLang?: string
+  /** Receptazonosító → modell, a futás tényleges azonosítóival (`notes`, `notes-hu`); a Worker felülírása (#292). */
+  models?: Record<string, string>
 }
 
 export type CallbackBody =
@@ -47,6 +49,7 @@ export interface JobEffects {
     lang?: LanguageTag,
     signal?: AbortSignal,
     notify?: (body: CallbackBody) => void,
+    models?: Readonly<Record<string, string>>,
   ) => Promise<RecipesOutcome>
 }
 
@@ -287,7 +290,7 @@ async function runRecipeJob(
   try {
     outcome = await effects.refine(job.videoId, job.recipes, lang, signal, (body) => {
       void report(effects, job.jobId, body)
-    })
+    }, job.models)
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await forgetWork(effects, job.videoId)

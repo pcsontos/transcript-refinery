@@ -1,5 +1,5 @@
 import { classifyInput } from 'transcript-refinery/classify'
-import { LANGS, NO_VIDEO_LINE, NOT_YOUTUBE_LINE, PLAYLIST_LINE, RECIPES, alreadyLine, flatTitle, queuedLine } from './messages.js'
+import { LANGS, MODEL_KEYS, NO_VIDEO_LINE, NOT_YOUTUBE_LINE, PLAYLIST_LINE, RECIPES, alreadyLine, flatTitle, queuedLine } from './messages.js'
 import type { JobRow, LinkToken, RunRow } from './store.js'
 
 export {
@@ -45,6 +45,19 @@ export {
   pingLine,
   versionLine,
   statusText,
+  MODEL_KEYS,
+  type ModelsReply,
+  modelText,
+  modelKeyboard,
+  fitsTap,
+  modelPickLine,
+  noModelLine,
+  modelPickKeyboard,
+  modeLine,
+  modeKeyboard,
+  modelSetLine,
+  modelResetLine,
+  probeFailure,
 } from './messages.js'
 
 export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
@@ -64,8 +77,16 @@ export type Tap =
   | { type: 'cancel'; jobId: string }
   | { type: 'drop'; jobId: string }
   | { type: 'lang'; mask: number; lang: string; jobId: string }
+  | { type: 'model'; key: string }
+  | { type: 'modelPick'; key: string; model: string }
+  | { type: 'modelSet'; mode: 'once' | 'always'; key: string; model: string }
+  | { type: 'modelReset'; key: string }
 
 const MASK = /^[0-9a-f]{1,2}$/
+
+function isModelKey(key: string): boolean {
+  return (MODEL_KEYS as readonly string[]).includes(key)
+}
 
 function maskOf(hex: string | undefined): number | null {
   return hex !== undefined && MASK.test(hex) ? parseInt(hex, 16) : null
@@ -100,6 +121,21 @@ export function parseTap(data: string): Tap | null {
     const mask = maskOf(hex)
     if (mask === null || lang === undefined || !(LANGS as readonly string[]).includes(lang)) return null
     return { type: 'lang', mask, lang, jobId: job.join(':') }
+  }
+  if (head === 'm' || head === 'x') {
+    const [key] = rest
+    if (rest.length !== 1 || key === undefined || !isModelKey(key)) return null
+    return head === 'm' ? { type: 'model', key } : { type: 'modelReset', key }
+  }
+  if (head === 'p') {
+    const [key, ...model] = rest
+    if (key === undefined || !isModelKey(key) || model.join(':') === '') return null
+    return { type: 'modelPick', key, model: model.join(':') }
+  }
+  if (head === 'o') {
+    const [mode, key, ...model] = rest
+    if ((mode !== 'o' && mode !== 'a') || key === undefined || !isModelKey(key) || model.join(':') === '') return null
+    return { type: 'modelSet', mode: mode === 'o' ? 'once' : 'always', key, model: model.join(':') }
   }
   return null
 }

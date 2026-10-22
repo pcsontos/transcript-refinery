@@ -212,6 +212,48 @@ describe('serve parancs', () => {
   })
 })
 
+describe('createServeServer /models és models a jobban', () => {
+  const MODELS = { draft: 'd', recipes: {}, models: [{ name: 'm', structured: true }], structuredRecipes: ['notes'] }
+
+  async function start(models?: () => Promise<typeof MODELS>, onJob: (job: unknown) => Promise<void> = () => Promise.resolve()) {
+    server = createServeServer({ secret: 'titok', gate, version: '9.9.9', models, onJob })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    return (server.address() as { port: number }).port
+  }
+
+  const get = (port: number, secret?: string) =>
+    fetch(`http://127.0.0.1:${port}/models`, secret === undefined ? {} : { headers: { authorization: `Bearer ${secret}` } })
+
+  it('titok nélkül 401, titokkal a forrás JSON-ja', async () => {
+    const port = await start(() => Promise.resolve(MODELS))
+    expect((await get(port)).status).toBe(401)
+    const ok = await get(port, 'titok')
+    expect(ok.status).toBe(200)
+    expect(await ok.json()).toEqual(MODELS)
+  })
+
+  it('a dobó és a hiányzó forrás 503', async () => {
+    expect((await get(await start(() => Promise.reject(new Error('rossz config'))), 'titok')).status).toBe(503)
+    server?.close()
+    expect((await get(await start(), 'titok')).status).toBe(503)
+  })
+
+  it('a POST /jobs a models mezőt szöveg → szöveg objektumként fogadja el', async () => {
+    const seen: unknown[] = []
+    const port = await start(undefined, (job) => {
+      seen.push(job)
+      return Promise.resolve()
+    })
+    const job = { jobId: 'job-1', videoId: 'abcdefghijk', url: 'https://www.youtube.com/watch?v=abcdefghijk', recipes: ['notes'] }
+    expect(await post(port, 'titok', { ...job, models: { notes: 'x' } })).toBe(202)
+    expect(seen).toMatchObject([{ models: { notes: 'x' } }])
+    expect(await post(port, 'titok', { ...job, jobId: 'job-2', models: { notes: 3 } })).toBe(400)
+    expect(await post(port, 'titok', { ...job, jobId: 'job-2', models: ['x'] })).toBe(400)
+    expect(await post(port, 'titok', { ...job, jobId: 'job-2', models: { notes: '' } })).toBe(400)
+  })
+})
+
 describe('createServeServer /notes', () => {
   async function start(notes?: NotesSource): Promise<number> {
     server = createServeServer({ secret: 'titok', gate, version: '9.9.9', notes, onJob: () => Promise.resolve() })

@@ -9,7 +9,7 @@ import {
   type CallbackBody,
   type WorkerDeps,
 } from './handle.js'
-import { LINK_INVALID_PAGE, newToken, type Key } from './plan.js'
+import { LINK_INVALID_PAGE, newToken, type Key, type ModelsReply } from './plan.js'
 import { notePage, notesPage, TIMEOUT_MS, type ReaderDeps } from './reader.js'
 
 interface Env {
@@ -125,6 +125,23 @@ function deps(env: Env, linkBase = ''): WorkerDeps {
         if (typeof body.version !== 'string') return { ok: false, reason: 'down' }
         const busy = typeof body.busy === 'string' ? body.busy : null
         return { ok: true, ms: Date.now() - started, version: body.version, busy }
+      } catch {
+        return { ok: false, reason: 'down' }
+      }
+    },
+    models: async () => {
+      try {
+        const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/models`, {
+          headers: { authorization: `Bearer ${env.REFINERY_SERVE_SECRET}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        if (response.status === 401) return { ok: false, reason: 'secret' }
+        if (!response.ok) return { ok: false, reason: 'down' }
+        const body = (await response.json()) as Partial<Extract<ModelsReply, { ok: true }>>
+        if (typeof body.draft !== 'string' || !Array.isArray(body.models) || !Array.isArray(body.structuredRecipes)) {
+          return { ok: false, reason: 'down' }
+        }
+        return { ok: true, draft: body.draft, recipes: body.recipes ?? {}, models: body.models, structuredRecipes: body.structuredRecipes }
       } catch {
         return { ok: false, reason: 'down' }
       }

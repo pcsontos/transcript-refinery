@@ -1,9 +1,11 @@
 import { access, readdir, readFile, rm } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
 import { commandRun, type RunRuntime } from '../cli.js'
-import { loadCliConfig, type Config } from '../config.js'
+import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { progressText, type RunEvent as CoreEvent } from '../events.js'
 import type { LanguageTag } from '../lang/identify.js'
+import { assertOverrideModels, withRecipeModels } from '../model/recipe-model.js'
+import { recipesFor } from '../recipe/registry.js'
 import { discoverAll, splitSubtitleName } from '../source/folder.js'
 import { isTextItemId, TEXT_EXTENSIONS } from '../source/text.js'
 import { openState } from '../state/db.js'
@@ -103,6 +105,8 @@ export async function runRecipes(input: {
   signal?: AbortSignal
   /** Életjel és leállás a futás közben, rögtön (nem a futás végén). */
   notify?: (body: CallbackBody) => void
+  /** A Worker felülírása; a YAML `model.recipes` fölé kerül. */
+  models?: Readonly<Record<string, string>>
 }): Promise<RecipesOutcome> {
   const git = input.git ?? defaultGit
   let loaded: { cfg: Config; raw: unknown }
@@ -112,17 +116,27 @@ export async function runRecipes(input: {
     const message = error instanceof Error ? firstLine(error.message) : ''
     return { ok: false, error: message === '' ? 'A futás megállt.' : message }
   }
-  try {
-    await git.pull(loaded.cfg.vaultPath)
-  } catch {
-    return { ok: false, error: 'A vault frissítése nem sikerült.' }
-  }
   const lang = input.lang
   const cfg: Config = {
     ...loaded.cfg,
     sources: [{ name: basename(input.outDir), path: input.outDir }],
     // A célnyelv a kérésé, nem a configé: a futás idejére a kért forrásokból lesz fordítórecept.
     ...(lang === undefined ? {} : { translate: { to: lang, recipes: [...input.recipes] } }),
+  }
+  // A felülírást a vault-pull és a modellhívás előtt ellenőrizzük: hibás kérésnél egyik sem történik.
+  const models = input.models ?? {}
+  const raw = withRecipeModels(loaded.raw, models)
+  if (Object.keys(models).length > 0) {
+    try {
+      assertOverrideModels(loadModelConfig(raw, process.env, cfg.configPath), recipesFor(cfg), models)
+    } catch (error) {
+      return { ok: false, error: firstLine(error instanceof Error ? error.message : String(error)) }
+    }
+  }
+  try {
+    await git.pull(loaded.cfg.vaultPath)
+  } catch {
+    return { ok: false, error: 'A vault frissítése nem sikerült.' }
   }
   const ids = lang === undefined ? [...input.recipes] : input.recipes.map((id) => `${id}-${lang}`)
   await keepThisVideo(input.outDir, input.videoId)
@@ -146,13 +160,13 @@ export async function runRecipes(input: {
   }
   const code = await commandRun(
     cfg,
-    loaded.raw,
+    raw,
     {
       recipes: ids,
       dryRun: false,
       force: false,
       commit: false,
-      command: 'serve recipes',
+      command: ['serve recipes', ...Object.entries(models).map(([id, model]) => `${id}=${model}`)].join(' '),
       origin: 'telegram',
       ...(textName === undefined ? {} : { adHoc: { file: join(input.outDir, textName) } }),
     },

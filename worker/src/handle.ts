@@ -28,6 +28,7 @@ import {
   isAllowed,
   isToken,
   langKeyboard,
+  runKinds,
   linesForMessage,
   linkLine,
   maskRecipes,
@@ -50,6 +51,19 @@ import {
   waitingLine,
   type Key,
   type Probe,
+  type ModelsReply,
+  type Tap,
+  modelText,
+  modelKeyboard,
+  fitsTap,
+  modelPickLine,
+  noModelLine,
+  modelPickKeyboard,
+  modeLine,
+  modeKeyboard,
+  modelSetLine,
+  modelResetLine,
+  probeFailure,
 } from './plan.js'
 import {
   MAX_TEXT_BYTES,
@@ -72,6 +86,8 @@ export interface PlannedKnock {
   text?: string
   title?: string
   textLang?: string
+  /** Receptazonosító → modell; a `run.model`-ből, a futás minden fajtájára. */
+  models?: Record<string, string>
 }
 
 export interface WorkerDeps {
@@ -86,6 +102,8 @@ export interface WorkerDeps {
   cancel: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>
   /** A serve `GET /status`-a, mért válaszidővel; ebből dolgozik a `/ping`, a `/version` és a `/status`. */
   probe: () => Promise<Probe>
+  /** A serve `GET /models`-a: a YAML-alap és a választható modellek. */
+  models: () => Promise<ModelsReply>
   /** A Telegram-csatolmány bájtjai (`getFile`, majd a fájl-URL); `null`, ha nem sikerült. */
   download: (fileId: string) => Promise<Uint8Array | null>
   send: (chatId: string, text: string, keyboard?: Key[][]) => Promise<boolean>
@@ -96,7 +114,7 @@ export interface WorkerDeps {
 type KnockResult = 202 | 409 | 401 | 'down'
 
 const START = /^\/start(?:\s+(\S+))?\s*$/
-const COMMAND = /^\/(help|cancel|ping|version|status)(?:@\w+)?\s*$/
+const COMMAND = /^\/(help|cancel|ping|version|status|model)(?:@\w+)?\s*$/
 
 const SCAN = /^\/scan(?:@\w+)?(?:\s+([\s\S]*))?$/
 /** A Telegram 4096 karakternél bont, mondathatáron, így az első darab rövidebb is lehet. */
@@ -258,6 +276,12 @@ async function handleCommand(
     else await deps.send(chatId, CANCEL_LINE, cancelKeyboard(open.jobs))
     return
   }
+  if (command === 'model') {
+    const view = await deps.models()
+    if (!view.ok) await deps.send(chatId, probeFailure(view))
+    else await deps.send(chatId, modelText(view, await deps.store.overridesFor(binding.sub)), modelKeyboard())
+    return
+  }
   const probe = await deps.probe()
   if (command === 'ping') {
     await deps.send(chatId, pingLine(probe))
@@ -385,6 +409,7 @@ async function settle(
 function knockFor(run: RunRow, row: JobRow): PlannedKnock {
   const knock: PlannedKnock = { jobId: run.runId, videoId: row.videoId, url: row.url, recipes: run.recipes }
   if (run.lang !== null) knock.lang = run.lang
+  if (run.model) knock.models = Object.fromEntries(runKinds(run).map((kind) => [kind, run.model as string]))
   return knock
 }
 
@@ -653,6 +678,14 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
   return 200
 }
 
+/** Alaprecept-futásnál a recept, fordításnál a közös `translate` kulcs; az egyszeri nyer (#292). */
+async function pickOverride(row: JobRow, recipes: readonly string[], lang: string | null, deps: WorkerDeps) {
+  if (row.sub === null) return null
+  const key = lang === null ? (recipes[0] ?? '') : 'translate'
+  const own = (await deps.store.overridesFor(row.sub)).filter((item) => item.recipe === key)
+  return own.find((item) => item.mode === 'once') ?? own.find((item) => item.mode === 'always') ?? null
+}
+
 async function requestRun(row: JobRow, recipes: string[], lang: string | null, deps: WorkerDeps): Promise<PlannedKnock[]> {
   const id = runId(row.jobId, recipes, lang)
   const run = await deps.store.run(id)
@@ -666,6 +699,7 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     if (run !== null) await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase))
     return []
   }
+  const override = await pickOverride(row, recipes, lang, deps)
   const fresh: RunRow = {
     runId: id,
     jobId: row.jobId,
@@ -676,17 +710,65 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     noteUrl: null,
     notified: false,
     acceptedAt: null,
+    model: override?.model ?? null,
   }
   const claimed =
     action.type === 'start'
       ? await deps.store.insertRun(fresh)
-      : run !== null && (await deps.store.claimRun(id, run.status, 'queued'))
+      : run !== null && (await deps.store.claimRun(id, run.status, 'queued', fresh.model))
   if (!claimed) {
     await deps.send(row.chatId, alreadyLine(label(row)))
     return []
   }
+  // ponytail: két egyidejű koppintás ugyanazt az egyszerit kétszer is felhasználhatja; tranzakció, ha zavaró lesz.
+  // A modellel együtt töröl, hogy a közben beállított másik egyszeri ne vesszen el.
+  if (override?.mode === 'once' && row.sub !== null) {
+    await deps.store.clearOverride(row.sub, override.recipe, 'once', override.model)
+  }
   await deps.send(row.chatId, runQueuedLine(row, fresh))
   return [knockFor(fresh, row)]
+}
+
+/** A `/model` gombjai: ugyanazt az üzenetet szerkesztik, ha a Telegram megadta, különben újat küldenek. */
+async function modelTap(
+  tap: Extract<Tap, { type: 'model' | 'modelPick' | 'modelSet' | 'modelReset' }>,
+  sub: string,
+  chatId: string,
+  messageId: number | undefined,
+  deps: WorkerDeps,
+): Promise<void> {
+  const show = (text: string, keyboard: Key[][] = []) =>
+    typeof messageId === 'number' ? deps.edit(chatId, messageId, text, keyboard) : deps.send(chatId, text, keyboard)
+  if (tap.type === 'modelPick') {
+    await show(modeLine(tap.key, tap.model), modeKeyboard(tap.key, tap.model))
+    return
+  }
+  if (tap.type === 'modelSet') {
+    await deps.store.setOverride({ sub, recipe: tap.key, mode: tap.mode, model: tap.model })
+    await show(modelSetLine(tap.key, tap.model, tap.mode))
+    return
+  }
+  if (tap.type === 'modelReset') {
+    await deps.store.clearOverride(sub, tap.key)
+    await show(modelResetLine(tap.key))
+    return
+  }
+  const view = await deps.models()
+  const reset = (await deps.store.overridesFor(sub)).some((item) => item.recipe === tap.key)
+  // A visszaállítás a serve nélkül és üres listánál is elérhető, különben egy beragadt felülírást nem lehet levenni.
+  const resetOnly = modelPickKeyboard(tap.key, [], reset)
+  if (!view.ok) {
+    await show(probeFailure(view), resetOnly)
+    return
+  }
+  const strict = view.structuredRecipes.includes(tap.key)
+  const names = view.models.filter((model) => !strict || model.structured).map((model) => model.name)
+  const fitting = names.filter((name) => fitsTap(tap.key, name))
+  for (const name of names) {
+    if (!fitting.includes(name)) console.warn(`[model] ${name}: a gombadat nem fér a Telegram 64 bájtjába, kimarad a listáról`)
+  }
+  if (fitting.length === 0) await show(noModelLine(tap.key), resetOnly)
+  else await show(modelPickLine(tap.key), modelPickKeyboard(tap.key, fitting, reset))
 }
 
 export async function handleTap(
@@ -711,6 +793,10 @@ export async function handleTap(
   // A privát chatben a chat azonosítója a feladóé.
   if (tap.type === 'cancel') {
     if (from !== undefined) await cancelTap(tap.jobId, binding.sub, String(from.id), deps)
+    return []
+  }
+  if (tap.type === 'model' || tap.type === 'modelPick' || tap.type === 'modelSet' || tap.type === 'modelReset') {
+    if (from !== undefined) await modelTap(tap, binding.sub, String(from.id), update.callback_query.message?.message_id, deps)
     return []
   }
   const row = await findRow(deps.store, tap.jobId)

@@ -76,9 +76,27 @@ model:
   # külön kulcs, nem örököl a forrásrecepttől. A bíró mindig a `judge`.
   # recipes:
   #   notes: claude-sonnet-5
+  # Telegramról választható modellek (opcionális). A `/model` parancs ebből a
+  # listából kínál modellt receptenként; ami nincs itt, azt nem lehet kérni
+  # (a pricing tele van tts-, kép- és embedding-modellekkel, azokat nem
+  # akarjuk felajánlani). Formátum: modellnév → a modell tudása:
+  #   structured: sémás JSON-kimenetet is ad. A sémás receptek (notes,
+  #               flashcards, bloom) csak ilyet kaphatnak.
+  #   text:       csak szöveget ad, a szöveges receptekhez (pl. summary) jó.
+  # Hogy melyik modell melyik, azt te dönted el és méred ki: a LiteLLM
+  # `supports_response_schema` jelzése nem megbízható. Mindnek kell ár a
+  # `pricing` alatt, különben a config betöltése hibával áll meg.
+  # A felülírás csak az alaprecepteket és a fordítást érinti, a `draft` és a
+  # `judge` marad. Hatása: a Worker D1-ében tárolt választás (egyszeri vagy
+  # állandó) a futással együtt érkezik, és az egyszeri előbbre való az
+  # állandónál, az pedig a `recipes` listánál. A lista kérésenként töltődik,
+  # szerkesztése után nem kell újraindítani a serve-et.
+  # switchable:
+  #   claude-sonnet-5: structured
+  #   gemini-flash: text
 
 # USD egymillió tokenre, **modellnév szerint**, be- és kimenetre. Minden
-# használt modellnek (model.draft, model.judge, model.recipes) kell ár; a
+# használt modellnek (model.draft, model.judge, model.recipes, model.switchable) kell ár; a
 # fölösleges sor nem baj. Azért konfigurációból és nem beégetett
 # ártáblázatból, mert az avul: ellenőrizd a `refinery check-pricing`
 # paranccsal, valahányszor a modellek változnak (ellenőrizve: 2026-09-11).

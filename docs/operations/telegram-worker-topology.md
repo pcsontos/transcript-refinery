@@ -209,17 +209,20 @@ Ha valóban töréspontokon szeretnél megállni a futás során, a `./scripts/t
 
 ## 4. A Bot bemenetei és viselkedése
 
-A bot öt parancsot ismer:
+A bot hat parancsot ismer:
 
 | Parancs | Mit csinál |
 |---|---|
 | `/help` | A parancsok listája; kötés nélkül is megy. |
 | `/cancel` | Gombos lista a saját nyitott munkákról, alul `Mind megszakítása`. A sorban álló munka azonnal `cancelled`; a futót a Worker a serve `POST /jobs/<id>/cancel` végpontjával állítja le, és csak a `200`/`404` után írja `cancelled`-re. Ha a serve nem érhető el, az állapot marad, és a bot újrapróbálást kér. |
+| `/model` | A receptek modelljének kiírása (felülírás, ha van, különben a config szerinti), alatta gombok: recept (a 8 alaprecept és a közös `fordítás`), majd modell, majd `egyszeri` vagy `állandó`. A `visszaállítás` mindkét felülírást törli. Lásd lent. |
 | `/ping` | A serve elérhetősége és válaszideje (`GET /status`). |
 | `/version` | A serve verziója. |
 | `/status` | A serve verziója, az épp futó munka, és a nyitott videók és receptfutások száma a D1-ből. |
 
-**Telepítési sorrend:** a `/cancel` miatt előbb a serve-képet kell frissíteni (a peter-mba-n), utána a Workert. A régi serve nem ismeri a cancel végpontot, az `404`-et adna, a Worker `unknown`-nak venné, és `cancelled`-re állítaná a még futó jobot.
+**Modellváltás (`/model`, #292):** a választható modellek a configban, a `model.switchable` alatt vannak (`<modell>: structured | text`); a Worker a serve `GET /models` végpontjától kéri a listát (Bearer-tokennel, a kaput nem foglalja). A sémás receptek (`notes`, `flashcards`, `bloom`) csak `structured` modellt kapnak. A felülírás a Worker D1-ében él (`model_overrides`: felhasználó, recept, mód, modell): az `egyszeri` a recept következő futásán fogy el, és az állandó fölött nyer; a `fordítás` kulcs minden fordításra érvényes. A futás a modelljét a `runs.model` oszlopban őrzi, és a kopogtatás `models` mezőben (`{ "<fajta>": "<modell>" }`) viszi a serve-nek; az a futás idejére a `model.recipes` fölé fésüli, és a pull előtt ellenőrzi, hogy a modell váltható és ára van. A futásüzenet címkéje csak felülíráskor mutatja a modellt (`[id] cím: notes (modell)`). Az újrapróba és a cron újrakopogtatása ugyanazt a modellt viszi.
+
+**Telepítési sorrend:** a `/cancel` miatt előbb a serve-képet kell frissíteni (a peter-mba-n), utána a Workert. A régi serve nem ismeri a cancel végpontot, az `404`-et adna, a Worker `unknown`-nak venné, és `cancelled`-re állítaná a még futó jobot. Ugyanez a sorrend kell a `/model`-hez: a régi serve a `models` mezőt csendben figyelmen kívül hagyja, így a címke `(modell)`-t mutatna, de a YAML-modell futna. A D1-migrációt (`0006`) a Worker telepítése előtt kell lefuttatni.
 
 A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden elemet önállóan értékel (`worker/src/plan.ts`):
 

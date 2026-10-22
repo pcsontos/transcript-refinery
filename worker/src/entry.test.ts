@@ -35,6 +35,9 @@ describe('szállítási fájlok', () => {
     expect(text).toContain('ALTER TABLE jobs ADD COLUMN file_id TEXT')
     expect(text).toContain('ALTER TABLE jobs ADD COLUMN file_name TEXT')
     expect(text).toContain('ALTER TABLE jobs ADD COLUMN text TEXT')
+    const overrides = await readFile('worker/migrations/0006_model_overrides.sql', 'utf8')
+    expect(overrides).toContain('PRIMARY KEY (sub, recipe, mode)')
+    expect(overrides).toContain('ALTER TABLE runs ADD COLUMN model TEXT')
   })
 })
 

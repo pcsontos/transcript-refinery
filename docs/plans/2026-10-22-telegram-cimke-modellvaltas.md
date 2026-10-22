@@ -259,7 +259,7 @@ Ha a `recipe-model.ts` és a `registry.ts` között import-kör lenne, a `Regist
   },
   ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `config.test.ts`:
     - `model.switchable: { a: 'structured', b: 'text' }`, ahol mindkettőnek van ára → a `switchable` ugyanez;
     - hiányzó `switchable` → `{}`;
@@ -285,10 +285,10 @@ Ha a `recipe-model.ts` és a `registry.ts` között import-kör lenne, a `Regist
     - `models: { summary: 'nincs-ara' }`: `{ ok: false }`, a hiba `pricing: nincs ára` kezdetű, a kliens `generate` hívásszáma 0, és a vault-originben nincs új commit.
     - `models: { summary: 'proba-judge' }` (van ára, de nincs a `switchable`-ben): `{ ok: false }`, a hiba `model: nem váltható modell` kezdetű, 0 modellhívás.
     - `models: { notes: 'proba-draft' }` (a `proba-draft` `text`): `{ ok: false }`, a hiba `model: nem váltható modell` kezdetű, 0 modellhívás.
-- [ ] **2. lépés:** `pnpm vitest run src/config src/model src/serve` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: az `assertOverrideModels` szűrőjéből kikerül a `registry[id]?.structured !== undefined &&`, és a „`summary` `text` modellel nem dob" eset elbukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(serve): Accept per-run model overrides and list models`).
+- [x] **2. lépés:** `pnpm vitest run src/config src/model src/serve` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: az `assertOverrideModels` szűrőjéből kikerül a `registry[id]?.structured !== undefined &&`, és a „`summary` `text` modellel nem dob" eset elbukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(serve): Accept per-run model overrides and list models`).
 
 ### 4. feladat: a felülírás tárolása és a futás modellje (Worker)
 
@@ -367,7 +367,7 @@ async function pickOverride(row: JobRow, recipes: readonly string[], lang: strin
 
 **`messages.ts`:** a `RunPart` alias `Pick<RunRow, 'recipes' | 'lang' | 'model'>` lesz, a három függvény aláírása nem változik. A címke végére `${run.model ? ` (${run.model})` : ''}` kerül.
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `plan.test.ts`: `runQueuedLine(ITEM, { recipes: ['notes'], lang: null, model: 'sonnet' })` → `'Sorba került [abcdefghijk] Cím: notes (sonnet)'`. Fordításnál: `'… Cím: summary, notes → de (sonnet)'`.
   - `store.test.ts`, `memoryStore`:
     - a `setOverride` kétszer ugyanarra a kulcsra egy sort hagy, az új modellel;
@@ -391,10 +391,10 @@ async function pickOverride(row: JobRow, recipes: readonly string[], lang: strin
     5. `failed` `notes` futás mellett állandó `notes = sonnet`: az újrapróba kopogtatása `models: { notes: 'sonnet' }`, a `store.run(id)?.model` `'sonnet'`.
     6. A cron újrakopogtatása (`handleCron` egy `queued` futásra, amelynek `model: 'sonnet'`) ugyanazt a `models`-t viszi.
     7. Más felhasználó (`sub-9`) felülírása nem hat a `sub-42` futására.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL.
-- [ ] **3. lépés:** migráció és a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: a `requestRun`-ban az egyszeri törlése az `if (!claimed)` **elé** kerül, és a 4. eset (resend) elbukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(worker): Store model overrides and send them with the run`).
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL.
+- [x] **3. lépés:** migráció és a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: a `requestRun`-ban az egyszeri törlése az `if (!claimed)` **elé** kerül, és a „sikertelen foglalás” eset elbukik (a 4. eset, a resend, ezt nem fogja meg: a `resend` ág korábban visszatér). Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(worker): Store model overrides and send them with the run`).
 
 ### 5. feladat: a `/model` parancs és a gombok (Worker)
 
@@ -590,7 +590,7 @@ models: async () => {
 },
 ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `plan.test.ts`:
     - `parseTap`:
       - `m:notes` → `{ type: 'model', key: 'notes' }`;
@@ -615,19 +615,19 @@ models: async () => {
     7. Egy `messageId` nélküli koppintás `send`-del válaszol, nem `edit`-tel.
     8. Ha a válaszban nincs `structured` modell, az `m:notes` a `noModelLine('notes')` szöveget adja.
     9. Végponttól végpontig: `o:o:notes:sonnet`, utána `r:notes` egy kész videón → a kopogtatás `models: { notes: 'sonnet' }`, és a Sorba került üzenet `(sonnet)`-re végződik.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: az `m:` ágban a `!strict ||` kikerül, és a 4. eset (csak `sonnet`) elbukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(worker): Add /model command to switch recipe models`, `Closes #292`).
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: az `m:` ágban a `!strict ||` kikerül, és a 4. eset (csak `sonnet`) elbukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(worker): Add /model command to switch recipe models`, `Closes #292`).
 
 ### 6. feladat: dokumentáció és példa-config
 
 **Fájlok:**
 - `refinery.config.example.yaml`: a `model` alá egy `switchable` példa két modellel (`structured` és `text`), a spec szerinti kétsoros magyarázattal.
-- `docs/usage.md`: a Telegram-parancsok közé a `/model`, a három lépés és a két mód. Hogy a `docs/usage.md`-ben hol vannak a Telegram-parancsok, azt a végrehajtáskor `grep -n '/cancel' docs/*.md` adja ki.
+- `docs/usage.md` (a `grep '/cancel'` szerint itt nincsenek Telegram-parancsok, ezért a `/model` a `docs/operations/telegram-worker-topology.md`-be és a README `GET /models` bekezdésébe került): a Telegram-parancsok közé a `/model`, a három lépés és a két mód. Hogy a `docs/usage.md`-ben hol vannak a Telegram-parancsok, azt a végrehajtáskor `grep -n '/cancel' docs/*.md` adja ki.
 - `docs/operations/telegram-worker-topology.md`: a `GET /models` a serve végpontjai közé, ha ott fel vannak sorolva.
 
-- [ ] Szöveg megírása, teljes ellenőrzés zöld, commit (`docs: Document the /model command and model.switchable`).
+- [x] Szöveg megírása, teljes ellenőrzés zöld, commit (`docs: Document the /model command and model.switchable`).
 
 ### 7. feladat: kód-PR, telepítés, éles próba
 

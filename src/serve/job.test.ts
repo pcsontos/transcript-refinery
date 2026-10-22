@@ -379,6 +379,22 @@ describe('runJob', () => {
     expect(seen).toEqual([{ videoId: ID, recipes: ['summary', 'notes'], lang: 'de' }])
   })
 
+  it('a receptjob a models felülírást a refine-nak adja', async () => {
+    const store = memoryStore({
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' })),
+    })
+    const seen: unknown[] = []
+    await runJob({ ...job, recipes: ['notes'], models: { notes: 'sonnet' } }, {
+      ...effectsWith(store, []),
+      refine: (_videoId, _recipes, _lang, _signal, _notify, models) => {
+        seen.push(models)
+        return Promise.resolve({ ok: true, noteUrl: 'https://github.com/tulaj/repo/blob/main/a_transcript.md' })
+      },
+    })
+    expect(seen).toEqual([{ notes: 'sonnet' }])
+  })
+
   it('a receptjob a signalt a refine-nak adja', async () => {
     const info = new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' }))
     const store = memoryStore({

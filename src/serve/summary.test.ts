@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -55,7 +55,11 @@ function gitWith(push: typeof gitPush = gitPush) {
 
 const TRANSCRIPT = 'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md'
 
-async function scene(costLimitUsd = 5, modelExtra: Record<string, unknown> = {}) {
+async function scene(
+  costLimitUsd = 5,
+  modelExtra: Record<string, unknown> = {},
+  pricingExtra: Record<string, unknown> = {},
+) {
   const root = await mkdtemp(join(tmpdir(), 'refinery-summary-'))
   const origin = join(root, 'origin.git')
   const vault = join(root, 'vault')
@@ -92,6 +96,7 @@ async function scene(costLimitUsd = 5, modelExtra: Record<string, unknown> = {})
     pricing: {
       'proba-draft': { input_per_million: 3, output_per_million: 15 },
       'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
+      ...pricingExtra,
     },
     cost_limit_usd: costLimitUsd,
   }
@@ -147,6 +152,88 @@ describe('runRecipes', () => {
     })
     expect(again).toEqual(result)
     expect(second.generate).toBe(0)
+  })
+
+  describe('a Worker modellfelülírása (#292)', () => {
+    const SWITCH = { switchable: { 'proba-sonnet': 'structured', 'proba-draft': 'text' } }
+    const EXTRA = { 'proba-sonnet': { input_per_million: 3, output_per_million: 15 } }
+    const headOf = (vault: string) => execFileSync('git', ['rev-parse', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+
+    it('a kért modell a jegyzet frontmatterjébe és a futásnapló parancsába kerül', async () => {
+      process.env.LITELLM_API_KEY = 'sk-proba'
+      const { root, vault, outDir, load } = await scene(5, SWITCH, EXTRA)
+      roots.push(root)
+      const result = await runRecipes({
+        videoId: ID,
+        recipes: ['summary'],
+        outDir,
+        models: { summary: 'proba-sonnet' },
+        createClient: () => client({ generate: 0 }),
+        load,
+        git: gitWith(),
+      })
+      expect(result.ok).toBe(true)
+      const note = await readFile(
+        join(vault, 'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_summary.md'),
+        'utf8',
+      )
+      expect(note).toMatch(/\nmodel: proba-sonnet\n/)
+      const logs = (await readdir(join(root, 'logs'))).filter((name) => name.endsWith('.jsonl'))
+      const started = (await Promise.all(logs.map((name) => readFile(join(root, 'logs', name), 'utf8'))))
+        .flatMap((text) => text.split('\n').filter(Boolean).map((line) => JSON.parse(line) as { type: string; command?: string }))
+        .find((event) => event.type === 'run:started')
+      expect(started?.command).toBe('serve recipes summary=proba-sonnet')
+    })
+
+    it('a fordítás a translate-nek megfelelő recept-azonosítón kapja a felülírást', async () => {
+      process.env.LITELLM_API_KEY = 'sk-proba'
+      const { root, vault, outDir, load } = await scene(5, SWITCH, EXTRA)
+      roots.push(root)
+      const git = gitWith()
+      await runRecipes({ videoId: ID, outDir, recipes: ['summary'], createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
+      const result = await runRecipes({
+        videoId: ID,
+        outDir,
+        recipes: ['summary'],
+        lang: 'de',
+        models: { 'summary-de': 'proba-draft' },
+        createClient: () => writer({ generate: 0 }, HUNGARIAN),
+        load,
+        git,
+      })
+      expect(result.ok).toBe(true)
+      const note = await readFile(
+        join(vault, 'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_summary-de.md'),
+        'utf8',
+      )
+      expect(note).toMatch(/\nmodel: proba-draft\n/)
+    })
+
+    it.each([
+      ['ár nélküli modell', 'summary', 'nincs-ara', 'pricing: nincs ára'],
+      ['nem váltható modell', 'summary', 'proba-judge', 'model: nem váltható modell'],
+      ['text modell sémás receptnél', 'notes', 'proba-draft', 'model: nem váltható modell'],
+    ])('%s: hiba, modellhívás és vault-változás nélkül', async (_name, recipe, model, message) => {
+      process.env.LITELLM_API_KEY = 'sk-proba'
+      const { root, vault, outDir, load } = await scene(5, SWITCH, EXTRA)
+      roots.push(root)
+      const before = headOf(vault)
+      const calls = { generate: 0 }
+      const result = await runRecipes({
+        videoId: ID,
+        recipes: [recipe],
+        outDir,
+        models: { [recipe]: model },
+        createClient: () => client(calls),
+        load,
+        git: gitWith(),
+      })
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error.startsWith(message)).toBe(true)
+      expect(calls.generate).toBe(0)
+      expect(headOf(vault)).toBe(before)
+    })
   })
 
   it('a szöveges tétel a --file úton fut: jegyzet t- azonosítóval, a második kérés modell nélkül', async () => {
