@@ -342,7 +342,7 @@ describe('handleCallback', () => {
     await store.insertRun(readyRun(['notes'], null, { status: 'accepted', noteUrl: null, notified: false }))
     const missing = deps(store)
     await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím' }, missing)
-    expect(missing.sent).toEqual(['notes: A jegyzet linkje hiányzik.'])
+    expect(missing.sent).toEqual([`[${ID}] Cím: notes: A jegyzet linkje hiányzik.`])
     expect((await store.run(`5:${ID}:notes`))?.status).toBe('failed')
 
     await store.saveRun(readyRun(['notes'], null, { status: 'accepted', noteUrl: null, notified: false }))
@@ -365,7 +365,7 @@ describe('handleCallback', () => {
     await store.insertRun(readyRun(['qa'], null, { status: 'accepted', notified: false }))
     const own = deps(store)
     await handleCallback(`5:${ID}:qa`, { status: 'failed', error: 'A futás megállt.' }, own)
-    expect(own.sent).toEqual(['qa: A futás megállt.'])
+    expect(own.sent).toEqual([`[${ID}] Cím: qa: A futás megállt.`])
     expect(await store.run(`5:${ID}:qa`)).toMatchObject({ status: 'failed', error: 'A futás megállt.' })
     expect((await store.listByUpdate(5))[0]?.status).toBe('ready')
   })
@@ -458,6 +458,15 @@ describe('handleCallback — életjel és leállás', () => {
 })
 
 describe('handleTap', () => {
+  it('a szöveges tétel futásüzenete a vault-azonosítóval és a címmel kezdődik', async () => {
+    const store = await boundStore()
+    const textId = 't-0123456789abcdef'
+    await store.insert(readyRow({ videoId: textId, jobId: `5:${textId}`, title: 'eloadas-jegyzet' }))
+    const d = deps(store)
+    await handleTap(tap(20, `r:notes:5:${textId}`), d)
+    expect(d.sent).toEqual([`Sorba került [${textId}] eloadas-jegyzet: notes`])
+  })
+
   it('a receptgomb futást nyit és kopogtat, a második koppintás már sorban, az ismételt update hallgat', async () => {
     const store = await boundStore()
     await store.insert(readyRow())
@@ -465,7 +474,7 @@ describe('handleTap', () => {
     const knocks = await handleTap(tap(20, `r:notes:5:${ID}`), first)
     expect(knocks).toEqual([{ jobId: `5:${ID}:notes`, videoId: ID, url: VIDEO_URL, recipes: ['notes'] }])
     expect(first.answered).toEqual(['cq20'])
-    expect(first.sent).toEqual(['Sorba került: notes'])
+    expect(first.sent).toEqual([`Sorba került [${ID}] Cím: notes`])
     expect(await store.run(`5:${ID}:notes`)).toMatchObject({ status: 'queued', recipes: ['notes'], lang: null })
     await applyKnocks(knocks, first)
     expect((await store.run(`5:${ID}:notes`))?.status).toBe('accepted')
@@ -545,7 +554,7 @@ describe('handleTap', () => {
     expect(await handleTap(tap(56, `l:3:de:5:${ID}`, 42, 9), lang)).toEqual([
       { jobId: `5:${ID}:de:summary+notes`, videoId: ID, url: VIDEO_URL, recipes: ['summary', 'notes'], lang: 'de' },
     ])
-    expect(lang.sent).toEqual(['Sorba került: summary, notes → de'])
+    expect(lang.sent).toEqual([`Sorba került [${ID}] Cím: summary, notes → de`])
   })
 
   it('a cron a felirat sorát recept nélkül, a futást a recipes és a lang mezővel ébreszti, a 401 failed', async () => {
@@ -781,7 +790,7 @@ describe('kötés', () => {
 })
 
 describe('indulási üzenet', () => {
-  const STARTED = (label: string) => `Elkezdődött a feldolgozás: ${label}. Hamarosan jelzem az eredményt.`
+  const STARTED = (label: string) => `Elkezdődött a feldolgozás [${ID}] Cím: ${label}. Hamarosan jelzem az eredményt.`
 
   it('a receptfuttatás 202-es elfogadása után egyszer megy, a fordításé a nyelvvel', async () => {
     const store = await boundStore()
@@ -789,7 +798,7 @@ describe('indulási üzenet', () => {
     const own = deps(store)
     const knocks = await handleTap(tap(60, `r:notes:5:${ID}`), own)
     await applyKnocks(knocks, own)
-    expect(own.sent).toEqual(['Sorba került: notes', STARTED('notes')])
+    expect(own.sent).toEqual([`Sorba került [${ID}] Cím: notes`, STARTED('notes')])
     expect((await store.run(`5:${ID}:notes`))?.status).toBe('accepted')
 
     const translate = deps(store)
@@ -804,7 +813,7 @@ describe('indulási üzenet', () => {
     const busy = deps(store, { knock: () => Promise.resolve(409) })
     const knocks = await handleTap(tap(62, `r:qa:5:${ID}`), busy)
     await applyKnocks(knocks, busy)
-    expect(busy.sent).toEqual(['Sorba került: qa'])
+    expect(busy.sent).toEqual([`Sorba került [${ID}] Cím: qa`])
     expect((await store.run(`5:${ID}:qa`))?.status).toBe('queued')
 
     const cron = deps(store)
@@ -908,7 +917,7 @@ describe('megszakítás: verseny és késői visszahívás', () => {
     await handleCallback(run.runId, { status: 'failed', error: 'A futás megállt: megszakítva (0.0040 $ / 5.0000 $)' }, d)
     await handleCallback(run.runId, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, d)
     expect(d.sent).toEqual([
-      'summary, qa: A futás megállt: megszakítva (0.0040 $ / 5.0000 $)',
+      `[${ID}] Cím: summary, qa: A futás megállt: megszakítva (0.0040 $ / 5.0000 $)`,
       `Cím · summary, qa. A jegyzet megvan.\nhttps://worker.test/notes/${ID}/summary\nhttps://worker.test/notes/${ID}/qa`,
     ])
     expect((await store.run(run.runId))?.status).toBe('cancelled')
@@ -922,7 +931,7 @@ describe('megszakítás: verseny és késői visszahívás', () => {
     const knocks = await handleTap(tap(60, `r:summary:5:${ID}`), d)
     expect(knocks.map((knock) => knock.jobId)).toEqual([runId(`5:${ID}`, ['summary'], null)])
     expect((await store.run(runId(`5:${ID}`, ['summary'], null)))?.status).toBe('queued')
-    expect(d.sent).toEqual(['Sorba került: summary'])
+    expect(d.sent).toEqual([`Sorba került [${ID}] Cím: summary`])
   })
 
   it('a cron a megszakított sort és futást nem kopogtatja', async () => {
