@@ -2,7 +2,9 @@ import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { ServeJob } from './job.js'
 import { isLanguageTag } from '../source/text.js'
+import type { ModelsView } from '../model/recipe-model.js'
 import { NotesUnavailable, type NotesSource } from './notes.js'
+import { firstLine } from './summary.js'
 
 export interface ServeGate {
   current: string | null
@@ -50,7 +52,7 @@ function readBody(request: IncomingMessage): Promise<string> {
 
 function isJob(value: unknown): value is ServeJob {
   if (typeof value !== 'object' || value === null) return false
-  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown; text?: unknown; title?: unknown; textLang?: unknown }
+  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown; text?: unknown; title?: unknown; textLang?: unknown; models?: unknown }
   if (typeof job.jobId !== 'string' || typeof job.videoId !== 'string' || typeof job.url !== 'string') return false
   // A régi, egyreceptes alakot a felirat-munka helyett hibaként kell látni.
   if (job.recipe !== undefined) return false
@@ -60,6 +62,10 @@ function isJob(value: unknown): value is ServeJob {
   }
   for (const field of [job.text, job.title, job.textLang]) {
     if (field !== undefined && typeof field !== 'string') return false
+  }
+  if (job.models !== undefined) {
+    if (typeof job.models !== 'object' || job.models === null || Array.isArray(job.models)) return false
+    if (!Object.values(job.models).every((model) => typeof model === 'string' && model !== '')) return false
   }
   // A nyelvkód a SERVE_OUT fájlnevébe kerül: más érték útvonal-bejárás lenne.
   if (typeof job.textLang === 'string' && !isLanguageTag(job.textLang)) return false
@@ -89,6 +95,8 @@ export interface ServeServerInput {
   version: string
   /** A `/notes` útvonalak forrása; hiányában a két útvonal `503`. */
   notes?: NotesSource
+  /** A `GET /models` forrása; hiányában a végpont `503`. */
+  models?: () => Promise<ModelsView>
   onJob: (job: ServeJob, signal: AbortSignal) => Promise<void>
 }
 
@@ -166,6 +174,20 @@ async function handle(request: IncomingMessage, response: ServerResponse, input:
       return
     }
     sendBody(response, 200, 'application/json', JSON.stringify({ version: input.version, busy: input.gate.current }))
+    return
+  }
+  if (request.method === 'GET' && path === '/models') {
+    if (!authorized(request.headers.authorization, input.secret)) {
+      rejectUnauthorized(request, response)
+      return
+    }
+    try {
+      if (input.models === undefined) throw new Error('nincs modellforrás')
+      sendBody(response, 200, 'application/json', JSON.stringify(await input.models()))
+    } catch (cause) {
+      console.warn(`[serve] 503 /models: ${cause instanceof Error ? firstLine(cause.message) : String(cause)}`)
+      send(response, 503)
+    }
     return
   }
   if (request.method === 'GET' && (path === '/notes' || path.startsWith('/notes/'))) {

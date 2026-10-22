@@ -234,6 +234,32 @@ describe('loadModelConfig', () => {
     expect(cfg.recipeModels).toEqual({ notes: 'sonnet-proba' })
   })
 
+  it('a model.switchable modell → mód leképezés, árral', () => {
+    const raw = { ...RAW, model: { ...RAW.model, switchable: { d: 'structured', j: 'text' } } }
+    expect(loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml').switchable).toEqual({
+      d: 'structured',
+      j: 'text',
+    })
+  })
+
+  it('a model.switchable alapértelmezése üres', () => {
+    expect(loadModelConfig(RAW, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml').switchable).toEqual({})
+  })
+
+  it('a model.switchable értéke structured vagy text', () => {
+    const raw = { ...RAW, model: { ...RAW.model, switchable: { d: 'igen' } } }
+    expect(() => loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')).toThrow(
+      /structured vagy text/,
+    )
+  })
+
+  it('ár nélküli switchable modellnél megnevezi a modellt', () => {
+    const raw = { ...RAW, model: { ...RAW.model, switchable: { c: 'text' } } }
+    expect(() => loadModelConfig(raw, { LITELLM_API_KEY: 'sk-1' }, '/p/c.yaml')).toThrow(
+      /pricing: nincs ára.*c/,
+    )
+  })
+
   it('árazott, de nem használt modellt megenged', () => {
     const raw = {
       ...RAW,

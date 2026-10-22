@@ -272,6 +272,13 @@ const ModelSchema = z.object({
     recipes: z
       .record(z.string().min(1), z.string().min(1, 'A model.recipes értéke modellnév kell legyen.'))
       .default({}),
+    /**
+     * Telegramról ezekre lehet váltani (#292): modell → `structured` (sémás JSON-t ad) vagy `text`.
+     * Mindnek kell ár, mint a `recipes` modelljeinek.
+     */
+    switchable: z
+      .record(z.string().min(1), z.enum(['structured', 'text'], 'A model.switchable értéke structured vagy text.'))
+      .default({}),
   }),
   /** Modellnév → ár. Minden használt modellnek kell ára legyen. */
   pricing: z.record(z.string().min(1), PriceSchema),
@@ -293,6 +300,8 @@ export interface ModelConfig {
   models: Record<ModelRole, string>
   /** Receptazonosító → modell; a `draft` felülbírálása az adott receptnél. */
   recipeModels: Readonly<Record<string, string>>
+  /** Telegramról váltható modellek; hiányában egy sem. */
+  switchable?: Readonly<Record<string, 'structured' | 'text'>>
   /** Fusson-e a bíró. A `--no-judge` kapcsoló felülírja. */
   judgeEnabled: boolean
   /** Egy recept leghosszabb futásideje percben; hiányában a `deadline.ts` alapértéke. */
@@ -341,7 +350,7 @@ function legacyPricingError(
 }
 
 /** `unknown`-ból kinyert objektum, vagy `undefined`, ha nem objektum. */
-function asRecord(value: unknown): Record<string, unknown> | undefined {
+export function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : undefined
 }
 
@@ -378,6 +387,7 @@ export function loadModelConfig(
   }
   const c = parsed.data
   const used = [c.model.draft, c.model.judge, ...Object.values(c.model.recipes)]
+  const priced = [...new Set([...used, ...Object.keys(c.model.switchable)])]
 
   // Ugyanez a régi alak akkor is előfordulhat, ha minden `pricing`-bejegyzés
   // önmagában érvényes árnak néz ki (a fenti nyers ellenőrzés ezt nem kapja
@@ -385,10 +395,10 @@ export function loadModelConfig(
   const legacy = legacyPricingKeys(c.pricing, used)
   if (legacy.length > 0) throw legacyPricingError(legacy, c.model.draft, c.model.judge, configPath)
 
-  const missing = [...new Set(used)].filter((model) => !Object.hasOwn(c.pricing, model))
+  const missing = priced.filter((model) => !Object.hasOwn(c.pricing, model))
   if (missing.length > 0) {
     throw new Error(
-      `pricing: nincs ára a következő modellnek: ${missing.join(', ')}. Minden használt modellnek (model.draft, model.judge, model.recipes) kell ár. (${configPath})`,
+      `pricing: nincs ára a következő modellnek: ${missing.join(', ')}. Minden használt modellnek (model.draft, model.judge, model.recipes, model.switchable) kell ár. (${configPath})`,
     )
   }
 
@@ -406,6 +416,7 @@ export function loadModelConfig(
     apiKey,
     models: { draft: c.model.draft, judge: c.model.judge },
     recipeModels: c.model.recipes,
+    switchable: c.model.switchable,
     judgeEnabled: c.model.judge_enabled,
     ...(c.model.recipe_timeout_minutes === undefined
       ? {}

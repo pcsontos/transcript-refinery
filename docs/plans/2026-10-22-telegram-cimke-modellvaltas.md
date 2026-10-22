@@ -259,7 +259,7 @@ Ha a `recipe-model.ts` és a `registry.ts` között import-kör lenne, a `Regist
   },
   ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `config.test.ts`:
     - `model.switchable: { a: 'structured', b: 'text' }`, ahol mindkettőnek van ára → a `switchable` ugyanez;
     - hiányzó `switchable` → `{}`;
@@ -285,10 +285,10 @@ Ha a `recipe-model.ts` és a `registry.ts` között import-kör lenne, a `Regist
     - `models: { summary: 'nincs-ara' }`: `{ ok: false }`, a hiba `pricing: nincs ára` kezdetű, a kliens `generate` hívásszáma 0, és a vault-originben nincs új commit.
     - `models: { summary: 'proba-judge' }` (van ára, de nincs a `switchable`-ben): `{ ok: false }`, a hiba `model: nem váltható modell` kezdetű, 0 modellhívás.
     - `models: { notes: 'proba-draft' }` (a `proba-draft` `text`): `{ ok: false }`, a hiba `model: nem váltható modell` kezdetű, 0 modellhívás.
-- [ ] **2. lépés:** `pnpm vitest run src/config src/model src/serve` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: az `assertOverrideModels` szűrőjéből kikerül a `registry[id]?.structured !== undefined &&`, és a „`summary` `text` modellel nem dob" eset elbukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(serve): Accept per-run model overrides and list models`).
+- [x] **2. lépés:** `pnpm vitest run src/config src/model src/serve` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: az `assertOverrideModels` szűrőjéből kikerül a `registry[id]?.structured !== undefined &&`, és a „`summary` `text` modellel nem dob" eset elbukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(serve): Accept per-run model overrides and list models`).
 
 ### 4. feladat: a felülírás tárolása és a futás modellje (Worker)
 
