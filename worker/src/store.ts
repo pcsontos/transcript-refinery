@@ -31,6 +31,18 @@ export interface RunRow {
   noteUrl: string | null
   notified: boolean
   acceptedAt: number | null
+  /** A futás felülírt modellje; `null` vagy hiány esetén a config dönt. */
+  model?: string | null
+}
+
+export type OverrideMode = 'once' | 'always'
+
+/** Telegramról állított modell; `recipe` egy alaprecept, vagy `translate` minden fordításra (#292). */
+export interface ModelOverride {
+  sub: string
+  recipe: string
+  mode: OverrideMode
+  model: string
 }
 
 export interface Binding {
@@ -70,9 +82,15 @@ export interface JobStore {
   saveRun(run: RunRow): Promise<boolean>
   /** A felhasználó jobjai, amelyek nyitottak vagy van nyitott futásuk, és a nyitott futásaik. */
   openFor(sub: string): Promise<{ jobs: JobRow[]; runs: RunRow[] }>
-  claimRun(runId: string, expect: JobStatus, next: JobStatus): Promise<boolean>
+  /** Ha a `model` nem `undefined`, a futás modellje is cserélődik. */
+  claimRun(runId: string, expect: JobStatus, next: JobStatus, model?: string | null): Promise<boolean>
   runsFor(jobId: string): Promise<RunRow[]>
   dueRuns(now: number): Promise<RunRow[]>
+  overridesFor(sub: string): Promise<ModelOverride[]>
+  /** Beszúr vagy cserél a `(sub, recipe, mode)` kulcson. */
+  setOverride(override: ModelOverride): Promise<void>
+  /** `mode` nélkül a recept mindkét felülírását törli. */
+  clearOverride(sub: string, recipe: string, mode?: OverrideMode): Promise<void>
 }
 
 export const OPEN: readonly JobStatus[] = ['queued', 'waiting', 'accepted']
@@ -89,6 +107,7 @@ export function memoryStore(): JobStore {
   const bindings = new Map<string, Binding>()
   const tokens = new Map<string, LinkToken>()
   const runs: RunRow[] = []
+  let overrides: ModelOverride[] = []
   return {
     listByUpdate: (updateId) => Promise.resolve(rows.filter((row) => row.updateId === updateId)),
     activeByVideo: (videoId) =>
@@ -160,11 +179,18 @@ export function memoryStore(): JobStore {
       else runs[index] = run
       return Promise.resolve(true)
     },
-    claimRun: (runId, expect, next) => {
+    claimRun: (runId, expect, next, model) => {
       const index = runs.findIndex((item) => item.runId === runId)
       const run = runs[index]
       if (run === undefined || run.status !== expect) return Promise.resolve(false)
-      runs[index] = { ...run, status: next, error: null, notified: false, acceptedAt: null }
+      runs[index] = {
+        ...run,
+        status: next,
+        error: null,
+        notified: false,
+        acceptedAt: null,
+        ...(model === undefined ? {} : { model }),
+      }
       return Promise.resolve(true)
     },
     openFor: (sub) => {
@@ -176,5 +202,19 @@ export function memoryStore(): JobStore {
     },
     runsFor: (jobId) => Promise.resolve(runs.filter((item) => item.jobId === jobId)),
     dueRuns: (now) => Promise.resolve(runs.filter((item) => isDue(item, now))),
+    overridesFor: (sub) => Promise.resolve(overrides.filter((item) => item.sub === sub).map((item) => ({ ...item }))),
+    setOverride: (override) => {
+      overrides = overrides.filter(
+        (item) => !(item.sub === override.sub && item.recipe === override.recipe && item.mode === override.mode),
+      )
+      overrides.push({ ...override })
+      return Promise.resolve()
+    },
+    clearOverride: (sub, recipe, mode) => {
+      overrides = overrides.filter(
+        (item) => !(item.sub === sub && item.recipe === recipe && (mode === undefined || item.mode === mode)),
+      )
+      return Promise.resolve()
+    },
   }
 }

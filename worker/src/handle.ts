@@ -28,6 +28,7 @@ import {
   isAllowed,
   isToken,
   langKeyboard,
+  runKinds,
   linesForMessage,
   linkLine,
   maskRecipes,
@@ -72,6 +73,8 @@ export interface PlannedKnock {
   text?: string
   title?: string
   textLang?: string
+  /** Receptazonosító → modell; a `run.model`-ből, a futás minden fajtájára. */
+  models?: Record<string, string>
 }
 
 export interface WorkerDeps {
@@ -385,6 +388,7 @@ async function settle(
 function knockFor(run: RunRow, row: JobRow): PlannedKnock {
   const knock: PlannedKnock = { jobId: run.runId, videoId: row.videoId, url: row.url, recipes: run.recipes }
   if (run.lang !== null) knock.lang = run.lang
+  if (run.model) knock.models = Object.fromEntries(runKinds(run).map((kind) => [kind, run.model as string]))
   return knock
 }
 
@@ -653,6 +657,14 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
   return 200
 }
 
+/** Alaprecept-futásnál a recept, fordításnál a közös `translate` kulcs; az egyszeri nyer (#292). */
+async function pickOverride(row: JobRow, recipes: readonly string[], lang: string | null, deps: WorkerDeps) {
+  if (row.sub === null) return null
+  const key = lang === null ? (recipes[0] ?? '') : 'translate'
+  const own = (await deps.store.overridesFor(row.sub)).filter((item) => item.recipe === key)
+  return own.find((item) => item.mode === 'once') ?? own.find((item) => item.mode === 'always') ?? null
+}
+
 async function requestRun(row: JobRow, recipes: string[], lang: string | null, deps: WorkerDeps): Promise<PlannedKnock[]> {
   const id = runId(row.jobId, recipes, lang)
   const run = await deps.store.run(id)
@@ -666,6 +678,7 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     if (run !== null) await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase))
     return []
   }
+  const override = await pickOverride(row, recipes, lang, deps)
   const fresh: RunRow = {
     runId: id,
     jobId: row.jobId,
@@ -676,15 +689,18 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     noteUrl: null,
     notified: false,
     acceptedAt: null,
+    model: override?.model ?? null,
   }
   const claimed =
     action.type === 'start'
       ? await deps.store.insertRun(fresh)
-      : run !== null && (await deps.store.claimRun(id, run.status, 'queued'))
+      : run !== null && (await deps.store.claimRun(id, run.status, 'queued', fresh.model))
   if (!claimed) {
     await deps.send(row.chatId, alreadyLine(label(row)))
     return []
   }
+  // ponytail: két egyidejű koppintás ugyanazt az egyszerit kétszer is felhasználhatja; tranzakció, ha zavaró lesz.
+  if (override?.mode === 'once' && row.sub !== null) await deps.store.clearOverride(row.sub, override.recipe, 'once')
   await deps.send(row.chatId, runQueuedLine(row, fresh))
   return [knockFor(fresh, row)]
 }

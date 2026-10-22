@@ -60,3 +60,43 @@ describe('D1: szöveges sor', () => {
     expect(db.calls[0]?.sql).toContain('text = NULL')
   })
 })
+
+describe('D1: modellfelülírás', () => {
+  const run = {
+    runId: '5:abcdefghijk:notes',
+    jobId: '5:abcdefghijk',
+    recipes: ['notes'],
+    lang: null,
+    status: 'queued' as const,
+    error: null,
+    noteUrl: null,
+    notified: false,
+    acceptedAt: null,
+  }
+
+  it('az insertRun viszi a model oszlopot, modell nélkül null-t', async () => {
+    const db = capture()
+    const store = createD1Store(db)
+    await store.insertRun({ ...run, model: 'sonnet' })
+    await store.insertRun(run)
+    expect(db.calls[0]?.sql).toContain('model')
+    expect(db.calls[0]?.values.at(-1)).toBe('sonnet')
+    expect(db.calls[1]?.values.at(-1)).toBeNull()
+  })
+
+  it('a claimRun csak modellel cseréli a model oszlopot', async () => {
+    const db = capture()
+    const store = createD1Store(db)
+    await store.claimRun(run.runId, 'failed', 'queued', 'm')
+    await store.claimRun(run.runId, 'failed', 'queued')
+    expect(db.calls[0]?.sql).toContain('model = ?')
+    expect(db.calls[0]?.values).toEqual(['queued', 'm', run.runId, 'failed'])
+    expect(db.calls[1]?.sql).not.toContain('model')
+  })
+
+  it('a setOverride a (sub, recipe, mode) kulcson cserél', async () => {
+    const db = capture()
+    await createD1Store(db).setOverride({ sub: 's', recipe: 'notes', mode: 'once', model: 'm' })
+    expect(db.calls[0]?.sql).toContain('ON CONFLICT(sub, recipe, mode)')
+  })
+})

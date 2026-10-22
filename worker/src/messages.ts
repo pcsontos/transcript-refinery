@@ -141,7 +141,7 @@ export const NOTHING_TO_TRANSLATE = 'Előbb készíts egy jegyzetet.'
 
 /** A futásüzenet tárgya (#274): a vault-azonosító és a cím. */
 type RunItem = Pick<JobRow, 'videoId' | 'title'>
-type RunPart = Pick<RunRow, 'recipes' | 'lang'>
+type RunPart = Pick<RunRow, 'recipes' | 'lang' | 'model'>
 
 const LABEL_TITLE_MAX = 60
 
@@ -152,7 +152,7 @@ function shortTitle(title: string): string {
 
 function runLabel(item: RunItem, run: RunPart): string {
   const head = item.title === null ? `[${item.videoId}]` : `[${item.videoId}] ${shortTitle(item.title)}`
-  return `${head}: ${run.recipes.join(', ')}${run.lang === null ? '' : ` → ${run.lang}`}`
+  return `${head}: ${run.recipes.join(', ')}${run.lang === null ? '' : ` → ${run.lang}`}${run.model ? ` (${run.model})` : ''}`
 }
 
 export function runQueuedLine(item: RunItem, run: RunPart): string {

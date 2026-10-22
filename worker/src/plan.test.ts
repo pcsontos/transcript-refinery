@@ -276,6 +276,12 @@ describe('futások', () => {
     expect(runQueuedLine({ videoId: 'abcdefghijk', title: null }, { recipes: ['qa'], lang: null })).toBe(
       'Sorba került [abcdefghijk]: qa',
     )
+    expect(runQueuedLine(ITEM, { recipes: ['notes'], lang: null, model: 'sonnet' })).toBe(
+      'Sorba került [abcdefghijk] Cím: notes (sonnet)',
+    )
+    expect(runQueuedLine(ITEM, { recipes: ['summary', 'notes'], lang: 'de', model: 'sonnet' })).toBe(
+      'Sorba került [abcdefghijk] Cím: summary, notes → de (sonnet)',
+    )
     const part = { recipes: ['qa'], lang: null }
     expect(runQueuedLine({ videoId: 'abcdefghijk', title: 'é'.repeat(100) }, part)).toBe(
       `Sorba került [abcdefghijk] ${'é'.repeat(59)}…: qa`,

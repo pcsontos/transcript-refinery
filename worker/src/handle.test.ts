@@ -1325,3 +1325,90 @@ describe('szöveges bemenet', () => {
     )
   })
 })
+
+describe('modellfelülírás a futásnál (#292)', () => {
+  const sub42 = (recipe: string, mode: 'once' | 'always', model: string) => ({ sub: 'sub-42', recipe, mode, model })
+  const second = () => readyRow({ jobId: `6:${ID2}`, updateId: 6, videoId: ID2, url: `https://www.youtube.com/watch?v=${ID2}` })
+
+  it('az egyszeri felülírás a következő futást viszi, utána elfogy', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insert(second())
+    await store.setOverride(sub42('notes', 'once', 'sonnet'))
+    const first = deps(store)
+    const knocks = await handleTap(tap(20, `r:notes:5:${ID}`), first)
+    expect(knocks[0]?.models).toEqual({ notes: 'sonnet' })
+    expect(first.sent).toEqual([`Sorba került [${ID}] Cím: notes (sonnet)`])
+    expect(await store.overridesFor('sub-42')).toEqual([])
+    const next = deps(store)
+    const plain = await handleTap(tap(21, `r:notes:6:${ID2}`), next)
+    expect(plain[0]?.models).toBeUndefined()
+    expect(next.sent).toEqual([`Sorba került [${ID2}] Cím: notes`])
+  })
+
+  it('az egyszeri az állandó fölött nyer, utána az állandó marad', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insert(second())
+    await store.setOverride(sub42('notes', 'once', 'a'))
+    await store.setOverride(sub42('notes', 'always', 'b'))
+    expect((await handleTap(tap(20, `r:notes:5:${ID}`), deps(store)))[0]?.models).toEqual({ notes: 'a' })
+    expect((await handleTap(tap(21, `r:notes:6:${ID2}`), deps(store)))[0]?.models).toEqual({ notes: 'b' })
+  })
+
+  it('az állandó translate a fordítás minden fajtájára megy, az alaprecept-futásra nem', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.setOverride(sub42('translate', 'always', 't'))
+    const knocks = await handleTap(tap(20, `l:3:de:5:${ID}`, 42, 9), deps(store))
+    expect(knocks[0]?.models).toEqual({ 'summary-de': 't', 'notes-de': 't' })
+    expect((await handleTap(tap(21, `r:notes:5:${ID}`), deps(store)))[0]?.models).toBeUndefined()
+  })
+
+  it('a kész recept újranyomása (resend) nem fogyasztja az egyszerit', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['notes']))
+    await store.setOverride(sub42('notes', 'once', 'sonnet'))
+    const d = deps(store)
+    expect(await handleTap(tap(20, `r:notes:5:${ID}`), d)).toEqual([])
+    expect(await store.overridesFor('sub-42')).toHaveLength(1)
+  })
+
+  it('a sikertelen foglalás nem fogyasztja az egyszerit', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.setOverride(sub42('notes', 'once', 'sonnet'))
+    const lost = { ...store, insertRun: () => Promise.resolve(false) }
+    const d = deps(lost)
+    expect(await handleTap(tap(20, `r:notes:5:${ID}`), d)).toEqual([])
+    expect(d.sent).toEqual([`Már sorban van: ${ID}.`])
+    expect(await store.overridesFor('sub-42')).toHaveLength(1)
+  })
+
+  it('a leállt futás újrapróbája a felülírást kapja', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['notes'], null, { status: 'failed', error: 'Leállt.', notified: false }))
+    await store.setOverride(sub42('notes', 'always', 'sonnet'))
+    const knocks = await handleTap(tap(20, `r:notes:5:${ID}`), deps(store))
+    expect(knocks[0]?.models).toEqual({ notes: 'sonnet' })
+    expect((await store.run(`5:${ID}:notes`))?.model).toBe('sonnet')
+  })
+
+  it('a cron újrakopogtatása ugyanazt a modellt viszi', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['notes'], null, { status: 'queued', notified: false, model: 'sonnet' }))
+    const cron = deps(store)
+    await handleCron(cron)
+    expect(cron.knocks[0]?.models).toEqual({ notes: 'sonnet' })
+  })
+
+  it('más felhasználó felülírása nem hat', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.setOverride({ sub: 'sub-9', recipe: 'notes', mode: 'always', model: 'x' })
+    expect((await handleTap(tap(20, `r:notes:5:${ID}`), deps(store)))[0]?.models).toBeUndefined()
+  })
+})

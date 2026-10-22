@@ -367,7 +367,7 @@ async function pickOverride(row: JobRow, recipes: readonly string[], lang: strin
 
 **`messages.ts`:** a `RunPart` alias `Pick<RunRow, 'recipes' | 'lang' | 'model'>` lesz, a három függvény aláírása nem változik. A címke végére `${run.model ? ` (${run.model})` : ''}` kerül.
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `plan.test.ts`: `runQueuedLine(ITEM, { recipes: ['notes'], lang: null, model: 'sonnet' })` → `'Sorba került [abcdefghijk] Cím: notes (sonnet)'`. Fordításnál: `'… Cím: summary, notes → de (sonnet)'`.
   - `store.test.ts`, `memoryStore`:
     - a `setOverride` kétszer ugyanarra a kulcsra egy sort hagy, az új modellel;
@@ -391,10 +391,10 @@ async function pickOverride(row: JobRow, recipes: readonly string[], lang: strin
     5. `failed` `notes` futás mellett állandó `notes = sonnet`: az újrapróba kopogtatása `models: { notes: 'sonnet' }`, a `store.run(id)?.model` `'sonnet'`.
     6. A cron újrakopogtatása (`handleCron` egy `queued` futásra, amelynek `model: 'sonnet'`) ugyanazt a `models`-t viszi.
     7. Más felhasználó (`sub-9`) felülírása nem hat a `sub-42` futására.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL.
-- [ ] **3. lépés:** migráció és a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: a `requestRun`-ban az egyszeri törlése az `if (!claimed)` **elé** kerül, és a 4. eset (resend) elbukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(worker): Store model overrides and send them with the run`).
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL.
+- [x] **3. lépés:** migráció és a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: a `requestRun`-ban az egyszeri törlése az `if (!claimed)` **elé** kerül, és a „sikertelen foglalás” eset elbukik (a 4. eset, a resend, ezt nem fogja meg: a `resend` ág korábban visszatér). Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(worker): Store model overrides and send them with the run`).
 
 ### 5. feladat: a `/model` parancs és a gombok (Worker)
 

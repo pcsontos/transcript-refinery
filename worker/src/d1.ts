@@ -1,4 +1,13 @@
-import { OPEN, type Binding, type JobRow, type JobStatus, type JobStore, type LinkToken, type RunRow } from './store.js'
+import {
+  OPEN,
+  type Binding,
+  type JobRow,
+  type JobStatus,
+  type JobStore,
+  type LinkToken,
+  type ModelOverride,
+  type RunRow,
+} from './store.js'
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement
@@ -55,6 +64,7 @@ interface RunRecord {
   note_url: string | null
   notified: number
   accepted_at: number | null
+  model: string | null
 }
 
 function toRun(record: RunRecord): RunRow {
@@ -62,6 +72,7 @@ function toRun(record: RunRecord): RunRow {
     runId: record.run_id,
     jobId: record.job_id,
     recipes: record.recipes.split(' '),
+    model: record.model,
     lang: record.lang,
     status: record.status,
     error: record.error,
@@ -260,8 +271,8 @@ export function createD1Store(db: D1Like): JobStore {
     async insertRun(run) {
       const result = await db
         .prepare(
-          `INSERT INTO runs (run_id, job_id, recipes, lang, status, error, note_url, notified, accepted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(run_id) DO NOTHING`,
+          `INSERT INTO runs (run_id, job_id, recipes, lang, status, error, note_url, notified, accepted_at, model)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(run_id) DO NOTHING`,
         )
         .bind(
           run.runId,
@@ -273,6 +284,7 @@ export function createD1Store(db: D1Like): JobStore {
           run.noteUrl,
           run.notified ? 1 : 0,
           run.acceptedAt,
+          run.model ?? null,
         )
         .run()
       return changed(result)
@@ -286,11 +298,15 @@ export function createD1Store(db: D1Like): JobStore {
         .run()
       return changed(result)
     },
-    async claimRun(runId, expect, next) {
-      const result = await db
-        .prepare('UPDATE runs SET status = ?, error = NULL, notified = 0, accepted_at = NULL WHERE run_id = ? AND status = ?')
-        .bind(next, runId, expect)
-        .run()
+    async claimRun(runId, expect, next, model) {
+      const reset = 'status = ?, error = NULL, notified = 0, accepted_at = NULL'
+      const result =
+        model === undefined
+          ? await db.prepare(`UPDATE runs SET ${reset} WHERE run_id = ? AND status = ?`).bind(next, runId, expect).run()
+          : await db
+              .prepare(`UPDATE runs SET ${reset}, model = ? WHERE run_id = ? AND status = ?`)
+              .bind(next, model, runId, expect)
+              .run()
       return changed(result)
     },
     async openFor(sub) {
@@ -311,6 +327,25 @@ export function createD1Store(db: D1Like): JobStore {
         .bind(sub)
         .all<RunRecord>()
       return { jobs: jobs.results.map(toRow), runs: runs.results.map(toRun) }
+    },
+    async overridesFor(sub) {
+      const result = await db.prepare('SELECT * FROM model_overrides WHERE sub = ?').bind(sub).all<ModelOverride>()
+      return result.results
+    },
+    async setOverride(override) {
+      await db
+        .prepare(
+          `INSERT INTO model_overrides (sub, recipe, mode, model) VALUES (?, ?, ?, ?)
+           ON CONFLICT(sub, recipe, mode) DO UPDATE SET model = excluded.model`,
+        )
+        .bind(override.sub, override.recipe, override.mode, override.model)
+        .run()
+    },
+    async clearOverride(sub, recipe, mode) {
+      await (mode === undefined
+        ? db.prepare('DELETE FROM model_overrides WHERE sub = ? AND recipe = ?').bind(sub, recipe)
+        : db.prepare('DELETE FROM model_overrides WHERE sub = ? AND recipe = ? AND mode = ?').bind(sub, recipe, mode)
+      ).run()
     },
     async runsFor(jobId) {
       const result = await db.prepare('SELECT * FROM runs WHERE job_id = ? ORDER BY rowid').bind(jobId).all<RunRecord>()

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memoryStore, type JobRow } from './store.js'
+import { memoryStore, type JobRow, type ModelOverride } from './store.js'
 
 function row(partial: Partial<JobRow> = {}): JobRow {
   return {
@@ -39,5 +39,41 @@ describe('a szöveg a sor lezárásáig él', () => {
     await store.insert(row())
     expect(await store.claimJob(row().jobId, 'queued', 'cancelled')).toBe(true)
     expect((await store.listByUpdate(5))[0]?.text).toBeNull()
+  })
+})
+
+describe('a modellfelülírások (memoryStore)', () => {
+  const own = (partial: Partial<ModelOverride> = {}): ModelOverride => ({
+    sub: 'sub-42',
+    recipe: 'notes',
+    mode: 'once',
+    model: 'a',
+    ...partial,
+  })
+
+  it('ugyanarra a kulcsra egy sor marad, az új modellel', async () => {
+    const store = memoryStore()
+    await store.setOverride(own())
+    await store.setOverride(own({ model: 'b' }))
+    expect(await store.overridesFor('sub-42')).toEqual([own({ model: 'b' })])
+  })
+
+  it('a mód szerinti törlés a másik módot meghagyja, mód nélkül mindkettő törlődik', async () => {
+    const store = memoryStore()
+    await store.setOverride(own())
+    await store.setOverride(own({ mode: 'always', model: 'b' }))
+    await store.clearOverride('sub-42', 'notes', 'once')
+    expect(await store.overridesFor('sub-42')).toEqual([own({ mode: 'always', model: 'b' })])
+    await store.setOverride(own())
+    await store.clearOverride('sub-42', 'notes')
+    expect(await store.overridesFor('sub-42')).toEqual([])
+  })
+
+  it('más felhasználó sorai érintetlenek', async () => {
+    const store = memoryStore()
+    await store.setOverride(own({ sub: 'sub-9' }))
+    await store.clearOverride('sub-42', 'notes')
+    expect(await store.overridesFor('sub-9')).toHaveLength(1)
+    expect(await store.overridesFor('sub-42')).toEqual([])
   })
 })
