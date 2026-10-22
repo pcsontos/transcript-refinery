@@ -89,6 +89,9 @@ hitelesítés nélkül válaszol (`ok`, illetve `{"version": …}`), a `GET /sta
 a `REFINERY_SERVE_SECRET` Bearer-tokenjével a verziót és az éppen futó munka
 azonosítóját adja (`{"version": …, "busy": <jobId> | null}`).
 
+A `GET /models` (Bearer-tokennel) a Telegram `/model` parancsának forrása: a YAML-alap
+modelleket és a `model.switchable` listát adja, a kaput nem foglalja.
+
 A `POST /jobs/<id>/cancel` (ugyanazzal a Bearer-tokennel) a futó munkát
 állítja le: `200`, ha a megadott azonosító fut, és a jelzés megérkezett; a
 receptfutás a következő egység előtt áll meg, a kész jegyzetek commitolódnak.

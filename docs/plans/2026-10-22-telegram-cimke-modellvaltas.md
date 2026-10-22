@@ -624,10 +624,10 @@ models: async () => {
 
 **Fájlok:**
 - `refinery.config.example.yaml`: a `model` alá egy `switchable` példa két modellel (`structured` és `text`), a spec szerinti kétsoros magyarázattal.
-- `docs/usage.md`: a Telegram-parancsok közé a `/model`, a három lépés és a két mód. Hogy a `docs/usage.md`-ben hol vannak a Telegram-parancsok, azt a végrehajtáskor `grep -n '/cancel' docs/*.md` adja ki.
+- `docs/usage.md` (a `grep '/cancel'` szerint itt nincsenek Telegram-parancsok, ezért a `/model` a `docs/operations/telegram-worker-topology.md`-be és a README `GET /models` bekezdésébe került): a Telegram-parancsok közé a `/model`, a három lépés és a két mód. Hogy a `docs/usage.md`-ben hol vannak a Telegram-parancsok, azt a végrehajtáskor `grep -n '/cancel' docs/*.md` adja ki.
 - `docs/operations/telegram-worker-topology.md`: a `GET /models` a serve végpontjai közé, ha ott fel vannak sorolva.
 
-- [ ] Szöveg megírása, teljes ellenőrzés zöld, commit (`docs: Document the /model command and model.switchable`).
+- [x] Szöveg megírása, teljes ellenőrzés zöld, commit (`docs: Document the /model command and model.switchable`).
 
 ### 7. feladat: kód-PR, telepítés, éles próba
 
