@@ -3,6 +3,39 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.21.0] — 2026-10-22
+
+A Telegram-üzenetekből látszik, melyik elemről szólnak, és receptenként
+modellt lehet váltani a `/model` paranccsal.
+
+### ✨ Újdonságok
+
+- **Elemcímke a futásüzenetekben:** a „Sorba került”, az „Elkezdődött” és a
+  hibaüzenetek mostantól `[<videó azonosítója>] <cím>: <receptek> → <nyelv>`
+  alakban jönnek, így több párhuzamos elem között is látszik, melyikről van szó
+  (#274). A cím legfeljebb 60 karakter.
+- **Modellváltás Telegramról:** a `/model` három koppintással (recept → modell →
+  mód) állít be modellt. Az *egyszeri* választás a következő futásra szól, az
+  *állandó* addig marad, amíg vissza nem állítod; az egyszeri erősebb az
+  állandónál. Állítható a nyolc alaprecept és egy közös `translate` kulcs a
+  fordításokhoz, a piszkozat- és a bírómodell nem (#292).
+- **A modell a címkében:** ha egy futás felülírt modellt kap, a címke végén
+  zárójelben látszik (`... (sonnet)`); a configból futó receptnél nem.
+- **`model.switchable`:** a választható modellek kifejezett listája a
+  configban (`<modell>: structured | text`). A sémás receptekhez (notes,
+  flashcards, bloom) csak `structured` modell kínálható. Minden felvett
+  modellnek kell ár a `pricing` alatt. A lista kérésenként töltődik, szerkesztése
+  után nem kell újraindítani a szervert.
+- **`GET /models`:** a szerver végpontja, amelyen a Worker lekérdezi a
+  választható modelleket (titokkal védett).
+
+### 🔧 Üzemeltetés
+
+- **Telepítési sorrend:** előbb a szerver képe, aztán a `0006` D1-migráció, végül
+  a Worker. A régi szerver a modellkérést csendben figyelmen kívül hagyná.
+- **Config:** a példa-config (`refinery.config.example.yaml`) magyarázza a
+  `model.switchable` beállítást.
+
 ## [1.20.2] — 2026-10-21
 
 Javítás a jegyzetek frontmatterében: a videóleírásban lévő `---` sor már nem
@@ -974,6 +1007,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.21.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.21.0
 [1.20.2]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.2
 [1.20.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.1
 [1.20.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.0
