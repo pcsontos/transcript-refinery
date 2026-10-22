@@ -1,3 +1,5 @@
+import type { JobRow, RunRow } from './store.js'
+
 export const REJECTED_SECRET = 'A konténer elutasította a hívást.'
 
 export const PLAYLIST_LINE = 'Lejátszási lista későbbre marad.'
@@ -137,20 +139,32 @@ export const PICK_LINE = 'Melyik jegyzetet fordítsam?'
 export const LANG_LINE = 'Melyik nyelvre?'
 export const NOTHING_TO_TRANSLATE = 'Előbb készíts egy jegyzetet.'
 
-function runLabel(recipes: readonly string[], lang: string | null): string {
-  return `${recipes.join(', ')}${lang === null ? '' : ` → ${lang}`}`
+/** A futásüzenet tárgya (#274): a vault-azonosító és a cím. */
+type RunItem = Pick<JobRow, 'videoId' | 'title'>
+type RunPart = Pick<RunRow, 'recipes' | 'lang'>
+
+const LABEL_TITLE_MAX = 60
+
+function shortTitle(title: string): string {
+  const chars = [...flatTitle(title)]
+  return chars.length > LABEL_TITLE_MAX ? `${chars.slice(0, LABEL_TITLE_MAX - 1).join('')}…` : chars.join('')
 }
 
-export function runQueuedLine(recipes: readonly string[], lang: string | null): string {
-  return `Sorba került: ${runLabel(recipes, lang)}`
+function runLabel(item: RunItem, run: RunPart): string {
+  const head = item.title === null ? `[${item.videoId}]` : `[${item.videoId}] ${shortTitle(item.title)}`
+  return `${head}: ${run.recipes.join(', ')}${run.lang === null ? '' : ` → ${run.lang}`}`
 }
 
-export function runStartedLine(recipes: readonly string[], lang: string | null): string {
-  return `Elkezdődött a feldolgozás: ${runLabel(recipes, lang)}. Hamarosan jelzem az eredményt.`
+export function runQueuedLine(item: RunItem, run: RunPart): string {
+  return `Sorba került ${runLabel(item, run)}`
 }
 
-export function runFailedLine(recipes: readonly string[], lang: string | null, error: string): string {
-  return `${runLabel(recipes, lang)}: ${error}`
+export function runStartedLine(item: RunItem, run: RunPart): string {
+  return `Elkezdődött a feldolgozás ${runLabel(item, run)}. Hamarosan jelzem az eredményt.`
+}
+
+export function runFailedLine(item: RunItem, run: RunPart, error: string): string {
+  return `${runLabel(item, run)}: ${error}`
 }
 
 export const CANCEL_LINE = 'Melyiket szakítsam meg?'

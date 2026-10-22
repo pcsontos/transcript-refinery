@@ -23,6 +23,7 @@ import {
   runKinds,
   runQueuedLine,
   runFailedLine,
+  runStartedLine,
   runReadyMessage,
   videoIdOf,
   waitingLine,
@@ -261,10 +262,30 @@ describe('futások', () => {
   })
 
   it('a futás mondatai', () => {
-    expect(runQueuedLine(['notes'], null)).toBe('Sorba került: notes')
-    expect(runQueuedLine(['summary', 'notes'], 'de')).toBe('Sorba került: summary, notes → de')
-    expect(runFailedLine(['qa'], null, 'A futás megállt.')).toBe('qa: A futás megállt.')
-    expect(runFailedLine(['summary', 'notes'], 'de', 'x')).toBe('summary, notes → de: x')
+    const ITEM = { videoId: 'abcdefghijk', title: 'Cím' }
+    expect(runQueuedLine(ITEM, { recipes: ['notes'], lang: null })).toBe('Sorba került [abcdefghijk] Cím: notes')
+    expect(runQueuedLine(ITEM, { recipes: ['summary', 'notes'], lang: 'de' })).toBe(
+      'Sorba került [abcdefghijk] Cím: summary, notes → de',
+    )
+    expect(runFailedLine(ITEM, { recipes: ['qa'], lang: null }, 'A futás megállt.')).toBe(
+      '[abcdefghijk] Cím: qa: A futás megállt.',
+    )
+    expect(runStartedLine(ITEM, { recipes: ['notes'], lang: null })).toBe(
+      'Elkezdődött a feldolgozás [abcdefghijk] Cím: notes. Hamarosan jelzem az eredményt.',
+    )
+    expect(runQueuedLine({ videoId: 'abcdefghijk', title: null }, { recipes: ['qa'], lang: null })).toBe(
+      'Sorba került [abcdefghijk]: qa',
+    )
+    const part = { recipes: ['qa'], lang: null }
+    expect(runQueuedLine({ videoId: 'abcdefghijk', title: 'é'.repeat(100) }, part)).toBe(
+      `Sorba került [abcdefghijk] ${'é'.repeat(59)}…: qa`,
+    )
+    expect(runQueuedLine({ videoId: 'abcdefghijk', title: 'é'.repeat(60) }, part)).toBe(
+      `Sorba került [abcdefghijk] ${'é'.repeat(60)}: qa`,
+    )
+    expect(runQueuedLine({ videoId: 'abcdefghijk', title: 'Egy\nkettő' }, part)).toBe(
+      'Sorba került [abcdefghijk] Egy kettő: qa',
+    )
     expect(runReadyMessage('Cím\n', run({ recipes: ['notes'] }), 'https://w.test')).toBe(
       `Cím · notes. A jegyzet megvan.\nhttps://w.test/notes/${ID}/notes`,
     )

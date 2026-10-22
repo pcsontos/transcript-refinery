@@ -90,7 +90,7 @@ A `messages.ts` a `JobRow` és a `RunRow` típust a `./store.js`-ből importálj
 - 598: `runFailedLine(row, run, MISSING_NOTE_URL)`
 - 688: `runQueuedLine(row, fresh)`
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `plan.test.ts:264–267` új elvárásai, `const ITEM = { videoId: 'abcdefghijk', title: 'Cím' }` mellett:
     - `runQueuedLine(ITEM, { recipes: ['notes'], lang: null })` → `'Sorba került [abcdefghijk] Cím: notes'`
     - `runQueuedLine(ITEM, { recipes: ['summary', 'notes'], lang: 'de' })` → `'Sorba került [abcdefghijk] Cím: summary, notes → de'`
@@ -103,10 +103,10 @@ A `messages.ts` a `JobRow` és a `RunRow` típust a `./store.js`-ből importálj
     - sortörést tartalmazó cím (`'Egy\nkettő'`): `'[…] Egy kettő: …'`.
   - `handle.test.ts`: minden *futás*-üzenet elvárása az új alakra. A `readyRow` címe `'Cím'`, ezért például a 468. sor `['Sorba került [abcdefghijk] Cím: notes']`, a 784. sor `STARTED` segédje pedig `` `Elkezdődött a feldolgozás [${ID}] Cím: ${label}. Hamarosan jelzem az eredményt.` `` lesz. A felirat- és szövegjob-elvárásokhoz nem nyúlunk (180, 210, 212, 828, 1149, 1168, 1179, 1233, 1245, 1247, 1264). A futás-elvárásokat a `pnpm vitest run worker` bukó sorai adják ki: minden bukó `Sorba került: <recept>`, `Elkezdődött a feldolgozás:` és `<recept>: <hiba>` elvárást át kell írni.
   - Szöveges tételre egy új `handle.test.ts` eset: `readyRow({ videoId: 't-0123456789abcdef', jobId: '5:t-0123456789abcdef', title: 'eloadas-jegyzet' })`, `r:notes:5:t-0123456789abcdef` koppintás → `'Sorba került [t-0123456789abcdef] eloadas-jegyzet: notes'`.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL (régi szöveg).
-- [ ] **3. lépés:** a fenti kód és a hat hívóhely.
-- [ ] **4. lépés:** `pnpm vitest run worker` → PASS. Mutációs próba: a `LABEL_TITLE_MAX - 1`-ből `LABEL_TITLE_MAX` lesz, és a 100 karakteres eset elbukik. Utána visszaállítás. Teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(worker): Show item id and title in run messages`, `Closes #274`).
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL (régi szöveg).
+- [x] **3. lépés:** a fenti kód és a hat hívóhely.
+- [x] **4. lépés:** `pnpm vitest run worker` → PASS. Mutációs próba: a `LABEL_TITLE_MAX - 1`-ből `LABEL_TITLE_MAX` lesz, és a 100 karakteres eset elbukik. Utána visszaállítás. Teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(worker): Show item id and title in run messages`, `Closes #274`).
 
 ### 2. feladat: kód-PR és kiadás
 

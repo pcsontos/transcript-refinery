@@ -535,7 +535,7 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
         () => deps.store.saveRun(run),
         await deps.knock(knock),
         deps,
-        { runId: run.runId, text: runStartedLine(run.recipes, run.lang) },
+        { runId: run.runId, text: runStartedLine(row, run) },
       )
       continue
     }
@@ -560,7 +560,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
     await deps.send(
       row.chatId,
       body.status === 'failed'
-        ? runFailedLine(run.recipes, run.lang, body.error)
+        ? runFailedLine(row, run, body.error)
         : runReadyMessage(body.title, run, deps.linkBase),
     )
     return
@@ -586,7 +586,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
     return
   }
   if (body.status === 'failed') {
-    const sent = await deps.send(row.chatId, runFailedLine(run.recipes, run.lang, body.error))
+    const sent = await deps.send(row.chatId, runFailedLine(row, run, body.error))
     if (!sent) return
     run.status = 'failed'
     run.error = body.error
@@ -595,7 +595,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
   }
   if (run.notified) return
   if (body.noteUrl === undefined || body.noteUrl === '') {
-    const sent = await deps.send(row.chatId, runFailedLine(run.recipes, run.lang, MISSING_NOTE_URL))
+    const sent = await deps.send(row.chatId, runFailedLine(row, run, MISSING_NOTE_URL))
     if (!sent) return
     run.status = 'failed'
     run.error = MISSING_NOTE_URL
@@ -685,7 +685,7 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     await deps.send(row.chatId, alreadyLine(label(row)))
     return []
   }
-  await deps.send(row.chatId, runQueuedLine(recipes, lang))
+  await deps.send(row.chatId, runQueuedLine(row, fresh))
   return [knockFor(fresh, row)]
 }
 
@@ -754,7 +754,7 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
       () => deps.store.saveRun(run),
       await deps.knock(knockFor(run, row)),
       deps,
-      { runId: run.runId, text: runStartedLine(run.recipes, run.lang) },
+      { runId: run.runId, text: runStartedLine(row, run) },
     )
   }
 }
