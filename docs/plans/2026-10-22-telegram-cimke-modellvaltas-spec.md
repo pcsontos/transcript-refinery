@@ -43,7 +43,7 @@ Mindkét issue ugyanazt a három üzenetsort érinti (`runQueuedLine`, `runStart
 |---|---|---|
 | Hatókör | Egy spec, két ütem, két kód-PR: #274, utána #292. | felhasználó |
 | Hol él a felülírás? | A Worker D1-ében. A futás sora rögzíti a kért modellt, a kopogtatás `models` mezőben viszi, a serve a futás idejére befésüli, és nem tárol semmit. | felhasználó |
-| Honnan tudható, hogy egy modell sémás? | YAML-jelzőből: `structured: true` a `pricing` bejegyzésében, alapból hamis. | felhasználó |
+| Mi választható, és honnan tudható, hogy egy modell sémás? | Egy kifejezett lista a YAML-ban: `model.switchable`, modellenként `structured` vagy `text`. A tervezés közben derült ki, hogy a „minden árazott modell" a peter-mba-n kb. 80 modellt jelentene, köztük nem szövegmodelleket. | felhasználó |
 | Mikor látszik a modell az üzenetben? | Csak felülíráskor. A YAML-alapot a Worker nem ismeri. | felhasználó |
 | Mi állítható? | A 8 alaprecept, és egy közös beállítás a fordításra. A `draft` és a `judge` nem. | felhasználó |
 | A fordítás felülírása | Egy modell minden fordításra, a forrásrecepttől és a nyelvtől függetlenül. | felhasználó |
@@ -86,17 +86,24 @@ Elkezdődött a feldolgozás [dQw4w9WgXcQ] Hogyan működik a GPS: notes, bloom 
 
 ## 2. ütem — #292: receptenkénti modellváltás Telegramról
 
-### Config: a sémás jelző
+### Config: `model.switchable`
 
 ```yaml
-pricing:
-  sub2api--claude-sonnet-5-5: { input_per_million: 2, output_per_million: 10, structured: true }
-  sub2api--gemini-3.8-flash-high: { input_per_million: 2, output_per_million: 6 }
+model:
+  # Telegramról ezekre lehet váltani. Mindnek kell ár. A structured sémás JSON-t ad,
+  # csak ilyen választható a notes, a flashcards és a bloom receptre.
+  switchable:
+    sub2api--claude-sonnet-5-5: structured
+    sub2api--claude-opus-5-5: structured
+    sub2api--grok-4.7: text
+    sub2api--gemini-3.8-flash-high: text
 ```
 
-- A `structured` nem kötelező, alapból hamis. A `refinery check-pricing` figyelmen kívül hagyja.
-- Választható modell: minden, ami a `pricing`-ben szerepel. Sémás receptre (a `notes`, a `flashcards`, a `bloom` és minden recept, amelynek van `structured` kimenete) csak `structured: true` modell választható.
-- **Telepítési teendő:** a peter-mba configjában a Sonnet (és minden sémásra szánt modell) bejegyzése megkapja a `structured: true`-t, különben sémás receptre nem lesz választható modell.
+- Miért külön lista, és miért nem minden árazott modell: a peter-mba `pricing`-jében kb. 80 modell áll, köztük hang-, kép- és embedding-modellek is (`tts-1`, `grok-imagine-image-2.0`, `text-embedding-3-small`). Ebből nem lehet gomblistát csinálni.
+- A `model.switchable` nem kötelező, alapból üres. Üres listánál a `/model` kiírja a hozzárendelést, de a receptgombokra „nincs választható modell" a válasz.
+- Az érték `structured` vagy `text`, más érték config-hiba. Ha egy felsorolt modellnek nincs ára, az is config-hiba, ugyanúgy, mint a `model.recipes`-nél.
+- Sémás receptre (`notes`, `flashcards`, `bloom`, és minden recept, amelynek van `structured` kimenete) csak `structured` modell választható. Minden más receptre és a fordításra bármelyik `switchable` modell.
+- **Telepítési teendő:** a peter-mba configja megkapja a `model.switchable` listát. Enélkül a `/model` nem kínál modellt.
 
 ### Serve: `GET /models`
 
@@ -115,7 +122,7 @@ pricing:
 ### Serve: a `models` mező a kopogtatásban
 
 - `ServeJob.models?: Record<string, string>`: receptazonosító → modell, a futás tényleges azonosítóival (`notes`, illetve fordításnál `notes-hu`). Az `isJob` csak szöveg → szöveg objektumot fogad el, különben 400.
-- A futás előtt a serve a `raw.model.recipes`-be fésüli. Utána a meglévő ellenőrzések futnak: az ár (`loadModelConfig`), a receptkulcs (`assertRecipeModels`), és új ellenőrzésként a sémás jelző. Ha bármelyik bukik, a futás a mai hibaúton `failed` lesz, a hiba első sorával. A Telegramon így jelenik meg: `[<id>] <cím>: notes (<modell>): pricing: nincs ára …`.
+- A futás előtt a serve a `raw.model.recipes`-be fésüli. Utána a meglévő ellenőrzések futnak: az ár (`loadModelConfig`) és a receptkulcs (`assertRecipeModels`). Új ellenőrzésként a modellnek szerepelnie kell a `switchable`-ben, sémás receptnél `structured` jelzéssel. Ha bármelyik bukik, a futás a mai hibaúton `failed` lesz, a hiba első sorával. A Telegramon így jelenik meg: `[<id>] <cím>: notes (<modell>): pricing: nincs ára …`.
 - A futásnapló `run:started` parancssora tartalmazza a felülírást, például `serve recipes notes=sub2api--claude-sonnet-5-5`. A jegyzet frontmatterjében a `model` mező már ma a ténylegesen futott modell.
 
 ### Worker: tárolás
@@ -146,7 +153,7 @@ Csak összekötött, engedélyezett felhasználónak (`allowedBinding`). A több
 5. A `visszaállítás` a recept mindkét felülírását törli.
 
 - A gombadat legfeljebb 64 bájt (Telegram). Ha egy modellnév ebbe nem fér bele, a modell nem kerül a listára, és a Worker naplóz róla.
-- A gombadat nem megbízható bemenet. A Worker csak az ismert recepteket fogadja el, a modellt pedig a serve ellenőrzi a futáskor (ár, sémás jelző).
+- A gombadat nem megbízható bemenet. A Worker csak az ismert recepteket fogadja el, a modellt pedig a serve ellenőrzi a futáskor (ár, `switchable` tagság, `structured` jelzés).
 - Ha a serve nem érhető el, a `/model` és a lista nem jelenik meg, a válasz a mai `probeFailure` mondata. Ilyenkor beállítani sem lehet. Ez tudatos, mert a választható lista a serve configjából jön.
 - A `HELP_TEXT` kap egy sort: `/model – a receptek modelljének megtekintése és váltása`.
 
@@ -170,9 +177,9 @@ A mód (egyszeri vagy állandó) a futásüzenetben nem látszik, csak a `/model
 - Ugyanez `állandó` móddal: a peter-mba konténer újraindítása után is a felülírt modell fut, amíg a `visszaállítás` meg nem történik.
 - Egyszeri és állandó felülírás együtt: az első futás az egyszerivel megy, a második az állandóval.
 - Ha a `notes` egy videón már kész, az újranyomás a régi linket küldi, és az egyszeri felülírás megmarad a következő új futásra.
-- `/model` → `notes` listájában nem szerepel olyan modell, amelynek nincs `structured: true` jelzője. A `summary` listájában minden árazott modell szerepel.
+- `/model` → `notes` listájában csak a `switchable` `structured` modelljei szerepelnek. A `summary` listájában a `switchable` minden modellje, és semmi más a `pricing`-ből.
 - A `fordítás` felülírása után egy `notes, bloom → hu` futás mindkét fordítást a felülírt modellel készíti. A `notes` alaprecept-futását a fordítás felülírása nem érinti.
-- Kézzel összerakott kopogtatás olyan modellel, amelynek nincs ára, vagy amely sémás receptre nem `structured`: a futás `failed`, és a Telegram-üzenet megmondja, miért.
+- Kézzel összerakott kopogtatás olyan modellel, amely nincs a `switchable`-ben, vagy amely sémás receptre nem `structured`: a futás `failed`, és a Telegram-üzenet megmondja, miért.
 - Nem összekötött felhasználónál a `/model` a `BIND_FIRST` választ adja, és nem kérdezi le a serve-et.
 - A serve újraindítása nélkül a YAML-ban átírt `model.recipes` a következő `/model` kiírásban már látszik.
 
