@@ -11,7 +11,7 @@ import type { StructuredOutput } from './types.js'
  * `cause`-ban. A másik kettő azért marad a halmazban, mert az SDK máshol
  * önállóan is dobja őket.
  */
-const SCHEMA_ERRORS = new Set([
+export const SCHEMA_ERRORS = new Set([
   'AI_TypeValidationError',
   'AI_NoObjectGeneratedError',
   'AI_JSONParseError',

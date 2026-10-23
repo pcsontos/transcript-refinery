@@ -30,6 +30,9 @@ async function felirat(channel: string, title: string, body: string = SRT): Prom
   return path
 }
 
+/** `n` egymástól különböző szó, hogy a normalizálás ne vonja össze őket. */
+const szavak = (n: number): string => Array.from({ length: n }, (_, i) => `szo${i}`).join(' ')
+
 async function atiratok(): Promise<string[]> {
   const all = await readdir(cfg.notesRoot, { recursive: true })
   return all.filter((p) => p.endsWith('_transcript.md'))
@@ -66,6 +69,20 @@ describe('watchRound', () => {
     expect(await readFile(queuePath(cfg.notesRoot), 'utf8')).toContain('Egy videó')
     expect(lines.some((l) => l.startsWith('új átirat: ') && l.includes('Egy videó') && l.includes('(en)'))).toBe(true)
     expect(lines.some((l) => l.startsWith('_queue.md frissítve: +1 elem'))).toBe(true)
+  })
+
+  it('a vault.reading_wpm sebességével számolja a reading_time-ot', async () => {
+    cfg = loadConfig(
+      { vault: { path: vault, reading_wpm: 100 }, sources: [downloads], state: { path: join(work, 'state.db') } },
+      join(work, 'c.yaml'),
+      work,
+    )
+    // 600 különböző szó: 100 szó/percnél 6 perc (az alap 200-zal 3 perc volna)
+    await felirat('Csatorna', 'Hosszú videó', `1\n00:00:00,000 --> 00:00:02,000\n${szavak(600)}.\n`)
+    await round(null)
+
+    const [note] = await atiratok()
+    expect(await readFile(join(cfg.notesRoot, note!), 'utf8')).toContain('reading_time: "06:00"')
   })
 
   it('a sorba vett szöveges tételt nem jelöli „nem található”-nak, és nem ír a sorba', async () => {

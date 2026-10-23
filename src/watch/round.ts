@@ -65,6 +65,7 @@ export async function watchRound(opts: RoundOptions): Promise<RoundResult> {
       const outcome = await processItem(item, {
         notesRoot: cfg.notesRoot,
         layout: cfg.layout,
+        readingWpm: cfg.readingWpm,
         store,
         version: VERSION,
         options: { force: false, dryRun: false },

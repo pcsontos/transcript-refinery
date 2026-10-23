@@ -121,7 +121,7 @@ export function runRecipeFlags(values: {
 - `run` `--recipe` sora: `['--recipe <id>', 'receptet is futtat (pl. summary); többször is megadható; enélkül csak átirat']`, és a példák közé a `'refinery run --recipe summary --limit 1'` után: `'refinery run --file ~/atiratok/átirat.txt --recipe qa --recipe flashcards'`.
 - `list` `--recipe` sora: `['--recipe <id>', 'csak ennek a típusnak az állapota (egy adható meg)']`; a `--channels` sora: `['--channels', 'csatornánkénti összesítő; mellette a --limit nem hat']`.
 
-- [ ] **1. lépés: a bukó tesztek (`src/cli.test.ts`).**
+- [x] **1. lépés: a bukó tesztek (`src/cli.test.ts`).**
   - Új `describe('parseLimit és runRecipeFlags (#244, #71)')`:
     - `parseLimit(undefined)` → `undefined`; `'3'` → `3`; `'12'` → `12`;
     - `it.each(['abc', '0', '-1', '0x10', '1e1', '1.5', '', '03'])`: `{ error: 'A --limit pozitív egész szám: <érték>' }`;
@@ -137,19 +137,19 @@ export function runRecipeFlags(values: {
   - A súgó szövegére nincs külön teszt: a kapcsolók jelenlétét a meglévő `OPTIONS` tábla-teszt (`:2436`) ellenőrzi.
   - A `:2873–2874` két sora (`{ limit: 0 }`, `{ limit: Number.NaN }`) törlődik.
   - Egy pozitív út a `main()`-en át: `await expect(main(['run', '--config', configPath, '--recipe', 'qa', '--recipe', 'nincsilyen', '--dry-run'])).rejects.toThrow(/Ismeretlen recept: nincsilyen/)`, modellhívás nélkül. A `recipeFrom` dob, a `commandRun` nem kapja el, ma is így viselkedik egyetlen ismeretlen receptre. A hibás azonosító a **második**: ha csak az első jutna tovább `recipe`-ként, a teszt bukna. Ez igazolja, hogy a `recipes` út kap értéket. A több receptes futás működését a meglévő `describe('commandRun — több recept egy futásban')` fedi.
-- [ ] **2. lépés:** `pnpm vitest run src/cli.test.ts` → FAIL (nincs `parseLimit`, `runRecipeFlags`).
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** `pnpm vitest run src/cli.test.ts` → PASS. Ellenőrizd, hogy a `watch --recipe summary` teszt (`:2415`) továbbra is zöld: a `values.recipe` most tömb, az `unsupportedWatchOption` ezt is megadottnak veszi. Mutációs próba: a `new Set(...)` helyett `values.recipe ?? []` → a `['qa', 'qa']` eset bukik. A `/^[1-9][0-9]*$/` helyett `/^[0-9]+$/` → a `'0'` és a `'03'` eset bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(cli): Run several --recipe values in one run`, `Closes #244`, `Refs #71`).
+- [x] **2. lépés:** `pnpm vitest run src/cli.test.ts` → FAIL (nincs `parseLimit`, `runRecipeFlags`).
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** `pnpm vitest run src/cli.test.ts` → PASS. Ellenőrizd, hogy a `watch --recipe summary` teszt (`:2415`) továbbra is zöld: a `values.recipe` most tömb, az `unsupportedWatchOption` ezt is megadottnak veszi. Mutációs próba: a `new Set(...)` helyett `values.recipe ?? []` → a `['qa', 'qa']` eset bukik. A `/^[1-9][0-9]*$/` helyett `/^[0-9]+$/` → a `'0'` és a `'03'` eset bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(cli): Run several --recipe values in one run`, `Closes #244`, `Refs #71`).
 
 ### 2. feladat: dokumentáció a CLI-hez (#71/4)
 
 **Fájlok:**
 - Módosul: `docs/usage.md`
 
-- [ ] **1. lépés:** a „Gyakori kapcsolók” (`docs/usage.md:137` körül) `--limit` sora: `- \`--limit <szám>\`: legfeljebb ennyi elem feldolgozása (pozitív egész)`. A receptes példák (`:125–127`) után egy bekezdés: `Több recept egy futásban: \`run --recipe qa --recipe flashcards\`. Egy közös költségplafon alatt fut, a \`--limit\` az elemeket számolja, nem a recepteket. A \`--queue\` és a \`--retry-failed\` mellett csak egy \`--recipe\` adható meg.`
-- [ ] **2. lépés:** a `list`-szakasz végére (`:196` után): `Kb. 60 oszlopnál keskenyebb terminálon a sorok tördelődnek: a cím legalább 20 karakter széles.` A `--channels` mondata (`:194–195`) kiegészül: `…a \`--limit\` nem hat, és ezt a parancs a hibakimeneten jelzi.`
-- [ ] **3. lépés:** `pnpm lint` zöld (a Markdown-lint is), commit (`docs: Document repeated --recipe and list limits`, `Closes #71`).
+- [x] **1. lépés:** a „Gyakori kapcsolók” (`docs/usage.md:137` körül) `--limit` sora: `- \`--limit <szám>\`: legfeljebb ennyi elem feldolgozása (pozitív egész)`. A receptes példák (`:125–127`) után egy bekezdés: `Több recept egy futásban: \`run --recipe qa --recipe flashcards\`. Egy közös költségplafon alatt fut, a \`--limit\` az elemeket számolja, nem a recepteket. A \`--queue\` és a \`--retry-failed\` mellett csak egy \`--recipe\` adható meg.`
+- [x] **2. lépés:** a `list`-szakasz végére (`:196` után): `Kb. 60 oszlopnál keskenyebb terminálon a sorok tördelődnek: a cím legalább 20 karakter széles.` A `--channels` mondata (`:194–195`) kiegészül: `…a \`--limit\` nem hat, és ezt a parancs a hibakimeneten jelzi.`
+- [x] **3. lépés:** `pnpm lint` zöld (a Markdown-lint is), commit (`docs: Document repeated --recipe and list limits`, `Closes #71`).
 
 ### 3. feladat: `reading_time` a frontmatterben (#291)
 
@@ -200,7 +200,7 @@ export function readingTime(text: string, wpm: number): string {
   reading_wpm: 200
 ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `src/vault/render.test.ts`, új `describe('readingTime')`:
     - `readingTime('', 200)` → `'00:00'`;
     - `readingTime('szó '.repeat(1500), 200)` → `'07:30'`;
@@ -210,10 +210,10 @@ export function readingTime(text: string, wpm: number): string {
   - `renderTranscriptNote(item(), transcript, '0.1.0')`: a frontmatter tartalmazza a `reading_time: "00:01"` sort. A `transcript.lines` 4 szó, 200 szó/percnél 1,2 mp → kerekítve 1. Az érték idézett, mert `:`-ot tartalmaz.
   - `renderRecipeNote(item(), transcript, 'szó '.repeat(1500), meta, '0.1.0', 'cli', 100)` → `reading_time: "15:00"`. A mező a `punctuation_density` sora után áll (a két `indexOf` sorrendje).
   - `src/config.test.ts`: `loadConfig(MIN, …).readingWpm` → `200`; `{ ...MIN, vault: { path: '/v', reading_wpm: 100 } }` → `100`; `reading_wpm: 0` és `1.5` → hiba, `/vault\.reading_wpm/`.
-- [ ] **2. lépés:** `pnpm vitest run src/vault/render.test.ts src/config.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. A `src/cli.test.ts` és a `src/serve/summary.test.ts` jegyzet-elvárásai zöldek maradnak (új sor, régi sor nem tűnik el). Mutációs próba: a `baseFields` hívásában a `readingWpm` helyett `DEFAULT_READING_WPM` → a 100-as recept-eset bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(vault): Add reading_time to note frontmatter`, `Closes #291`).
+- [x] **2. lépés:** `pnpm vitest run src/vault/render.test.ts src/config.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. A `src/cli.test.ts` és a `src/serve/summary.test.ts` jegyzet-elvárásai zöldek maradnak (új sor, régi sor nem tűnik el). Mutációs próba: a `baseFields` hívásában a `readingWpm` helyett `DEFAULT_READING_WPM` → a 100-as recept-eset bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(vault): Add reading_time to note frontmatter`, `Closes #291`).
 
 ### 4. feladat: a Telegram parancsmenüje egy forrásból (#305)
 
@@ -285,7 +285,7 @@ if (process.argv.includes('--dry-run')) {
 
 **`docs/operations/telegram-worker-topology.md`:** a „Telepítési sorrend” bekezdés után egy mondat: `A Telegram \`/\` menüje nem a Worker része: új vagy átnevezett parancs után a \`pnpm telegram:commands\` állítja be a \`/help\` listájára (\`--dry-run\`-nal csak kiírja).`
 
-- [ ] **1. lépés: a bukó teszt (`worker/src/handle.test.ts`, a `describe('tájékoztató parancsok')` végén).** Import: `COMMAND`, `SCAN`, `START` a `./handle.js`-ből, `BOT_COMMANDS` a `./messages.js`-ből.
+- [x] **1. lépés: a bukó teszt (`worker/src/handle.test.ts`, a `describe('tájékoztató parancsok')` végén).** Import: `COMMAND`, `SCAN`, `START` a `./handle.js`-ből, `BOT_COMMANDS` a `./messages.js`-ből.
   ```ts
   it('a menü parancsai és a felismert parancsok ugyanazok', () => {
     const recognized = [...(/\(([a-z|]+)\)/.exec(COMMAND.source)?.[1] ?? '').split('|'), 'scan', 'start']
@@ -296,10 +296,10 @@ if (process.argv.includes('--dry-run')) {
   })
   ```
   A meglévő `HELP` literál (`:1068`) változatlan marad: ez igazolja, hogy a súgó szövege betűre a régi. A Telegram korlátait (parancs 1–32, leírás 1–256 karakter) a `setMyCommands` ellenőrzi, a script a hibáját kiírja.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL (nincs `BOT_COMMANDS` export).
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. `pnpm telegram:commands --dry-run` nyolc parancsot ír ki, köztük a `model`-t, hálózati hívás nélkül. Mutációs próba: a `COMMAND` regexbe `|foo` kerül → a teszt bukik. Visszaállítás. Teljes ellenőrzés zöld, a Worker tsc-vel együtt.
-- [ ] **5. lépés:** commit (`feat(worker): Build the Telegram command menu from /help`, `Closes #305`).
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL (nincs `BOT_COMMANDS` export).
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. `pnpm telegram:commands --dry-run` nyolc parancsot ír ki, köztük a `model`-t, hálózati hívás nélkül. Mutációs próba: a `COMMAND` regexbe `|foo` kerül → a teszt bukik. Visszaállítás. Teljes ellenőrzés zöld, a Worker tsc-vel együtt.
+- [x] **5. lépés:** commit (`feat(worker): Build the Telegram command menu from /help`, `Closes #305`).
 
 ### 5. feladat: a sémás kimenet mérése (#304)
 
@@ -433,7 +433,7 @@ export async function commandCheckStructured(
   },
 ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `src/model/check-structured.test.ts`. Egy `ModelConfig` a `loadModelConfig`-gal, `switchable: { jo: 'structured', rossz: 'structured', szoveg: 'text', halo: 'text' }`, mindnek ugyanaz az ár: `{ input_per_million: 3, output_per_million: 15 }`. Egy próba becslése így `(4000 × 3 + 1500 × 15) / 1e6 = 0,0345 $`, a teljes `4 × 3 × 3 × 0,0345 = 1,242 $`. A hamis `createClient` a `view.models.draft` szerint válaszol:
     - `jo`: `generateObject` → `{ value: {}, usage: { inputTokens: 10, outputTokens: 5 } }`;
     - `rossz` és `szoveg`: `Object.assign(new Error('nincs objektum'), { name: 'AI_NoObjectGeneratedError' })`-t dob;
@@ -445,10 +445,10 @@ export async function commandCheckStructured(
     - üres `switchable`: `'A model.switchable üres: nincs mit mérni.'`, 0;
     - a registry sémás receptjei és a `PROBE_SCHEMAS` kulcsai egyeznek: `Object.values(RECIPES).filter((recipe) => recipe.structured).map((recipe) => recipe.id).sort()` = `Object.keys(PROBE_SCHEMAS).sort()`.
   - `src/cli.test.ts`: az `OPTIONS` táblába `'check-structured': ['--config'],` (ez a tábla-teszt és a parancsonkénti súgóteszt is lefedi, az áttekintés-teszt pedig a `COMMANDS` minden nevét).
-- [ ] **2. lépés:** `pnpm vitest run src/model/check-structured.test.ts src/cli.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: a `SCHEMA_ERRORS.has(...)` feltétel helyett `true` → a `halo` sor bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(cli): Add check-structured to measure schema support`, `Closes #304`).
+- [x] **2. lépés:** `pnpm vitest run src/model/check-structured.test.ts src/cli.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: a `SCHEMA_ERRORS.has(...)` feltétel helyett `true` → a `halo` sor bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(cli): Add check-structured to measure schema support`, `Closes #304`).
 - [ ] **6. lépés (valódi pénz, a felhasználó jóváhagyásával):** `refinery check-structured --config <peter-mba config másolata, base_url: http://localhost:4000/v1>`. A becslés előtte látszik, a futás kb. 27 hívás. Az eredményt a PR leírásába.
 
 ### 6. feladat: kód-PR, kiadás, menü

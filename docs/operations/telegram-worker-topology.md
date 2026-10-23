@@ -224,6 +224,8 @@ A bot hat parancsot ismer:
 
 **Telepítési sorrend:** a `/cancel` miatt előbb a serve-képet kell frissíteni (a peter-mba-n), utána a Workert. A régi serve nem ismeri a cancel végpontot, az `404`-et adna, a Worker `unknown`-nak venné, és `cancelled`-re állítaná a még futó jobot. Ugyanez a sorrend kell a `/model`-hez: a régi serve a `models` mezőt csendben figyelmen kívül hagyja, így a címke `(modell)`-t mutatna, de a YAML-modell futna. A D1-migrációt (`0006`) a Worker telepítése előtt kell lefuttatni.
 
+A Telegram `/` menüje nem a Worker része: új vagy átnevezett parancs után a `pnpm telegram:commands` állítja be a `/help` listájára (`--dry-run`-nal csak kiírja).
+
 A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden elemet önállóan értékel (`worker/src/plan.ts`):
 
 | Bemenet formátuma | Feldolgozás módja | Bot válasza |

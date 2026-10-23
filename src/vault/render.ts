@@ -1,4 +1,4 @@
-import { toParagraphs } from '../normalize/dedupe.js'
+import { countWords, toParagraphs } from '../normalize/dedupe.js'
 import type { NormalizedTranscript, SourceItem } from '../types.js'
 import { renderFrontmatter, type FrontmatterField } from './frontmatter.js'
 
@@ -38,6 +38,19 @@ function mergeTags(
   return merged.length > 0 ? merged : undefined
 }
 
+/** Az olvasási sebesség alapértéke szó/percben (#291); a config `vault.reading_wpm`-je felülírja. */
+export const DEFAULT_READING_WPM = 200
+
+/** A szöveg olvasási ideje: egy óra alatt `pp:mm`, egy órától `ó:pp:mm`. */
+export function readingTime(text: string, wpm: number): string {
+  if (!(wpm > 0)) throw new RangeError(`Az olvasási sebesség pozitív kell legyen: ${String(wpm)}`)
+  const total = Math.round((countWords(text) * 60) / wpm)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hours = Math.floor(total / 3600)
+  const rest = `${pad(Math.floor(total / 60) % 60)}:${pad(total % 60)}`
+  return hours > 0 ? `${hours}:${rest}` : rest
+}
+
 /** Honnan indult a jegyzetet író futás: a `serve` (Telegram) vagy a parancssor. */
 export type NoteOrigin = 'telegram' | 'cli'
 
@@ -46,6 +59,8 @@ function baseFields(
   transcript: NormalizedTranscript,
   generatorVersion: string,
   origin: NoteOrigin,
+  /** A jegyzet törzsének olvasási ideje (`readingTime`). */
+  reading: string,
   extraTags?: readonly string[],
   /** A jegyzet nyelve, ha eltér az elemétől — fordításnál a célnyelv. */
   language?: string,
@@ -72,6 +87,7 @@ function baseFields(
     ['words_raw', transcript.wordsRaw],
     ['words_normalized', transcript.wordsNormalized],
     ['punctuation_density', transcript.punctuationDensity.toFixed(2)],
+    ['reading_time', reading],
     ['generated_at', new Date().toISOString()],
     ['generator', `transcript-refinery@${generatorVersion}`],
   ]
@@ -89,9 +105,13 @@ export function renderTranscriptNote(
   transcript: NormalizedTranscript,
   generatorVersion: string,
   origin: NoteOrigin = 'cli',
+  readingWpm = DEFAULT_READING_WPM,
 ): string {
-  const frontmatter = renderFrontmatter(baseFields(item, transcript, generatorVersion, origin))
-  return frontmatter + body(item, toParagraphs(transcript.lines))
+  const text = toParagraphs(transcript.lines)
+  const frontmatter = renderFrontmatter(
+    baseFields(item, transcript, generatorVersion, origin, readingTime(text, readingWpm)),
+  )
+  return frontmatter + body(item, text)
 }
 
 /** Egy recept futásának eredménye, ahogy a frontmatterbe kerül. */
@@ -148,9 +168,11 @@ export function renderRecipeNote(
   meta: RecipeNoteMeta,
   generatorVersion: string,
   origin: NoteOrigin = 'cli',
+  readingWpm = DEFAULT_READING_WPM,
 ): string {
+  const text = content.trim()
   const frontmatter = renderFrontmatter([
-    ...baseFields(item, transcript, generatorVersion, origin, meta.tags, meta.translation?.language),
+    ...baseFields(item, transcript, generatorVersion, origin, readingTime(text, readingWpm), meta.tags, meta.translation?.language),
     ['recipe', meta.recipe],
     ['model', meta.model],
     ['iterations', meta.iterations],
@@ -158,5 +180,5 @@ export function renderRecipeNote(
     ['cost_usd', meta.costUsd.toFixed(4)],
     ...translationFields(item, meta.translation),
   ])
-  return frontmatter + body(item, content.trim())
+  return frontmatter + body(item, text)
 }

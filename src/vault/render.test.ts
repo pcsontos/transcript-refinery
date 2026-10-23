@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderRecipeNote, renderTranscriptNote } from './render.js'
+import { readingTime, renderRecipeNote, renderTranscriptNote } from './render.js'
 import type { NormalizedTranscript, SourceItem } from '../types.js'
 
 const item = (overrides: Partial<SourceItem> = {}): SourceItem => ({
@@ -104,6 +104,37 @@ describe('renderTranscriptNote', () => {
       '0.1.0',
     )
     expect(note).toContain('tags: [machine_learning, ai]')
+  })
+})
+
+describe('readingTime', () => {
+  it.each([
+    ['', 200, '00:00'],
+    ['szó '.repeat(1500), 200, '07:30'],
+    ['szó '.repeat(12500), 200, '1:02:30'],
+    ['szó '.repeat(1500), 100, '15:00'],
+    // pontosan egy óra már órás alak
+    ['szó '.repeat(12000), 200, '1:00:00'],
+    // 0,9 mp: a kerekítés 1-et, a levágás 0-t adna
+    ['szó szó szó', 200, '00:01'],
+  ])('%#. eset', (text, wpm, expected) => {
+    expect(readingTime(text, wpm)).toBe(expected)
+  })
+
+  it.each([0, -1, Number.NaN])('a %s sebesség hiba, nem „Infinity:NaN” szöveg', (wpm) => {
+    expect(() => readingTime('szó szó', wpm)).toThrow(/pozitív/)
+  })
+
+  it('az átirat jegyzete a normalizált törzs olvasási idejét írja, idézve', () => {
+    // 4 szó, 200 szó/percnél 1,2 mp → kerekítve 1
+    expect(renderTranscriptNote(item(), transcript, '0.1.0')).toContain('reading_time: "00:01"')
+  })
+
+  it('a recept jegyzete a törzs idejét és a megadott sebességet használja, a punctuation_density után', () => {
+    const meta = { recipe: 'summary', model: 'm', iterations: 1, score: 0.9, costUsd: 0.01 }
+    const note = renderRecipeNote(item(), transcript, 'szó '.repeat(1500), meta, '0.1.0', 'cli', 100)
+    expect(note).toContain('reading_time: "15:00"')
+    expect(note.indexOf('punctuation_density')).toBeLessThan(note.indexOf('reading_time'))
   })
 })
 

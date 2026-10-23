@@ -127,6 +127,10 @@ követi (a `scan` csak jelzi).
   node dist/cli.js run --recipe qa
   ```
 
+  Több recept egy futásban: `run --recipe qa --recipe flashcards`. Egy közös
+  költségplafon alatt fut, a `--limit` az elemeket számolja, nem a recepteket.
+  A `--queue` és a `--retry-failed` mellett csak egy `--recipe` adható meg.
+
 - **Feldolgozási sor (`_queue.md`) alapján:**  
   A vault jegyzetében kipipált `[x]` (videó, recept) párok feldolgozása:
   ```bash
@@ -136,7 +140,7 @@ követi (a `scan` csak jelzi).
 ### Gyakori kapcsolók
 
 - `--dry-run`: nem ír fájlt és állapotot (de a modellhívás valós költséggel lefut)
-- `--limit <szám>`: legfeljebb ennyi elem feldolgozása
+- `--limit <szám>`: legfeljebb ennyi elem feldolgozása (pozitív egész)
 - `--source <név>`: szűrés adott forrásmappára
 - `--channel <név>`: szűrés csatornanévre
 - `--retry-failed`: csak a korábban hibára futott elemek újrafuttatása
@@ -192,8 +196,11 @@ A `--status` (`done`, `failed`, `pending`) `--recipe` nélkül bármely típusra
 illik: a `list --status failed` minden elemet mutat, amin legalább egy
 típus hibára futott. A `--source`, a `--channel` és a `--limit` ugyanúgy
 szűr, mint a `run`-nál. A `--channels` összesítő a teljes szűrt halmazt
-számolja, ezért mellette a `--limit` nem hat. A számok ugyanabból az olvasó rétegből jönnek, mint
-a webes felületéi.
+számolja, ezért mellette a `--limit` nem hat, és ezt a parancs a hibakimeneten
+jelzi. A számok ugyanabból az olvasó rétegből jönnek, mint a webes felületéi.
+
+A cím a terminál szélességéhez igazodik (csonkolva), de legalább 20 karakter
+széles: ennél keskenyebb terminálon a sorok a terminálban tördelődnek.
 
 ---
 
@@ -276,6 +283,25 @@ Ha egy modell nem fogadja el a kényszerített tool-hívást (pl.
 `claude-opus-5-5` a LiteLLM-en át), a sémás receptek és a bíró magától
 választható tool-hívásra váltanak; a futás ezt modellenként egyszer jelzi
 (`! <modell>: a kényszerített tool_choice nem támogatott…`).
+
+### Sémás kimenet mérése (`check-structured`)
+
+A `model.switchable` minden modelljét kimeri: a három sémás recept (notes,
+flashcards, bloom) sémájával próbálja, és összeveti a config `structured` /
+`text` jelzésével. **Valódi modellhívás, valódi költséggel**: modellenként és
+sémánként 3 próba. A becslést indulás előtt kiírja, és egyetlen hívás nélkül
+megáll, ha a becslés kétszerese a `cost_limit_usd` fölött van. Végül kiírja a
+sikeres hívásokból mért költséget (alsó becslés).
+
+```bash
+node dist/cli.js check-structured
+```
+
+Csak a `--config` kapcsolót ismeri; a többit (pl. a `--dry-run`-t) elutasítja,
+hogy egy közös kapcsoló miatt ne fusson le csendben pénzbe kerülő mérés. A
+configot nem írja át. 0 a kimeneti kód, ha minden modell mérhető volt és nincs
+eltérés; 1, ha eltérés van, vagy egy modellről csak egyéb hiba (hálózat,
+csonkolt válasz) jött, tehát nem mérhető.
 
 ---
 

@@ -113,10 +113,10 @@ export interface WorkerDeps {
 
 type KnockResult = 202 | 409 | 401 | 'down'
 
-const START = /^\/start(?:\s+(\S+))?\s*$/
-const COMMAND = /^\/(help|cancel|ping|version|status|model)(?:@\w+)?\s*$/
+export const START = /^\/start(?:\s+(\S+))?\s*$/
+export const COMMAND = /^\/(help|cancel|ping|version|status|model)(?:@\w+)?\s*$/
 
-const SCAN = /^\/scan(?:@\w+)?(?:\s+([\s\S]*))?$/
+export const SCAN = /^\/scan(?:@\w+)?(?:\s+([\s\S]*))?$/
 /** A Telegram 4096 karakternél bont, mondathatáron, így az első darab rövidebb is lehet. */
 const SCAN_WARN_AT = 3900
 const TITLE_MAX = 80

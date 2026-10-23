@@ -16,6 +16,9 @@ vault:
   # channel, video_id, uploaded. A hiányzó mező szegmense kimarad. Elhagyható;
   # ez az alapértelmezés. Az elem mappája az első kimenetnél rögzül.
   layout: "{channel}/{item_id}"
+  # Olvasási sebesség szó/percben: ebből számol minden jegyzet frontmatterje
+  # `reading_time` mezőt (pp:mm, egy órától ó:pp:mm). Elhagyható; ez az alapértelmezés.
+  reading_wpm: 200
 
 # Feliratmappák. Az app rekurzívan minden .srt és .vtt fájlt felszed alattuk,
 # és nem érdekli, mi állította elő őket. A mappa **neve** (az útvonal utolsó
@@ -83,7 +86,8 @@ model:
   #   structured: sémás JSON-kimenetet is ad. A sémás receptek (notes,
   #               flashcards, bloom) csak ilyet kaphatnak.
   #   text:       csak szöveget ad, a szöveges receptekhez (pl. summary) jó.
-  # Hogy melyik modell melyik, azt te dönted el és méred ki: a LiteLLM
+  # Hogy melyik modell melyik, azt te dönted el és méred ki (`refinery
+  # check-structured`, valódi költséggel): a LiteLLM
   # `supports_response_schema` jelzése nem megbízható. Mindnek kell ár a
   # `pricing` alatt, különben a config betöltése hibával áll meg.
   # A felülírás csak az alaprecepteket és a fordítást érinti, a `draft` és a

@@ -41,6 +41,16 @@ describe('loadConfig', () => {
     expect(loadConfig(MIN, '/p/refinery.config.yaml').layout).toBe('{channel}/{item_id}')
   })
 
+  it('a vault.reading_wpm alapja 200, felülírható, és pozitív egész kell legyen', () => {
+    expect(loadConfig(MIN, '/p/refinery.config.yaml').readingWpm).toBe(200)
+    expect(loadConfig({ ...MIN, vault: { path: '/v', reading_wpm: 100 } }, '/p/refinery.config.yaml').readingWpm).toBe(100)
+    for (const bad of [0, 1.5]) {
+      expect(() => loadConfig({ ...MIN, vault: { path: '/v', reading_wpm: bad } }, '/p/refinery.config.yaml')).toThrow(
+        /vault\.reading_wpm/,
+      )
+    }
+  })
+
   it('az elírt layout mezőnév config-hiba a vault.layout névvel', () => {
     expect(() =>
       loadConfig({ ...MIN, vault: { path: '/v', layout: '{chanel}/{item_id}' } }, '/p/refinery.config.yaml'),
