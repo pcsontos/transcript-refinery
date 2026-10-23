@@ -34,6 +34,13 @@ describe('splitForTranslation', () => {
     expect(chunks).toEqual([table, list])
   })
 
+  it('a közvetlenül fejléc után kezdődő laza listát sem vágja szét', () => {
+    const list = '- w w w w\n\n- w w w w\n\n- w w w w'
+    expect(splitForTranslation(`## Pontok\n\n${list}`, 8)).toEqual([`## Pontok\n\n${list}`])
+    const nested = '1. w w w w\n\n   w w w w\n\n2. w w w w'
+    expect(splitForTranslation(`## P\n\n${nested}`, 7)).toEqual([`## P\n\n${nested}`])
+  })
+
   it.each([
     ['több üres sor', `${szakasz('A', 5)}\n\n\n\n${szakasz('B', 5)}`],
     ['kódkerítés üres sorral', `${szakasz('A', 5)}\n\n\`\`\`\nx\n\n\ny\n\`\`\`\n\n${szakasz('B', 5)}`],

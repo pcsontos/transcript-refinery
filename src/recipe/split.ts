@@ -38,6 +38,8 @@ function blocksOf(body: string): Block[] {
       prev !== undefined &&
       (inFence || prev.headingOnly || (prev.list && (LIST_ITEM.test(first) || INDENTED.test(first))))
     if (joins) {
+      // A fejléc után kezdődő lista is lista: a következő elem hozzá tapad.
+      if (prev.headingOnly) prev.list = LIST_ITEM.test(first)
       prev.parts.push(part)
       prev.words += countWords(part)
       prev.headingOnly = isHeadingOnly(part)
