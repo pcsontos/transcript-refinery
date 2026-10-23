@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises'
-import { relative } from 'node:path'
+import { mkdir, readFile } from 'node:fs/promises'
+import { dirname, relative } from 'node:path'
 import type { ModelConfig } from './config.js'
 import type { EventSink } from './events.js'
 import { identifyLanguage } from './lang/identify.js'
@@ -18,17 +18,27 @@ import { classifyCaptions, punctuationDensity } from './normalize/classify.js'
 import { countWords, dedupeTimedLines } from './normalize/dedupe.js'
 import { unanchoredParagraphs } from './recipe/anchor.js'
 import { readTextSource } from './source/text.js'
+import {
+  addedPairs,
+  appendGlossaryRows,
+  glossaryKind,
+  glossaryOutputFile,
+  readGlossaryTable,
+  type GlossaryPair,
+} from './recipe/glossary.js'
 import { alreadyInTarget } from './recipe/translate.js'
+import { translateChunked, type ChunkedResult } from './recipe/translate-chunks.js'
 import type { Recipe, RecipeInput, Translation } from './recipe/types.js'
-import { refine } from './refine/loop.js'
+import { refine, type RefineResult } from './refine/loop.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { StateStore } from './state/db.js'
 import type { NormalizedTranscript, SourceItem } from './types.js'
+import { writeFileAtomic } from './vault/atomic.js'
 import { lintVaultMarkdown } from './vault/lint.js'
 import { noteBody, type NoteBody } from './vault/note-body.js'
 import { noteFile, type NoteFileOptions } from './vault/paths.js'
 import { exists, publishNote, type PublishOptions } from './vault/publish.js'
-import { renderRecipeNote, renderTranscriptNote, type NoteOrigin } from './vault/render.js'
+import { renderGlossaryNote, renderRecipeNote, renderTranscriptNote, type NoteOrigin } from './vault/render.js'
 
 export interface RecipeDeps {
   recipe: Recipe
@@ -205,6 +215,41 @@ function placement(deps: PipelineDeps, item: SourceItem): NoteFileOptions {
   return { layout: deps.layout, pinnedDir: deps.store.noteDirOf(item.itemId) }
 }
 
+/**
+ * A recept órája egy hívásláncra: a korlát után a hívás megszakad (a `RecipeTimeout`
+ * véglegesnek számít, tehát nincs újrapróba), az életjel addig jelez, amíg a lánc
+ * fut. A `refine` egy órát kap; a darabolt fordítás darabonként és a pontozásra
+ * külön egyet (#259), mert a 25 perc a teljes recepté volt.
+ */
+function recipeClock(
+  item: SourceItem,
+  recipe: Recipe,
+  deps: PipelineDeps,
+  modelConfig: ModelConfig,
+): <T>(fn: () => Promise<T>) => Promise<T> {
+  const timeoutMinutes = modelConfig.recipeTimeoutMinutes ?? DEFAULT_RECIPE_TIMEOUT_MINUTES
+  const heartbeatMinutes = modelConfig.heartbeatMinutes ?? DEFAULT_HEARTBEAT_MINUTES
+  return async (fn) => {
+    const controller = new AbortController()
+    const scope: CallScope = { signal: controller.signal, text: '' }
+    const stop = setTimeout(
+      () => controller.abort(new RecipeTimeout(recipe.id, timeoutMinutes)),
+      timeoutMinutes * 60_000,
+    )
+    const beat = setInterval(
+      () =>
+        deps.sink({ type: 'item:progress', itemId: item.itemId, recipe: recipe.id, words: countWords(scope.text) }),
+      heartbeatMinutes * 60_000,
+    )
+    try {
+      return await inScope(scope, fn)
+    } finally {
+      clearTimeout(stop)
+      clearInterval(beat)
+    }
+  }
+}
+
 /** A 6. csővezeték-lépés: recept futtatása és publikálása. */
 async function runRecipe(
   item: SourceItem,
@@ -252,52 +297,57 @@ async function runRecipe(
 
   // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
   // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
-  // A recept saját órája: a korlát után a hívás megszakad (a `RecipeTimeout`
-  // véglegesnek számít, tehát nincs újrapróba), az életjel pedig addig jelez,
-  // amíg a recept fut. Az óra a recepttel indul és vele áll le.
-  const timeoutMinutes = modelConfig.recipeTimeoutMinutes ?? DEFAULT_RECIPE_TIMEOUT_MINUTES
-  const heartbeatMinutes = modelConfig.heartbeatMinutes ?? DEFAULT_HEARTBEAT_MINUTES
-  const controller = new AbortController()
-  const scope: CallScope = { signal: controller.signal, text: '' }
-  const stop = setTimeout(
-    () => controller.abort(new RecipeTimeout(recipe.id, timeoutMinutes)),
-    timeoutMinutes * 60_000,
-  )
-  const beat = setInterval(
-    () =>
-      deps.sink({
-        type: 'item:progress',
-        itemId: item.itemId,
-        recipe: recipe.id,
-        words: countWords(scope.text),
-      }),
-    heartbeatMinutes * 60_000,
-  )
-  let result: Awaited<ReturnType<typeof refine>>
-  try {
-    result = await inScope(scope, () =>
-      refine(recipe, input, client, {
-        // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
-        // alatt — a futásidő nagyobb részében — nem jönne esemény.
-        onGenerate: (generation) =>
-          deps.sink({ type: 'item:generating', itemId: item.itemId, recipe: recipe.id, generation }),
-        onScore: (score, gaps) =>
-          deps.sink({ type: 'item:scored', itemId: item.itemId, recipe: recipe.id, score, gaps }),
-        skipJudge: recipeDeps.skipJudge,
-      }),
-    )
-  } finally {
-    clearTimeout(stop)
-    clearInterval(beat)
+  const clock = recipeClock(item, recipe, deps, modelConfig)
+  // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
+  // alatt — a futásidő nagyobb részében — nem jönne esemény.
+  const onGenerate = (generation: number) =>
+    deps.sink({ type: 'item:generating', itemId: item.itemId, recipe: recipe.id, generation })
+  const onScore = (score: number, gaps: number) =>
+    deps.sink({ type: 'item:scored', itemId: item.itemId, recipe: recipe.id, score, gaps })
+
+  let result: RefineResult
+  // Fordításnál a futtató darabol (#259), és a videó célnyelvű szójegyzékéből indul.
+  let translated: { run: ChunkedResult; glossaryPath: string; existing: string | null; known: GlossaryPair[] } | null =
+    null
+  if (recipe.translation) {
+    // A rögzített út nyer: a vaulton belül áthelyezett szójegyzéket a követés átírta.
+    const glossaryPath =
+      deps.store.artifactOf(item.itemId, glossaryKind(recipe.translation.target))?.path ??
+      noteFile(deps.notesRoot, item, glossaryOutputFile(recipe.translation.target), placement(deps, item))
+    const existing = (await exists(glossaryPath)) ? await readFile(glossaryPath, 'utf8') : null
+    const table = existing === null ? { pairs: [], skipped: 0 } : readGlossaryTable(existing)
+    if (table.skipped > 0) {
+      deps.sink({ type: 'item:glossary-skipped', itemId: item.itemId, recipe: recipe.id, rows: table.skipped })
+    }
+    const run = await translateChunked(recipe, recipe.translation, input, table.pairs, {
+      client,
+      modelConfig,
+      guard,
+      store: deps.store,
+      persist: !deps.options.dryRun,
+      force: deps.options.force === true,
+      skipJudge: recipeDeps.skipJudge,
+      clock,
+      onGenerate,
+      onScore,
+    })
+    translated = { run, glossaryPath, existing, known: table.pairs }
+    result = run
+  } else {
+    result = await clock(() => refine(recipe, input, client, { onGenerate, onScore, skipJudge: recipeDeps.skipJudge }))
   }
 
   // Körönként és szerepenként könyvelünk: a generálás a recept szerepén, a
   // pontozás a bíróén. Az összevont `result.usage` a bíró tokenjeit is a
-  // vázlatmodell árán számolná — a mérő script ezt épp elkerüli.
-  let usd = 0
+  // vázlatmodell árán számolná — a mérő script ezt épp elkerüli. A darabolt
+  // fordítás hívásonként maga könyvel (#259); itt csak a költséget összegezzük,
+  // a korábbi futásban kész darabokéval együtt (a jegyzet teljes költsége).
+  let usd = translated === null ? 0 : costOf(translated.run.resumedUsage, modelConfig.pricing[recipe.role])
   for (const round of result.rounds) {
-    guard.add(recipe.role, round.generateUsage, modelConfig)
-    guard.add('judge', round.scoreUsage, modelConfig)
+    if (translated === null) {
+      guard.add(recipe.role, round.generateUsage, modelConfig)
+      guard.add('judge', round.scoreUsage, modelConfig)
+    }
     usd +=
       costOf(round.generateUsage, modelConfig.pricing[recipe.role]) +
       costOf(round.scoreUsage, modelConfig.pricing.judge)
@@ -370,8 +420,43 @@ async function runRecipe(
     throw new Error(`a jegyzet megsérti a vault írási szabályait: ${lintErrors.join('; ')}`)
   }
 
+  // A szójegyzék a fordítással együtt íródik: új fájl, vagy a meglévő táblájának
+  // bővítése; a fájl többi része (kézzel írt szöveg) betűre marad.
+  const glossary =
+    translated === null || !recipe.translation
+      ? null
+      : translated.existing === null
+        ? renderGlossaryNote(item, recipe.translation.target, translated.run.glossary, deps.version)
+        : appendGlossaryRows(translated.existing, addedPairs(translated.known, translated.run.glossary))
+  const glossaryErrors = glossary === null ? [] : lintVaultMarkdown(glossary)
+  if (glossaryErrors.length > 0) {
+    throw new Error(`a szójegyzék megsérti a vault írási szabályait: ${glossaryErrors.join('; ')}`)
+  }
+
   const target = noteFile(deps.notesRoot, item, recipe.outputFile, placement(deps, item))
   const published = await publishNote(target, markdown, deps.options)
+
+  if (translated !== null && glossary !== null && recipe.translation && published.status === 'written' && !deps.options.dryRun) {
+    const changed = glossary !== translated.existing
+    if (changed) {
+      // A rögzített mappa eltűnhetett (a szójegyzéket törölték): ott jön létre újra.
+      await mkdir(dirname(translated.glossaryPath), { recursive: true })
+      await writeFileAtomic(translated.glossaryPath, glossary)
+    }
+    // Követő sor változatlan fájlnál is (pl. kézzel odatett szójegyzék): a mappakövetés ezt
+    // írja át, ha a fájl a vaulton belül mozog. Commitra csak a megváltozott fájl vár.
+    deps.store.recordArtifact(
+      item.itemId,
+      glossaryKind(recipe.translation.target),
+      'done',
+      translated.glossaryPath,
+      null,
+      undefined,
+      deps.commit === true && changed,
+    )
+    // Siker: a fordítás és a szójegyzék kint van, a darabokra nincs többé szükség.
+    if (translated.run.chunked) deps.store.clearTranslationChunks(item.itemId, recipe.id)
+  }
 
   if (!deps.options.dryRun) {
     deps.store.recordArtifact(

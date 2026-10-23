@@ -1211,7 +1211,7 @@ function recipeClock(
 ```
 Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`), ott is egy ág kell, ugyanezzel a szöveggel.
 
-- [ ] **1. lépés: a bukó tesztek (`src/pipeline.test.ts`).**
+- [x] **1. lépés: a bukó tesztek (`src/pipeline.test.ts`).**
   - Új segéd a `fixModell` mellé, ugyanazzal a válaszalakkal, de soronként más szöveggel:
     ```ts
     /** Fixture-modell, amely hívásonként a következő szöveget adja (az utolsót ismétli). */
@@ -1245,11 +1245,11 @@ Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`
     - *dryRun mellett sem tábla, sem szójegyzékfájl:* `options: { dryRun: true }`, `sorModell(DARABOK)` → a `translationChunks` üres, a `glossaryPath()` nem létezik.
     - *nem értelmezhető szójegyzéksor:* előtte a fájlban `| a | b | c |` sor egy táblában; a futás után az események közt `{ type: 'item:glossary-skipped', itemId: item().itemId, recipe: 'proba-hu', rows: 1 }`, és a fájl `| a | b | c |` sora megmaradt.
   - A meglévő időtúllépés-tesztek (a `RecipeTimeout` és az `item:progress`, `currentScope`) változatlanul zöldek: ez a regressziós horgony a `recipeClock` kiemelésére.
-- [ ] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL (a fordítás még a `refine`-on fut, nincs szójegyzékfájl).
-- [ ] **3. lépés:** a fenti kód.
+- [x] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL (a fordítás még a `refine`-on fut, nincs szójegyzékfájl).
+- [x] **3. lépés:** a fenti kód.
   - Egy könyvelési eset a „darabolva fut” tesztben: a `guard = createCostGuard(5)` a `recipeDeps`-ben, a futás után `guard.spentUsd()` → `toBeCloseTo(0.00123, 6)`, ugyanannyi, mint a `costUsd` (nincs dupla könyvelés).
-- [ ] **4. lépés:** PASS, a `src/cli.test.ts` fordítási esetei is. A `forditoKliens` (`src/cli.test.ts:1677`) ma elválasztó nélkül válaszol, ezért a fordítás háromszori kérés után bukna. A `value = MAGYAR_FORDITAS` helyett: `value = \`${MAGYAR_FORDITAS}\n${GLOSSARY_SEPARATOR}\``. A `hivasok.translate` számai nem változnak, fordításonként egy hívás. Ha egy CLI-teszt a kiírt vagy commitolt fájlok pontos listáját várja, abban mostantól a `_glossary-hu.md` is szerepel. Ez a kívánt viselkedés, ezért az elvárás bővül, a kód nem változik. Mutációs próbák: a könyvelésben az `if (translated === null)` feltétel törlése → a `guard.spentUsd()` elvárás bukik (duplázódik); a `clearTranslationChunks` sor törlése → a „darabolva fut” teszt bukik; az `addedPairs(…)` helyett `translated.run.glossary` → a „kézzel írt szöveg marad” teszt bukik (a `Problem` sor duplázódik). Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Wire chunked translation and the glossary file into the pipeline`, `Refs #259`).
+- [x] **4. lépés:** PASS, a `src/cli.test.ts` fordítási esetei is. A `forditoKliens` (`src/cli.test.ts:1677`) ma elválasztó nélkül válaszol, ezért a fordítás háromszori kérés után bukna. A `value = MAGYAR_FORDITAS` helyett: `value = \`${MAGYAR_FORDITAS}\n${GLOSSARY_SEPARATOR}\``. A `hivasok.translate` számai nem változnak, fordításonként egy hívás. Ha egy CLI-teszt a kiírt vagy commitolt fájlok pontos listáját várja, abban mostantól a `_glossary-hu.md` is szerepel. Ez a kívánt viselkedés, ezért az elvárás bővül, a kód nem változik. Mutációs próbák: a könyvelésben az `if (translated === null)` feltétel törlése → a `guard.spentUsd()` elvárás bukik (duplázódik); a `clearTranslationChunks` sor törlése → a „darabolva fut” teszt bukik; az `addedPairs(…)` helyett `translated.run.glossary` → a „kézzel írt szöveg marad” teszt bukik (a `Problem` sor duplázódik). Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Wire chunked translation and the glossary file into the pipeline`, `Refs #259`).
 
 ### 7. feladat: dokumentáció
 

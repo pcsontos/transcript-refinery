@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rename, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { APICallError, NoObjectGeneratedError } from 'ai'
@@ -11,12 +11,15 @@ import { currentScope } from './model/deadline.js'
 import { streamingMock } from './model/streaming.mock.js'
 import { ARTIFACT_KIND, normalizeItem, processItem, type PipelineDeps } from './pipeline.js'
 import { anchorParagraphs } from './recipe/anchor.js'
+import { GLOSSARY_SEPARATOR } from './recipe/glossary.js'
 import { translationOf } from './recipe/translate.js'
 import { faithfulnessCriterion } from './rubric/judge.js'
 import type { Recipe } from './recipe/types.js'
 import { openState, type StateStore } from './state/db.js'
 import type { SourceItem } from './types.js'
 import { noteFile } from './vault/paths.js'
+import { exists } from './vault/publish.js'
+import { relinkNotes } from './vault/relink.js'
 import { renderRecipeNote } from './vault/render.js'
 
 const SRT = `1
@@ -243,6 +246,23 @@ function fixModell(text: string, inputTokens = 100, outputTokens = 20) {
           cacheRead: undefined,
           cacheWrite: undefined,
         },
+        outputTokens: { total: outputTokens, text: outputTokens, reasoning: undefined },
+      },
+      warnings: [],
+    }),
+  })
+}
+
+/** Fixture-modell, amely hívásonként a következő szöveget adja (az utolsót ismétli). */
+function sorModell(texts: string[], inputTokens = 100, outputTokens = 20) {
+  let call = 0
+  return streamingMock({
+    // eslint-disable-next-line @typescript-eslint/require-await
+    doGenerate: async () => ({
+      content: [{ type: 'text' as const, text: texts[Math.min(call++, texts.length - 1)]! }],
+      finishReason: { unified: 'stop' as const, raw: undefined },
+      usage: {
+        inputTokens: { total: inputTokens, noCache: inputTokens, cacheRead: undefined, cacheWrite: undefined },
         outputTokens: { total: outputTokens, text: outputTokens, reasoning: undefined },
       },
       warnings: [],
@@ -875,6 +895,10 @@ async function forrasJegyzet(store: StateStore, body: string): Promise<string> {
   return path
 }
 
+const S = GLOSSARY_SEPARATOR
+const VALASZ = `${MAGYAR_FORDITAS}\n${S}\nproblem | probléma`
+const glossaryPath = () => noteFile(notesRoot, item(), '_glossary-hu.md')
+
 describe('processItem fordítással', () => {
   const FORDITO = translationOf(ATMENO_RECEPT, 'hu')
   const biro = () => fixModell(JSON.stringify({ score: 0.9, gaps: [] }))
@@ -882,7 +906,7 @@ describe('processItem fordítással', () => {
   it('a forrásjegyzet törzsét fordítja, és a fordítás a forráshoz mér', async () => {
     const deps = alapDeps()
     await forrasJegyzet(deps.store, ANGOL_FORRAS)
-    const draft = fixModell(MAGYAR_FORDITAS)
+    const draft = fixModell(VALASZ)
 
     const outcome = await processItem(item(), {
       ...deps,
@@ -901,6 +925,9 @@ describe('processItem fordítással', () => {
     expect(irt).toContain('\ntranslation_of: proba\n')
     expect(irt).toMatch(/\nsource_generated_at: "\d{4}-\d{2}-\d{2}T[\d:.]+Z"\n/)
     expect(irt).toContain('## Áttekintés')
+    expect(irt).not.toContain(S)
+    expect(await readFile(glossaryPath(), 'utf8')).toContain('| problem | probléma |')
+    expect(deps.store.translationChunks(item().itemId, 'proba-hu')).toEqual([])
     // A 0,9 csak akkor jöhet ki, ha a vázkapu a forrásjegyzethez mért: a
     // feliratszöveg egyetlen bekezdés, fejléc nélkül.
     expect(deps.store.artifactOf(item().itemId, 'proba-hu')!.score).toBe(0.9)
@@ -971,6 +998,143 @@ describe('processItem fordítással', () => {
 
     expect(draft.doGenerateCalls).toHaveLength(0)
     expect(deps.store.artifactOf(item().itemId, 'proba-hu')!.error).toBe('előbb a proba recept kell')
+  })
+})
+
+describe('processItem — darabolt fordítás és szójegyzék (#259)', () => {
+  // Az ANGOL_FORRAS 23 szava a 10-es küszöbnél két darab.
+  const FORDITO10 = translationOf(ATMENO_RECEPT, 'hu', 10)
+  const FORDITO = translationOf(ATMENO_RECEPT, 'hu')
+  const biro = () => fixModell(JSON.stringify({ score: 0.9, gaps: [] }))
+  const DARABOK = [
+    `## Áttekintés\n\nA beszélő elmagyarázza, hogy miért kell a problémának az eszköz előtt lennie.\n${S}\nproblem | probléma`,
+    `A második bekezdés egy példát is hoz az első cégéből.\n${S}\ntool | eszköz`,
+  ]
+
+  async function fordit(
+    recipe: Recipe,
+    draft: ReturnType<typeof sorModell>,
+    extra: Partial<PipelineDeps> = {},
+    guard = createCostGuard(5),
+  ) {
+    const deps = { ...alapDeps(), ...extra }
+    return processItem(item(), {
+      ...deps,
+      recipeDeps: { recipe, client: modelClientFrom({ draft, judge: biro() }), modelConfig: MODELL_CFG, guard },
+    })
+  }
+
+  it('darabolva fut, a szójegyzék commitra vár, a darabok törlődnek', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    const { sink, events } = collectEvents()
+    const guard = createCostGuard(5)
+    const outcome = await fordit(FORDITO10, sorModell(DARABOK), { commit: true, sink }, guard)
+
+    expect(outcome.status).toBe('published')
+    const irt = await readFile(outcome.recipePath!, 'utf8')
+    expect(irt).toContain(MAGYAR_FORDITAS)
+    const szotar = await readFile(glossaryPath(), 'utf8')
+    expect(szotar).toContain('| problem | probléma |')
+    expect(szotar).toContain('| tool | eszköz |')
+    expect(store.listPendingCommits()).toContain(glossaryPath())
+    expect(store.translationChunks(item().itemId, 'proba-hu')).toEqual([])
+    const refined = events.find((event) => event.type === 'item:refined')
+    expect(refined?.type === 'item:refined' && refined.rounds).toHaveLength(2)
+    const record = store.artifactOf(item().itemId, 'proba-hu')!
+    expect(record.score).toBe(0.9)
+    // 2 draft-hívás × 0,0006 $ + 1 bíró-hívás × 0,00003 $
+    expect(record.costUsd).toBeCloseTo(0.00123, 6)
+    // Nincs dupla könyvelés: a költségőr ugyanannyit lát.
+    expect(guard.spentUsd()).toBeCloseTo(0.00123, 6)
+  })
+
+  it('a szójegyzék követő sort kap, költség és pontszám nélkül', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await fordit(FORDITO10, sorModell(DARABOK))
+    expect(store.artifactOf(item().itemId, 'glossary-hu')).toMatchObject({
+      status: 'done',
+      path: glossaryPath(),
+      score: null,
+      costUsd: null,
+    })
+  })
+
+  it('a második fordítás a meglévő szójegyzékből indul, a kézzel írt szöveg marad', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await mkdir(dirname(glossaryPath()), { recursive: true })
+    await writeFile(
+      glossaryPath(),
+      '# Kézi\n\nSaját megjegyzés.\n\n| forrás | cél |\n|---|---|\n| Problem | probléma |\n\nZáró megjegyzés.\n',
+    )
+    const draft = sorModell([`${MAGYAR_FORDITAS}\n${S}\nproblem | gond\ntool | eszköz`])
+    await fordit(FORDITO, draft)
+
+    expect(JSON.stringify(draft.doGenerateCalls[0]!.prompt)).toContain('Problem | probléma')
+    const szotar = await readFile(glossaryPath(), 'utf8')
+    expect(szotar).toContain('Saját megjegyzés.')
+    expect(szotar).toContain('Záró megjegyzés.')
+    expect(szotar).toContain('| tool | eszköz |')
+    // A meglévő sor egyszer áll, nem duplázódik.
+    expect(szotar.split('| Problem | probléma |')).toHaveLength(2)
+    expect(szotar).not.toContain('| problem | gond |')
+  })
+
+  it('darab bukása után az újraindítás a kész darabtól folytat', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await fordit(FORDITO10, sorModell([DARABOK[0]!, 'rossz', 'rossz', 'rossz']))
+
+    const bukott = store.artifactOf(item().itemId, 'proba-hu')!
+    expect(bukott.status).toBe('failed')
+    expect(bukott.error).toContain('2/2. darab')
+    expect(store.translationChunks(item().itemId, 'proba-hu')).toHaveLength(1)
+    expect(await exists(glossaryPath())).toBe(false)
+
+    const draft = sorModell([DARABOK[1]!])
+    const outcome = await fordit(FORDITO10, draft)
+    expect(outcome.status).toBe('published')
+    expect(draft.doGenerateCalls).toHaveLength(1)
+    expect(store.translationChunks(item().itemId, 'proba-hu')).toEqual([])
+  })
+
+  it('áthelyezett szójegyzékből olvas, oda bővít, a jegyzetek mappájában nem hoz létre újat', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await fordit(FORDITO10, sorModell(DARABOK))
+    const uj = join(notesRoot, 'Szójegyzékek', 'Videócím – szójegyzék.md')
+    await mkdir(dirname(uj), { recursive: true })
+    await rename(glossaryPath(), uj)
+    await relinkNotes(store, notesRoot, true)
+
+    const draft = sorModell([`${MAGYAR_FORDITAS}\n${S}\nstream | adatfolyam`])
+    await fordit(FORDITO, draft, { options: { force: true } })
+
+    expect(JSON.stringify(draft.doGenerateCalls[0]!.prompt)).toContain('problem | probléma')
+    expect(await readFile(uj, 'utf8')).toContain('| stream | adatfolyam |')
+    expect(await exists(glossaryPath())).toBe(false)
+    expect(store.artifactOf(item().itemId, 'glossary-hu')!.path).toBe(uj)
+    expect(await exists(noteFile(notesRoot, item(), '_proba-hu.md'))).toBe(true)
+  })
+
+  it('dryRun mellett sem tábla, sem szójegyzékfájl', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await fordit(FORDITO10, sorModell(DARABOK), { options: { dryRun: true } })
+    expect(store.translationChunks(item().itemId, 'proba-hu')).toEqual([])
+    expect(await exists(glossaryPath())).toBe(false)
+  })
+
+  it('a nem értelmezhető szójegyzéksort jelzi, és a fájlban meghagyja', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await mkdir(dirname(glossaryPath()), { recursive: true })
+    await writeFile(glossaryPath(), '# Kézi\n\n| forrás | cél |\n|---|---|\n| a | b | c |\n')
+    const { sink, events } = collectEvents()
+    await fordit(FORDITO, sorModell([VALASZ]), { sink })
+
+    expect(events).toContainEqual({
+      type: 'item:glossary-skipped',
+      itemId: item().itemId,
+      recipe: 'proba-hu',
+      rows: 1,
+    })
+    expect(await readFile(glossaryPath(), 'utf8')).toContain('| a | b | c |')
   })
 })
 
@@ -1073,6 +1237,7 @@ describe('processItem — a már meglévő jegyzet a modellhívás előtt', () =
 
     expect(draft.doGenerateCalls).toHaveLength(0)
     expect(deps.store.artifactOf(item().itemId, 'proba-hu')!.status).toBe('done')
+    expect(await exists(glossaryPath())).toBe(false)
   })
 
   it('commit-módban a kézzel odatett jegyzetet nem jelöli commitra: a pipeline nem írta', async () => {
