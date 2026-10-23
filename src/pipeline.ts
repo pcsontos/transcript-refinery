@@ -23,6 +23,7 @@ import {
   appendGlossaryRows,
   glossaryKind,
   glossaryOutputFile,
+  glossaryTable,
   readGlossaryTable,
   type GlossaryPair,
 } from './recipe/glossary.js'
@@ -428,7 +429,14 @@ async function runRecipe(
       : translated.existing === null
         ? renderGlossaryNote(item, recipe.translation.target, translated.run.glossary, deps.version)
         : appendGlossaryRows(translated.existing, addedPairs(translated.known, translated.run.glossary))
-  const glossaryErrors = glossary === null ? [] : lintVaultMarkdown(glossary)
+  // Meglévő fájlnál csak a hozzáfűzött sorok számítanak: a kézzel írt szöveg a felhasználóé,
+  // egy ott lévő wikilink nem buktathatja a kifizetett fordítást.
+  const glossaryErrors =
+    glossary === null || translated === null
+      ? []
+      : lintVaultMarkdown(
+          translated.existing === null ? glossary : glossaryTable(addedPairs(translated.known, translated.run.glossary)),
+        )
   if (glossaryErrors.length > 0) {
     throw new Error(`a szójegyzék megsérti a vault írási szabályait: ${glossaryErrors.join('; ')}`)
   }

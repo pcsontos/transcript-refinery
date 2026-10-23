@@ -1121,6 +1121,22 @@ describe('processItem — darabolt fordítás és szójegyzék (#259)', () => {
     expect(await exists(glossaryPath())).toBe(false)
   })
 
+  it('a kézzel írt prózában lévő wikilink nem buktatja a fordítást, a modell sorában lévő igen', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await mkdir(dirname(glossaryPath()), { recursive: true })
+    await writeFile(glossaryPath(), '# Kézi\n\nLásd [[Másik jegyzet]].\n\n| forrás | cél |\n|---|---|\n| a | b |\n')
+    await fordit(FORDITO, sorModell([VALASZ]))
+    expect(store.artifactOf(item().itemId, 'proba-hu')!.status).toBe('done')
+    const szotar = await readFile(glossaryPath(), 'utf8')
+    expect(szotar).toContain('[[Másik jegyzet]]')
+    expect(szotar).toContain('| problem | probléma |')
+
+    await fordit(FORDITO, sorModell([`${MAGYAR_FORDITAS}\n${S}\ntool | [[eszköz]]`]), { options: { force: true } })
+    const bukott = store.artifactOf(item().itemId, 'proba-hu')!
+    expect(bukott.status).toBe('failed')
+    expect(bukott.error).toContain('a szójegyzék megsérti a vault írási szabályait')
+  })
+
   it('a nem értelmezhető szójegyzéksort jelzi, és a fájlban meghagyja', async () => {
     await forrasJegyzet(store, ANGOL_FORRAS)
     await mkdir(dirname(glossaryPath()), { recursive: true })
