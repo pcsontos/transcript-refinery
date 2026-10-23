@@ -99,7 +99,7 @@ export const COMMANDS: readonly CommandHelp[] = [
     summary: 'Kiméri, hogy a model.switchable modelljei adnak-e sémás kimenetet.',
     usage: 'refinery check-structured [kapcsolók]',
     description:
-      'A model.switchable minden modelljét a három sémás recept sémájával próbálja, és összeveti a config structured/text jelzésével. Valódi modellhívás, a becslést indulás előtt kiírja. Modellenként és sémánként 3 próba. A configot nem írja át.',
+      'A model.switchable minden modelljét a három sémás recept sémájával próbálja, és összeveti a config structured/text jelzésével. Valódi modellhívás, a becslést indulás előtt kiírja. Modellenként és sémánként 3 próba. Csak a --config kapcsolót ismeri, a többit elutasítja. A configot nem írja át.',
     options: [CONFIG, HELP],
     examples: ['refinery check-structured'],
   },

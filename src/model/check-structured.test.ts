@@ -65,12 +65,42 @@ describe('commandCheckStructured', () => {
     expect(logs).toContain('rossz: config structured, mért text (0/9 sémás)  ← ELTÉR')
     expect(logs).toContain('szoveg: config text, mért text (0/9 sémás)')
     // a hálózati hiba nem séma-hiba: nem dönt a „text” mellett
-    expect(logs).toContain('halo: config text, mért ? (0/0 sémás, 9 egyéb hiba)')
+    expect(logs).toContain('halo: config text, mért ? (0/0 sémás, 9 egyéb hiba)  ← NEM MÉRHETŐ')
+    // csak a `jo` hívásai költenek: 9 × (10 × 3 + 5 × 15) / 1e6
+    expect(logs).toContain('Mért költség legalább 0.0009 $ (a sikeres hívások használatából).')
   })
 
-  it('eltérés nélkül 0-s kód', async () => {
-    const { rossz: _rossz, ...rest } = SWITCHABLE
-    expect(await commandCheckStructured(cfg(10, rest), fakeClient)).toBe(0)
+  it('eltérés és mérhetetlen modell nélkül 0-s kód', async () => {
+    expect(await commandCheckStructured(cfg(10, { jo: 'structured', szoveg: 'text' }), fakeClient)).toBe(0)
+  })
+
+  it('a mérhetetlen modell (csak egyéb hiba) nem „nincs eltérés”: 1-es kód', async () => {
+    expect(await commandCheckStructured(cfg(10, { halo: 'text' }), fakeClient)).toBe(1)
+  })
+
+  it('egyetlen séma-hiba a kilenc között már „text”, a structured jelzéssel eltérés', async () => {
+    let calls = 0
+    const ritkaHiba = (): ModelClient => ({
+      generate: () => Promise.reject(new Error('nem hívódhat')),
+      generateObject: (() => {
+        calls++
+        return calls === 5
+          ? Promise.reject(Object.assign(new Error('nincs objektum'), { name: 'AI_NoObjectGeneratedError' }))
+          : Promise.resolve({ value: {}, usage: { inputTokens: 10, outputTokens: 5 } })
+      }) as ModelClient['generateObject'],
+    })
+
+    expect(await commandCheckStructured(cfg(10, { jo: 'structured' }), ritkaHiba)).toBe(1)
+    expect(logs).toContain('jo: config structured, mért text (8/9 sémás)  ← ELTÉR')
+  })
+
+  it('pontosan a plafonnal egyenlő kétszeres becslés még lefut', async () => {
+    const probe = (4000 * 3 + 1500 * 15) / 1e6
+    const createClient = vi.fn(fakeClient)
+
+    expect(await commandCheckStructured(cfg(3 * 3 * probe * 2, { jo: 'structured' }), createClient)).toBe(0)
+
+    expect(createClient).toHaveBeenCalledTimes(1)
   })
 
   it('ha a becslés kétszerese a plafon fölött van, egy hívás nélkül áll meg', async () => {

@@ -2282,6 +2282,31 @@ describe('commandRun — a commit tartalma', () => {
   })
 })
 
+describe('commandRun — a reading_wpm eljut a jegyzetig (#291)', () => {
+  it('a vault.reading_wpm sebességével számol az átirat- és a recept-jegyzet is', async () => {
+    // 600 különböző szó: 100 szó/percnél 6 perc (az alap 200-zal 3 perc volna)
+    const szavak = Array.from({ length: 600 }, (_, i) => `szo${i}`).join(' ')
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A', `1\n00:00:00,000 --> 00:00:02,000\n${szavak}.\n`)
+    const raw = { ...rawWithVault(5), vault: { path: vault, reading_wpm: 100 } }
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+
+    const code = await commandRun(
+      cfg,
+      raw,
+      { recipe: 'summary', dryRun: false, force: false, commit: false },
+      { createClient: () => hamisKliens({ generate: 0 }) },
+    )
+
+    expect(code).toBe(0)
+    const atirat = await readFile(noteFile(cfg.notesRoot, item!, '_transcript.md'), 'utf8')
+    expect(atirat).toContain('reading_time: "06:00"')
+    // a recept-jegyzet a saját törzsét számolja: a hamis kliens szövege 6 „szó”, 100 szó/percnél 3,6 mp → 4 (az alap 200-zal 2 volna)
+    const osszefoglalo = await readFile(noteFile(cfg.notesRoot, item!, '_summary.md'), 'utf8')
+    expect(osszefoglalo).toContain('reading_time: "00:04"')
+  })
+})
+
 describe('commandRun — indulás és lezárás a naplóban', () => {
   it('az első sor a run:started, az utolsó a run:ended', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
@@ -2850,6 +2875,16 @@ describe('commandList', () => {
     expect(errors).toEqual(['A --limit pozitív egész szám: abc'])
   })
 
+  it('a main() ugyanazt a --recipe-t kétszer megadva egynek veszi', async () => {
+    await ketVideoAllapottal()
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+    await mkdir(join(vault, '.git'))
+
+    expect(await main(['list', '--config', configPath, '--recipe', 'summary', '--recipe', 'summary'])).toBe(0)
+    expect(errors).toEqual([])
+  })
+
   it('a main() a list több --recipe-jét elutasítja, a --channels mellett a --limit-et jelzi', async () => {
     await ketVideoAllapottal()
     const configPath = join(work, 'refinery.config.yaml')
@@ -3074,6 +3109,21 @@ describe('parseLimit és runRecipeFlags (#244, #71)', () => {
     it('a hibás --limit 1-es kód, a config betöltése előtt', async () => {
       expect(await main(['run', '--config', configPath, '--limit', '0x10'])).toBe(1)
       expect(errors).toEqual(['A --limit pozitív egész szám: 0x10'])
+    })
+
+    it('a --limit hibája csak a run és a list parancsot érinti', async () => {
+      // a scan nem használja a --limit-et: a mai viselkedés marad
+      expect(await main(['scan', '--config', configPath, '--limit', '0'])).toBe(0)
+      expect(errors).toEqual([])
+      // a watch a saját, megnevezett hibáját adja, nem a --limit értékét minősíti
+      expect(await main(['watch', '--config', configPath, '--limit', 'abc'])).toBe(1)
+      expect(errors).toHaveLength(1)
+      expect(errors[0]).toContain('A watch nem ismeri a --limit kapcsolót')
+    })
+
+    it('a check-structured a közös kapcsolókat (--dry-run) hívás nélkül elutasítja', async () => {
+      expect(await main(['check-structured', '--config', configPath, '--dry-run'])).toBe(1)
+      expect(errors).toEqual(['A check-structured nem ismeri a --dry-run kapcsolót; támogatott: --config.'])
     })
 
     it('több --recipe és --queue együtt 1-es kód', async () => {

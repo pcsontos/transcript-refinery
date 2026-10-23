@@ -255,6 +255,7 @@ transcript_source: creator_captions   # | auto_captions
 words_raw: 11468
 words_normalized: 3939
 punctuation_density: 4.12
+reading_time: "07:30"                # pp:mm, egy órától ó:pp:mm; a vault.reading_wpm sebességén (alap 200 szó/perc)
 generated_at: 2026-08-30T09:14:22Z
 generator: transcript-refinery@0.1.0
 recipe: summary                       # csak recepttel futtatott jegyzeten

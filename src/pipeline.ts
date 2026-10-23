@@ -45,8 +45,8 @@ export interface PipelineDeps {
   notesRoot: string
   /** A `vault.layout` sablon; hiányában az alapértelmezett. */
   layout?: string
-  /** A `reading_time` sebessége (szó/perc); hiányában az alapérték. */
-  readingWpm?: number
+  /** A `reading_time` sebessége (szó/perc): a config `vault.reading_wpm`-je. Kötelező, hogy egy hívó se maradhasson le róla. */
+  readingWpm: number
   store: StateStore
   sink: EventSink
   version: string

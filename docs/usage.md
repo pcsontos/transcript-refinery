@@ -284,6 +284,25 @@ Ha egy modell nem fogadja el a kényszerített tool-hívást (pl.
 választható tool-hívásra váltanak; a futás ezt modellenként egyszer jelzi
 (`! <modell>: a kényszerített tool_choice nem támogatott…`).
 
+### Sémás kimenet mérése (`check-structured`)
+
+A `model.switchable` minden modelljét kimeri: a három sémás recept (notes,
+flashcards, bloom) sémájával próbálja, és összeveti a config `structured` /
+`text` jelzésével. **Valódi modellhívás, valódi költséggel**: modellenként és
+sémánként 3 próba. A becslést indulás előtt kiírja, és egyetlen hívás nélkül
+megáll, ha a becslés kétszerese a `cost_limit_usd` fölött van. Végül kiírja a
+sikeres hívásokból mért költséget (alsó becslés).
+
+```bash
+node dist/cli.js check-structured
+```
+
+Csak a `--config` kapcsolót ismeri; a többit (pl. a `--dry-run`-t) elutasítja,
+hogy egy közös kapcsoló miatt ne fusson le csendben pénzbe kerülő mérés. A
+configot nem írja át. 0 a kimeneti kód, ha minden modell mérhető volt és nincs
+eltérés; 1, ha eltérés van, vagy egy modellről csak egyéb hiba (hálózat,
+csonkolt válasz) jött, tehát nem mérhető.
+
 ---
 
 ## 7. Webes felület (Web UI)

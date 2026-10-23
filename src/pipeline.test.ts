@@ -66,6 +66,7 @@ describe('processItem', () => {
       store,
       sink,
       version: '0.1.0',
+      readingWpm: 200,
       options: {},
     })
     expect(outcome.status).toBe('published')
@@ -84,7 +85,7 @@ describe('processItem', () => {
           uploadedAt: '2026-07-14',
         },
       }),
-      { notesRoot, store, sink, version: '0.1.0', options: {} },
+      { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} },
     )
     expect(outcome.path).toBe(join(notesRoot, 'youtube', 'Egészen Más Csatorna', 'a1b2c3', 'Beszéd_transcript.md'))
   })
@@ -100,6 +101,7 @@ describe('processItem', () => {
       store,
       sink,
       version: '0.1.0',
+      readingWpm: 200,
       options: {},
     })
 
@@ -108,29 +110,29 @@ describe('processItem', () => {
 
   it('másodszor futtatva kihagy, és nem ír semmit', async () => {
     const { sink } = collectEvents()
-    await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {} })
-    const second = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {} })
+    await processItem(item(), { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} })
+    const second = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} })
     expect(second.status).toBe('skipped')
   })
 
   it('sérült feliratnál hibát ad, de nem dob kivételt', async () => {
     const broken = item({ subtitlePath: join(dir, 'nincs.en.srt') })
     const { sink } = collectEvents()
-    const outcome = await processItem(broken, { notesRoot, store, sink, version: '0.1.0', options: {} })
+    const outcome = await processItem(broken, { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} })
     expect(outcome.status).toBe('failed')
     expect(outcome.error).toBeTruthy()
   })
 
   it('a kiírt jegyzet átmegy a vault linterén', async () => {
     const { sink } = collectEvents()
-    const outcome = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {} })
+    const outcome = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} })
     const { lintVaultMarkdown } = await import('./vault/lint.js')
     expect(lintVaultMarkdown(await readFile(outcome.path!, 'utf8'))).toEqual([])
   })
 
   it('eseményeket bocsát ki, nem ír a konzolra', async () => {
     const { sink, events } = collectEvents()
-    await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {} })
+    await processItem(item(), { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} })
     expect(events.map((e) => e.type)).toContain('item:normalized')
     expect(events.map((e) => e.type)).toContain('item:published')
   })
@@ -142,6 +144,7 @@ describe('processItem', () => {
       store,
       sink,
       version: '0.1.0',
+      readingWpm: 200,
       options: {},
     })
 
@@ -174,7 +177,7 @@ describe('processItem', () => {
         title: 'Ismeretlen',
         language: null,
       }),
-      { notesRoot, store, sink, version: '0.1.0', options: {} },
+      { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} },
     )
 
     expect(outcome.status).toBe('failed')
@@ -188,6 +191,7 @@ describe('processItem', () => {
       store,
       sink,
       version: '0.1.0',
+      readingWpm: 200,
       options: { force: false, dryRun: false },
     })
     expect(outcome.status).toBe('published')
@@ -201,6 +205,7 @@ describe('processItem', () => {
       store,
       sink: collectEvents().sink,
       version: '0.1.0',
+      readingWpm: 200,
       options: { force: false, dryRun: false },
     }
     await processItem(item(), deps)
@@ -210,16 +215,16 @@ describe('processItem', () => {
 
   it('a deps.origin a jegyzet frontmatterébe kerül, hiányában cli', async () => {
     const { sink } = collectEvents()
-    const telegram = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', options: {}, origin: 'telegram' })
+    const telegram = await processItem(item(), { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {}, origin: 'telegram' })
     expect(await readFile(telegram.path!, 'utf8')).toContain('origin: telegram\n')
     const other = item({ itemId: 'd4e5f6', baseName: 'Másik', sourceFile: 'csatorna/Másik.en.srt' })
-    const cli = await processItem(other, { notesRoot, store, sink, version: '0.1.0', options: {} })
+    const cli = await processItem(other, { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} })
     expect(await readFile(cli.path!, 'utf8')).toContain('origin: cli\n')
   })
 })
 
 function alapDeps(): PipelineDeps {
-  return { notesRoot, store, sink: collectEvents().sink, version: '0.1.0', options: {} }
+  return { notesRoot, store, sink: collectEvents().sink, version: '0.1.0', readingWpm: 200, options: {} }
 }
 
 /** Fixture-modell: rögzített szöveget ad vissza, rögzített használattal. */
@@ -769,7 +774,7 @@ describe('processItem — generálási és pontozási események', () => {
     const broken = item({ subtitlePath: join(dir, 'nincs.en.srt') })
     const { sink, events } = collectEvents()
 
-    await processItem(broken, { notesRoot, store, sink, version: '0.1.0', options: {} })
+    await processItem(broken, { notesRoot, store, sink, version: '0.1.0', readingWpm: 200, options: {} })
 
     const failed = events.find(
       (e): e is Extract<RunEvent, { type: 'item:failed' }> => e.type === 'item:failed',

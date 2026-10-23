@@ -115,8 +115,14 @@ describe('readingTime', () => {
     ['szó '.repeat(1500), 100, '15:00'],
     // pontosan egy óra már órás alak
     ['szó '.repeat(12000), 200, '1:00:00'],
+    // 0,9 mp: a kerekítés 1-et, a levágás 0-t adna
+    ['szó szó szó', 200, '00:01'],
   ])('%#. eset', (text, wpm, expected) => {
     expect(readingTime(text, wpm)).toBe(expected)
+  })
+
+  it.each([0, -1, Number.NaN])('a %s sebesség hiba, nem „Infinity:NaN” szöveg', (wpm) => {
+    expect(() => readingTime('szó szó', wpm)).toThrow(/pozitív/)
   })
 
   it('az átirat jegyzete a normalizált törzs olvasási idejét írja, idézve', () => {

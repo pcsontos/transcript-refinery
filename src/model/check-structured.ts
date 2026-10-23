@@ -30,7 +30,8 @@ function probeUsd(view: ModelConfig): number {
 
 /**
  * Kiméri, hogy a `model.switchable` modelljei adnak-e sémás kimenetet, és összeveti a config
- * jelzésével (#304). A configot nem írja át. 0: nincs eltérés; 1: eltérés, vagy a becslés kétszerese a plafon fölött.
+ * jelzésével (#304). A configot nem írja át. 0: minden modell mérhető volt és nincs eltérés; 1: eltérés,
+ * nem mérhető modell (csak egyéb hiba: hálózat, csonkolás), vagy a becslés kétszerese a plafon fölött.
  */
 export async function commandCheckStructured(
   cfg: ModelConfig,
@@ -57,14 +58,19 @@ export async function commandCheckStructured(
     return 1
   }
 
-  let mismatch = false
+  let failed = false
+  let measuredUsd = 0
   for (const { model, declared, view } of models) {
     const client = createClient(view)
     const tally = { ok: 0, schema: 0, other: 0 }
     for (let run = 0; run < RUNS; run++) {
       for (const schema of schemas) {
         try {
-          await client.generateObject('draft', PROBE_PROMPT, schema)
+          const { usage } = await client.generateObject('draft', PROBE_PROMPT, schema)
+          measuredUsd +=
+            (usage.inputTokens * view.pricing.draft.inputPerMillion +
+              usage.outputTokens * view.pricing.draft.outputPerMillion) /
+            1e6
           tally.ok++
         } catch (error) {
           if (SCHEMA_ERRORS.has((error as Error).name)) tally.schema++
@@ -74,12 +80,14 @@ export async function commandCheckStructured(
     }
     const tried = tally.ok + tally.schema
     const measured = tried === 0 ? '?' : tally.schema === 0 ? 'structured' : 'text'
+    // `?`: csak egyéb hiba volt (hálózat, csonkolt válasz), a modellről nincs mérés: ez nem „nincs eltérés”.
     const differs = measured !== '?' && measured !== declared
-    if (differs) mismatch = true
+    if (differs || measured === '?') failed = true
     const other = tally.other === 0 ? '' : `, ${tally.other} egyéb hiba`
-    console.log(
-      `${model}: config ${declared}, mért ${measured} (${tally.ok}/${tried} sémás${other})${differs ? '  ← ELTÉR' : ''}`,
-    )
+    const mark = differs ? '  ← ELTÉR' : measured === '?' ? '  ← NEM MÉRHETŐ' : ''
+    console.log(`${model}: config ${declared}, mért ${measured} (${tally.ok}/${tried} sémás${other})${mark}`)
   }
-  return mismatch ? 1 : 0
+  // A séma-hibával végződő hívások használata nem látszik, ezért ez alsó becslés.
+  console.log(`Mért költség legalább ${measuredUsd.toFixed(4)} $ (a sikeres hívások használatából).`)
+  return failed ? 1 : 0
 }

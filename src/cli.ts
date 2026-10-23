@@ -109,12 +109,15 @@ function describeFinishError(error: unknown): string {
 /** A watch által ismert kapcsolók; a `help` a súgóág miatt ide sosem ér el. */
 const WATCH_OPTIONS = new Set(['config', 'source', 'no-commit', 'help'])
 
-/** Az első megadott, de a watch által nem ismert kapcsoló neve, ha van. */
-function unsupportedWatchOption(values: Record<string, unknown>): string | undefined {
+/** A check-structured kapcsolói: valódi pénzt költ, ezért egy közös kapcsoló (pl. `--dry-run`) sem maradhat csendben figyelmen kívül. */
+const CHECK_STRUCTURED_OPTIONS = new Set(['config', 'help'])
+
+/** Az első megadott, de az `allowed`-ben nem szereplő kapcsoló neve, ha van. */
+function unsupportedOption(values: Record<string, unknown>, allowed: ReadonlySet<string>): string | undefined {
   // A logikai kapcsolók alapértéke `false` (a `no-judge`-é `undefined`), tehát
   // csak a `false`-tól és `undefined`-tól eltérő érték jelenti, hogy megadták.
   return Object.entries(values).find(
-    ([name, value]) => !WATCH_OPTIONS.has(name) && value !== undefined && value !== false,
+    ([name, value]) => !allowed.has(name) && value !== undefined && value !== false,
   )?.[0]
 }
 
@@ -1095,7 +1098,9 @@ export async function main(argv: readonly string[]): Promise<number> {
     adHoc = checked
   }
 
-  const limit = parseLimit(values.limit)
+  // A `--limit`-et csak a `run` és a `list` használja; a többi parancsnál a mai viselkedés marad
+  // (a watch a saját, megnevezett hibáját adja).
+  const limit = command === 'run' || command === 'list' ? parseLimit(values.limit) : undefined
   if (typeof limit === 'object') {
     console.error(limit.error)
     return 1
@@ -1114,11 +1119,19 @@ export async function main(argv: readonly string[]): Promise<number> {
   // figyelmen kívül: egy `watch --dry-run` különben átiratot írna, és
   // commitolna is — ezért bármi indulása előtt megállunk.
   if (command === 'watch') {
-    const unsupported = unsupportedWatchOption(values)
+    const unsupported = unsupportedOption(values, WATCH_OPTIONS)
     if (unsupported !== undefined) {
       console.error(
         `A watch nem ismeri a --${unsupported} kapcsolót; támogatott: --config, --source, --no-commit.`,
       )
+      return 1
+    }
+  }
+
+  if (command === 'check-structured') {
+    const unsupported = unsupportedOption(values, CHECK_STRUCTURED_OPTIONS)
+    if (unsupported !== undefined) {
+      console.error(`A check-structured nem ismeri a --${unsupported} kapcsolót; támogatott: --config.`)
       return 1
     }
   }

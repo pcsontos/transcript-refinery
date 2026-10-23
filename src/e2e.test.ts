@@ -92,6 +92,7 @@ async function processAll(sources: string[], notesDir?: string) {
       store,
       sink,
       version: '0.1.0',
+      readingWpm: cfg.readingWpm,
       options: { force: false, dryRun: false },
     })
     if (outcome.path && outcome.status === 'published') written.push(outcome.path)
@@ -112,6 +113,7 @@ async function processSome(sources: string[], limit: number) {
       store,
       sink,
       version: '0.1.0',
+      readingWpm: cfg.readingWpm,
       options: { force: false, dryRun: false },
     })
   }

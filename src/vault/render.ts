@@ -43,6 +43,7 @@ export const DEFAULT_READING_WPM = 200
 
 /** A szöveg olvasási ideje: egy óra alatt `pp:mm`, egy órától `ó:pp:mm`. */
 export function readingTime(text: string, wpm: number): string {
+  if (!(wpm > 0)) throw new RangeError(`Az olvasási sebesség pozitív kell legyen: ${String(wpm)}`)
   const total = Math.round((countWords(text) * 60) / wpm)
   const pad = (n: number) => String(n).padStart(2, '0')
   const hours = Math.floor(total / 3600)
