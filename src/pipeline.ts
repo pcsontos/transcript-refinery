@@ -45,6 +45,8 @@ export interface PipelineDeps {
   notesRoot: string
   /** A `vault.layout` sablon; hiányában az alapértelmezett. */
   layout?: string
+  /** A `reading_time` sebessége (szó/perc); hiányában az alapérték. */
+  readingWpm?: number
   store: StateStore
   sink: EventSink
   version: string
@@ -361,7 +363,7 @@ async function runRecipe(
             sourceGeneratedAt: source.generatedAt,
           }
         : undefined,
-  }, deps.version, deps.origin)
+  }, deps.version, deps.origin, deps.readingWpm)
 
   const lintErrors = lintVaultMarkdown(markdown)
   if (lintErrors.length > 0) {
@@ -461,7 +463,7 @@ export async function processItem(
     if (kellAtirat) {
       outcome = await publishRendered(
         noteFile(deps.notesRoot, item, '_transcript.md', placement(deps, item)),
-        renderTranscriptNote(item, transcript, version, deps.origin),
+        renderTranscriptNote(item, transcript, version, deps.origin, deps.readingWpm),
         item,
         ARTIFACT_KIND,
         deps,

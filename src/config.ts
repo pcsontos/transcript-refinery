@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { ModelRole } from './types.js'
 import { LANGUAGE_NAMES, type LanguageTag } from './lang/identify.js'
 import { DEFAULT_LAYOUT, layoutError } from './vault/paths.js'
+import { DEFAULT_READING_WPM } from './vault/render.js'
 
 /** A konfigurációs fájl alapértelmezett neve a projekt gyökerében. */
 export const CONFIG_FILENAME = 'refinery.config.yaml'
@@ -81,6 +82,11 @@ const CoreSchema = z.object({
         const error = layoutError(layout)
         if (error !== null) ctx.addIssue({ code: 'custom', message: error })
       }),
+    reading_wpm: z
+      .number()
+      .int('A vault.reading_wpm egész szám.')
+      .positive('A vault.reading_wpm pozitív kell legyen.')
+      .default(DEFAULT_READING_WPM),
   }),
   sources: z
     .array(absolutePath('sources eleme'))
@@ -117,6 +123,8 @@ export interface Config {
   notesRoot: string
   /** A jegyzetek elemenkénti mappájának sablonja (`vault.layout`). */
   layout: string
+  /** Olvasási sebesség szó/percben a jegyzetek `reading_time` mezőjéhez. */
+  readingWpm: number
   sources: SourceDir[]
   /** Nyelvi preferencia-sorrend; üres lista esetén a determinisztikus tartalék dönt. */
   languages: string[]
@@ -188,6 +196,7 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
     vaultPath: resolve(c.vault.path),
     notesRoot: join(c.vault.path, c.vault.notes_dir),
     layout: c.vault.layout,
+    readingWpm: c.vault.reading_wpm,
     sources: c.sources.map((p) => ({ name: basename(p), path: p })),
     languages: c.languages,
     statePath: resolve(baseDir, c.state.path),

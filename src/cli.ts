@@ -955,6 +955,7 @@ export async function commandRun(
       const outcome = await processItem(unit.item, {
         notesRoot: cfg.notesRoot,
         layout: cfg.layout,
+        readingWpm: cfg.readingWpm,
         store,
         sink: printing,
         version: VERSION,

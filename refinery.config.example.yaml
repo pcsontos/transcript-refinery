@@ -16,6 +16,9 @@ vault:
   # channel, video_id, uploaded. A hiányzó mező szegmense kimarad. Elhagyható;
   # ez az alapértelmezés. Az elem mappája az első kimenetnél rögzül.
   layout: "{channel}/{item_id}"
+  # Olvasási sebesség szó/percben: ebből számol minden jegyzet frontmatterje
+  # `reading_time` mezőt (pp:mm, egy órától ó:pp:mm). Elhagyható; ez az alapértelmezés.
+  reading_wpm: 200
 
 # Feliratmappák. Az app rekurzívan minden .srt és .vtt fájlt felszed alattuk,
 # és nem érdekli, mi állította elő őket. A mappa **neve** (az útvonal utolsó

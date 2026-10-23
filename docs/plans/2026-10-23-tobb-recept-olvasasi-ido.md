@@ -200,7 +200,7 @@ export function readingTime(text: string, wpm: number): string {
   reading_wpm: 200
 ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `src/vault/render.test.ts`, új `describe('readingTime')`:
     - `readingTime('', 200)` → `'00:00'`;
     - `readingTime('szó '.repeat(1500), 200)` → `'07:30'`;
@@ -210,10 +210,10 @@ export function readingTime(text: string, wpm: number): string {
   - `renderTranscriptNote(item(), transcript, '0.1.0')`: a frontmatter tartalmazza a `reading_time: "00:01"` sort. A `transcript.lines` 4 szó, 200 szó/percnél 1,2 mp → kerekítve 1. Az érték idézett, mert `:`-ot tartalmaz.
   - `renderRecipeNote(item(), transcript, 'szó '.repeat(1500), meta, '0.1.0', 'cli', 100)` → `reading_time: "15:00"`. A mező a `punctuation_density` sora után áll (a két `indexOf` sorrendje).
   - `src/config.test.ts`: `loadConfig(MIN, …).readingWpm` → `200`; `{ ...MIN, vault: { path: '/v', reading_wpm: 100 } }` → `100`; `reading_wpm: 0` és `1.5` → hiba, `/vault\.reading_wpm/`.
-- [ ] **2. lépés:** `pnpm vitest run src/vault/render.test.ts src/config.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. A `src/cli.test.ts` és a `src/serve/summary.test.ts` jegyzet-elvárásai zöldek maradnak (új sor, régi sor nem tűnik el). Mutációs próba: a `baseFields` hívásában a `readingWpm` helyett `DEFAULT_READING_WPM` → a 100-as recept-eset bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(vault): Add reading_time to note frontmatter`, `Closes #291`).
+- [x] **2. lépés:** `pnpm vitest run src/vault/render.test.ts src/config.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. A `src/cli.test.ts` és a `src/serve/summary.test.ts` jegyzet-elvárásai zöldek maradnak (új sor, régi sor nem tűnik el). Mutációs próba: a `baseFields` hívásában a `readingWpm` helyett `DEFAULT_READING_WPM` → a 100-as recept-eset bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(vault): Add reading_time to note frontmatter`, `Closes #291`).
 
 ### 4. feladat: a Telegram parancsmenüje egy forrásból (#305)
 
