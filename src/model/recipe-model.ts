@@ -1,6 +1,14 @@
 import { asRecord, type ModelConfig } from '../config.js'
 import type { Registry } from '../recipe/registry.js'
 
+/** A `draft` szerep a megadott modellre, a saját árával; a `where` a hibaüzenetben a config helye. */
+export function withDraftModel(cfg: ModelConfig, model: string, where: string): ModelConfig {
+  const price = cfg.modelPricing[model]
+  // A betöltő ezt kizárja; ha mégis ide jutunk, ne könyveljünk rossz áron.
+  if (price === undefined) throw new Error(`pricing: nincs ára a(z) ${model} modellnek (${where}).`)
+  return { ...cfg, models: { ...cfg.models, draft: model }, pricing: { ...cfg.pricing, draft: price } }
+}
+
 /**
  * Receptre szabott nézet: a `draft` modell és ára a `model.recipes`
  * felülbírálása, ha van, a bíró a configé. A szerep szerint számoló kód
@@ -10,17 +18,7 @@ import type { Registry } from '../recipe/registry.js'
  */
 export function modelConfigFor(cfg: ModelConfig, recipeId: string): ModelConfig {
   const model = cfg.recipeModels[recipeId]
-  if (model === undefined) return cfg
-  const price = cfg.modelPricing[model]
-  // A betöltő ezt kizárja; ha mégis ide jutunk, ne könyveljünk rossz áron.
-  if (price === undefined) {
-    throw new Error(`pricing: nincs ára a(z) ${model} modellnek (model.recipes.${recipeId}).`)
-  }
-  return {
-    ...cfg,
-    models: { ...cfg.models, draft: model },
-    pricing: { ...cfg.pricing, draft: price },
-  }
+  return model === undefined ? cfg : withDraftModel(cfg, model, `model.recipes.${recipeId}`)
 }
 
 /** A configban ténylegesen használt modellek, ismétlés nélkül, a `draft`-tal kezdve. */

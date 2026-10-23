@@ -433,7 +433,7 @@ export async function commandCheckStructured(
   },
 ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `src/model/check-structured.test.ts`. Egy `ModelConfig` a `loadModelConfig`-gal, `switchable: { jo: 'structured', rossz: 'structured', szoveg: 'text', halo: 'text' }`, mindnek ugyanaz az ár: `{ input_per_million: 3, output_per_million: 15 }`. Egy próba becslése így `(4000 × 3 + 1500 × 15) / 1e6 = 0,0345 $`, a teljes `4 × 3 × 3 × 0,0345 = 1,242 $`. A hamis `createClient` a `view.models.draft` szerint válaszol:
     - `jo`: `generateObject` → `{ value: {}, usage: { inputTokens: 10, outputTokens: 5 } }`;
     - `rossz` és `szoveg`: `Object.assign(new Error('nincs objektum'), { name: 'AI_NoObjectGeneratedError' })`-t dob;
@@ -445,10 +445,10 @@ export async function commandCheckStructured(
     - üres `switchable`: `'A model.switchable üres: nincs mit mérni.'`, 0;
     - a registry sémás receptjei és a `PROBE_SCHEMAS` kulcsai egyeznek: `Object.values(RECIPES).filter((recipe) => recipe.structured).map((recipe) => recipe.id).sort()` = `Object.keys(PROBE_SCHEMAS).sort()`.
   - `src/cli.test.ts`: az `OPTIONS` táblába `'check-structured': ['--config'],` (ez a tábla-teszt és a parancsonkénti súgóteszt is lefedi, az áttekintés-teszt pedig a `COMMANDS` minden nevét).
-- [ ] **2. lépés:** `pnpm vitest run src/model/check-structured.test.ts src/cli.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: a `SCHEMA_ERRORS.has(...)` feltétel helyett `true` → a `halo` sor bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(cli): Add check-structured to measure schema support`, `Closes #304`).
+- [x] **2. lépés:** `pnpm vitest run src/model/check-structured.test.ts src/cli.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: a `SCHEMA_ERRORS.has(...)` feltétel helyett `true` → a `halo` sor bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(cli): Add check-structured to measure schema support`, `Closes #304`).
 - [ ] **6. lépés (valódi pénz, a felhasználó jóváhagyásával):** `refinery check-structured --config <peter-mba config másolata, base_url: http://localhost:4000/v1>`. A becslés előtte látszik, a futás kb. 27 hívás. Az eredményt a PR leírásába.
 
 ### 6. feladat: kód-PR, kiadás, menü

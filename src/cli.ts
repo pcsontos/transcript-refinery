@@ -14,6 +14,7 @@ import {
 } from './config.js'
 import { collectEvents, progressText, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
+import { commandCheckStructured } from './model/check-structured.js'
 import { createModelClient, type ModelClient, type ModelClientOptions } from './model/client.js'
 import { applyPricingFix, comparePricing, fetchLivePricing } from './model/pricing-check.js'
 import { assertRecipeModels, modelConfigFor, usedModels } from './model/recipe-model.js'
@@ -1135,6 +1136,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       fix: values.fix,
       configPath: cfg.configPath,
     })
+  }
+  if (command === 'check-structured') {
+    return commandCheckStructured(loadModelConfig(raw, process.env, cfg.configPath))
   }
   if (command === 'list') {
     return commandList(cfg, {

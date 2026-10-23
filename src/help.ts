@@ -95,6 +95,15 @@ export const COMMANDS: readonly CommandHelp[] = [
     examples: ['refinery check-pricing', 'refinery check-pricing --fix'],
   },
   {
+    name: 'check-structured',
+    summary: 'Kiméri, hogy a model.switchable modelljei adnak-e sémás kimenetet.',
+    usage: 'refinery check-structured [kapcsolók]',
+    description:
+      'A model.switchable minden modelljét a három sémás recept sémájával próbálja, és összeveti a config structured/text jelzésével. Valódi modellhívás, a becslést indulás előtt kiírja. Modellenként és sémánként 3 próba. A configot nem írja át.',
+    options: [CONFIG, HELP],
+    examples: ['refinery check-structured'],
+  },
+  {
     name: 'list',
     summary: 'Kilistázza az elemeket típusonkénti állapottal; nem ír semmit.',
     usage: 'refinery list [kapcsolók]',

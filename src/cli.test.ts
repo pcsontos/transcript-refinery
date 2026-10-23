@@ -2454,6 +2454,7 @@ describe('main és súgó', () => {
       '--no-judge',
     ],
     'check-pricing': ['--config', '--fix'],
+    'check-structured': ['--config'],
     list: ['--config', '--source', '--channel', '--recipe', '--status', '--channels', '--limit'],
     'fetch subtitle': [
       '--out',
