@@ -121,7 +121,7 @@ export function runRecipeFlags(values: {
 - `run` `--recipe` sora: `['--recipe <id>', 'receptet is futtat (pl. summary); többször is megadható; enélkül csak átirat']`, és a példák közé a `'refinery run --recipe summary --limit 1'` után: `'refinery run --file ~/atiratok/átirat.txt --recipe qa --recipe flashcards'`.
 - `list` `--recipe` sora: `['--recipe <id>', 'csak ennek a típusnak az állapota (egy adható meg)']`; a `--channels` sora: `['--channels', 'csatornánkénti összesítő; mellette a --limit nem hat']`.
 
-- [ ] **1. lépés: a bukó tesztek (`src/cli.test.ts`).**
+- [x] **1. lépés: a bukó tesztek (`src/cli.test.ts`).**
   - Új `describe('parseLimit és runRecipeFlags (#244, #71)')`:
     - `parseLimit(undefined)` → `undefined`; `'3'` → `3`; `'12'` → `12`;
     - `it.each(['abc', '0', '-1', '0x10', '1e1', '1.5', '', '03'])`: `{ error: 'A --limit pozitív egész szám: <érték>' }`;
@@ -137,10 +137,10 @@ export function runRecipeFlags(values: {
   - A súgó szövegére nincs külön teszt: a kapcsolók jelenlétét a meglévő `OPTIONS` tábla-teszt (`:2436`) ellenőrzi.
   - A `:2873–2874` két sora (`{ limit: 0 }`, `{ limit: Number.NaN }`) törlődik.
   - Egy pozitív út a `main()`-en át: `await expect(main(['run', '--config', configPath, '--recipe', 'qa', '--recipe', 'nincsilyen', '--dry-run'])).rejects.toThrow(/Ismeretlen recept: nincsilyen/)`, modellhívás nélkül. A `recipeFrom` dob, a `commandRun` nem kapja el, ma is így viselkedik egyetlen ismeretlen receptre. A hibás azonosító a **második**: ha csak az első jutna tovább `recipe`-ként, a teszt bukna. Ez igazolja, hogy a `recipes` út kap értéket. A több receptes futás működését a meglévő `describe('commandRun — több recept egy futásban')` fedi.
-- [ ] **2. lépés:** `pnpm vitest run src/cli.test.ts` → FAIL (nincs `parseLimit`, `runRecipeFlags`).
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** `pnpm vitest run src/cli.test.ts` → PASS. Ellenőrizd, hogy a `watch --recipe summary` teszt (`:2415`) továbbra is zöld: a `values.recipe` most tömb, az `unsupportedWatchOption` ezt is megadottnak veszi. Mutációs próba: a `new Set(...)` helyett `values.recipe ?? []` → a `['qa', 'qa']` eset bukik. A `/^[1-9][0-9]*$/` helyett `/^[0-9]+$/` → a `'0'` és a `'03'` eset bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(cli): Run several --recipe values in one run`, `Closes #244`, `Refs #71`).
+- [x] **2. lépés:** `pnpm vitest run src/cli.test.ts` → FAIL (nincs `parseLimit`, `runRecipeFlags`).
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** `pnpm vitest run src/cli.test.ts` → PASS. Ellenőrizd, hogy a `watch --recipe summary` teszt (`:2415`) továbbra is zöld: a `values.recipe` most tömb, az `unsupportedWatchOption` ezt is megadottnak veszi. Mutációs próba: a `new Set(...)` helyett `values.recipe ?? []` → a `['qa', 'qa']` eset bukik. A `/^[1-9][0-9]*$/` helyett `/^[0-9]+$/` → a `'0'` és a `'03'` eset bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(cli): Run several --recipe values in one run`, `Closes #244`, `Refs #71`).
 
 ### 2. feladat: dokumentáció a CLI-hez (#71/4)
 

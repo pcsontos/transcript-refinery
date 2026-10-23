@@ -12,6 +12,8 @@ import {
   commandScan,
   commandScanQueue,
   main,
+  parseLimit,
+  runRecipeFlags,
 } from './cli.js'
 import { loadConfig, loadModelConfig, type Config } from './config.js'
 import type { RunEvent } from './events.js'
@@ -2844,7 +2846,22 @@ describe('commandList', () => {
     expect(logs.join('\n').split('\n')[0]).toBe('2 csatorna')
 
     expect(await main(['list', '--config', configPath, '--limit', 'abc'])).toBe(1)
-    expect(errors).toEqual(['A --limit pozitív egész szám.'])
+    expect(errors).toEqual(['A --limit pozitív egész szám: abc'])
+  })
+
+  it('a main() a list több --recipe-jét elutasítja, a --channels mellett a --limit-et jelzi', async () => {
+    await ketVideoAllapottal()
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+    await mkdir(join(vault, '.git'))
+
+    expect(await main(['list', '--config', configPath, '--recipe', 'summary', '--recipe', 'qa'])).toBe(1)
+    expect(errors).toEqual(['A list egyszerre egy típus részleteit mutatja.'])
+
+    errors.length = 0
+    expect(await main(['list', '--config', configPath, '--channels', '--limit', '5'])).toBe(0)
+    expect(errors).toEqual(['A --channels a teljes szűrt halmazt számolja, a --limit nem hat.'])
+    expect(logs.join('\n').split('\n')[0]).toBe('2 csatorna')
   })
 
   it('a futás után az állapotfájl bájtra és időbélyegre változatlan', async () => {
@@ -2870,8 +2887,6 @@ describe('commandList', () => {
     [{ recipe: 'nincsilyen' }, /^Ismeretlen típus: nincsilyen\. Ismert típusok: transcript, summary, /],
     [{ status: 'kesz' }, /^A --status értéke done, failed vagy pending lehet\.$/],
     [{ recipe: 'summary', channels: true }, /^A --channels minden típust mutat/],
-    [{ limit: 0 }, /^A --limit pozitív egész szám\.$/],
-    [{ limit: Number.NaN }, /^A --limit pozitív egész szám\.$/],
   ])('hibás kapcsoló (%o) → 1-es kód, megnevezett üzenet', async (opts, message) => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     const cfg = loadConfig(rawConfig(5), '/p/refinery.config.yaml')
@@ -3005,6 +3020,71 @@ describe('commandRun — megszakítás signallal', () => {
 
     expect(code).toBe(0)
     expect(hivasok.generate).toBe(1)
+  })
+})
+
+describe('parseLimit és runRecipeFlags (#244, #71)', () => {
+  it('a parseLimit csak tízes pozitív egészet fogad', () => {
+    expect(parseLimit(undefined)).toBeUndefined()
+    expect(parseLimit('3')).toBe(3)
+    expect(parseLimit('12')).toBe(12)
+  })
+
+  it.each(['abc', '0', '-1', '0x10', '1e1', '1.5', '', '03'])('a parseLimit(%j) hiba', (value) => {
+    expect(parseLimit(value)).toEqual({ error: `A --limit pozitív egész szám: ${value}` })
+  })
+
+  it('a runRecipeFlags egy receptnél a mai utat adja, kettőnél a recipes utat', () => {
+    expect(runRecipeFlags({})).toEqual({})
+    expect(runRecipeFlags({ recipe: ['qa'] })).toEqual({ recipe: 'qa' })
+    expect(runRecipeFlags({ recipe: ['qa', 'qa'] })).toEqual({ recipe: 'qa' })
+    expect(runRecipeFlags({ recipe: ['qa', 'flashcards'] })).toEqual({ recipes: ['qa', 'flashcards'] })
+    // egy recept a --queue szűrője marad
+    expect(runRecipeFlags({ recipe: ['qa'], queue: true })).toEqual({ recipe: 'qa' })
+  })
+
+  it('a runRecipeFlags több recept mellett a --queue-t és a --retry-failed-et elutasítja', () => {
+    expect(runRecipeFlags({ recipe: ['qa', 'flashcards'], queue: true })).toEqual({
+      error: 'A --queue mellett egy --recipe adható meg (szűrőként).',
+    })
+    expect(runRecipeFlags({ recipe: ['qa', 'flashcards'], 'retry-failed': true })).toEqual({
+      error: 'A --retry-failed mellett egy --recipe adható meg.',
+    })
+  })
+
+  describe('a main()-en át', () => {
+    let configPath: string
+    let errors: string[]
+
+    beforeEach(async () => {
+      errors = []
+      vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        errors.push(args.join(' '))
+      })
+      configPath = join(work, 'refinery.config.yaml')
+      await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+      await mkdir(join(vault, '.git'))
+    })
+
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('a hibás --limit 1-es kód, a config betöltése előtt', async () => {
+      expect(await main(['run', '--config', configPath, '--limit', '0x10'])).toBe(1)
+      expect(errors).toEqual(['A --limit pozitív egész szám: 0x10'])
+    })
+
+    it('több --recipe és --queue együtt 1-es kód', async () => {
+      expect(await main(['run', '--config', configPath, '--recipe', 'qa', '--recipe', 'summary', '--queue'])).toBe(1)
+      expect(errors).toEqual(['A --queue mellett egy --recipe adható meg (szűrőként).'])
+    })
+
+    it('a második --recipe is eljut a recipes útra', async () => {
+      await expect(
+        main(['run', '--config', configPath, '--recipe', 'qa', '--recipe', 'nincsilyen', '--dry-run']),
+      ).rejects.toThrow(/Ismeretlen recept: nincsilyen/)
+    })
   })
 })
 

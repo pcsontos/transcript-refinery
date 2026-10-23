@@ -117,6 +117,28 @@ function unsupportedWatchOption(values: Record<string, unknown>): string | undef
   )?.[0]
 }
 
+/** A `--limit` csak tízes pozitív egész; a `Number()` a `0x10`-et és az `1e1`-et is elfogadná. */
+export function parseLimit(value: string | undefined): number | undefined | { error: string } {
+  if (value === undefined) return undefined
+  return /^[1-9][0-9]*$/.test(value) ? Number(value) : { error: `A --limit pozitív egész szám: ${value}` }
+}
+
+/**
+ * A `run` `--recipe` értékei (#244): egy recept a mai út (queue-szűrő, hibás-szűrő),
+ * kettő vagy több a `recipes` út, amelyet a serve is hív. Az ismétlés egyszer számít.
+ */
+export function runRecipeFlags(values: {
+  recipe?: string[]
+  queue?: boolean
+  'retry-failed'?: boolean
+}): { recipe?: string; recipes?: string[] } | { error: string } {
+  const ids = [...new Set(values.recipe ?? [])]
+  if (ids.length < 2) return ids.length === 0 ? {} : { recipe: ids[0] }
+  if (values.queue) return { error: 'A --queue mellett egy --recipe adható meg (szűrőként).' }
+  if (values['retry-failed']) return { error: 'A --retry-failed mellett egy --recipe adható meg.' }
+  return { recipes: ids }
+}
+
 function render(event: RunEvent): string | null {
   switch (event.type) {
     case 'scan:found':
@@ -344,9 +366,8 @@ export async function commandList(cfg: Config, opts: ListOptions): Promise<numbe
     console.error('A --channels minden típust mutat; a --recipe mellette nem használható.')
     return 1
   }
-  if (opts.limit !== undefined && !(Number.isInteger(opts.limit) && opts.limit > 0)) {
-    console.error('A --limit pozitív egész szám.')
-    return 1
+  if (opts.channels && opts.limit !== undefined) {
+    console.error('A --channels a teljes szűrt halmazt számolja, a --limit nem hat.')
   }
 
   const filters = {
@@ -1041,7 +1062,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       source: { type: 'string' },
       channel: { type: 'string' },
       limit: { type: 'string' },
-      recipe: { type: 'string' },
+      recipe: { type: 'string', multiple: true },
       'dry-run': { type: 'boolean', default: false },
       force: { type: 'boolean', default: false },
       'no-commit': { type: 'boolean', default: false },
@@ -1070,6 +1091,21 @@ export async function main(argv: readonly string[]): Promise<number> {
       return 1
     }
     adHoc = checked
+  }
+
+  const limit = parseLimit(values.limit)
+  if (typeof limit === 'object') {
+    console.error(limit.error)
+    return 1
+  }
+  const recipeFlags = command === 'run' ? runRecipeFlags(values) : {}
+  if ('error' in recipeFlags) {
+    console.error(recipeFlags.error)
+    return 1
+  }
+  if (command === 'list' && new Set(values.recipe).size > 1) {
+    console.error('A list egyszerre egy típus részleteit mutatja.')
+    return 1
   }
 
   // A watch csak a saját kapcsolóit ismeri. A többit nem hagyhatjuk csendben
@@ -1103,10 +1139,10 @@ export async function main(argv: readonly string[]): Promise<number> {
     return commandList(cfg, {
       source: values.source,
       channel: values.channel,
-      recipe: values.recipe,
+      recipe: values.recipe?.[0],
       status: values.status,
       channels: values.channels,
-      limit: values.limit === undefined ? undefined : Number(values.limit),
+      limit,
       lineWidth: process.stdout.isTTY ? process.stdout.columns : undefined,
     })
   }
@@ -1117,8 +1153,8 @@ export async function main(argv: readonly string[]): Promise<number> {
     return commandRun(cfg, raw, {
       source: values.source,
       channel: values.channel,
-      limit: values.limit === undefined ? undefined : Number(values.limit),
-      recipe: values.recipe,
+      limit,
+      ...recipeFlags,
       queue: values.queue,
       dryRun: values['dry-run'],
       force: values.force,

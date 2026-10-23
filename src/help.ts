@@ -16,7 +16,7 @@ const CONFIG = ['--config <út>', 'konfigurációs fájl (alapértelmezés: refi
 const HELP = ['--help, -h', 'megjeleníti ezt a súgót'] as const
 const SOURCE = ['--source <név>', 'csak a megadott forrásmappából'] as const
 const CHANNEL = ['--channel <név>', 'csak a megadott csatorna (metaadat nélküli elemre nem illik)'] as const
-const LIMIT = ['--limit <szám>', 'legfeljebb ennyi elem'] as const
+const LIMIT = ['--limit <szám>', 'legfeljebb ennyi elem (pozitív egész)'] as const
 const DIR = ['--dir <mappa>', 'ad hoc mappa a sources helyett, rekurzívan: .srt, .vtt, .txt, .md'] as const
 const MATCH = [
   "--match '<glob>'",
@@ -55,7 +55,8 @@ export const COMMANDS: readonly CommandHelp[] = [
     description:
       'Átiratot készít a feldolgozható videókból, és a vaultba írja.\n' +
       `${AD_HOC_NOTE}\n` +
-      'A --recipe receptet is futtat; a --queue a vault _queue.md sorának kipipált párjait dolgozza fel.\n' +
+      'A --recipe receptet is futtat, többször megadva több receptet egy futásban, közös költségplafon alatt. A --queue és a --retry-failed mellett egy --recipe adható meg.\n' +
+      'A --queue a vault _queue.md sorának kipipált párjait dolgozza fel.\n' +
       'A futás naplója és riportja a konfigurációban megadott logs.dir alá kerül.',
     options: [
       CONFIG,
@@ -65,7 +66,7 @@ export const COMMANDS: readonly CommandHelp[] = [
       SOURCE,
       CHANNEL,
       LIMIT,
-      ['--recipe <id>', 'receptet is futtat (pl. summary); enélkül csak átirat'],
+      ['--recipe <id>', 'receptet is futtat (pl. summary); többször is megadható; enélkül csak átirat'],
       ['--queue', 'a sor kipipált (videó, recept) párjait dolgozza fel'],
       ['--dry-run', 'nem ír fájlt és nem rögzít állapotot; recepttel a modellhívások VALÓS költséggel megtörténnek'],
       [
@@ -80,6 +81,7 @@ export const COMMANDS: readonly CommandHelp[] = [
     examples: [
       'refinery run --limit 3',
       'refinery run --recipe summary --limit 1',
+      'refinery run --file ~/atiratok/átirat.txt --recipe qa --recipe flashcards',
       'refinery run --file ~/atiratok/átirat.txt',
       'refinery run --queue',
     ],
@@ -101,9 +103,9 @@ export const COMMANDS: readonly CommandHelp[] = [
       CONFIG,
       SOURCE,
       CHANNEL,
-      ['--recipe <id>', 'csak ennek a típusnak az állapota'],
+      ['--recipe <id>', 'csak ennek a típusnak az állapota (egy adható meg)'],
       ['--status <érték>', 'done, failed vagy pending; --recipe nélkül bármely típusra illik'],
-      ['--channels', 'csatornánkénti összesítő'],
+      ['--channels', 'csatornánkénti összesítő; mellette a --limit nem hat'],
       LIMIT,
       HELP,
     ],
