@@ -3,6 +3,51 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.22.0] — 2026-10-23
+
+Egy futásban több recept is megy, minden jegyzet olvasási időt kap, a Telegram
+`/` menüje a `/help` listájából áll össze, és kimérhető, mely modellek adnak
+sémás kimenetet.
+
+### ✨ Újdonságok
+
+- **Több recept egy futásban:** a `run --recipe qa --recipe flashcards` egy
+  közös költségplafon alatt futtatja a recepteket. A `--limit` az elemeket
+  számolja, nem a recepteket. A `--queue` és a `--retry-failed` mellett egy
+  `--recipe` adható meg (#244).
+- **Olvasási idő a jegyzetekben:** minden új jegyzet frontmatterében ott a
+  `reading_time` (`pp:mm`, egy órától `ó:pp:mm`), a jegyzet törzséből számolva.
+  A sebesség a `vault.reading_wpm` (alapértelmezés: 200 szó/perc) (#291).
+- **`refinery check-structured`:** kiméri, hogy a `model.switchable` modelljei
+  adnak-e sémás kimenetet, és összeveti a config `structured` / `text`
+  jelzésével. **Valódi modellhívás, valódi költséggel**: a becslést indulás
+  előtt kiírja, és ha a kétszerese a `cost_limit_usd` fölött van, egy hívás
+  nélkül megáll. Csak a `--config` kapcsolót ismeri. Eltérésnél és olyan
+  modellnél, amelyről csak hálózati vagy csonkolási hiba jött, 1-gyel lép ki
+  (#304).
+- **Telegram `/` menü egy forrásból:** a menü és a `/help` ugyanabból a
+  parancslistából épül, benne a korábban hiányzó `/model`-lel. A menüt a
+  `pnpm telegram:commands` állítja be (`--dry-run`-nal csak kiírja) (#305).
+
+### 🔧 Javítások
+
+- **`--limit` ellenőrzése:** a `run` és a `list` egyformán csak tízes pozitív
+  egészet fogad (a `0x10` és az `1e1` már hiba), a hiba a config betöltése előtt
+  jön. A `list --channels --limit` jelzi, hogy a `--limit` nem hat. A `list`
+  egyszerre egy `--recipe`-et fogad (#71).
+
+### 📚 Dokumentáció
+
+- A futtatási útmutató leírja a több receptes futást, a `list` korlátait és a
+  `check-structured` parancsot; az architektúra-doksi és a példa-config
+  tartalmazza a `reading_time`-ot és a `vault.reading_wpm`-et.
+
+### 🔧 Üzemeltetés
+
+- **Kiadás:** a `src/` változott, ezért a `peter-mba` konténer új képet kér. A
+  Worker kódja nem változott érdemben (csak exportok), Worker-deploy nem kell.
+  A kiadás után egyszer le kell futtatni a `pnpm telegram:commands`-ot.
+
 ## [1.21.0] — 2026-10-22
 
 A Telegram-üzenetekből látszik, melyik elemről szólnak, és receptenként
@@ -1007,6 +1052,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.22.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.22.0
 [1.21.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.21.0
 [1.20.2]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.2
 [1.20.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.1
