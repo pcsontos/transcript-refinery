@@ -186,18 +186,25 @@ export function cancelKeyboard(jobs: readonly { jobId: string; videoId: string; 
 
 export type Probe = { ok: true; ms: number; version: string; busy: string | null } | { ok: false; reason: 'secret' | 'down' }
 
+/** A bot parancsai: ebből épül a `/help` és a Telegram `/` menüje (`pnpm telegram:commands`). */
+export const BOT_COMMANDS: readonly { command: string; args?: string; description: string }[] = [
+  { command: 'scan', args: '<szöveg>', description: 'beillesztett átirat feldolgozása (egy üzenetnyi)' },
+  { command: 'start', description: 'a bot összekötése a Google-fiókoddal' },
+  { command: 'cancel', description: 'nyitott munka megszakítása' },
+  { command: 'model', description: 'a receptek modelljének megtekintése és váltása' },
+  { command: 'status', description: 'a szerver állapota és a nyitott munkák' },
+  { command: 'ping', description: 'a szerver elérhetősége' },
+  { command: 'version', description: 'a szerver verziója' },
+  { command: 'help', description: 'ez a súgó' },
+]
+
 export const HELP_TEXT = [
   'Küldj egy YouTube-linket, és letöltöm a feliratát.',
   'Csatolt .txt vagy .md átiratot is feldolgozok.',
   '',
-  '/scan <szöveg> – beillesztett átirat feldolgozása (egy üzenetnyi)',
-  '/start – a bot összekötése a Google-fiókoddal',
-  '/cancel – nyitott munka megszakítása',
-  '/model – a receptek modelljének megtekintése és váltása',
-  '/status – a szerver állapota és a nyitott munkák',
-  '/ping – a szerver elérhetősége',
-  '/version – a szerver verziója',
-  '/help – ez a súgó',
+  ...BOT_COMMANDS.map(({ command, args, description }) =>
+    `/${command}${args === undefined ? '' : ` ${args}`} – ${description}`,
+  ),
 ].join('\n')
 
 export const SERVE_SILENT = 'A szerver nem válaszol.'

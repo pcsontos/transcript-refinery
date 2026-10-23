@@ -44,6 +44,7 @@
     "eval:watch": "evalite watch",
     "query:local": "tsx scripts/query.ts --host local --sql scripts/select_jobs.sql",
     "query:remote": "tsx scripts/query.ts --host remote --sql scripts/select_jobs.sql",
+    "telegram:commands": "tsx --env-file-if-exists=worker/.dev.vars scripts/telegram-commands.ts",
     "measure": "tsx evals/measure/run.ts",
     "calibrate": "tsx evals/measure/calibrate.ts",
     "calibrate:translate": "tsx evals/measure/calibrate-translate.ts",

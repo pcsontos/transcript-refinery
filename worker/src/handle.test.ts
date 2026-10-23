@@ -2,15 +2,19 @@ import { textItemId } from 'transcript-refinery/text'
 import { describe, expect, it, vi } from 'vitest'
 import {
   applyKnocks,
+  COMMAND,
   findRow,
   handleCallback,
   handleCron,
   handleLink,
   handleTap,
   handleUpdate,
+  SCAN,
+  START,
   type PlannedKnock,
   type WorkerDeps,
 } from './handle.js'
+import { BOT_COMMANDS } from './messages.js'
 import {
   BIND_FIRST,
   DROPPED_LINE,
@@ -1078,6 +1082,14 @@ describe('tájékoztató parancsok', () => {
     '/version – a szerver verziója',
     '/help – ez a súgó',
   ].join('\n')
+
+  it('a menü parancsai és a felismert parancsok ugyanazok', () => {
+    const recognized = [...(/\(([a-z|]+)\)/.exec(COMMAND.source)?.[1] ?? '').split('|'), 'scan', 'start']
+    expect(BOT_COMMANDS.map((item) => item.command).sort()).toEqual(recognized.sort())
+    for (const { command } of BOT_COMMANDS) {
+      expect(COMMAND.test(`/${command}`) || SCAN.test(`/${command}`) || START.test(`/${command}`)).toBe(true)
+    }
+  })
 
   it('a /help kötés nélkül is megy, a többi parancs kötést kér', async () => {
     const d = deps(memoryStore())

@@ -285,7 +285,7 @@ if (process.argv.includes('--dry-run')) {
 
 **`docs/operations/telegram-worker-topology.md`:** a „Telepítési sorrend” bekezdés után egy mondat: `A Telegram \`/\` menüje nem a Worker része: új vagy átnevezett parancs után a \`pnpm telegram:commands\` állítja be a \`/help\` listájára (\`--dry-run\`-nal csak kiírja).`
 
-- [ ] **1. lépés: a bukó teszt (`worker/src/handle.test.ts`, a `describe('tájékoztató parancsok')` végén).** Import: `COMMAND`, `SCAN`, `START` a `./handle.js`-ből, `BOT_COMMANDS` a `./messages.js`-ből.
+- [x] **1. lépés: a bukó teszt (`worker/src/handle.test.ts`, a `describe('tájékoztató parancsok')` végén).** Import: `COMMAND`, `SCAN`, `START` a `./handle.js`-ből, `BOT_COMMANDS` a `./messages.js`-ből.
   ```ts
   it('a menü parancsai és a felismert parancsok ugyanazok', () => {
     const recognized = [...(/\(([a-z|]+)\)/.exec(COMMAND.source)?.[1] ?? '').split('|'), 'scan', 'start']
@@ -296,10 +296,10 @@ if (process.argv.includes('--dry-run')) {
   })
   ```
   A meglévő `HELP` literál (`:1068`) változatlan marad: ez igazolja, hogy a súgó szövege betűre a régi. A Telegram korlátait (parancs 1–32, leírás 1–256 karakter) a `setMyCommands` ellenőrzi, a script a hibáját kiírja.
-- [ ] **2. lépés:** `pnpm vitest run worker` → FAIL (nincs `BOT_COMMANDS` export).
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. `pnpm telegram:commands --dry-run` nyolc parancsot ír ki, köztük a `model`-t, hálózati hívás nélkül. Mutációs próba: a `COMMAND` regexbe `|foo` kerül → a teszt bukik. Visszaállítás. Teljes ellenőrzés zöld, a Worker tsc-vel együtt.
-- [ ] **5. lépés:** commit (`feat(worker): Build the Telegram command menu from /help`, `Closes #305`).
+- [x] **2. lépés:** `pnpm vitest run worker` → FAIL (nincs `BOT_COMMANDS` export).
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. `pnpm telegram:commands --dry-run` nyolc parancsot ír ki, köztük a `model`-t, hálózati hívás nélkül. Mutációs próba: a `COMMAND` regexbe `|foo` kerül → a teszt bukik. Visszaállítás. Teljes ellenőrzés zöld, a Worker tsc-vel együtt.
+- [x] **5. lépés:** commit (`feat(worker): Build the Telegram command menu from /help`, `Closes #305`).
 
 ### 5. feladat: a sémás kimenet mérése (#304)
 
