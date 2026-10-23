@@ -376,7 +376,7 @@ export function renderGlossaryNote(
 ```
 Import: `import { glossaryKind, glossaryTable, type GlossaryPair } from '../recipe/glossary.js'`. A `glossary.ts` semmit nem importál, tehát nincs kör.
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `src/recipe/glossary.test.ts`, `const S = GLOSSARY_SEPARATOR`:
     - `parseChunkReply(\`## Cím\n\nSzöveg.\n${S}\nstream | adatfolyam\nAPI | API\n\`)` → `{ translation: '## Cím\n\nSzöveg.', pairs: [{ source: 'stream', target: 'adatfolyam' }, { source: 'API', target: 'API' }] }`;
     - `\`Szöveg.\n  ${S}  \n\`` → `{ translation: 'Szöveg.', pairs: [] }` (szóköz a sor körül, nincs új pár);
@@ -389,10 +389,10 @@ Import: `import { glossaryKind, glossaryTable, type GlossaryPair } from '../reci
   - `src/vault/render.test.ts`, új `describe('renderGlossaryNote')`:
     - `const md = renderGlossaryNote(item(), 'de', [{ source: 'a|b', target: 'c' }], '0.1.0')`: `lintVaultMarkdown(md)` → `[]`; tartalmazza a `\nkind: glossary-de\n`, `\nlanguage: de\n`, `| forrás | cél |`, `| a\\|b | c |` sorokat; nincs benne `generated_at` és `recipe`;
     - oda-vissza: `readGlossaryTable(md).pairs` → `[{ source: 'a|b', target: 'c' }]`.
-- [ ] **2. lépés:** `pnpm vitest run src/recipe/glossary.test.ts src/vault/render.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: a `block.slice(2)` helyett `block` → a `readGlossaryTable` teszt bukik (a fejléc pár lesz). A `(?<!\\)` törlése → az escape-elt teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Add glossary reply parsing and the glossary file format`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/recipe/glossary.test.ts src/vault/render.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: a `block.slice(2)` helyett `block` → a `readGlossaryTable` teszt bukik (a fejléc pár lesz). A `(?<!\\)` törlése → az escape-elt teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Add glossary reply parsing and the glossary file format`, `Refs #259`).
 
 ### 3. feladat: a küszöb a configban, és a darab promptja
 
