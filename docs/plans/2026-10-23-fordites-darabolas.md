@@ -55,6 +55,8 @@
 
 ### 1. feladat: a darabolás (tiszta függvény)
 
+**Issue:** #311
+
 **Fájlok:**
 - Új: `src/recipe/split.ts`
 - Teszt: `src/recipe/split.test.ts`
@@ -210,6 +212,8 @@ export function splitForTranslation(body: string, chunkWords: number): string[] 
 - [ ] **5. lépés:** commit (`feat(translate): Split long notes at headings for translation`, `Refs #259`).
 
 ### 2. feladat: a szójegyzék formátuma (tiszta függvények + a fájl renderelése)
+
+**Issue:** #312
 
 **Fájlok:**
 - Új: `src/recipe/glossary.ts`
@@ -392,6 +396,8 @@ Import: `import { glossaryKind, glossaryTable, type GlossaryPair } from '../reci
 
 ### 3. feladat: a küszöb a configban, és a darab promptja
 
+**Issue:** #313
+
 **Fájlok:**
 - Módosul: `src/recipe/types.ts` (`Translation.chunkWords`)
 - Módosul: `src/recipe/translate.ts` (`translationOf` harmadik paraméter, `translationChunkPrompt`)
@@ -519,6 +525,8 @@ export function translationChunkPrompt(input: ChunkPromptInput): string {
 - [ ] **5. lépés:** commit (`feat(translate): Add translate.chunk_words and the chunk prompt`, `Refs #259`).
 
 ### 4. feladat: a kész darabok az állapottárban, a szójegyzék követése
+
+**Issue:** #314
 
 **Fájlok:**
 - Módosul: `src/state/db.ts` (séma, `TranslationChunk`, három metódus, a `noteDirOf` lekérdezése)
@@ -656,6 +664,8 @@ A doc-komment: „A fajta a `recipe` mezőből jön, a szójegyzéknél a `kind`
 - [ ] **5. lépés:** commit (`feat(state): Store translation chunks and track glossary files`, `Refs #259`).
 
 ### 5. feladat: a darabolt fordítás futtatója
+
+**Issue:** #315
 
 **Fájlok:**
 - Új: `src/recipe/translate-chunks.ts`
@@ -1030,6 +1040,8 @@ export async function translateChunked(
 
 ### 6. feladat: bekötés a pipeline-ba, a szójegyzékfájl és az esemény
 
+**Issue:** #316
+
 **Fájlok:**
 - Módosul: `src/pipeline.ts` (`recipeClock`, a `runRecipe` fordítási ága, könyvelés, a szójegyzékfájl)
 - Módosul: `src/events.ts` (`item:glossary-skipped`), `src/cli.ts` (`render`, `:176` mellé)
@@ -1240,6 +1252,8 @@ Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`
 
 ### 7. feladat: dokumentáció
 
+**Issue:** #317
+
 **Fájlok:**
 - Módosul: `docs/architecture.md` (§4, `:103–106`)
 - Módosul: `docs/usage.md` (a fordításról szóló rész; `grep -n "fordít" docs/usage.md`)
@@ -1250,12 +1264,16 @@ Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`
 
 ### 8. feladat: kalibrálás (valódi pénz, külön jóváhagyással)
 
+**Issue:** #318
+
 A spec „Kalibrálás” szakasza szerint, a kód-PR előtt vagy mellett, a felhasználó jóváhagyásával.
 - [ ] **1. lépés:** a `zgWUhE6HjrI` forrásjegyzetének szószáma és a becslés (`refinery run --dry-run …` a fordítórecepttel): a becslésre legalább kétszeres ráhagyás, a felhasználó jóváhagyja a keretet.
 - [ ] **2. lépés:** a futás a lokális configgal; a darabolás folytatható, tehát egy megszakadt futás nem fizetődik ki kétszer. Mérendő: lefut-e, átmegy-e a vázkapun (ha nem, az a #42 dolga, nem ennek a szeletnek a bukása), hány darab lett és mekkora a szójegyzék, a bíró (ha be van kapcsolva) elfér-e, nincs-e időtúllépés, és a tényleges költség a `/key/info` szerint.
 - [ ] **3. lépés:** az eredmény a `docs/measurements/` alá, és ha a 4 000-es küszöb nem jó, a `DEFAULT_CHUNK_WORDS` módosítása ugyanebben a PR-ben.
 
 ### 9. feladat: kód-PR, kiadás
+
+**Issue:** #259 (a kód-PR zárja)
 
 Külön kérésre.
 - `gh pr checks`, a PR a felhasználó jóváhagyásával.
