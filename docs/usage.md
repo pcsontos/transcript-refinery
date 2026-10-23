@@ -127,6 +127,10 @@ követi (a `scan` csak jelzi).
   node dist/cli.js run --recipe qa
   ```
 
+  Több recept egy futásban: `run --recipe qa --recipe flashcards`. Egy közös
+  költségplafon alatt fut, a `--limit` az elemeket számolja, nem a recepteket.
+  A `--queue` és a `--retry-failed` mellett csak egy `--recipe` adható meg.
+
 - **Feldolgozási sor (`_queue.md`) alapján:**  
   A vault jegyzetében kipipált `[x]` (videó, recept) párok feldolgozása:
   ```bash
@@ -136,7 +140,7 @@ követi (a `scan` csak jelzi).
 ### Gyakori kapcsolók
 
 - `--dry-run`: nem ír fájlt és állapotot (de a modellhívás valós költséggel lefut)
-- `--limit <szám>`: legfeljebb ennyi elem feldolgozása
+- `--limit <szám>`: legfeljebb ennyi elem feldolgozása (pozitív egész)
 - `--source <név>`: szűrés adott forrásmappára
 - `--channel <név>`: szűrés csatornanévre
 - `--retry-failed`: csak a korábban hibára futott elemek újrafuttatása
@@ -192,8 +196,11 @@ A `--status` (`done`, `failed`, `pending`) `--recipe` nélkül bármely típusra
 illik: a `list --status failed` minden elemet mutat, amin legalább egy
 típus hibára futott. A `--source`, a `--channel` és a `--limit` ugyanúgy
 szűr, mint a `run`-nál. A `--channels` összesítő a teljes szűrt halmazt
-számolja, ezért mellette a `--limit` nem hat. A számok ugyanabból az olvasó rétegből jönnek, mint
-a webes felületéi.
+számolja, ezért mellette a `--limit` nem hat, és ezt a parancs a hibakimeneten
+jelzi. A számok ugyanabból az olvasó rétegből jönnek, mint a webes felületéi.
+
+A cím a terminál szélességéhez igazodik (csonkolva), de legalább 20 karakter
+széles: ennél keskenyebb terminálon a sorok a terminálban tördelődnek.
 
 ---
 

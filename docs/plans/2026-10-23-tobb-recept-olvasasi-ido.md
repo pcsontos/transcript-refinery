@@ -147,9 +147,9 @@ export function runRecipeFlags(values: {
 **Fájlok:**
 - Módosul: `docs/usage.md`
 
-- [ ] **1. lépés:** a „Gyakori kapcsolók” (`docs/usage.md:137` körül) `--limit` sora: `- \`--limit <szám>\`: legfeljebb ennyi elem feldolgozása (pozitív egész)`. A receptes példák (`:125–127`) után egy bekezdés: `Több recept egy futásban: \`run --recipe qa --recipe flashcards\`. Egy közös költségplafon alatt fut, a \`--limit\` az elemeket számolja, nem a recepteket. A \`--queue\` és a \`--retry-failed\` mellett csak egy \`--recipe\` adható meg.`
-- [ ] **2. lépés:** a `list`-szakasz végére (`:196` után): `Kb. 60 oszlopnál keskenyebb terminálon a sorok tördelődnek: a cím legalább 20 karakter széles.` A `--channels` mondata (`:194–195`) kiegészül: `…a \`--limit\` nem hat, és ezt a parancs a hibakimeneten jelzi.`
-- [ ] **3. lépés:** `pnpm lint` zöld (a Markdown-lint is), commit (`docs: Document repeated --recipe and list limits`, `Closes #71`).
+- [x] **1. lépés:** a „Gyakori kapcsolók” (`docs/usage.md:137` körül) `--limit` sora: `- \`--limit <szám>\`: legfeljebb ennyi elem feldolgozása (pozitív egész)`. A receptes példák (`:125–127`) után egy bekezdés: `Több recept egy futásban: \`run --recipe qa --recipe flashcards\`. Egy közös költségplafon alatt fut, a \`--limit\` az elemeket számolja, nem a recepteket. A \`--queue\` és a \`--retry-failed\` mellett csak egy \`--recipe\` adható meg.`
+- [x] **2. lépés:** a `list`-szakasz végére (`:196` után): `Kb. 60 oszlopnál keskenyebb terminálon a sorok tördelődnek: a cím legalább 20 karakter széles.` A `--channels` mondata (`:194–195`) kiegészül: `…a \`--limit\` nem hat, és ezt a parancs a hibakimeneten jelzi.`
+- [x] **3. lépés:** `pnpm lint` zöld (a Markdown-lint is), commit (`docs: Document repeated --recipe and list limits`, `Closes #71`).
 
 ### 3. feladat: `reading_time` a frontmatterben (#291)
 
