@@ -831,7 +831,7 @@ export async function translateChunked(
 }
 ```
 
-- [ ] **1. lépés: a bukó tesztek (`src/recipe/translate-chunks.test.ts`).**
+- [x] **1. lépés: a bukó tesztek (`src/recipe/translate-chunks.test.ts`).**
   ```ts
   import { mkdtemp } from 'node:fs/promises'
   import { tmpdir } from 'node:os'
@@ -1025,6 +1025,7 @@ export async function translateChunked(
       }
       const result = await run(recipe, sorKliens([ELSO, MASODIK]), {
         clock: (fn) => (clocks++, fn()),
+        skipJudge: false,
       })
       expect(clocks).toBe(3)
       expect(scored).toEqual(['## Áttekintés\n\nElső darab.\n\nMásodik darab.'])
@@ -1033,10 +1034,10 @@ export async function translateChunked(
   })
   ```
   A `Criterion.score(ctx: ScoreContext, client)` szignatúra és a `ctx.output` mező a `src/rubric/types.ts:15–33` szerint való. A `MODELL_CFG` szándékosan annotálatlan, mint a `src/pipeline.test.ts:253`-ban.
-- [ ] **2. lépés:** `pnpm vitest run src/recipe/translate-chunks.test.ts` → FAIL (nincs `translate-chunks.ts`).
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próbák: a `stored.some(…)` feltétel törlése → a „más draft modell” teszt bukik; a `glossary = mergeGlossary(…)` sor törlése → az első teszt bukik (a második prompt nem kapja a párt); a `CHUNK_ATTEMPTS` 1-re állítása → az újrakérés tesztje bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Translate long notes chunk by chunk with a shared glossary`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/recipe/translate-chunks.test.ts` → FAIL (nincs `translate-chunks.ts`).
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próbák: a `stored.some(…)` feltétel törlése → a „más draft modell” teszt bukik; a `glossary = mergeGlossary(…)` sor törlése → az első teszt bukik (a második prompt nem kapja a párt); a `CHUNK_ATTEMPTS` 1-re állítása → az újrakérés tesztje bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Translate long notes chunk by chunk with a shared glossary`, `Refs #259`).
 
 ### 6. feladat: bekötés a pipeline-ba, a szójegyzékfájl és az esemény
 
