@@ -21,7 +21,7 @@ import {
 import type { RunSummaryView } from './runs.js'
 
 const REGISTRY = recipesFor({
-  translate: { to: 'hu', recipes: ['summary', 'clean-moderate'] },
+  translate: { to: 'hu', recipes: ['summary', 'clean-moderate'], chunkWords: 4000 },
   configPath: '/p/c.yaml',
 })
 

@@ -4,7 +4,7 @@ import { queueLayout } from './layout.js'
 import { isLegacyQueue, migrateLegacy } from './legacy.js'
 
 const LAYOUT = queueLayout(
-  recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] }, configPath: '/p/c.yaml' }),
+  recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate', 'summary'], chunkWords: 4000 }, configPath: '/p/c.yaml' }),
 )
 
 const REGI = [

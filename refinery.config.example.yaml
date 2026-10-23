@@ -56,6 +56,9 @@ logs:
 # translate:
 #   to: hu
 #   recipes: [clean-moderate, summary, notes]
+#   # E fölött (szóban) a forrásjegyzet darabokban, sorban fordul, a darabok közös
+#   # szójegyzékkel (<alapnév>_glossary-<cél>.md a jegyzetek mellett). Elhagyható.
+#   chunk_words: 4000
 
 # Szerep → modell. A receptek szerepet kérnek, nem modellnevet; a konkrét
 # választás mérési eredmény lesz, nem vélemény (decisions/0004).

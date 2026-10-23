@@ -7,7 +7,7 @@ import { mergeQueue } from './merge.js'
 import { renumberQueue } from './renumber.js'
 
 const LAYOUT = queueLayout(
-  recipesFor({ translate: { to: 'hu', recipes: ['summary'] }, configPath: '/p/c.yaml' }),
+  recipesFor({ translate: { to: 'hu', recipes: ['summary'], chunkWords: 4000 }, configPath: '/p/c.yaml' }),
 )
 
 function elem(itemId: string, title: string, language: string | null): SourceItem {

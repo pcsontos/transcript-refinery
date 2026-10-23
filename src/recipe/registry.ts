@@ -79,7 +79,7 @@ export function recipesFor(
         `translate.recipes: a(z) ${id} recept nem publikálható, tehát nincs jegyzete, amiből fordítani lehetne. (${cfg.configPath})`,
       )
     }
-    const translation = translationOf(source, cfg.translate.to)
+    const translation = translationOf(source, cfg.translate.to, cfg.translate.chunkWords)
     registry[translation.id] = translation
   }
   return registry

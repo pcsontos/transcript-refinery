@@ -6,6 +6,7 @@ import { progressText, type RunEvent as CoreEvent } from '../events.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { assertOverrideModels, withRecipeModels } from '../model/recipe-model.js'
 import { recipesFor } from '../recipe/registry.js'
+import { DEFAULT_CHUNK_WORDS } from '../recipe/split.js'
 import { discoverAll, splitSubtitleName } from '../source/folder.js'
 import { isTextItemId, TEXT_EXTENSIONS } from '../source/text.js'
 import { openState } from '../state/db.js'
@@ -121,7 +122,15 @@ export async function runRecipes(input: {
     ...loaded.cfg,
     sources: [{ name: basename(input.outDir), path: input.outDir }],
     // A célnyelv a kérésé, nem a configé: a futás idejére a kért forrásokból lesz fordítórecept.
-    ...(lang === undefined ? {} : { translate: { to: lang, recipes: [...input.recipes] } }),
+    ...(lang === undefined
+      ? {}
+      : {
+          translate: {
+            to: lang,
+            recipes: [...input.recipes],
+            chunkWords: loaded.cfg.translate?.chunkWords ?? DEFAULT_CHUNK_WORDS,
+          },
+        }),
   }
   // A felülírást a vault-pull és a modellhívás előtt ellenőrizzük: hibás kérésnél egyik sem történik.
   const models = input.models ?? {}

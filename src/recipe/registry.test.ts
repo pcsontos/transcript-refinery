@@ -7,7 +7,7 @@ import type { Recipe } from './types.js'
 
 const cfg = (recipes: string[] | null) => ({
   configPath: '/p/c.yaml',
-  translate: recipes === null ? null : { to: 'hu' as const, recipes },
+  translate: recipes === null ? null : { to: 'hu' as const, recipes, chunkWords: 1500 },
 })
 
 describe('registry', () => {
@@ -45,7 +45,15 @@ describe('recipesFor', () => {
   it('a fordítások az alapreceptek után, a konfig sorrendjében állnak', () => {
     const registry = recipesFor(cfg(['summary', 'clean-moderate']))
     expect(Object.keys(registry)).toEqual([...RECIPE_IDS, 'summary-hu', 'clean-moderate-hu'])
-    expect(registry['clean-moderate-hu']!.translation).toEqual({ source: cleanRecipeFor('moderate'), target: 'hu' })
+    expect(registry['clean-moderate-hu']!.translation).toEqual({
+      source: cleanRecipeFor('moderate'),
+      target: 'hu',
+      chunkWords: 1500,
+    })
+  })
+
+  it('a küszöböt a configból adja tovább a fordítórecepteknek', () => {
+    expect(recipesFor(cfg(['summary']))['summary-hu']!.translation!.chunkWords).toBe(1500)
   })
 
   it('a kulcs a recept saját azonosítója, és minden receptnek van rubrikája', () => {

@@ -107,8 +107,10 @@ export interface Recipe {
   rubric: Rubric
 }
 
-/** Egy fordítórecept forrása és célnyelve. */
+/** Egy fordítórecept forrása, célnyelve és darabolási küszöbe. */
 export interface Translation {
   source: Recipe
   target: LanguageTag
+  /** E fölött (szóban) a forrásjegyzet darabokban fordul (`translate.chunk_words`, #259). */
+  chunkWords: number
 }

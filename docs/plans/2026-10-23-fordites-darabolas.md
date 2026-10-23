@@ -511,7 +511,7 @@ export function translationChunkPrompt(input: ChunkPromptInput): string {
 #   chunk_words: 4000
 ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `src/recipe/translate.test.ts`, új `describe('translationChunkPrompt')` (`ITEM`, `FORRAS` a meglévők):
     - `translationChunkPrompt({ title: 'T', chunk: FORRAS, glossary: [{ source: 'stream', target: 'adatfolyam' }], target: 'hu', part: { index: 2, total: 3 } })` tartalmazza: `'part 2 of 3'`, `GLOSSARY_SEPARATOR`, `'stream | adatfolyam'`, `'Treat each such term the same way throughout.'`, és a `FORRAS`-t a `'--- NOTE ---'` után;
     - `part` nélkül nincs benne `'part '`; üres szójegyzéknél a `'--- GLOSSARY ---\n(empty)'` szerepel.
@@ -519,10 +519,10 @@ export function translationChunkPrompt(input: ChunkPromptInput): string {
     - A meglévő `prompt` tesztek változatlanul zöldek (a `prompt` nem változott).
   - `src/config.test.ts`: a `:121` elvárása `{ to: 'hu', recipes: ['clean-moderate', 'summary'], chunkWords: 4000 }`; `chunk_words: 1500` → `1500`; `chunk_words: 0` és `1.5` → hiba, `/translate\.chunk_words/`.
   - `src/recipe/registry.test.ts:10`: a segéd `{ to: 'hu' as const, recipes, chunkWords: 1500 }`-at ad; új eset: a `recipesFor` fordítórecepetjének `translation!.chunkWords` → `1500`.
-- [ ] **2. lépés:** `pnpm vitest run src/recipe src/config.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód. A `pnpm typecheck` megtalálja a `TranslateConfig` többi építőjét is (a tesztekben `{ to, recipes }` literál); mindegyik `chunkWords: 4000`-et kap.
-- [ ] **4. lépés:** PASS. Mutációs próba: a registry-ben a harmadik argumentum törlése → a `1500`-as registry-teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Add translate.chunk_words and the chunk prompt`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/recipe src/config.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód. A `pnpm typecheck` megtalálja a `TranslateConfig` többi építőjét is (a tesztekben `{ to, recipes }` literál); mindegyik `chunkWords: 4000`-et kap.
+- [x] **4. lépés:** PASS. Mutációs próba: a registry-ben a harmadik argumentum törlése → a `1500`-as registry-teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Add translate.chunk_words and the chunk prompt`, `Refs #259`).
 
 ### 4. feladat: a kész darabok az állapottárban, a szójegyzék követése
 
