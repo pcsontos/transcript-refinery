@@ -647,7 +647,7 @@ A doc-komment (`StateStore.noteDirOf`) kiegészül: „A szójegyzék (`glossary
 ```
 A doc-komment: „A fajta a `recipe` mezőből jön, a szójegyzéknél a `kind`-ból; a régebbi jegyzetekben egyik sincs, ott a fájlnév `_<fajta>.md` utótagja adja.”
 
-- [ ] **1. lépés: a bukó tesztek (`src/state/db.test.ts`, új `describe('StateStore — fordítási darabok')`).**
+- [x] **1. lépés: a bukó tesztek (`src/state/db.test.ts`, új `describe('StateStore — fordítási darabok')`).**
   - `const chunk = (index: number): TranslationChunk => ({ index, sourceHash: 'h', output: \`d${index}\`, glossaryAfter: [{ source: 'a|b', target: \`c${index}\` }], usage: { inputTokens: 10 * index, outputTokens: index } })`.
   - A `saveTranslationChunk('i1', 'proba-hu', chunk(1))`, majd `chunk(0)` után a `translationChunks('i1', 'proba-hu')` → `[chunk(0), chunk(1)]` (index szerint rendezve, a JSON oda-vissza, a `|` megmarad).
   - Ugyanaz az index másodszor, más `output`-tal → felülírja, a hossz marad 2.
@@ -658,10 +658,10 @@ A doc-komment: „A fajta a `recipe` mezőből jön, a szójegyzéknél a `kind`
     - `noteKey({ item_id: 'i1', kind: 'glossary-hu' }, '/v/Szójegyzékek/Videócím – szójegyzék.md')` → `'i1\u0000glossary-hu'` (átnevezve, utótag nélkül is);
     - `noteKey({ item_id: 'i1', recipe: 'summary', kind: 'x' }, '/v/a/B_summary.md')` → a `recipe` nyer;
     - `planRelink([{ itemId: 'i1', kind: 'glossary-hu', path: '/v/a/B_glossary-hu.md' }], [{ path: '/v/Szójegyzékek/Videócím – szójegyzék.md', fields: { item_id: 'i1', kind: 'glossary-hu' } }], () => false)` → a `moved` egy elemű, a `to` az új út.
-- [ ] **2. lépés:** `pnpm vitest run src/state/db.test.ts src/vault/relink.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS, a meglévő relink- és `noteDirOf`-tesztek is. Mutációs próbák: az `ORDER BY chunk_index` törlése → a rendezési teszt bukik (a `chunk(1)` került be előbb); a `kind NOT LIKE 'glossary-%'` törlése → a `noteDirOf`-teszt bukik; a `noteKey` `kind`-ága törlése → az átnevezett eset bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(state): Store translation chunks and track glossary files`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/state/db.test.ts src/vault/relink.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS, a meglévő relink- és `noteDirOf`-tesztek is. Mutációs próbák: az `ORDER BY chunk_index` törlése → **túlélő mutáció** (a PK-index amúgy is rendez; az `ORDER BY` szerződés, nem tesztelhető, marad); a `kind NOT LIKE 'glossary-%'` törlése → a `noteDirOf`-teszt bukik; a `noteKey` `kind`-ága törlése → az átnevezett eset bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(state): Store translation chunks and track glossary files`, `Refs #259`).
 
 ### 5. feladat: a darabolt fordítás futtatója
 

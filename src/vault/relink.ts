@@ -32,15 +32,20 @@ export async function findNotes(vaultPath: string): Promise<FoundNote[]> {
 }
 
 /**
- * `(item_id, kind)` kulcs. A fajta a `recipe` mezőből jön; a régebbi jegyzetekben
- * ez nincs, ott a fájlnév `_<fajta>.md` utótagja adja (átirat: `_transcript.md`).
+ * `(item_id, kind)` kulcs. A fajta a `recipe` mezőből jön, a szójegyzéknél a
+ * `kind`-ból; a régebbi jegyzetekben egyik sincs, ott a fájlnév `_<fajta>.md`
+ * utótagja adja (átirat: `_transcript.md`).
  * `null`, ha nincs `item_id` vagy a fajta nem állapítható meg.
  */
 export function noteKey(fields: Record<string, unknown>, path: string): string | null {
   const itemId = fields.item_id
   if (typeof itemId !== 'string' && typeof itemId !== 'number') return null
   const kind =
-    typeof fields.recipe === 'string' ? fields.recipe : /_([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path)?.[1]
+    typeof fields.recipe === 'string'
+      ? fields.recipe
+      : typeof fields.kind === 'string'
+        ? fields.kind
+        : /_([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path)?.[1]
   return kind === undefined ? null : `${String(itemId)}\u0000${kind}`
 }
 
