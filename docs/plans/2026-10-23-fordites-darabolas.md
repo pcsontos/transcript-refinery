@@ -154,7 +154,7 @@ export function splitForTranslation(body: string, chunkWords: number): string[] 
 }
 ```
 
-- [ ] **1. lépés: a bukó tesztek (`src/recipe/split.test.ts`).**
+- [x] **1. lépés: a bukó tesztek (`src/recipe/split.test.ts`).**
   ```ts
   import { describe, expect, it } from 'vitest'
   import { DEFAULT_CHUNK_WORDS, splitForTranslation } from './split.js'
@@ -206,10 +206,10 @@ export function splitForTranslation(body: string, chunkWords: number): string[] 
     })
   })
   ```
-- [ ] **2. lépés:** `pnpm vitest run src/recipe/split.test.ts` → FAIL (nincs `split.ts`).
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: az `inFence ||` feltétel törlése → a kódkerítéses teszt bukik; a `last.words === 0 ||` törlése → a „szó nélküli darab” teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Split long notes at headings for translation`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/recipe/split.test.ts` → FAIL (nincs `split.ts`).
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: az `inFence ||` feltétel törlése → a kódkerítéses teszt bukik; a `last.words === 0 ||` törlése → a „szó nélküli darab” teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Split long notes at headings for translation`, `Refs #259`).
 
 ### 2. feladat: a szójegyzék formátuma (tiszta függvények + a fájl renderelése)
 
