@@ -1257,11 +1257,11 @@ Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`
 
 **Fájlok:**
 - Módosul: `docs/architecture.md` (§4, `:103–106`)
-- Módosul: `docs/usage.md` (a fordításról szóló rész; `grep -n "fordít" docs/usage.md`)
+- Módosul: `README.md` (a fordításról szóló rész, a „A fordítás nem külön dokumentumtípus” bekezdés után). *A terv a `docs/usage.md`-t nevezte meg, de ott nincs fordításról szóló szakasz; a fordítást a README írja le.*
 
-- [ ] **1. lépés:** `docs/architecture.md` §4: a „A darabolás és a map-reduce összefűzés … teljes egészében kimarad — legfeljebb egy védőkorlát marad a kiugró esetekre.” mondat után új bekezdés: `Ez a fordításra 2026 őszén megfordult: a webináriumok forrásjegyzetei (44 ezer szó fölött) egy hívásban időtúllépésbe futottak (#258). A fordítás ezért \`translate.chunk_words\` (4 000 szó) fölött fejlécnél vágott darabokban, sorban fut, egy közös szójegyzékkel (#259, \`docs/plans/2026-10-23-fordites-darabolas-spec.md\`). A többi recept továbbra is egy hívásban dolgozik.`
-- [ ] **2. lépés:** `docs/usage.md`, a fordítás leírásánál: `A fordítás mellett a jegyzetek mappájában egy \`<alapnév>_glossary-<cél>.md\` szójegyzék is készül: videónként és célnyelvenként egy, minden fordítás ebből indul, és ezt bővíti. A fájlt kézzel is lehet szerkeszteni: a futás csak a táblázat sorait olvassa (\`| forrás | cél |\`), a többi szöveget nem írja át. A \`translate.chunk_words\` (alapértelmezés 4 000) fölötti forrásjegyzet darabokban fordul; egy bukott darab után az újraindítás a kész darabokat nem fizeti ki újra, a \`--force\` mindent újrakezd.`
-- [ ] **3. lépés:** `pnpm lint` zöld (a Markdown-lint is), commit (`docs: Document chunked translation and the glossary`, `Closes #259`).
+- [x] **1. lépés:** `docs/architecture.md` §4: a „A darabolás és a map-reduce összefűzés … teljes egészében kimarad — legfeljebb egy védőkorlát marad a kiugró esetekre.” mondat után új bekezdés: `Ez a fordításra 2026 őszén megfordult: a webináriumok forrásjegyzetei (44 ezer szó fölött) egy hívásban időtúllépésbe futottak (#258). A fordítás ezért \`translate.chunk_words\` (4 000 szó) fölött fejlécnél vágott darabokban, sorban fut, egy közös szójegyzékkel (#259, \`docs/plans/2026-10-23-fordites-darabolas-spec.md\`). A többi recept továbbra is egy hívásban dolgozik.`
+- [x] **2. lépés:** `README.md`, a fordítás leírásánál (nem `docs/usage.md`, lásd fent): `A fordítás mellett a jegyzetek mappájában egy \`<alapnév>_glossary-<cél>.md\` szójegyzék is készül: videónként és célnyelvenként egy, minden fordítás ebből indul, és ezt bővíti. A fájlt kézzel is lehet szerkeszteni: a futás csak a táblázat sorait olvassa (\`| forrás | cél |\`), a többi szöveget nem írja át. A \`translate.chunk_words\` (alapértelmezés 4 000) fölötti forrásjegyzet darabokban fordul; egy bukott darab után az újraindítás a kész darabokat nem fizeti ki újra, a \`--force\` mindent újrakezd.`
+- [x] **3. lépés:** `pnpm lint` zöld (a Markdown-lint is), commit (`docs: Document chunked translation and the glossary`, `Closes #259`).
 
 ### 8. feladat: kalibrálás (valódi pénz, külön jóváhagyással)
 
