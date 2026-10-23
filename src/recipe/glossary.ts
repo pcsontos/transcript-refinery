@@ -30,6 +30,21 @@ function parseRow(line: string): GlossaryPair | null {
   return { source: cells[0]!, target: cells[1]! }
 }
 
+const BULLET = /^[-*]\s+/
+const HEADER_SOURCE = /^(source( term)?|forrás)$/i
+
+/**
+ * A modell válaszsora, ha nem szójegyzéksor (üres lista jelzése, tábla elválasztója,
+ * visszhangozott fejléc): ezek kimaradnak, nem hibásak. A `|`-t tartalmazó, de nem
+ * két cellás sor viszont hibás válasz marad.
+ */
+function isNoise(line: string): boolean {
+  if (!line.includes('|')) return true
+  const cells = line.split('|').map((cell) => cell.trim()).filter((cell) => cell !== '')
+  if (cells.length > 0 && cells.every((cell) => SEPARATOR_CELL.test(cell))) return true
+  return cells.length === 2 && HEADER_SOURCE.test(cells[0]!)
+}
+
 /** Egy darab válasza → fordítás és új párok; `null`, ha a válasz hibás (a darab újragenerálódik). */
 export function parseChunkReply(reply: string): { translation: string; pairs: GlossaryPair[] } | null {
   const lines = reply.split('\n')
@@ -39,8 +54,9 @@ export function parseChunkReply(reply: string): { translation: string; pairs: Gl
   if (translation === '') return null
   const pairs: GlossaryPair[] = []
   for (const line of lines.slice(at[0]! + 1)) {
-    if (line.trim() === '') continue
-    const pair = parseRow(line)
+    const text = line.trim().replace(BULLET, '')
+    if (text === '' || isNoise(text)) continue
+    const pair = parseRow(text)
     if (pair === null) return null
     pairs.push(pair)
   }

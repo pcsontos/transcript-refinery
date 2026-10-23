@@ -32,11 +32,30 @@ describe('parseChunkReply', () => {
     ])
   })
 
+  it('a | nélküli sort, a tábla elválasztó- és fejlécsorát kihagyja, a felsorolásjelet leveszi', () => {
+    const reply = [
+      'Szöveg.',
+      S,
+      '(none)',
+      'No new terms.',
+      '| source term | Hungarian term |',
+      '|---|---|',
+      '- stream | adatfolyam',
+      '* API | API',
+    ].join('\n')
+    expect(parseChunkReply(reply)).toEqual({
+      translation: 'Szöveg.',
+      pairs: [
+        { source: 'stream', target: 'adatfolyam' },
+        { source: 'API', target: 'API' },
+      ],
+    })
+  })
+
   it.each([
     ['elválasztó nélkül', 'Szöveg.'],
     ['két elválasztóval', `a\n${S}\nb | c\n${S}\nd | e`],
     ['üres fordítással', `\n${S}\na | b`],
-    ['csak egy cella', `a\n${S}\negycella`],
     ['három cella', `a\n${S}\na | b | c`],
     ['elválasztó sor mint cella', `a\n${S}\na | ---`],
   ])('hibás válasz: %s', (_, reply) => {

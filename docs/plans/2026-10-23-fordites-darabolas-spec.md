@@ -56,7 +56,9 @@ Minden darab egy modellhívás a recept szerepén (`draft`). A prompt a mai szab
 
 A válasz két részre bomlik az elválasztó mentén. Az elválasztó egy egyedi, fordításban magától nem előforduló sor (a pontos szöveg a végrehajtóé, de **nem `---`**, mert az Markdown vízszintes vonal).
 
-**Hibás válasz** (hiányzó vagy többszörös elválasztó, nem értelmezhető szójegyzéksor, üres fordítás): a darab hibásnak számít és legfeljebb kétszer újragenerálódik; ha utána is hibás, a darab bukik (lásd „Bukás és folytatás").
+**Hibás válasz** (hiányzó vagy többszörös elválasztó, a `|`-t tartalmazó, de nem két cellás szójegyzéksor, üres fordítás): a darab hibásnak számít és legfeljebb kétszer újragenerálódik; ha utána is hibás, a darab bukik (lásd „Bukás és folytatás").
+
+**Zaj, nem hiba** (az Opus-review nyomán, a kalibrálás előtt): az elválasztó alatt a `|` nélküli sor (pl. `(none)`), a Markdown-tábla elválasztósora és a visszhangozott fejléc (`source term | …`) kimarad, a sor elején álló `- ` vagy `* ` jel lekerül. A prompt is kéri, hogy a modell csak `forrás | cél` sorokat írjon.
 
 **Összefésülés:** a darab új párjait a futás a szójegyzékhez adja, kis-nagybetűtől függetlenül. Ha a forráskifejezés már szerepel, **az első fordítás marad** (a következetesség azt jelenti, hogy nem írjuk felül). A prompt nem kap korlátot a lista hosszára; ha a kalibrálás szerint a lista nő akkorára, hogy gond lesz, az külön döntés.
 

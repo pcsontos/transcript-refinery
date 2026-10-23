@@ -110,6 +110,7 @@ export function translationChunkPrompt(input: ChunkPromptInput): string {
     'and below it every technical term that occurs in this text and is not yet in the',
     `GLOSSARY, one per line, as \`source term | ${name} term\`. List the terms you kept in`,
     'English too (`term | term`). If there is no new term, write nothing below that line.',
+    'Write only `source | target` lines: no table header, no bullets, no explanations.',
     '',
     `Title: ${input.title}`,
     '',

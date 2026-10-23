@@ -186,6 +186,7 @@ describe('translationChunkPrompt', () => {
     expect(prompt).toContain(GLOSSARY_SEPARATOR)
     expect(prompt).toContain('stream | adatfolyam')
     expect(prompt).toContain('Treat each such term the same way throughout.')
+    expect(prompt).toContain('no table header, no bullets')
     expect(prompt.split('--- NOTE ---')[1]).toContain(FORRAS)
   })
 
