@@ -7,7 +7,7 @@
 **Felépítés:**
 - **Tiszta függvények:** `src/recipe/split.ts` (darabolás), `src/recipe/glossary.ts` (a válasz szétbontása, a szójegyzék-tábla olvasása és bővítése, összefésülés).
 - **Prompt és config:** a `translate.ts` új `translationChunkPrompt`-ot kap. A `Translation` mostantól a `chunkWords`-öt is viszi: a YAML-ban `translate.chunk_words`, alapértéke 4 000.
-- **Állapottár:** új `translation_chunks` tábla, három metódus hozzá, és egy `markPendingCommit` a szójegyzékfájl commitjához.
+- **Állapottár és követés:** új `translation_chunks` tábla, három metódus hozzá. A szójegyzékfájl `done` sort kap az `artifacts` táblában (`glossary-<cél>`), így a mappakövetés átírja az útját, ha a vaulton belül mozog vagy átneveződik (a frontmatter `kind` mezője alapján). A `noteDirOf` a `glossary-*` sorokat kihagyja.
 - **Futtató:** `src/recipe/translate-chunks.ts` (`translateChunked`), a `refine` helyett a fordításoknál. Darabonként saját óra, sorban futó darabok, legfeljebb háromszori generálás, utána egy pontozás az összefűzött szövegen.
 - **Pipeline:** a recept órája egy `recipeClock` segédbe költözik (a `refine` és a darabok is ezt használják). Fordításnál a futtató hívódik, utána a szójegyzékfájl kiírása, a commit-jelölés és a darabok törlése következik.
 
@@ -49,6 +49,7 @@
 3. **A kézzel írt szöveg a szójegyzékfájlban megmarad**, a tábla utáni próza is; új sor csak a tábla végére kerül, a meglévő sor nem duplázódik. (2. és 6. feladat.)
 4. **`dryRun` mellett** sem tábla-írás, sem szójegyzékfájl nincs, a write-once kihagyáskor a szójegyzékhez nem nyúl a futás. (5. és 6. feladat.)
 5. **Folytatásnál** a lenyomat (forrás, küszöb, célnyelv, draft modell) dönt: egyezésnél a kész darab nem fut újra, eltérésnél minden darab törlődik, és elölről indul. (5. feladat.)
+6. **Áthelyezett vagy átnevezett szójegyzék:** a követés megtalálja (`kind` mező), a következő fordítás a rögzített helyről olvas és oda bővít, nem hoz létre újat a jegyzetek mappájában; az elem többi jegyzete nem költözik a szójegyzék mappájába. (4. és 6. feladat.)
 
 ---
 
@@ -232,7 +233,7 @@ export const GLOSSARY_SEPARATOR = '<<<GLOSSARY>>>'
 /** A szójegyzékfájl utótagja: videónként és célnyelvenként egy, receptfüggetlenül. */
 export const glossaryOutputFile = (target: string): string => `_glossary-${target}.md`
 
-/** A szójegyzékfájl jele a commitra várók között (és a vault-commit üzenetében). */
+/** A szójegyzékfájl fajtája: az `artifacts` követő sora, a frontmatter `kind` mezője és a vault-commit üzenete. */
 export const glossaryKind = (target: string): string => `glossary-${target}`
 
 const TABLE_HEADER = '| forrás | cél |'
@@ -349,6 +350,7 @@ export function appendGlossaryRows(markdown: string, pairs: readonly GlossaryPai
 /**
  * Egy videó egy célnyelvű szójegyzéke (#259), az első fordításkor. Nincs `generated_at`:
  * a fájl a későbbi fordításokkal bővül, a dátumot a vault pre-commit hookja bélyegzi.
+ * A `kind` a mappakövetésé: átnevezés után is ebből ismeri fel (`noteKey`).
  */
 export function renderGlossaryNote(
   item: SourceItem,
@@ -358,6 +360,7 @@ export function renderGlossaryNote(
 ): string {
   const frontmatter = renderFrontmatter([
     ['item_id', item.itemId],
+    ['kind', glossaryKind(target)],
     ['title', item.title],
     ['language', target],
     ['source_language', item.language ?? undefined],
@@ -367,7 +370,7 @@ export function renderGlossaryNote(
   return frontmatter + ['', `# ${item.title} — szójegyzék`, '', glossaryTable(pairs), ''].join('\n')
 }
 ```
-Import: `import { glossaryTable, type GlossaryPair } from '../recipe/glossary.js'`. A `glossary.ts` semmit nem importál, tehát nincs kör.
+Import: `import { glossaryKind, glossaryTable, type GlossaryPair } from '../recipe/glossary.js'`. A `glossary.ts` semmit nem importál, tehát nincs kör.
 
 - [ ] **1. lépés: a bukó tesztek.**
   - `src/recipe/glossary.test.ts`, `const S = GLOSSARY_SEPARATOR`:
@@ -380,7 +383,7 @@ Import: `import { glossaryTable, type GlossaryPair } from '../recipe/glossary.js
     - `readGlossaryTable`: a bemenet `'# Cím\n\nKézi megjegyzés.\n\n| forrás | cél |\n|---|---|\n| stream | adatfolyam |\n| a | b | c |\n| tool | eszköz |\n\n\`\`\`\n| kód | nem |\n\`\`\`\n'` → `{ pairs: [stream/adatfolyam, tool/eszköz], skipped: 1 }`.
     - `appendGlossaryRows`: a bemenet `'előtte\n\n| forrás | cél |\n|---|---|\n| a | b |\n\nutána kézzel\n'` és `[{ source: 'c', target: 'd' }]` → `'előtte\n\n| forrás | cél |\n|---|---|\n| a | b |\n| c | d |\n\nutána kézzel\n'`. Tábla nélkül: `appendGlossaryRows('csak próza\n', [c/d])` → `'csak próza\n\n| forrás | cél |\n|---|---|\n| c | d |\n'`. Üres párlistánál a bemenet betűre (`toBe`).
   - `src/vault/render.test.ts`, új `describe('renderGlossaryNote')`:
-    - `const md = renderGlossaryNote(item(), 'de', [{ source: 'a|b', target: 'c' }], '0.1.0')`: `lintVaultMarkdown(md)` → `[]`; tartalmazza a `\nlanguage: de\n`, `| forrás | cél |`, `| a\\|b | c |` sorokat; nincs benne `generated_at`;
+    - `const md = renderGlossaryNote(item(), 'de', [{ source: 'a|b', target: 'c' }], '0.1.0')`: `lintVaultMarkdown(md)` → `[]`; tartalmazza a `\nkind: glossary-de\n`, `\nlanguage: de\n`, `| forrás | cél |`, `| a\\|b | c |` sorokat; nincs benne `generated_at` és `recipe`;
     - oda-vissza: `readGlossaryTable(md).pairs` → `[{ source: 'a|b', target: 'c' }]`.
 - [ ] **2. lépés:** `pnpm vitest run src/recipe/glossary.test.ts src/vault/render.test.ts` → FAIL.
 - [ ] **3. lépés:** a fenti kód.
@@ -515,11 +518,12 @@ export function translationChunkPrompt(input: ChunkPromptInput): string {
 - [ ] **4. lépés:** PASS. Mutációs próba: a registry-ben a harmadik argumentum törlése → a `1500`-as registry-teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
 - [ ] **5. lépés:** commit (`feat(translate): Add translate.chunk_words and the chunk prompt`, `Refs #259`).
 
-### 4. feladat: a kész darabok az állapottárban
+### 4. feladat: a kész darabok az állapottárban, a szójegyzék követése
 
 **Fájlok:**
-- Módosul: `src/state/db.ts` (séma, `TranslationChunk`, négy metódus)
-- Teszt: `src/state/db.test.ts`
+- Módosul: `src/state/db.ts` (séma, `TranslationChunk`, három metódus, a `noteDirOf` lekérdezése)
+- Módosul: `src/vault/relink.ts` (`noteKey`: a `kind` mező)
+- Teszt: `src/state/db.test.ts`, `src/vault/relink.test.ts`
 
 **Interfész:**
 - Felhasznál: `GlossaryPair` (2. feladat), `ModelUsage` (`src/model/client.ts`), csak típusként.
@@ -537,8 +541,8 @@ export function translationChunkPrompt(input: ChunkPromptInput): string {
   translationChunks(itemId: string, kind: string): TranslationChunk[]
   saveTranslationChunk(itemId: string, kind: string, chunk: TranslationChunk): void
   clearTranslationChunks(itemId: string, kind: string): void
-  markPendingCommit(itemId: string, kind: string, path: string): void
   ```
+- A szójegyzék követő sora a meglévő `recordArtifact`-tal készül (6. feladat), új metódus nem kell hozzá; a commitra várók közé is az veszi fel (`pendingCommit`).
 
 **Séma (`SCHEMA`, a `pending_commits` után):**
 ```sql
@@ -563,13 +567,6 @@ CREATE TABLE IF NOT EXISTS translation_chunks (
 
 **Metódusok (az `openState` visszaadott objektumában, a `clearPendingCommits` után):**
 ```ts
-    markPendingCommit(itemId, kind, path) {
-      db.prepare(
-        `INSERT INTO pending_commits (item_id, kind, path) VALUES (?, ?, ?)
-         ON CONFLICT(item_id, kind) DO UPDATE SET path = excluded.path`,
-      ).run(itemId, kind, toStored(vaultPath, path))
-    },
-
     translationChunks(itemId, kind) {
       return (
         db
@@ -623,19 +620,40 @@ CREATE TABLE IF NOT EXISTS translation_chunks (
       db.prepare('DELETE FROM translation_chunks WHERE item_id = ? AND kind = ?').run(itemId, kind)
     },
 ```
-A `StateStore` interfészben a metódusok doc-kommentje a fenti `Interfész` blokk szerint; a `markPendingCommit`-é: „Egy nem műtermék fájl (a szójegyzék) a commitra várók közé; `artifacts`-sor nem készül hozzá.”
+A `StateStore` interfészben a metódusok doc-kommentje a fenti `Interfész` blokk szerint.
+
+**`noteDirOf` (`src/state/db.ts:401–408`):** a lekérdezés a szójegyzéket kihagyja, különben egy közös szójegyzék-mappa az elem új jegyzeteit is magához húzná (ha az elemnek nincs átirat-sora):
+```ts
+          "SELECT path FROM artifacts WHERE item_id = ? AND status = 'done' AND path IS NOT NULL AND path != '' AND kind NOT LIKE 'glossary-%' ORDER BY (kind = 'transcript') DESC, kind LIMIT 1",
+```
+A doc-komment (`StateStore.noteDirOf`) kiegészül: „A szójegyzék (`glossary-*`) nem számít: az bárhová költözhet.” A `glossary-` előtagú recept-azonosító ma nincs, és nem is lesz: a `glossaryKind` foglalja.
+
+**`noteKey` (`src/vault/relink.ts:39–45`):** a fajta sorrendje `recipe` → `kind` → fájlnév:
+```ts
+  const kind =
+    typeof fields.recipe === 'string'
+      ? fields.recipe
+      : typeof fields.kind === 'string'
+        ? fields.kind
+        : /_([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(path)?.[1]
+```
+A doc-komment: „A fajta a `recipe` mezőből jön, a szójegyzéknél a `kind`-ból; a régebbi jegyzetekben egyik sincs, ott a fájlnév `_<fajta>.md` utótagja adja.”
 
 - [ ] **1. lépés: a bukó tesztek (`src/state/db.test.ts`, új `describe('StateStore — fordítási darabok')`).**
   - `const chunk = (index: number): TranslationChunk => ({ index, sourceHash: 'h', output: \`d${index}\`, glossaryAfter: [{ source: 'a|b', target: \`c${index}\` }], usage: { inputTokens: 10 * index, outputTokens: index } })`.
   - A `saveTranslationChunk('i1', 'proba-hu', chunk(1))`, majd `chunk(0)` után a `translationChunks('i1', 'proba-hu')` → `[chunk(0), chunk(1)]` (index szerint rendezve, a JSON oda-vissza, a `|` megmarad).
   - Ugyanaz az index másodszor, más `output`-tal → felülírja, a hossz marad 2.
   - A `clearTranslationChunks('i1', 'proba-hu')` után üres; a `('i1', 'proba-de')` és az `('i2', 'proba-hu')` sorai maradnak.
-  - `markPendingCommit('i1', 'glossary-hu', '/v/a/B_glossary-hu.md')` (az `openState(path, '/v')`-vel) → a `listPendingCommits()` tartalmazza az utat; a `listPendingNotes()` sorának `kind`-ja `'glossary-hu'`; az `artifactOf('i1', 'glossary-hu')` → `null`.
   - Egy korábbi állapotfájl (tábla nélkül) újranyitása: `openState` kétszer ugyanarra az útra, a második után a `translationChunks` üres listát ad (a `CREATE TABLE IF NOT EXISTS` idempotens).
-- [ ] **2. lépés:** `pnpm vitest run src/state/db.test.ts` → FAIL.
+  - `noteDirOf`: egy elemnek csak `summary` sora van a `/v/a/` alatt és egy `glossary-hu` sora a `/v/Szójegyzékek/` alatt (`recordArtifact`) → a `noteDirOf` a `/v/a`-t adja, pedig a `glossary-hu` betűrendben előrébb áll.
+  - `src/vault/relink.test.ts`:
+    - `noteKey({ item_id: 'i1', kind: 'glossary-hu' }, '/v/Szójegyzékek/Videócím – szójegyzék.md')` → `'i1\u0000glossary-hu'` (átnevezve, utótag nélkül is);
+    - `noteKey({ item_id: 'i1', recipe: 'summary', kind: 'x' }, '/v/a/B_summary.md')` → a `recipe` nyer;
+    - `planRelink([{ itemId: 'i1', kind: 'glossary-hu', path: '/v/a/B_glossary-hu.md' }], [{ path: '/v/Szójegyzékek/Videócím – szójegyzék.md', fields: { item_id: 'i1', kind: 'glossary-hu' } }], () => false)` → a `moved` egy elemű, a `to` az új út.
+- [ ] **2. lépés:** `pnpm vitest run src/state/db.test.ts src/vault/relink.test.ts` → FAIL.
 - [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: az `ORDER BY chunk_index` törlése → a rendezési teszt bukik (a `chunk(1)` került be előbb). Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(state): Store finished translation chunks`, `Refs #259`).
+- [ ] **4. lépés:** PASS, a meglévő relink- és `noteDirOf`-tesztek is. Mutációs próbák: az `ORDER BY chunk_index` törlése → a rendezési teszt bukik (a `chunk(1)` került be előbb); a `kind NOT LIKE 'glossary-%'` törlése → a `noteDirOf`-teszt bukik; a `noteKey` `kind`-ága törlése → az átnevezett eset bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [ ] **5. lépés:** commit (`feat(state): Store translation chunks and track glossary files`, `Refs #259`).
 
 ### 5. feladat: a darabolt fordítás futtatója
 
@@ -1018,7 +1036,7 @@ export async function translateChunked(
 - Teszt: `src/pipeline.test.ts`
 
 **Interfész:**
-- Felhasznál: `translateChunked`, `ChunkedResult` (5.), `glossaryOutputFile`, `glossaryKind`, `readGlossaryTable`, `appendGlossaryRows`, `addedPairs`, `GlossaryPair` (2.), `renderGlossaryNote` (2.), `StateStore.markPendingCommit/clearTranslationChunks` (4.), `writeFileAtomic` (`src/vault/atomic.ts`).
+- Felhasznál: `translateChunked`, `ChunkedResult` (5.), `glossaryOutputFile`, `glossaryKind`, `readGlossaryTable`, `appendGlossaryRows`, `addedPairs`, `GlossaryPair` (2.), `renderGlossaryNote` (2.), `StateStore.clearTranslationChunks` (4.), a meglévő `StateStore.artifactOf/recordArtifact`, `writeFileAtomic` (`src/vault/atomic.ts`).
 
 **`src/pipeline.ts`, új segéd a `placement` után** (a `runRecipe` `:258–292` órája költözik ide, változatlan viselkedéssel):
 ```ts
@@ -1073,12 +1091,10 @@ function recipeClock(
   let translated: { run: ChunkedResult; glossaryPath: string; existing: string | null; known: GlossaryPair[] } | null =
     null
   if (recipe.translation) {
-    const glossaryPath = noteFile(
-      deps.notesRoot,
-      item,
-      glossaryOutputFile(recipe.translation.target),
-      placement(deps, item),
-    )
+    // A rögzített út nyer: a vaulton belül áthelyezett szójegyzéket a követés átírta.
+    const glossaryPath =
+      deps.store.artifactOf(item.itemId, glossaryKind(recipe.translation.target))?.path ??
+      noteFile(deps.notesRoot, item, glossaryOutputFile(recipe.translation.target), placement(deps, item))
     const existing = (await exists(glossaryPath)) ? await readFile(glossaryPath, 'utf8') : null
     const table = existing === null ? { pairs: [], skipped: 0 } : readGlossaryTable(existing)
     if (table.skipped > 0) {
@@ -1141,18 +1157,29 @@ function recipeClock(
 **A `publishNote` után (`:374` után), a `recordArtifact` elé:**
 ```ts
   if (translated !== null && glossary !== null && recipe.translation && published.status === 'written' && !deps.options.dryRun) {
-    if (glossary !== translated.existing) {
+    const changed = glossary !== translated.existing
+    if (changed) {
+      // A rögzített mappa eltűnhetett (a szójegyzéket törölték): ott jön létre újra.
+      await mkdir(dirname(translated.glossaryPath), { recursive: true })
       await writeFileAtomic(translated.glossaryPath, glossary)
-      if (deps.commit) {
-        deps.store.markPendingCommit(item.itemId, glossaryKind(recipe.translation.target), translated.glossaryPath)
-      }
     }
+    // Követő sor változatlan fájlnál is (pl. kézzel odatett szójegyzék): a mappakövetés ezt
+    // írja át, ha a fájl a vaulton belül mozog. Commitra csak a megváltozott fájl vár.
+    deps.store.recordArtifact(
+      item.itemId,
+      glossaryKind(recipe.translation.target),
+      'done',
+      translated.glossaryPath,
+      null,
+      undefined,
+      deps.commit === true && changed,
+    )
     // Siker: a fordítás és a szójegyzék kint van, a darabokra nincs többé szükség.
     if (translated.run.chunked) deps.store.clearTranslationChunks(item.itemId, recipe.id)
   }
 ```
 
-**Importok:** `RefineResult` típus a `./refine/loop.js`-ből; `translateChunked`, `type ChunkedResult` a `./recipe/translate-chunks.js`-ből; `addedPairs`, `appendGlossaryRows`, `glossaryKind`, `glossaryOutputFile`, `readGlossaryTable`, `type GlossaryPair` a `./recipe/glossary.js`-ből; `renderGlossaryNote` a `./vault/render.js`-ből; `writeFileAtomic` a `./vault/atomic.js`-ből; `type Recipe` a `./recipe/types.js`-ből (már importált).
+**Importok:** `RefineResult` típus a `./refine/loop.js`-ből; `translateChunked`, `type ChunkedResult` a `./recipe/translate-chunks.js`-ből; `addedPairs`, `appendGlossaryRows`, `glossaryKind`, `glossaryOutputFile`, `readGlossaryTable`, `type GlossaryPair` a `./recipe/glossary.js`-ből; `renderGlossaryNote` a `./vault/render.js`-ből; `writeFileAtomic` a `./vault/atomic.js`-ből; `mkdir` a `node:fs/promises`-ből és `dirname` a `node:path`-ból (a meglévő importsorokba); `type Recipe` a `./recipe/types.js`-ből (már importált).
 
 **`src/events.ts`, az `item:anchor-skipped` után:**
 ```ts
@@ -1200,6 +1227,8 @@ Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`
     - *darabolva fut, a szójegyzék commitra vár, a darabok törlődnek:* `commit: true`, `draft = sorModell(DARABOK)`, `biro()`; a fordítás fájlja tartalmazza a teljes `MAGYAR_FORDITAS`-t; a szójegyzékben `| problem | probléma |` és `| tool | eszköz |`; a `listPendingCommits()` tartalmazza a `glossaryPath()`-ot; a `translationChunks` → `[]`; az `item:refined` esemény `rounds` hossza 2; az artifact `score` 0,9, a `costUsd` `toBeCloseTo(0.00123, 6)` (2 draft-hívás × 0,0006 $ + 1 bíró-hívás × 0,00003 $).
     - *a második fordítás a meglévő szójegyzékből indul, a kézzel írt szöveg marad:* előtte `writeFile(glossaryPath(), '# Kézi\n\nSaját megjegyzés.\n\n| forrás | cél |\n|---|---|\n| Problem | probléma |\n\nZáró megjegyzés.\n')` (a mappát `mkdir`-rel). A `FORDITO` egy darab, a `draft = fixModell(\`${MAGYAR_FORDITAS}\n${S}\nproblem | gond\ntool | eszköz\`)`. A draft promptja tartalmazza a `'Problem | probléma'`-t; utána a fájl tartalmazza a `'Saját megjegyzés.'` és a `'Záró megjegyzés.'` sort, a `| tool | eszköz |` sort, és a `probléma`/`gond` közül csak a régit (a `'| problem | gond |'` nincs benne).
     - *darab bukása után az újraindítás a kész darabtól folytat:* első `processItem` a `sorModell([DARABOK[0], 'rossz', 'rossz', 'rossz'])`-szel → az artifact `failed`, az `error` tartalmazza a `'2/2. darab'`-ot, a `translationChunks` hossza 1, a szójegyzékfájl nincs. Második `processItem` egy új `sorModell([DARABOK[1]])`-gyel → `published`, a második draft `doGenerateCalls` hossza 1, a `translationChunks` → `[]`.
+    - *a szójegyzék követő sort kap:* az első teszt után a `deps.store.artifactOf(item().itemId, 'glossary-hu')` → `{ status: 'done', path: glossaryPath() }`, a `score` és a `costUsd` `null`.
+    - *áthelyezett szójegyzékből olvas, oda bővít, a jegyzetek mappájában nem hoz létre újat:* egy első fordítás után a fájlt `rename`-mel a `join(notesRoot, 'Szójegyzékek', 'Videócím – szójegyzék.md')` útra viszi (a mappát `mkdir`-rel), majd `relinkNotes(deps.store, notesRoot, true)` (import a `./vault/relink.js`-ből). Egy második fordítás (`translationOf(ATMENO_RECEPT, 'hu')`, `force: true`, a válaszban `tool | eszköz`) után: a draft promptja tartalmazza az első futás párját; az áthelyezett fájlban ott a `| tool | eszköz |` sor; a `glossaryPath()` nem létezik; az `artifactOf(…, 'glossary-hu')!.path` az áthelyezett út; a fordítás fájlja a régi mappában maradt (`noteFile(notesRoot, item(), '_proba-hu.md')` létezik).
     - *dryRun mellett sem tábla, sem szójegyzékfájl:* `options: { dryRun: true }`, `sorModell(DARABOK)` → a `translationChunks` üres, a `glossaryPath()` nem létezik.
     - *nem értelmezhető szójegyzéksor:* előtte a fájlban `| a | b | c |` sor egy táblában; a futás után az események közt `{ type: 'item:glossary-skipped', itemId: item().itemId, recipe: 'proba-hu', rows: 1 }`, és a fájl `| a | b | c |` sora megmaradt.
   - A meglévő időtúllépés-tesztek (a `RecipeTimeout` és az `item:progress`, `currentScope`) változatlanul zöldek: ez a regressziós horgony a `recipeClock` kiemelésére.
@@ -1235,6 +1264,5 @@ Külön kérésre.
 
 ## Ismert korlátok (ponytail)
 
-- A szójegyzékfájl nincs az `artifacts` táblában, tehát a `relinkNotes` (mappaáthelyezés `vault.layout`-változáskor) nem viszi magával. Ha ez előjön, a `pending_commits` mintájára kap egy követő sort.
 - Egy egyidejű második fordító (két külön folyamat ugyanarra a videóra és nyelvre) a szójegyzékfájl olvasás–bővítés–írás ciklusában elveszíthet sorokat. A `run` és a `watch` sorban dolgozik (lásd fent); zárolás akkor kell, ha a serve és a CLI ugyanarra a vaultra párhuzamosan fordít.
 - A modellválaszban a `|`-t tartalmazó kifejezés hibás válasznak számít, és újrakérést okoz. Ha a kalibrálás szerint ez gyakori, a prompt kérheti a `\|` alakot.

@@ -27,6 +27,7 @@ A hosszú forrásjegyzet fordítása darabokban, sorban fut, minden darab megkap
 | Vágás helye | **Fejlécnél**: a szakaszokat sorban egy darabba gyűjti a küszöbig; ha egyetlen szakasz hosszabb, **bekezdéshatáron** vág; kódblokk, táblázat, lista közepén soha | Az issue kikötése |
 | Szójegyzék kimenete | **Szöveges elválasztóval**, séma nélkül: a darab válasza a fordítás, egy elválasztó sor, majd soronként `forrás \| cél` | Nem minden vázlatmodell tud sémás kimenetet (`minimax-m3`); így bármelyikkel működik |
 | Szójegyzék fájlja | **`_glossary-hu.md`** (célnyelvenként: `_glossary-de.md`), **videónként és célnyelvenként egy**, nem receptenként; Markdown-táblázat, a fordítások mellett a vaultban, a vault-commit része | Emberi szemmel olvasható, később szótárként beolvasható; a recept nem számít a kifejezések fordításánál |
+| Áthelyezés a vaultban | **Követő sor** az `artifacts` táblában (`glossary-<cél>` fajta), a frontmatterben **`kind: glossary-<cél>`**; a mappakövetés (`relink`) ugyanúgy átírja az útját, mint a recepteké, átnevezés után is | A szójegyzékek később egy közös mappába kerülhetnek (döntés: 2026-10-23, a terv átnézésekor) |
 | Meglévő szójegyzék | **A következő fordítás ebből indul és bővíti**, akár más recept készítette | A két fordítás szakkifejezései egységesek maradnak; nincs ütközésfeloldás |
 | Mikor készül | **Minden fordításnál**, darabolt és nem darabolt esetben is | Egységes viselkedés, a rövid fordítás is gyarapítja a közös szójegyzéket |
 
@@ -73,12 +74,15 @@ A kész darabokat `\n\n` választja össze. Az összefűzött szövegen fut a ru
 ### A szójegyzékfájl
 
 - Neve: `_glossary-<célnyelv>.md` (pl. `_glossary-de.md`), ugyanabban a mappában, ahová a videó jegyzetei kerülnek (`noteFile`, ugyanaz az elhelyezés). A recept azonosítója nincs benne: egy videó + egy célnyelv = egy fájl.
-- Tartalma: Markdown-táblázat `forrás` és `cél` oszloppal, a gyűlés sorrendjében. Frontmatterét a végrehajtó a `renderRecipeNote` mintájára állítja össze (a vault pre-commit hookja bélyegez, lásd lent).
+- Tartalma: Markdown-táblázat `forrás` és `cél` oszloppal, a gyűlés sorrendjében. Frontmatterét a végrehajtó a `renderRecipeNote` mintájára állítja össze (a vault pre-commit hookja bélyegez, lásd lent); benne van az `item_id` és a `kind: glossary-<cél>`, mert a mappakövetés ezekből ismeri fel.
 - **Minden fordításnál** készül vagy bővül, a darabolt és a nem darabolt úton is. A futás elején a fájlból **csak a `| forrás | cél |` alakú sorokat** olvassa (a fejlécet és az elválasztó sort kihagyva); minden más sor (próza, címsor, üres sor) számára nem létezik. A bővítéskor az új párok a tábla végére kerülnek, **a fájl többi részét a futás nem írja újra**, tehát a kézzel írt szöveg megmarad. Ha a fájlban nincs tábla, a futás a végére fűz egyet.
 - Az a táblázatsor, amelyben a `|` miatt nem dönthető el, melyik a forrás és melyik a cél, kimarad a bemenetből, és a futás figyelmeztet. A fájlt ilyenkor sem írja felül üresre.
-- A fordítással **együtt** íródik ki, és a pipeline kiírt fájljaként a commitra várók közé kerül (`pending_commits`, `src/state/db.ts`), különben kimaradna a vault-commitból. Vault-commit pathspec-kel történik.
+- A fordítással **együtt** íródik ki, és `done` sort kap az `artifacts` táblában `glossary-<cél>` fajtával, a fájl útjával. A pipeline kiírt fájljaként (commit-módban) ugyanezzel a commitra várók közé is bekerül (`pending_commits`, `src/state/db.ts`), különben kimaradna a vault-commitból. Vault-commit pathspec-kel történik.
+- **Hol keresi a futás:** a rögzített úton, ha van sor; különben a jegyzetek mappájában (`noteFile`). Ha a rögzített helyen nincs fájl, ott hoz létre újat.
+- **Áthelyezés:** a vaulton belül mozgatott vagy átnevezett szójegyzéket a mappakövetés (`src/vault/relink.ts`) az `item_id` és a `kind` frontmatter-mező alapján megtalálja, és átírja a rögzített utat, mint a recepteknél. A követés kulcsa (`noteKey`) ezért a `recipe` után a `kind` mezőt is nézi, és csak ezek hiányában a fájlnevet.
+- **A jegyzetek mappáját nem befolyásolja:** az elem rögzített mappája (`noteDirOf`) a `glossary-*` sorokat nem veszi figyelembe, így egy közös szójegyzék-mappa nem húzza magával az elem többi jegyzetét.
 - A write-once szabály (`pipeline.ts:220`) a **fordítás** fájlján dönt: ha az létezik, a futás kihagy, a szójegyzékhez nem nyúl. `--force` a fordítást újragenerálja, a szójegyzék viszont **megmarad és bővül**, nem íródik felül üresre.
-- Nem recept-műtermék: az `artifacts` táblában nincs saját sora, a queue-nézetben és a `done`-keresésben nem jelenik meg.
+- Nem recept: az `artifacts`-sora csak a követést és a commitot szolgálja. A felület, a `list`, a riportok, az áttekintés és a queue a recept-regiszter típusain megy végig (`artifactKinds(registry)`), ezért ott nem jelenik meg; költsége üres, a teljes költség összegét nem változtatja.
 
 ### Bukás és folytatás
 
