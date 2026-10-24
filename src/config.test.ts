@@ -120,7 +120,7 @@ describe('loadConfig', () => {
     expect(
       loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] } }, '/p/c.yaml')
         .translate,
-    ).toEqual({ to: 'hu', recipes: ['clean-moderate', 'summary'], chunkWords: 4000 })
+    ).toEqual({ to: 'hu', recipes: ['clean-moderate', 'summary'], chunkWords: 8000 })
   })
 
   it('a translate.chunk_words megadható, pozitív egész kell', () => {

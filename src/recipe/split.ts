@@ -1,7 +1,7 @@
 import { countWords } from '../normalize/dedupe.js'
 
 /** A fordítás darabolási küszöbe szóban, ha a config nem mond mást. Becslés; a kalibrálás dönti el (#259). */
-export const DEFAULT_CHUNK_WORDS = 4000
+export const DEFAULT_CHUNK_WORDS = 8000
 
 const FENCE = /^\s*(```|~~~)/
 const HEADING = /^#{1,6}\s/

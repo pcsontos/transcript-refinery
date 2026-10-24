@@ -23,7 +23,7 @@ A hosszú forrásjegyzet fordítása darabokban, sorban fut, minden darab megkap
 | Darab bukása | **A kész darabok megmaradnak**, az újraindítás onnan folytatja | A hosszú futás valódi pénzbe kerül; a megismételt költség érezhető |
 | Hová mentjük a kész darabokat | **Új tábla az állapottárban** | Az állapottár már a futások állapotát és a költséget tartja, a konténerben `/data` alatt túléli az újraindítást |
 | Bíró | **A teljes, összefűzött dokumentumon fut**, a vázkapu is | A bíró és a kapuk kódja változatlan; a darabhatárokat is látja. A bíró többnyire ki van kapcsolva (`skipJudge`) |
-| Küszöb | **Config-kulcs** (`translate.chunkWords`), kezdőérték **4 000 szó** | A kezdőérték becslés, nem mért szám; a kalibrálásnál ellenőrzendő |
+| Küszöb | **Config-kulcs** (`translate.chunkWords`), kezdőérték **8 000 szó** | Mért (`docs/measurements/2026-10-24-forditas-darabolas-kalibralas.md`): a modell hívásonként ~40 ezer kimeneti tokent használ, ezért a nagyobb darab olcsóbb; a 4 000 a költséget kb. megduplázta |
 | Vágás helye | **Fejlécnél**: a szakaszokat sorban egy darabba gyűjti a küszöbig; ha egyetlen szakasz hosszabb, **bekezdéshatáron** vág; kódblokk, táblázat, lista közepén soha | Az issue kikötése |
 | Szójegyzék kimenete | **Szöveges elválasztóval**, séma nélkül: a darab válasza a fordítás, egy elválasztó sor, majd soronként `forrás \| cél` | Nem minden vázlatmodell tud sémás kimenetet (`minimax-m3`); így bármelyikkel működik |
 | Szójegyzék fájlja | **`_glossary-hu.md`** (célnyelvenként: `_glossary-de.md`), **videónként és célnyelvenként egy**, nem receptenként; Markdown-táblázat, a fordítások mellett a vaultban, a vault-commit része | Emberi szemmel olvasható, később szótárként beolvasható; a recept nem számít a kifejezések fordításánál |
@@ -37,7 +37,7 @@ A hosszú forrásjegyzet fordítása darabokban, sorban fut, minden darab megkap
 
 A fordítás bemenete a forrásjegyzet törzse (`translate.ts`: `transcript`). Ha ennek szószáma **legfeljebb** a `translate.chunkWords`, egyetlen hívás fut, egyetlen darabbal: nincs tábla-írás (a `translation_chunks` táblát nem érinti), de a szójegyzék ugyanúgy bemenet és kimenet. Fölötte a darabolt út fut.
 
-A `translate.chunkWords` pozitív egész, a `TranslateSchema` (`src/config.ts:66`) kapja; alapértelmezése 4 000.
+A `translate.chunkWords` pozitív egész, a `TranslateSchema` (`src/config.ts:66`) kapja; alapértelmezése 8 000.
 
 ### A darabolás
 
@@ -84,7 +84,7 @@ A kész darabokat `\n\n` választja össze. Az összefűzött szövegen fut a ru
 - **Áthelyezés:** a vaulton belül mozgatott vagy átnevezett szójegyzéket a mappakövetés (`src/vault/relink.ts`) az `item_id` és a `kind` frontmatter-mező alapján megtalálja, és átírja a rögzített utat, mint a recepteknél. A követés kulcsa (`noteKey`) ezért a `recipe` után a `kind` mezőt is nézi, és csak ezek hiányában a fájlnevet.
 - **A jegyzetek mappáját nem befolyásolja:** az elem rögzített mappája (`noteDirOf`) a `glossary-*` sorokat nem veszi figyelembe, így egy közös szójegyzék-mappa nem húzza magával az elem többi jegyzetét.
 - A write-once szabály (`pipeline.ts:220`) a **fordítás** fájlján dönt: ha az létezik, a futás kihagy, a szójegyzékhez nem nyúl. `--force` a fordítást újragenerálja, a szójegyzék viszont **megmarad és bővül**, nem íródik felül üresre.
-- Nem recept: az `artifacts`-sora csak a követést és a commitot szolgálja. A felület, a `list`, a riportok, az áttekintés és a queue a recept-regiszter típusain megy végig (`artifactKinds(registry)`), ezért ott nem jelenik meg; költsége üres, a teljes költség összegét nem változtatja.
+- Nem recept: az `artifacts`-sora csak a követést és a commitot szolgálja. A felület, a `list`, a riportok, az áttekintés és a queue a recept-regiszter típusain megy végig (`artifactKinds(registry)`), ezért a receptek között nem jelenik meg; a serve `/notes` listájában viszont igen (a jegyzetekkel együtt, `kind: glossary-<cél>`); költsége üres, a teljes költség összegét nem változtatja.
 
 ### Bukás és folytatás
 
@@ -117,7 +117,7 @@ A séma az állapottár `CREATE TABLE IF NOT EXISTS` mintáját követi (új tá
 
 A szelet végén, **külön jóváhagyással**, mert valódi pénzbe kerül. Tárgya a `zgWUhE6HjrI` jegyzetének fordítása, és ezt kell megmérni:
 - a darabolt fordítás lefut-e, és átmegy-e a vázkapun (a mai tapasztalat szerint a vázkapu a hosszú fordításokat 0 pontra viszi, lásd `2026-09-17-forditas-kalibralas.md`; ezt a #42 külön kezeli);
-- a 4 000 szavas küszöb jó-e, és mekkora lesz a szójegyzék;
+- a 8 000 szavas küszöb jó-e, és mekkora lesz a szójegyzék;
 - a bíró (ha be van kapcsolva) bemenete az egész dokumentumnál elfér-e, és nem fut-e időtúllépésbe;
 - a tényleges költség a `/key/info` szerint.
 

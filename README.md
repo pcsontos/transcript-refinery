@@ -177,7 +177,7 @@ A fordítás mellett a jegyzetek mappájában egy `<alapnév>_glossary-<cél>.md
 szójegyzék is készül: videónként és célnyelvenként egy, minden fordítás ebből
 indul, és ezt bővíti. A fájlt kézzel is lehet szerkeszteni: a futás csak a
 táblázat sorait olvassa (`| forrás | cél |`), a többi szöveget nem írja át. A
-`translate.chunk_words` (alapértelmezés 4 000) fölötti forrásjegyzet
+`translate.chunk_words` (alapértelmezés 8 000) fölötti forrásjegyzet
 darabokban fordul; egy bukott darab után az újraindítás a kész darabokat nem
 fizeti ki újra, a `--force` mindent újrakezd.
 

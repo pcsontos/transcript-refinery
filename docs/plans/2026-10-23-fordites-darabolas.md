@@ -1268,9 +1268,9 @@ Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`
 **Issue:** #318
 
 A spec „Kalibrálás” szakasza szerint, a kód-PR előtt vagy mellett, a felhasználó jóváhagyásával.
-- [ ] **1. lépés:** a `zgWUhE6HjrI` forrásjegyzetének szószáma és a becslés (`refinery run --dry-run …` a fordítórecepttel): a becslésre legalább kétszeres ráhagyás, a felhasználó jóváhagyja a keretet.
-- [ ] **2. lépés:** a futás a lokális configgal; a darabolás folytatható, tehát egy megszakadt futás nem fizetődik ki kétszer. Mérendő: lefut-e, átmegy-e a vázkapun (ha nem, az a #42 dolga, nem ennek a szeletnek a bukása), hány darab lett és mekkora a szójegyzék, a bíró (ha be van kapcsolva) elfér-e, nincs-e időtúllépés, és a tényleges költség a `/key/info` szerint.
-- [ ] **3. lépés:** az eredmény a `docs/measurements/` alá, és ha a 4 000-es küszöb nem jó, a `DEFAULT_CHUNK_WORDS` módosítása ugyanebben a PR-ben.
+- [x] **1. lépés:** a `zgWUhE6HjrI` forrásjegyzetének szószáma és a becslés (`refinery run --dry-run …` a fordítórecepttel): a becslésre legalább kétszeres ráhagyás, a felhasználó jóváhagyja a keretet.
+- [x] **2. lépés:** a futás a lokális configgal; a darabolás folytatható, tehát egy megszakadt futás nem fizetődik ki kétszer. Mérendő: lefut-e, átmegy-e a vázkapun (ha nem, az a #42 dolga, nem ennek a szeletnek a bukása), hány darab lett és mekkora a szójegyzék, a bíró (ha be van kapcsolva) elfér-e, nincs-e időtúllépés, és a tényleges költség a `/key/info` szerint.
+- [x] **3. lépés:** az eredmény a `docs/measurements/` alá, és ha a 4 000-es küszöb nem jó, a `DEFAULT_CHUNK_WORDS` módosítása ugyanebben a PR-ben. Elvégezve: 8 000 (`docs/measurements/2026-10-24-forditas-darabolas-kalibralas.md`); az 1. lépés dry-runja pénzbe kerül, ezért szkriptes becslés váltotta, a tárgy a helyi `-QFHIoCo-Ko` lett.
 
 ### 9. feladat: kód-PR, kiadás
 

@@ -106,7 +106,7 @@ kiugró esetekre.
 
 Ez a fordításra 2026 őszén megfordult: a webináriumok forrásjegyzetei (44 ezer
 szó fölött) egy hívásban időtúllépésbe futottak (#258). A fordítás ezért
-`translate.chunk_words` (4 000 szó) fölött fejlécnél vágott darabokban, sorban
+`translate.chunk_words` (8 000 szó) fölött fejlécnél vágott darabokban, sorban
 fut, egy közös szójegyzékkel (#259,
 `docs/plans/2026-10-23-fordites-darabolas-spec.md`). A többi recept továbbra is
 egy hívásban dolgozik.

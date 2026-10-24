@@ -198,8 +198,8 @@ describe('translationChunkPrompt', () => {
 })
 
 describe('translation.chunkWords', () => {
-  it('alapból 4000, megadva a megadott', () => {
-    expect(translationOf(cleanRecipeFor('moderate'), 'hu').translation!.chunkWords).toBe(4000)
+  it('alapból 8000, megadva a megadott', () => {
+    expect(translationOf(cleanRecipeFor('moderate'), 'hu').translation!.chunkWords).toBe(8000)
     expect(translationOf(cleanRecipeFor('moderate'), 'hu', 1500).translation!.chunkWords).toBe(1500)
   })
 })
