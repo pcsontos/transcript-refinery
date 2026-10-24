@@ -7,7 +7,7 @@ import type { ModelClient } from '../model/client.js'
 import { openState, type StateStore } from '../state/db.js'
 import { GLOSSARY_SEPARATOR as S } from './glossary.js'
 import { translationOf } from './translate.js'
-import { translateChunked, type ChunkedDeps } from './translate-chunks.js'
+import { chunkSourceHash, translateChunked, type ChunkedDeps } from './translate-chunks.js'
 import type { Recipe, RecipeInput } from './types.js'
 
 const MODELL_CFG = {
@@ -90,7 +90,6 @@ function deps(client: ModelClient, over: Partial<ChunkedDeps> = {}): ChunkedDeps
     guard: createCostGuard(5),
     store,
     persist: true,
-    force: false,
     skipJudge: true,
     clock: (fn) => fn(),
     onGenerate: () => {},
@@ -155,10 +154,12 @@ describe('translateChunked', () => {
     expect(client.prompts).toHaveLength(2)
   })
 
-  it('force mellett a tárolt darabokat törli, és mindent újragenerál', async () => {
+  it('promptcsere után (a sablon nélküli lenyomattal tárolt darab) elölről kezd', async () => {
     await expect(run(fordito(10), sorKliens([ELSO, HIBAS, HIBAS, HIBAS]))).rejects.toThrow()
+    const [kesz] = store.translationChunks('a1', 'proba-hu')
+    store.saveTranslationChunk('a1', 'proba-hu', { ...kesz!, sourceHash: chunkSourceHash(FORRAS, 10, 'hu', MODELL_CFG.models.draft) })
     const client = sorKliens([ELSO, MASODIK])
-    await run(fordito(10), client, { force: true })
+    await run(fordito(10), client)
     expect(client.prompts).toHaveLength(2)
   })
 
@@ -178,7 +179,7 @@ describe('translateChunked', () => {
     expect(store.translationChunks('a1', 'proba-hu')).toEqual([])
   })
 
-  it('darabonként saját óra, a pontozásnak külön; a pontozás az összefűzött szövegen', async () => {
+  it('darabkísérletenként saját óra, a pontozásnak külön; a pontozás az összefűzött szövegen', async () => {
     let clocks = 0
     const scored: string[] = []
     const recipe: Recipe = {
@@ -188,11 +189,12 @@ describe('translateChunked', () => {
         passThreshold: 0.8,
       },
     }
-    const result = await run(recipe, sorKliens([ELSO, MASODIK]), {
+    const result = await run(recipe, sorKliens([ELSO, HIBAS, MASODIK]), {
       clock: (fn) => (clocks++, fn()),
       skipJudge: false,
     })
-    expect(clocks).toBe(3)
+    // Kísérletenként egy (3 hívás), plusz a pontozás.
+    expect(clocks).toBe(4)
     expect(scored).toEqual(['## Áttekintés\n\nElső darab.\n\nMásodik darab.'])
     expect(result.rounds.map((round) => [round.score, round.gaps])).toEqual([[0.7, 0], [0.7, 1]])
   })

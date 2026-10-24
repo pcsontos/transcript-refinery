@@ -31,18 +31,39 @@ function parseRow(line: string): GlossaryPair | null {
 }
 
 const BULLET = /^[-*]\s+/
-const HEADER_SOURCE = /^(source( term)?|forrás)$/i
+const HEADER_SOURCE = /^(source( term)?|term|forrás)$/i
+
+const cellsOf = (line: string): string[] =>
+  line.split('|').map((cell) => cell.trim()).filter((cell) => cell !== '')
+const isSeparatorRow = (line: string): boolean => {
+  const cells = cellsOf(line)
+  return cells.length > 0 && cells.every((cell) => SEPARATOR_CELL.test(cell))
+}
 
 /**
  * A modell válaszsora, ha nem szójegyzéksor (üres lista jelzése, tábla elválasztója,
- * visszhangozott fejléc): ezek kimaradnak, nem hibásak. A `|`-t tartalmazó, de nem
+ * visszhangozott fejléc): ezek kimaradnak, nem hibásak. Fejléc az ismert első cellájú
+ * sor, és bármely sor, amely után a tábla elválasztója jön. A `|`-t tartalmazó, de nem
  * két cellás sor viszont hibás válasz marad.
  */
-function isNoise(line: string): boolean {
-  if (!line.includes('|')) return true
-  const cells = line.split('|').map((cell) => cell.trim()).filter((cell) => cell !== '')
-  if (cells.length > 0 && cells.every((cell) => SEPARATOR_CELL.test(cell))) return true
+function isNoise(line: string, next: string | undefined): boolean {
+  if (!line.includes('|') || isSeparatorRow(line)) return true
+  if (next !== undefined && isSeparatorRow(next)) return true
+  const cells = cellsOf(line)
   return cells.length === 2 && HEADER_SOURCE.test(cells[0]!)
+}
+
+/**
+ * A kódkerítésbe csomagolt fordítás kerítése nélkül: a záró kerítés az elválasztó
+ * alá csúszhat (ott zaj), vagy a fordítás végén áll. Más kódkerítéshez nem nyúl.
+ */
+function unwrapFence(translation: string): string {
+  const lines = translation.split('\n')
+  if (!FENCE.test(lines[0]!)) return translation
+  const fences = lines.filter((line) => FENCE.test(line)).length
+  if (fences % 2 === 1) return lines.slice(1).join('\n').trim()
+  if (/^\s*(```|~~~)\s*(markdown|md)\s*$/i.test(lines[0]!) && FENCE.test(lines.at(-1)!)) return lines.slice(1, -1).join('\n').trim()
+  return translation
 }
 
 /** Egy darab válasza → fordítás és új párok; `null`, ha a válasz hibás (a darab újragenerálódik). */
@@ -50,12 +71,15 @@ export function parseChunkReply(reply: string): { translation: string; pairs: Gl
   const lines = reply.split('\n')
   const at = lines.flatMap((line, index) => (line.trim() === GLOSSARY_SEPARATOR ? [index] : []))
   if (at.length !== 1) return null
-  const translation = lines.slice(0, at[0]).join('\n').trim()
+  const translation = unwrapFence(lines.slice(0, at[0]).join('\n').trim())
   if (translation === '') return null
   const pairs: GlossaryPair[] = []
-  for (const line of lines.slice(at[0]! + 1)) {
-    const text = line.trim().replace(BULLET, '')
-    if (text === '' || isNoise(text)) continue
+  const rest = lines
+    .slice(at[0]! + 1)
+    .map((line) => line.trim().replace(BULLET, ''))
+    .filter((text) => text !== '')
+  for (const [index, text] of rest.entries()) {
+    if (isNoise(text, rest[index + 1])) continue
     const pair = parseRow(text)
     if (pair === null) return null
     pairs.push(pair)

@@ -1,6 +1,6 @@
 import { countWords } from '../normalize/dedupe.js'
 
-/** A fordítás darabolási küszöbe szóban, ha a config nem mond mást. Becslés; a kalibrálás dönti el (#259). */
+/** A fordítás darabolási küszöbe szóban, ha a config nem mond mást (#259, mérve: `docs/measurements/2026-10-24-forditas-darabolas-kalibralas.md`). */
 export const DEFAULT_CHUNK_WORDS = 8000
 
 const FENCE = /^\s*(```|~~~)/
@@ -21,6 +21,8 @@ interface Block {
 
 const firstLine = (part: string): string => part.split('\n').find((line) => line.trim() !== '') ?? ''
 const isHeadingOnly = (part: string): boolean => HEADING.test(part.trim()) && !part.trim().includes('\n')
+/** A rész valamelyik sora listaelem: a lista a rész közepén is kezdődhet (fejléc vagy bevezető mondat után). */
+const hasListItem = (part: string): boolean => part.split('\n').some((line) => LIST_ITEM.test(line))
 
 /**
  * A törzs `\n\n` mentén, részekre bontva. A `split`/`join` pár miatt az összefűzés
@@ -38,8 +40,7 @@ function blocksOf(body: string): Block[] {
       prev !== undefined &&
       (inFence || prev.headingOnly || (prev.list && (LIST_ITEM.test(first) || INDENTED.test(first))))
     if (joins) {
-      // A fejléc után kezdődő lista is lista: a következő elem hozzá tapad.
-      if (prev.headingOnly) prev.list = LIST_ITEM.test(first)
+      prev.list ||= hasListItem(part)
       prev.parts.push(part)
       prev.words += countWords(part)
       prev.headingOnly = isHeadingOnly(part)
@@ -49,7 +50,7 @@ function blocksOf(body: string): Block[] {
         words: countWords(part),
         heading: HEADING.test(first),
         headingOnly: isHeadingOnly(part),
-        list: LIST_ITEM.test(first),
+        list: hasListItem(part),
       })
     }
     for (const line of part.split('\n')) if (FENCE.test(line)) inFence = !inFence

@@ -52,6 +52,24 @@ describe('parseChunkReply', () => {
     })
   })
 
+  it('a visszhangozott, ismeretlen feliratú táblafejlécet is kihagyja', () => {
+    const reply = ['Szöveg.', S, '| Term | Translation |', '|---|---|', '| stream | adatfolyam |'].join('\n')
+    expect(parseChunkReply(reply)!.pairs).toEqual([{ source: 'stream', target: 'adatfolyam' }])
+    expect(parseChunkReply(`Szöveg.\n${S}\nTerm | Translation\nstream | adatfolyam`)!.pairs).toHaveLength(1)
+  })
+
+  it.each([
+    ['nyitó kerítés, a záró az elválasztó alatt', `\`\`\`markdown\n## Cím\n\nSzöveg.\n${S}\na | b\n\`\`\``],
+    ['markdown-kerítés két végén', `\`\`\`markdown\n## Cím\n\nSzöveg.\n\`\`\`\n${S}\na | b`],
+  ])('a kódkerítésbe csomagolt fordításról leveszi a kerítést: %s', (_, reply) => {
+    expect(parseChunkReply(reply)).toEqual({ translation: '## Cím\n\nSzöveg.', pairs: [{ source: 'a', target: 'b' }] })
+  })
+
+  it('a fordításban lévő valódi kódblokkhoz nem nyúl', () => {
+    const translation = '```ts\nconst a = 1\n```'
+    expect(parseChunkReply(`${translation}\n${S}`)!.translation).toBe(translation)
+  })
+
   it.each([
     ['elválasztó nélkül', 'Szöveg.'],
     ['két elválasztóval', `a\n${S}\nb | c\n${S}\nd | e`],

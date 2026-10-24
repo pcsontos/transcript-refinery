@@ -1096,6 +1096,29 @@ describe('processItem — darabolt fordítás és szójegyzék (#259)', () => {
     expect(store.translationChunks(item().itemId, 'proba-hu')).toEqual([])
   })
 
+  it('a linten bukott darabolt fordítás darabjai törlődnek: az újrafutás újragenerál', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await fordit(FORDITO10, sorModell([DARABOK[0]!, `A második bekezdés.\n${S}\ntool | [[eszköz]]`]))
+    expect(store.artifactOf(item().itemId, 'proba-hu')!.error).toContain('a szójegyzék megsérti')
+    expect(store.translationChunks(item().itemId, 'proba-hu')).toEqual([])
+
+    const draft = sorModell(DARABOK)
+    expect((await fordit(FORDITO10, draft)).status).toBe('published')
+    expect(draft.doGenerateCalls).toHaveLength(2)
+  })
+
+  it('bukott --force újrafordítás után az újabb --force a kész darabtól folytat', async () => {
+    await forrasJegyzet(store, ANGOL_FORRAS)
+    await fordit(FORDITO10, sorModell(DARABOK))
+    const force = { options: { force: true } }
+    await fordit(FORDITO10, sorModell([DARABOK[0]!, 'rossz', 'rossz', 'rossz']), force)
+    expect(store.translationChunks(item().itemId, 'proba-hu')).toHaveLength(1)
+
+    const draft = sorModell([DARABOK[1]!])
+    expect((await fordit(FORDITO10, draft, force)).status).toBe('published')
+    expect(draft.doGenerateCalls).toHaveLength(1)
+  })
+
   it('áthelyezett szójegyzékből olvas, oda bővít, a jegyzetek mappájában nem hoz létre újat', async () => {
     await forrasJegyzet(store, ANGOL_FORRAS)
     await fordit(FORDITO10, sorModell(DARABOK))

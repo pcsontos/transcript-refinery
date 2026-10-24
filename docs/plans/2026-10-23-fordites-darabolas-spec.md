@@ -1,6 +1,6 @@
 # Spec — a fordítás darabolása és a fordítás közben készülő szójegyzék
 
-**Dátum:** 2026-10-23 · **Státusz:** jóváhagyásra vár
+**Dátum:** 2026-10-23 · **Státusz:** jóváhagyva (a kalibrálás és a záró review után igazítva, 2026-10-24)
 
 Ez a dokumentum a #259 issue tervezéséből készült. Ahol ez a spec nem mond mást, a mai viselkedés marad. A #260 (önálló szójegyzék-recept) **nem része**; erről lent, „Nem cél".
 
@@ -58,13 +58,13 @@ A válasz két részre bomlik az elválasztó mentén. Az elválasztó egy egyed
 
 **Hibás válasz** (hiányzó vagy többszörös elválasztó, a `|`-t tartalmazó, de nem két cellás szójegyzéksor, üres fordítás): a darab hibásnak számít és legfeljebb kétszer újragenerálódik; ha utána is hibás, a darab bukik (lásd „Bukás és folytatás").
 
-**Zaj, nem hiba** (az Opus-review nyomán, a kalibrálás előtt): az elválasztó alatt a `|` nélküli sor (pl. `(none)`), a Markdown-tábla elválasztósora és a visszhangozott fejléc (`source term | …`) kimarad, a sor elején álló `- ` vagy `* ` jel lekerül. A prompt is kéri, hogy a modell csak `forrás | cél` sorokat írjon.
+**Zaj, nem hiba** (az Opus-review nyomán, a kalibrálás előtt): az elválasztó alatt a `|` nélküli sor (pl. `(none)`), a Markdown-tábla elválasztósora és a visszhangozott fejléc (`source term | …`, `term | …`, és bármely sor, amely után a tábla elválasztósora jön) kimarad, a sor elején álló `- ` vagy `* ` jel lekerül. Ha a modell a fordítást kódkerítésbe csomagolja (a nyitó kerítés párja hiányzik a fordításból, vagy `` ```markdown `` a két végén), a kerítés lekerül; a fordítás valódi kódblokkjához nem nyúl. A prompt is kéri, hogy a modell csak `forrás | cél` sorokat írjon.
 
 **Összefésülés:** a darab új párjait a futás a szójegyzékhez adja, kis-nagybetűtől függetlenül. Ha a forráskifejezés már szerepel, **az első fordítás marad** (a következetesség azt jelenti, hogy nem írjuk felül). A prompt nem kap korlátot a lista hosszára; ha a kalibrálás szerint a lista nő akkorára, hogy gond lesz, az külön döntés.
 
 ### Az idő és a költség
 
-- **A recept órája darabonként indul.** A mai 25 perces recept-időkorlát (`DEFAULT_RECIPE_TIMEOUT_MINUTES`, `src/model/deadline.ts`) a teljes recepté; darabolva a teljes futás könnyen meghaladná. Ezért minden darab saját órát kap (ugyanaz az érték, az élő követés életjelével együtt), az összefűzés utáni pontozásnak pedig újat.
+- **A recept órája darabonként indul.** A mai 25 perces recept-időkorlát (`DEFAULT_RECIPE_TIMEOUT_MINUTES`, `src/model/deadline.ts`) a teljes recepté; darabolva a teljes futás könnyen meghaladná. Ezért minden darab minden generálási kísérlete saját órát kap (ugyanaz az érték, az élő követés életjelével együtt), az összefűzés utáni pontozásnak pedig újat. Kísérletenként, nem darabonként: egy 8 000 szavas darab kb. 9 perc, három kísérlet nem férne a 25 percbe.
 - **A költségkeret** (`guard.add`) minden darab hívása után könyvel, a szerepenként, ahogy ma. Az indulás előtti becslés (`outputRatio`) az egész bemenetre vonatkozik, változatlanul.
 - **A riport és az `item:refined` esemény** a darabok és a pontozás **együttes** felhasználását mutatja. A darabok generálása a `rounds` egy-egy bejegyzése (a `generateUsage` a darab hívása); a pontozás az utolsóé. A részletes alak a végrehajtóé, de a `RoundTrace` szándékosan **számot visz, szöveget nem** (a vault-tartalom nem szivároghat a riportba): a szójegyzék és a darabok szövege nem kerülhet bele.
 - **Folytatásnál** a már kész darabok korábbi költsége a tárban van (tokenek); a `costUsd` a fordítás **teljes** költsége, a költségőr viszont csak az ebben a futásban elköltöttet számolja.
@@ -93,11 +93,11 @@ A kész darabokat `\n\n` választja össze. Az összefűzött szövegen fut a ru
 `translation_chunks(item_id, kind, chunk_index, source_hash, output, glossary_after, input_tokens, output_tokens, created_at)`, elsődleges kulcs: `(item_id, kind, chunk_index)`.
 
 - Egy darab kész állapota akkor kerül a táblába, amikor a fordítása és a szójegyzék-bővítése is értelmezhető. A `glossary_after` az addigi teljes szójegyzék (az újraindítás ebből folytatja).
-- A `source_hash` a forrásjegyzet törzsének, a `chunkWords` értékének, a **célnyelvnek** és a **draft modell nevének** lenyomata. A prompt szövegének változását nem fedi (ez a szerző döntése): promptcsere után a `--force` kéri az újrageneráláshoz. Újraindításkor az a tárolt darab érvényes, amelynek lenyomata egyezik. **Eltérő lenyomatnál az elem összes tárolt darabja törlődik, és a fordítás elölről indul**: ha a forrás vagy a küszöb változott, a darabhatárok mások.
+- A `source_hash` a forrásjegyzet törzsének, a `chunkWords` értékének, a **célnyelvnek** és a **draft modell nevének** lenyomata. A darabprompt sablonját (a változó részek nélkül) is fedi, így promptcsere után a tárolt darabok érvénytelenek; korábban ezt a `--force` kezelte, de az már nem törli a darabokat (lent). Újraindításkor az a tárolt darab érvényes, amelynek lenyomata egyezik. **Eltérő lenyomatnál az elem összes tárolt darabja törlődik, és a fordítás elölről indul**: ha a forrás vagy a küszöb változott, a darabhatárok mások.
 - Újraindításkor a folytatás az első hiányzó darabbal kezdődik, a legutolsó tárolt `glossary_after`-rel.
 - Ha egy darab az újrapróbálások után is bukik, az elem hibás (mint ma egy bukó fordítás), a kész darabok a táblában maradnak.
-- **Siker után** az elem darabjai törlődnek a táblából. Siker = a fordítás és a szójegyzék **kiíródott**, akkor is, ha a kapuk alacsony pontszámot adtak (szerzői döntés): a write-once szabály úgyis megakadályozza az újrafutást, `--force` pedig a darabokat törölné. Ha az összefűzés utáni lépés hibával áll le (a kiírás előtt), a darabok megmaradnak.
-- `--force`: törli az elem tárolt darabjait, és mindent újragenerál.
+- **Siker után** az elem darabjai törlődnek a táblából. Siker = a fordítás és a szójegyzék **kiíródott**, akkor is, ha a kapuk alacsony pontszámot adtak (szerzői döntés): a write-once szabály úgyis megakadályozza az újrafutást. Ha az összefűzés utáni lépés hibával áll le (a kiírás előtt), a darabok megmaradnak, **kivéve a vault-lint bukását**: ott törlődnek, mert a tárolt szöveg minden újrafutáskor ugyanígy bukna; az újrafutás újragenerál, mint darabolás nélkül.
+- `--force`: a fordítást újragenerálja, a tárolt darabokat **nem törli**. Siker után a tábla üres, tehát ott mindent újragenerál; egy bukott `--force` futás után viszont az újabb `--force` a kész darabokkal folytat (a régi fordításfájl miatt a sima futás kihagyná az elemet).
 - `dryRun`: semmit nem ír a táblába.
 
 A séma az állapottár `CREATE TABLE IF NOT EXISTS` mintáját követi (új tábla, nem migráció). A leírása a `src/state/db.ts` sémakommentjeit kövesse.

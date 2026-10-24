@@ -6,7 +6,7 @@
 
 **Felépítés:**
 - **Tiszta függvények:** `src/recipe/split.ts` (darabolás), `src/recipe/glossary.ts` (a válasz szétbontása, a szójegyzék-tábla olvasása és bővítése, összefésülés).
-- **Prompt és config:** a `translate.ts` új `translationChunkPrompt`-ot kap. A `Translation` mostantól a `chunkWords`-öt is viszi: a YAML-ban `translate.chunk_words`, alapértéke 4 000.
+- **Prompt és config:** a `translate.ts` új `translationChunkPrompt`-ot kap. A `Translation` mostantól a `chunkWords`-öt is viszi: a YAML-ban `translate.chunk_words`, alapértéke 4 000 (a kalibrálás után 8 000, lásd 8. feladat).
 - **Állapottár és követés:** új `translation_chunks` tábla, három metódus hozzá. A szójegyzékfájl `done` sort kap az `artifacts` táblában (`glossary-<cél>`), így a mappakövetés átírja az útját, ha a vaulton belül mozog vagy átneveződik (a frontmatter `kind` mezője alapján). A `noteDirOf` a `glossary-*` sorokat kihagyja.
 - **Futtató:** `src/recipe/translate-chunks.ts` (`translateChunked`), a `refine` helyett a fordításoknál. Darabonként saját óra, sorban futó darabok, legfeljebb háromszori generálás, utána egy pontozás az összefűzött szövegen.
 - **Pipeline:** a recept órája egy `recipeClock` segédbe költözik (a `refine` és a darabok is ezt használják). Fordításnál a futtató hívódik, utána a szójegyzékfájl kiírása, a commit-jelölés és a darabok törlése következik.
@@ -62,7 +62,7 @@
 - Teszt: `src/recipe/split.test.ts`
 
 **Interfész:**
-- Ad: `DEFAULT_CHUNK_WORDS = 4000`, `splitForTranslation(body: string, chunkWords: number): string[]`
+- Ad: `DEFAULT_CHUNK_WORDS = 4000` (a kalibrálás után 8000), `splitForTranslation(body: string, chunkWords: number): string[]`
 
 **Kód (`src/recipe/split.ts`):**
 ```ts

@@ -326,7 +326,6 @@ async function runRecipe(
       guard,
       store: deps.store,
       persist: !deps.options.dryRun,
-      force: deps.options.force === true,
       skipJudge: recipeDeps.skipJudge,
       clock,
       onGenerate,
@@ -416,8 +415,14 @@ async function runRecipe(
         : undefined,
   }, deps.version, deps.origin, deps.readingWpm)
 
+  // Lint-bukáskor a tárolt darabok törlődnek: különben a következő futás ugyanazt a
+  // szöveget venné elő, és ugyanitt bukna. Így újragenerál, mint darabolás nélkül.
+  const dropChunks = () => {
+    if (translated?.run.chunked && !deps.options.dryRun) deps.store.clearTranslationChunks(item.itemId, recipe.id)
+  }
   const lintErrors = lintVaultMarkdown(markdown)
   if (lintErrors.length > 0) {
+    dropChunks()
     throw new Error(`a jegyzet megsérti a vault írási szabályait: ${lintErrors.join('; ')}`)
   }
 
@@ -438,6 +443,7 @@ async function runRecipe(
           translated.existing === null ? glossary : glossaryTable(addedPairs(translated.known, translated.run.glossary)),
         )
   if (glossaryErrors.length > 0) {
+    dropChunks()
     throw new Error(`a szójegyzék megsérti a vault írási szabályait: ${glossaryErrors.join('; ')}`)
   }
 

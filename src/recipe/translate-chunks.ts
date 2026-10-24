@@ -27,10 +27,8 @@ export interface ChunkedDeps {
   store: StateStore
   /** Hamis (`dryRun`) esetén a tábla érintetlen. */
   persist: boolean
-  /** Igaz (`--force`) esetén a tárolt darabok törlődnek, minden darab újra fut. */
-  force: boolean
   skipJudge?: boolean
-  /** A recept órája egy hívásláncra: darabonként és a pontozásra külön indul. */
+  /** A recept órája egy hívásláncra: darabkísérletenként és a pontozásra külön indul. */
   clock: <T>(fn: () => Promise<T>) => Promise<T>
   onGenerate: (generation: number) => void
   onScore: (score: number, gaps: number) => void
@@ -45,9 +43,13 @@ export interface ChunkedResult extends RefineResult {
   chunked: boolean
 }
 
-/** A tárolt darabok érvényessége. A prompt szövege nincs benne (spec): promptcsere után `--force`. */
-export function chunkSourceHash(body: string, chunkWords: number, target: string, model: string): string {
-  return createHash('sha256').update(JSON.stringify([body, chunkWords, target, model])).digest('hex')
+/**
+ * A tárolt darabok érvényessége. A `template` a darabprompt sablonja (a változó részek nélkül):
+ * promptcsere után a tárolt darabok érvénytelenek. A `--force` a darabokat nem törli: egy bukott
+ * `--force` futás után az újabb a kész darabokkal folytat (siker után a tábla úgyis üres).
+ */
+export function chunkSourceHash(body: string, chunkWords: number, target: string, model: string, template = ''): string {
+  return createHash('sha256').update(JSON.stringify([body, chunkWords, target, model, template])).digest('hex')
 }
 
 async function generateChunk(
@@ -58,7 +60,8 @@ async function generateChunk(
 ): Promise<{ translation: string; pairs: GlossaryPair[]; usage: ModelUsage }> {
   let usage = ZERO
   for (let attempt = 1; attempt <= CHUNK_ATTEMPTS; attempt++) {
-    const reply = await deps.client.generate(recipe.role, prompt)
+    // Kísérletenként saját óra: egy 8 000 szavas darab ~9 perc, három kísérlet nem férne a 25 percbe.
+    const reply = await deps.clock(() => deps.client.generate(recipe.role, prompt))
     // Hívásonként könyvelünk: a bukó darab előtti hívások is a futás költésébe számítanak.
     deps.guard.add(recipe.role, reply.usage, deps.modelConfig)
     usage = plus(usage, reply.usage)
@@ -92,11 +95,12 @@ export async function translateChunked(
     translation.chunkWords,
     translation.target,
     deps.modelConfig.models[recipe.role],
+    translationChunkPrompt({ title: '', chunk: '', glossary: [], target: translation.target, part: { index: 0, total: 0 } }),
   )
 
   let stored = useTable ? deps.store.translationChunks(item.itemId, recipe.id) : []
   // Más lenyomatnál a darabhatárok is mások lehetnek: minden darab elölről.
-  if (useTable && (deps.force || stored.some((chunk) => chunk.sourceHash !== hash))) {
+  if (useTable && stored.some((chunk) => chunk.sourceHash !== hash)) {
     deps.store.clearTranslationChunks(item.itemId, recipe.id)
     stored = []
   }
@@ -115,7 +119,7 @@ export async function translateChunked(
       target: translation.target,
       part: chunked ? { index: index + 1, total: chunks.length } : undefined,
     })
-    const done = await deps.clock(() => generateChunk(recipe, prompt, deps, `${index + 1}/${chunks.length}`))
+    const done = await generateChunk(recipe, prompt, deps, `${index + 1}/${chunks.length}`)
     glossary = mergeGlossary(glossary, done.pairs)
     outputs.push(done.translation)
     rounds.push({ score: 0, gaps: 0, generateUsage: done.usage, scoreUsage: ZERO })

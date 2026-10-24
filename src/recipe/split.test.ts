@@ -41,6 +41,12 @@ describe('splitForTranslation', () => {
     expect(splitForTranslation(`## P\n\n${nested}`, 7)).toEqual([`## P\n\n${nested}`])
   })
 
+  it('a fejléccel vagy bevezető mondattal egy részben kezdődő laza listát sem vágja szét', () => {
+    const rest = '- w w w w\n\n- w w w w\n\n- w w w w'
+    expect(splitForTranslation(`## H\n- w w w w\n\n${rest}`, 8)).toEqual([`## H\n- w w w w\n\n${rest}`])
+    expect(splitForTranslation(`Bevezető:\n- w w w w\n\n${rest}`, 8)).toEqual([`Bevezető:\n- w w w w\n\n${rest}`])
+  })
+
   it.each([
     ['több üres sor', `${szakasz('A', 5)}\n\n\n\n${szakasz('B', 5)}`],
     ['kódkerítés üres sorral', `${szakasz('A', 5)}\n\n\`\`\`\nx\n\n\ny\n\`\`\`\n\n${szakasz('B', 5)}`],

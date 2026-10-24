@@ -179,7 +179,7 @@ indul, és ezt bővíti. A fájlt kézzel is lehet szerkeszteni: a futás csak a
 táblázat sorait olvassa (`| forrás | cél |`), a többi szöveget nem írja át. A
 `translate.chunk_words` (alapértelmezés 8 000) fölötti forrásjegyzet
 darabokban fordul; egy bukott darab után az újraindítás a kész darabokat nem
-fizeti ki újra, a `--force` mindent újrakezd.
+fizeti ki újra (egy bukott `--force` futás után az újabb `--force` sem).
 
 A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
 `_queue.md` jegyzetébe fésüli a felderített videókat: forrásmappánként egy
