@@ -25,6 +25,7 @@ import { currentScope } from './model/deadline.js'
 import { normalizeItem } from './pipeline.js'
 import { queuePath } from './queue/file.js'
 import { renumberQueue } from './queue/renumber.js'
+import { GLOSSARY_SEPARATOR } from './recipe/glossary.js'
 import { getRecipe } from './recipe/registry.js'
 import { runId } from './run/id.js'
 import { skeletonOf } from './rubric/skeleton.js'
@@ -1682,7 +1683,7 @@ function forditoKliens(hivasok: { generate: number; translate: number }): ModelC
       let value: string
       if (prompt.startsWith('Translate the note below')) {
         hivasok.translate++
-        value = MAGYAR_FORDITAS
+        value = `${MAGYAR_FORDITAS}\n${GLOSSARY_SEPARATOR}`
       } else if (prompt.includes('Title: Hibás videó')) {
         throw new Error('a modell nem válaszolt')
       } else if (prompt.includes('The speaker explains')) {
@@ -1725,8 +1726,8 @@ describe('commandRun — fordítás', () => {
     )
 
     const hivasok = { generate: 0, translate: 0 }
-    // Három commit: átirat, tisztított leirat, fordítás. Több egyszeri érték a következő tesztbe szivárogna.
-    for (let i = 0; i < 3; i += 1) vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
+    // Négy commit: átirat, tisztított leirat, fordítás, szójegyzék. Több egyszeri érték a következő tesztbe szivárogna.
+    for (let i = 0; i < 4; i += 1) vi.mocked(gitCommitPaths).mockResolvedValueOnce(true)
     const code = await commandRun(
       cfg,
       raw,
@@ -1746,8 +1747,9 @@ describe('commandRun — fordítás', () => {
     expect(magyarJegyzet).toContain('\nlanguage: hu\n')
     expect(magyarJegyzet).toContain('\ntranslation_of: clean-moderate\n')
     const commitolt = vi.mocked(gitCommitPaths).mock.calls.map(([, paths]) => paths)
-    expect(commitolt).toHaveLength(3)
-    expect(commitolt.flat()).toEqual(expect.arrayContaining([tiszta, magyar]))
+    const szojegyzek = noteFile(cfg.notesRoot, item!, '_glossary-hu.md')
+    expect(commitolt).toHaveLength(4)
+    expect(commitolt.flat()).toEqual(expect.arrayContaining([tiszta, magyar, szojegyzek]))
     expect(commitolt.at(-1)).toEqual([expect.any(String), sor])
     const note = await readFile(sor, 'utf8')
     expect(note).toMatch(/^ {2}- \[x\] hu — ✓ 1\.00 · /m)

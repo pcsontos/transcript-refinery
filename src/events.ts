@@ -110,6 +110,13 @@ export type RunEvent =
       limitUsd: number
     }
   | {
+      type: 'item:glossary-skipped'
+      itemId: string
+      recipe: string
+      /** Hány szójegyzéksor maradt ki, mert a `|` miatt nem bontható két cellára. */
+      rows: number
+    }
+  | {
       type: 'item:anchor-skipped'
       itemId: string
       recipe: string

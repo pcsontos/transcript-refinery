@@ -43,6 +43,21 @@ describe('noteKey', () => {
   it('a recept mező elsőbbséget élvez a fájlnévvel szemben', () => {
     expect(noteKey({ item_id: 'a1', recipe: 'notes-hu' }, '/v/Cím_transcript.md')).toBe('a1\u0000notes-hu')
   })
+  it('a kind mező átnevezett szójegyzéket is felismer, a recept mező elsőbbséget élvez', () => {
+    expect(noteKey({ item_id: 'i1', kind: 'glossary-hu' }, '/v/Szójegyzékek/Videócím – szójegyzék.md')).toBe(
+      'i1\u0000glossary-hu',
+    )
+    expect(noteKey({ item_id: 'i1', recipe: 'summary', kind: 'x' }, '/v/a/B_summary.md')).toBe('i1\u0000summary')
+  })
+  it('az áthelyezett szójegyzéket a kind alapján találja meg a planRelink', () => {
+    const report = planRelink(
+      [{ itemId: 'i1', kind: 'glossary-hu', path: '/v/a/B_glossary-hu.md' }],
+      [{ path: '/v/Szójegyzékek/Videócím – szójegyzék.md', fields: { item_id: 'i1', kind: 'glossary-hu' } }],
+      () => false,
+    )
+    expect(report.moved).toHaveLength(1)
+    expect(report.moved[0]!.to).toBe('/v/Szójegyzékek/Videócím – szójegyzék.md')
+  })
   it('item_id vagy felismerhető fajta nélkül null', () => {
     expect(noteKey({ recipe: 'notes' }, '/v/x_notes.md')).toBeNull()
     expect(noteKey({ item_id: 'a1' }, '/v/utotag-nelkul.md')).toBeNull()

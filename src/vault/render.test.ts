@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { readingTime, renderRecipeNote, renderTranscriptNote } from './render.js'
+import { lintVaultMarkdown } from './lint.js'
+import { readGlossaryTable } from '../recipe/glossary.js'
+import { readingTime, renderGlossaryNote, renderRecipeNote, renderTranscriptNote } from './render.js'
 import type { NormalizedTranscript, SourceItem } from '../types.js'
 
 const item = (overrides: Partial<SourceItem> = {}): SourceItem => ({
@@ -261,5 +263,23 @@ describe('origin', () => {
   it('a megadott origin a receptjegyzetbe is bekerül', () => {
     const note = renderRecipeNote(item(), transcript, 'A törzs.', meta, '0.1.0', 'telegram')
     expect(note).toContain('source: youtube\norigin: telegram\nsource_file:')
+  })
+})
+
+describe('renderGlossaryNote', () => {
+  const md = renderGlossaryNote(item(), 'de', [{ source: 'a|b', target: 'c' }], '0.1.0')
+
+  it('lint-tiszta, kind-dal és táblázattal, bélyeg nélkül', () => {
+    expect(lintVaultMarkdown(md)).toEqual([])
+    expect(md).toContain('\nkind: glossary-de\n')
+    expect(md).toContain('\nlanguage: de\n')
+    expect(md).toContain('| forrás | cél |')
+    expect(md).toContain('| a\\|b | c |')
+    expect(md).not.toContain('generated_at')
+    expect(md).not.toContain('recipe')
+  })
+
+  it('oda-vissza olvasható', () => {
+    expect(readGlossaryTable(md).pairs).toEqual([{ source: 'a|b', target: 'c' }])
   })
 })

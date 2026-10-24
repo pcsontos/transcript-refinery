@@ -4,6 +4,7 @@ import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 import type { ModelRole } from './types.js'
 import { LANGUAGE_NAMES, type LanguageTag } from './lang/identify.js'
+import { DEFAULT_CHUNK_WORDS } from './recipe/split.js'
 import { DEFAULT_LAYOUT, layoutError } from './vault/paths.js'
 import { DEFAULT_READING_WPM } from './vault/render.js'
 
@@ -69,6 +70,11 @@ const TranslateSchema = z.object({
     .array(z.string().min(1))
     .min(1, 'Legalább egy forrásrecept kell.')
     .refine((ids) => new Set(ids).size === ids.length, 'Egy forrásrecept csak egyszer szerepelhet.'),
+  chunk_words: z
+    .number()
+    .int('A translate.chunk_words egész szám.')
+    .positive('A translate.chunk_words pozitív kell legyen.')
+    .default(DEFAULT_CHUNK_WORDS),
 })
 
 const CoreSchema = z.object({
@@ -114,6 +120,8 @@ export interface TranslateConfig {
   to: LanguageTag
   /** A forrásreceptek azonosítói; mindegyikből egy fordítórecept lesz. */
   recipes: string[]
+  /** E fölött (szóban) darabolva fordít (#259). */
+  chunkWords: number
 }
 
 export interface Config {
@@ -201,7 +209,9 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
     languages: c.languages,
     statePath: resolve(baseDir, c.state.path),
     logsDir: resolve(baseDir, c.logs.dir),
-    translate: c.translate ? { to: c.translate.to, recipes: c.translate.recipes } : null,
+    translate: c.translate
+      ? { to: c.translate.to, recipes: c.translate.recipes, chunkWords: c.translate.chunk_words }
+      : null,
   }
 }
 

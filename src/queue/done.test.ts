@@ -146,7 +146,7 @@ describe('markDone', () => {
 
 describe('doneLookup', () => {
   const notesRoot = '/v/root'
-  const registry = recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate'] }, configPath: '/p/c.yaml' })
+  const registry = recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate'], chunkWords: 4000 }, configPath: '/p/c.yaml' })
   const elem: SourceItem = {
     itemId: 'a1',
     source: 'transcripts',

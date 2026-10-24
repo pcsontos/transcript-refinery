@@ -1,6 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync, rmSync } from 'node:fs'
 import { dirname } from 'node:path'
+import type { ModelUsage } from '../model/client.js'
+import type { GlossaryPair } from '../recipe/glossary.js'
 import type { CaptionSource, SourceItem } from '../types.js'
 import {
   assertCurrentSchema,
@@ -69,7 +71,35 @@ CREATE TABLE IF NOT EXISTS pending_commits (
   path    TEXT NOT NULL,
   PRIMARY KEY (item_id, kind)
 );
+
+-- A darabolt fordítás kész darabjai (#259), darabonként egy sor. Egy bukott vagy
+-- megszakadt fordítás a következő futásban az első hiányzó darabtól folytatódik.
+-- A source_hash a forrás, a küszöb, a célnyelv és a draft modell lenyomata;
+-- eltérésnél az elem összes darabja törlődik. Siker után a sorok törlődnek.
+-- A glossary_after JSON: [{"source": …, "target": …}]. Új tábla, nem migráció.
+CREATE TABLE IF NOT EXISTS translation_chunks (
+  item_id        TEXT NOT NULL,
+  kind           TEXT NOT NULL,
+  chunk_index    INTEGER NOT NULL,
+  source_hash    TEXT NOT NULL,
+  output         TEXT NOT NULL,
+  glossary_after TEXT NOT NULL,
+  input_tokens   INTEGER NOT NULL,
+  output_tokens  INTEGER NOT NULL,
+  created_at     TEXT NOT NULL,
+  PRIMARY KEY (item_id, kind, chunk_index)
+);
 `
+
+/** A darabolt fordítás egy kész darabja. */
+export interface TranslationChunk {
+  index: number
+  sourceHash: string
+  output: string
+  /** A szójegyzék teljes állása e darab után; a folytatás ebből indul. */
+  glossaryAfter: GlossaryPair[]
+  usage: ModelUsage
+}
 
 /** Egy commitra váró jegyzet. Az `id` a videóazonosító, annak híján az elem azonosítója. */
 export interface PendingNote {
@@ -159,7 +189,7 @@ export interface StateStore {
     pendingCommit?: boolean,
   ): void
   artifactOf(itemId: string, kind: string): ArtifactRecord | null
-  /** Az elem mappája (abszolút): az átirat mappája, annak híján egy másik kimenet mappája; `null`, ha nincs. Ez rögzíti az elem mappáját. */
+  /** Az elem mappája (abszolút): az átirat mappája, annak híján egy másik kimenet mappája; `null`, ha nincs. Ez rögzíti az elem mappáját. A szójegyzék (`glossary-*`) nem számít: az bárhová költözhet. */
   noteDirOf(itemId: string): string | null
   /** A `done` sorok nem üres útja, abszolútként. */
   trackedPaths(): { itemId: string; kind: string; path: string }[]
@@ -178,6 +208,12 @@ export interface StateStore {
   listPendingNotes(): PendingNote[]
   /** A megadott útvonalak levétele a commitra várók közül, sikeres commit után. */
   clearPendingCommits(paths: readonly string[]): void
+  /** Egy darabolt fordítás kész darabjai, sorszám szerint (#259). */
+  translationChunks(itemId: string, kind: string): TranslationChunk[]
+  /** Egy kész darab tárolása; ugyanaz a sorszám felülíródik. */
+  saveTranslationChunk(itemId: string, kind: string, chunk: TranslationChunk): void
+  /** Az elem fordításának összes tárolt darabja törlődik. */
+  clearTranslationChunks(itemId: string, kind: string): void
   /** A rögzített hiánylista; `null`, ha nincs rögzítve. */
   gapsOf(itemId: string, kind: string): string[] | null
   transcriptOf(itemId: string): TranscriptRecord | null
@@ -401,7 +437,7 @@ export function openState(path: string, vaultPath?: string): StateStore {
     noteDirOf(itemId) {
       const row = db
         .prepare(
-          "SELECT path FROM artifacts WHERE item_id = ? AND status = 'done' AND path IS NOT NULL AND path != '' ORDER BY (kind = 'transcript') DESC, kind LIMIT 1",
+          "SELECT path FROM artifacts WHERE item_id = ? AND status = 'done' AND path IS NOT NULL AND path != '' AND kind NOT LIKE 'glossary-%' ORDER BY (kind = 'transcript') DESC, kind LIMIT 1",
         )
         .get(itemId) as { path: string } | undefined
       return row === undefined ? null : dirname(fromStored(vaultPath, row.path))
@@ -440,6 +476,59 @@ export function openState(path: string, vaultPath?: string): StateStore {
       db.prepare(`DELETE FROM pending_commits WHERE path IN (${placeholders})`).run(
         ...paths.map((p) => toStored(vaultPath, p)),
       )
+    },
+
+    translationChunks(itemId, kind) {
+      return (
+        db
+          .prepare(
+            `SELECT chunk_index, source_hash, output, glossary_after, input_tokens, output_tokens
+             FROM translation_chunks WHERE item_id = ? AND kind = ? ORDER BY chunk_index`,
+          )
+          .all(itemId, kind) as {
+          chunk_index: number
+          source_hash: string
+          output: string
+          glossary_after: string
+          input_tokens: number
+          output_tokens: number
+        }[]
+      ).map((row) => ({
+        index: row.chunk_index,
+        sourceHash: row.source_hash,
+        output: row.output,
+        glossaryAfter: JSON.parse(row.glossary_after) as GlossaryPair[],
+        usage: { inputTokens: row.input_tokens, outputTokens: row.output_tokens },
+      }))
+    },
+
+    saveTranslationChunk(itemId, kind, chunk) {
+      db.prepare(
+        `INSERT INTO translation_chunks
+           (item_id, kind, chunk_index, source_hash, output, glossary_after, input_tokens, output_tokens, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(item_id, kind, chunk_index) DO UPDATE SET
+           source_hash = excluded.source_hash,
+           output = excluded.output,
+           glossary_after = excluded.glossary_after,
+           input_tokens = excluded.input_tokens,
+           output_tokens = excluded.output_tokens,
+           created_at = excluded.created_at`,
+      ).run(
+        itemId,
+        kind,
+        chunk.index,
+        chunk.sourceHash,
+        chunk.output,
+        JSON.stringify(chunk.glossaryAfter),
+        chunk.usage.inputTokens,
+        chunk.usage.outputTokens,
+        now(),
+      )
+    },
+
+    clearTranslationChunks(itemId, kind) {
+      db.prepare('DELETE FROM translation_chunks WHERE item_id = ? AND kind = ?').run(itemId, kind)
     },
 
     transcriptOf(itemId) {

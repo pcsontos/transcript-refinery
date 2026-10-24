@@ -102,7 +102,7 @@ describe('buildItemRows', () => {
       [sourceItem('a', 'Első példavideó')],
       [],
       [artifact({ kind: 'clean-moderate-hu', score: 0.5 })],
-      recipesFor({ configPath: '/p/c.yaml', translate: { to: 'hu', recipes: ['clean-moderate'] } }),
+      recipesFor({ configPath: '/p/c.yaml', translate: { to: 'hu', recipes: ['clean-moderate'], chunkWords: 4000 } }),
     )
     expect(row!.cells['clean-moderate-hu']).toEqual({
       status: 'done',

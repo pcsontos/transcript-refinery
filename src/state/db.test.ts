@@ -4,7 +4,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { openState, type StateStore } from './db.js'
+import { openState, type StateStore, type TranslationChunk } from './db.js'
 import type { SourceItem } from '../types.js'
 
 let store: StateStore
@@ -340,6 +340,57 @@ describe('StateStore — commitra váró műtermékek', () => {
       { id: 'masik', title: 'Második', kind: 'transcript', path: '/v/m-t.md' },
       { id: 'dQw4w9WgXcQ', title: 'Első', kind: 'summary', path: '/v/a-s.md' },
     ])
+  })
+})
+
+describe('StateStore — fordítási darabok', () => {
+  const chunk = (index: number): TranslationChunk => ({
+    index,
+    sourceHash: 'h',
+    output: `d${index}`,
+    glossaryAfter: [{ source: 'a|b', target: `c${index}` }],
+    usage: { inputTokens: 10 * index, outputTokens: index },
+  })
+
+  it('index szerint rendezve adja vissza, a JSON oda-vissza megmarad', () => {
+    store.saveTranslationChunk('i1', 'proba-hu', chunk(1))
+    store.saveTranslationChunk('i1', 'proba-hu', chunk(0))
+    expect(store.translationChunks('i1', 'proba-hu')).toEqual([chunk(0), chunk(1)])
+  })
+
+  it('ugyanaz az index felülíródik', () => {
+    store.saveTranslationChunk('i1', 'proba-hu', chunk(0))
+    store.saveTranslationChunk('i1', 'proba-hu', chunk(1))
+    store.saveTranslationChunk('i1', 'proba-hu', { ...chunk(0), output: 'más' })
+    const chunks = store.translationChunks('i1', 'proba-hu')
+    expect(chunks).toHaveLength(2)
+    expect(chunks[0]!.output).toBe('más')
+  })
+
+  it('a törlés csak az adott elem és fajta sorait viszi', () => {
+    store.saveTranslationChunk('i1', 'proba-hu', chunk(0))
+    store.saveTranslationChunk('i1', 'proba-de', chunk(0))
+    store.saveTranslationChunk('i2', 'proba-hu', chunk(0))
+    store.clearTranslationChunks('i1', 'proba-hu')
+    expect(store.translationChunks('i1', 'proba-hu')).toEqual([])
+    expect(store.translationChunks('i1', 'proba-de')).toHaveLength(1)
+    expect(store.translationChunks('i2', 'proba-hu')).toHaveLength(1)
+  })
+
+  it('a tábla nélküli régi állapotfájl újranyitása idempotens', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'refinery-state-'))
+    const path = join(dir, 'state.db')
+    openState(path).close()
+    const again = openState(path)
+    expect(again.translationChunks('i1', 'proba-hu')).toEqual([])
+    again.close()
+  })
+
+  it('a noteDirOf nem számít bele a szójegyzéket', () => {
+    store.recordItem(item())
+    store.recordArtifact('a1b2c3', 'summary', 'done', '/v/a/B_summary.md', null)
+    store.recordArtifact('a1b2c3', 'glossary-hu', 'done', '/v/Szójegyzékek/G.md', null)
+    expect(store.noteDirOf('a1b2c3')).toBe('/v/a')
   })
 })
 

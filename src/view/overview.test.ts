@@ -251,7 +251,7 @@ describe('readOverview', () => {
   })
 
   it('translate kulccsal a fordítás saját típusként jelenik meg a korpuszban és a pontszámoknál', async () => {
-    const overview = await readOverview({ ...cfg, translate: { to: 'hu', recipes: ['clean-moderate'] } })
+    const overview = await readOverview({ ...cfg, translate: { to: 'hu', recipes: ['clean-moderate'], chunkWords: 4000 } })
     expect(overview.corpus.map((c) => c.kind).at(-1)).toBe('clean-moderate-hu')
     expect(overview.scores.map((s) => s.recipe).at(-1)).toBe('clean-moderate-hu')
   })

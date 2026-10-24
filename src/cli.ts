@@ -175,6 +175,8 @@ function render(event: RunEvent): string | null {
       return `  ~ ${event.itemId}: ${event.recipe} pontszám ${event.score.toFixed(2)}, ${String(event.generations)} generálás, ${event.usd.toFixed(4)} $`
     case 'item:anchor-skipped':
       return `  ! ${event.itemId}: ${String(event.count)}/${String(event.total)} bekezdés időbélyeg nélkül`
+    case 'item:glossary-skipped':
+      return `  ! ${event.itemId}: ${String(event.rows)} szójegyzéksor kimaradt (${event.recipe}): a | miatt nem bontható két cellára`
     case 'item:retry':
       return `  ↻ ${event.itemId}: ${event.reason} — újrapróba ${String(event.attempt)}., ${String(event.delayMs / 1000)} mp múlva`
     case 'model:fallback':

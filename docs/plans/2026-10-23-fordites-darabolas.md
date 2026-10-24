@@ -6,7 +6,7 @@
 
 **Felépítés:**
 - **Tiszta függvények:** `src/recipe/split.ts` (darabolás), `src/recipe/glossary.ts` (a válasz szétbontása, a szójegyzék-tábla olvasása és bővítése, összefésülés).
-- **Prompt és config:** a `translate.ts` új `translationChunkPrompt`-ot kap. A `Translation` mostantól a `chunkWords`-öt is viszi: a YAML-ban `translate.chunk_words`, alapértéke 4 000.
+- **Prompt és config:** a `translate.ts` új `translationChunkPrompt`-ot kap. A `Translation` mostantól a `chunkWords`-öt is viszi: a YAML-ban `translate.chunk_words`, alapértéke 4 000 (a kalibrálás után 8 000, lásd 8. feladat).
 - **Állapottár és követés:** új `translation_chunks` tábla, három metódus hozzá. A szójegyzékfájl `done` sort kap az `artifacts` táblában (`glossary-<cél>`), így a mappakövetés átírja az útját, ha a vaulton belül mozog vagy átneveződik (a frontmatter `kind` mezője alapján). A `noteDirOf` a `glossary-*` sorokat kihagyja.
 - **Futtató:** `src/recipe/translate-chunks.ts` (`translateChunked`), a `refine` helyett a fordításoknál. Darabonként saját óra, sorban futó darabok, legfeljebb háromszori generálás, utána egy pontozás az összefűzött szövegen.
 - **Pipeline:** a recept órája egy `recipeClock` segédbe költözik (a `refine` és a darabok is ezt használják). Fordításnál a futtató hívódik, utána a szójegyzékfájl kiírása, a commit-jelölés és a darabok törlése következik.
@@ -55,12 +55,14 @@
 
 ### 1. feladat: a darabolás (tiszta függvény)
 
+**Issue:** #311
+
 **Fájlok:**
 - Új: `src/recipe/split.ts`
 - Teszt: `src/recipe/split.test.ts`
 
 **Interfész:**
-- Ad: `DEFAULT_CHUNK_WORDS = 4000`, `splitForTranslation(body: string, chunkWords: number): string[]`
+- Ad: `DEFAULT_CHUNK_WORDS = 4000` (a kalibrálás után 8000), `splitForTranslation(body: string, chunkWords: number): string[]`
 
 **Kód (`src/recipe/split.ts`):**
 ```ts
@@ -152,7 +154,7 @@ export function splitForTranslation(body: string, chunkWords: number): string[] 
 }
 ```
 
-- [ ] **1. lépés: a bukó tesztek (`src/recipe/split.test.ts`).**
+- [x] **1. lépés: a bukó tesztek (`src/recipe/split.test.ts`).**
   ```ts
   import { describe, expect, it } from 'vitest'
   import { DEFAULT_CHUNK_WORDS, splitForTranslation } from './split.js'
@@ -204,12 +206,14 @@ export function splitForTranslation(body: string, chunkWords: number): string[] 
     })
   })
   ```
-- [ ] **2. lépés:** `pnpm vitest run src/recipe/split.test.ts` → FAIL (nincs `split.ts`).
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: az `inFence ||` feltétel törlése → a kódkerítéses teszt bukik; a `last.words === 0 ||` törlése → a „szó nélküli darab” teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Split long notes at headings for translation`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/recipe/split.test.ts` → FAIL (nincs `split.ts`).
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: az `inFence ||` feltétel törlése → a kódkerítéses teszt bukik; a `last.words === 0 ||` törlése → a „szó nélküli darab” teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Split long notes at headings for translation`, `Refs #259`).
 
 ### 2. feladat: a szójegyzék formátuma (tiszta függvények + a fájl renderelése)
+
+**Issue:** #312
 
 **Fájlok:**
 - Új: `src/recipe/glossary.ts`
@@ -372,7 +376,7 @@ export function renderGlossaryNote(
 ```
 Import: `import { glossaryKind, glossaryTable, type GlossaryPair } from '../recipe/glossary.js'`. A `glossary.ts` semmit nem importál, tehát nincs kör.
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `src/recipe/glossary.test.ts`, `const S = GLOSSARY_SEPARATOR`:
     - `parseChunkReply(\`## Cím\n\nSzöveg.\n${S}\nstream | adatfolyam\nAPI | API\n\`)` → `{ translation: '## Cím\n\nSzöveg.', pairs: [{ source: 'stream', target: 'adatfolyam' }, { source: 'API', target: 'API' }] }`;
     - `\`Szöveg.\n  ${S}  \n\`` → `{ translation: 'Szöveg.', pairs: [] }` (szóköz a sor körül, nincs új pár);
@@ -385,12 +389,14 @@ Import: `import { glossaryKind, glossaryTable, type GlossaryPair } from '../reci
   - `src/vault/render.test.ts`, új `describe('renderGlossaryNote')`:
     - `const md = renderGlossaryNote(item(), 'de', [{ source: 'a|b', target: 'c' }], '0.1.0')`: `lintVaultMarkdown(md)` → `[]`; tartalmazza a `\nkind: glossary-de\n`, `\nlanguage: de\n`, `| forrás | cél |`, `| a\\|b | c |` sorokat; nincs benne `generated_at` és `recipe`;
     - oda-vissza: `readGlossaryTable(md).pairs` → `[{ source: 'a|b', target: 'c' }]`.
-- [ ] **2. lépés:** `pnpm vitest run src/recipe/glossary.test.ts src/vault/render.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próba: a `block.slice(2)` helyett `block` → a `readGlossaryTable` teszt bukik (a fejléc pár lesz). A `(?<!\\)` törlése → az escape-elt teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Add glossary reply parsing and the glossary file format`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/recipe/glossary.test.ts src/vault/render.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próba: a `block.slice(2)` helyett `block` → a `readGlossaryTable` teszt bukik (a fejléc pár lesz). A `(?<!\\)` törlése → az escape-elt teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Add glossary reply parsing and the glossary file format`, `Refs #259`).
 
 ### 3. feladat: a küszöb a configban, és a darab promptja
+
+**Issue:** #313
 
 **Fájlok:**
 - Módosul: `src/recipe/types.ts` (`Translation.chunkWords`)
@@ -505,7 +511,7 @@ export function translationChunkPrompt(input: ChunkPromptInput): string {
 #   chunk_words: 4000
 ```
 
-- [ ] **1. lépés: a bukó tesztek.**
+- [x] **1. lépés: a bukó tesztek.**
   - `src/recipe/translate.test.ts`, új `describe('translationChunkPrompt')` (`ITEM`, `FORRAS` a meglévők):
     - `translationChunkPrompt({ title: 'T', chunk: FORRAS, glossary: [{ source: 'stream', target: 'adatfolyam' }], target: 'hu', part: { index: 2, total: 3 } })` tartalmazza: `'part 2 of 3'`, `GLOSSARY_SEPARATOR`, `'stream | adatfolyam'`, `'Treat each such term the same way throughout.'`, és a `FORRAS`-t a `'--- NOTE ---'` után;
     - `part` nélkül nincs benne `'part '`; üres szójegyzéknél a `'--- GLOSSARY ---\n(empty)'` szerepel.
@@ -513,12 +519,14 @@ export function translationChunkPrompt(input: ChunkPromptInput): string {
     - A meglévő `prompt` tesztek változatlanul zöldek (a `prompt` nem változott).
   - `src/config.test.ts`: a `:121` elvárása `{ to: 'hu', recipes: ['clean-moderate', 'summary'], chunkWords: 4000 }`; `chunk_words: 1500` → `1500`; `chunk_words: 0` és `1.5` → hiba, `/translate\.chunk_words/`.
   - `src/recipe/registry.test.ts:10`: a segéd `{ to: 'hu' as const, recipes, chunkWords: 1500 }`-at ad; új eset: a `recipesFor` fordítórecepetjének `translation!.chunkWords` → `1500`.
-- [ ] **2. lépés:** `pnpm vitest run src/recipe src/config.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód. A `pnpm typecheck` megtalálja a `TranslateConfig` többi építőjét is (a tesztekben `{ to, recipes }` literál); mindegyik `chunkWords: 4000`-et kap.
-- [ ] **4. lépés:** PASS. Mutációs próba: a registry-ben a harmadik argumentum törlése → a `1500`-as registry-teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Add translate.chunk_words and the chunk prompt`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/recipe src/config.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód. A `pnpm typecheck` megtalálja a `TranslateConfig` többi építőjét is (a tesztekben `{ to, recipes }` literál); mindegyik `chunkWords: 4000`-et kap.
+- [x] **4. lépés:** PASS. Mutációs próba: a registry-ben a harmadik argumentum törlése → a `1500`-as registry-teszt bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Add translate.chunk_words and the chunk prompt`, `Refs #259`).
 
 ### 4. feladat: a kész darabok az állapottárban, a szójegyzék követése
+
+**Issue:** #314
 
 **Fájlok:**
 - Módosul: `src/state/db.ts` (séma, `TranslationChunk`, három metódus, a `noteDirOf` lekérdezése)
@@ -639,7 +647,7 @@ A doc-komment (`StateStore.noteDirOf`) kiegészül: „A szójegyzék (`glossary
 ```
 A doc-komment: „A fajta a `recipe` mezőből jön, a szójegyzéknél a `kind`-ból; a régebbi jegyzetekben egyik sincs, ott a fájlnév `_<fajta>.md` utótagja adja.”
 
-- [ ] **1. lépés: a bukó tesztek (`src/state/db.test.ts`, új `describe('StateStore — fordítási darabok')`).**
+- [x] **1. lépés: a bukó tesztek (`src/state/db.test.ts`, új `describe('StateStore — fordítási darabok')`).**
   - `const chunk = (index: number): TranslationChunk => ({ index, sourceHash: 'h', output: \`d${index}\`, glossaryAfter: [{ source: 'a|b', target: \`c${index}\` }], usage: { inputTokens: 10 * index, outputTokens: index } })`.
   - A `saveTranslationChunk('i1', 'proba-hu', chunk(1))`, majd `chunk(0)` után a `translationChunks('i1', 'proba-hu')` → `[chunk(0), chunk(1)]` (index szerint rendezve, a JSON oda-vissza, a `|` megmarad).
   - Ugyanaz az index másodszor, más `output`-tal → felülírja, a hossz marad 2.
@@ -650,12 +658,14 @@ A doc-komment: „A fajta a `recipe` mezőből jön, a szójegyzéknél a `kind`
     - `noteKey({ item_id: 'i1', kind: 'glossary-hu' }, '/v/Szójegyzékek/Videócím – szójegyzék.md')` → `'i1\u0000glossary-hu'` (átnevezve, utótag nélkül is);
     - `noteKey({ item_id: 'i1', recipe: 'summary', kind: 'x' }, '/v/a/B_summary.md')` → a `recipe` nyer;
     - `planRelink([{ itemId: 'i1', kind: 'glossary-hu', path: '/v/a/B_glossary-hu.md' }], [{ path: '/v/Szójegyzékek/Videócím – szójegyzék.md', fields: { item_id: 'i1', kind: 'glossary-hu' } }], () => false)` → a `moved` egy elemű, a `to` az új út.
-- [ ] **2. lépés:** `pnpm vitest run src/state/db.test.ts src/vault/relink.test.ts` → FAIL.
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS, a meglévő relink- és `noteDirOf`-tesztek is. Mutációs próbák: az `ORDER BY chunk_index` törlése → a rendezési teszt bukik (a `chunk(1)` került be előbb); a `kind NOT LIKE 'glossary-%'` törlése → a `noteDirOf`-teszt bukik; a `noteKey` `kind`-ága törlése → az átnevezett eset bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(state): Store translation chunks and track glossary files`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/state/db.test.ts src/vault/relink.test.ts` → FAIL.
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS, a meglévő relink- és `noteDirOf`-tesztek is. Mutációs próbák: az `ORDER BY chunk_index` törlése → **túlélő mutáció** (a PK-index amúgy is rendez; az `ORDER BY` szerződés, nem tesztelhető, marad); a `kind NOT LIKE 'glossary-%'` törlése → a `noteDirOf`-teszt bukik; a `noteKey` `kind`-ága törlése → az átnevezett eset bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(state): Store translation chunks and track glossary files`, `Refs #259`).
 
 ### 5. feladat: a darabolt fordítás futtatója
+
+**Issue:** #315
 
 **Fájlok:**
 - Új: `src/recipe/translate-chunks.ts`
@@ -821,7 +831,7 @@ export async function translateChunked(
 }
 ```
 
-- [ ] **1. lépés: a bukó tesztek (`src/recipe/translate-chunks.test.ts`).**
+- [x] **1. lépés: a bukó tesztek (`src/recipe/translate-chunks.test.ts`).**
   ```ts
   import { mkdtemp } from 'node:fs/promises'
   import { tmpdir } from 'node:os'
@@ -1015,6 +1025,7 @@ export async function translateChunked(
       }
       const result = await run(recipe, sorKliens([ELSO, MASODIK]), {
         clock: (fn) => (clocks++, fn()),
+        skipJudge: false,
       })
       expect(clocks).toBe(3)
       expect(scored).toEqual(['## Áttekintés\n\nElső darab.\n\nMásodik darab.'])
@@ -1023,12 +1034,14 @@ export async function translateChunked(
   })
   ```
   A `Criterion.score(ctx: ScoreContext, client)` szignatúra és a `ctx.output` mező a `src/rubric/types.ts:15–33` szerint való. A `MODELL_CFG` szándékosan annotálatlan, mint a `src/pipeline.test.ts:253`-ban.
-- [ ] **2. lépés:** `pnpm vitest run src/recipe/translate-chunks.test.ts` → FAIL (nincs `translate-chunks.ts`).
-- [ ] **3. lépés:** a fenti kód.
-- [ ] **4. lépés:** PASS. Mutációs próbák: a `stored.some(…)` feltétel törlése → a „más draft modell” teszt bukik; a `glossary = mergeGlossary(…)` sor törlése → az első teszt bukik (a második prompt nem kapja a párt); a `CHUNK_ATTEMPTS` 1-re állítása → az újrakérés tesztje bukik. Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Translate long notes chunk by chunk with a shared glossary`, `Refs #259`).
+- [x] **2. lépés:** `pnpm vitest run src/recipe/translate-chunks.test.ts` → FAIL (nincs `translate-chunks.ts`).
+- [x] **3. lépés:** a fenti kód.
+- [x] **4. lépés:** PASS. Mutációs próbák: a `stored.some(…)` feltétel törlése → a „más draft modell” teszt bukik; a `glossary = mergeGlossary(…)` sor törlése → az első teszt bukik (a második prompt nem kapja a párt); a `CHUNK_ATTEMPTS` 1-re állítása → az újrakérés tesztje bukik. Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Translate long notes chunk by chunk with a shared glossary`, `Refs #259`).
 
 ### 6. feladat: bekötés a pipeline-ba, a szójegyzékfájl és az esemény
+
+**Issue:** #316
 
 **Fájlok:**
 - Módosul: `src/pipeline.ts` (`recipeClock`, a `runRecipe` fordítási ága, könyvelés, a szójegyzékfájl)
@@ -1198,7 +1211,7 @@ function recipeClock(
 ```
 Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`), ott is egy ág kell, ugyanezzel a szöveggel.
 
-- [ ] **1. lépés: a bukó tesztek (`src/pipeline.test.ts`).**
+- [x] **1. lépés: a bukó tesztek (`src/pipeline.test.ts`).**
   - Új segéd a `fixModell` mellé, ugyanazzal a válaszalakkal, de soronként más szöveggel:
     ```ts
     /** Fixture-modell, amely hívásonként a következő szöveget adja (az utolsót ismétli). */
@@ -1232,30 +1245,36 @@ Ha a `pnpm typecheck` egy másik, kimerítő `RunEvent`-switch-et jelez (`never`
     - *dryRun mellett sem tábla, sem szójegyzékfájl:* `options: { dryRun: true }`, `sorModell(DARABOK)` → a `translationChunks` üres, a `glossaryPath()` nem létezik.
     - *nem értelmezhető szójegyzéksor:* előtte a fájlban `| a | b | c |` sor egy táblában; a futás után az események közt `{ type: 'item:glossary-skipped', itemId: item().itemId, recipe: 'proba-hu', rows: 1 }`, és a fájl `| a | b | c |` sora megmaradt.
   - A meglévő időtúllépés-tesztek (a `RecipeTimeout` és az `item:progress`, `currentScope`) változatlanul zöldek: ez a regressziós horgony a `recipeClock` kiemelésére.
-- [ ] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL (a fordítás még a `refine`-on fut, nincs szójegyzékfájl).
-- [ ] **3. lépés:** a fenti kód.
+- [x] **2. lépés:** `pnpm vitest run src/pipeline.test.ts` → FAIL (a fordítás még a `refine`-on fut, nincs szójegyzékfájl).
+- [x] **3. lépés:** a fenti kód.
   - Egy könyvelési eset a „darabolva fut” tesztben: a `guard = createCostGuard(5)` a `recipeDeps`-ben, a futás után `guard.spentUsd()` → `toBeCloseTo(0.00123, 6)`, ugyanannyi, mint a `costUsd` (nincs dupla könyvelés).
-- [ ] **4. lépés:** PASS, a `src/cli.test.ts` fordítási esetei is. A `forditoKliens` (`src/cli.test.ts:1677`) ma elválasztó nélkül válaszol, ezért a fordítás háromszori kérés után bukna. A `value = MAGYAR_FORDITAS` helyett: `value = \`${MAGYAR_FORDITAS}\n${GLOSSARY_SEPARATOR}\``. A `hivasok.translate` számai nem változnak, fordításonként egy hívás. Ha egy CLI-teszt a kiírt vagy commitolt fájlok pontos listáját várja, abban mostantól a `_glossary-hu.md` is szerepel. Ez a kívánt viselkedés, ezért az elvárás bővül, a kód nem változik. Mutációs próbák: a könyvelésben az `if (translated === null)` feltétel törlése → a `guard.spentUsd()` elvárás bukik (duplázódik); a `clearTranslationChunks` sor törlése → a „darabolva fut” teszt bukik; az `addedPairs(…)` helyett `translated.run.glossary` → a „kézzel írt szöveg marad” teszt bukik (a `Problem` sor duplázódik). Visszaállítás, teljes ellenőrzés zöld.
-- [ ] **5. lépés:** commit (`feat(translate): Wire chunked translation and the glossary file into the pipeline`, `Refs #259`).
+- [x] **4. lépés:** PASS, a `src/cli.test.ts` fordítási esetei is. A `forditoKliens` (`src/cli.test.ts:1677`) ma elválasztó nélkül válaszol, ezért a fordítás háromszori kérés után bukna. A `value = MAGYAR_FORDITAS` helyett: `value = \`${MAGYAR_FORDITAS}\n${GLOSSARY_SEPARATOR}\``. A `hivasok.translate` számai nem változnak, fordításonként egy hívás. Ha egy CLI-teszt a kiírt vagy commitolt fájlok pontos listáját várja, abban mostantól a `_glossary-hu.md` is szerepel. Ez a kívánt viselkedés, ezért az elvárás bővül, a kód nem változik. Mutációs próbák: a könyvelésben az `if (translated === null)` feltétel törlése → a `guard.spentUsd()` elvárás bukik (duplázódik); a `clearTranslationChunks` sor törlése → a „darabolva fut” teszt bukik; az `addedPairs(…)` helyett `translated.run.glossary` → a „kézzel írt szöveg marad” teszt bukik (a `Problem` sor duplázódik). Visszaállítás, teljes ellenőrzés zöld.
+- [x] **5. lépés:** commit (`feat(translate): Wire chunked translation and the glossary file into the pipeline`, `Refs #259`).
 
 ### 7. feladat: dokumentáció
 
+**Issue:** #317
+
 **Fájlok:**
 - Módosul: `docs/architecture.md` (§4, `:103–106`)
-- Módosul: `docs/usage.md` (a fordításról szóló rész; `grep -n "fordít" docs/usage.md`)
+- Módosul: `README.md` (a fordításról szóló rész, a „A fordítás nem külön dokumentumtípus” bekezdés után). *A terv a `docs/usage.md`-t nevezte meg, de ott nincs fordításról szóló szakasz; a fordítást a README írja le.*
 
-- [ ] **1. lépés:** `docs/architecture.md` §4: a „A darabolás és a map-reduce összefűzés … teljes egészében kimarad — legfeljebb egy védőkorlát marad a kiugró esetekre.” mondat után új bekezdés: `Ez a fordításra 2026 őszén megfordult: a webináriumok forrásjegyzetei (44 ezer szó fölött) egy hívásban időtúllépésbe futottak (#258). A fordítás ezért \`translate.chunk_words\` (4 000 szó) fölött fejlécnél vágott darabokban, sorban fut, egy közös szójegyzékkel (#259, \`docs/plans/2026-10-23-fordites-darabolas-spec.md\`). A többi recept továbbra is egy hívásban dolgozik.`
-- [ ] **2. lépés:** `docs/usage.md`, a fordítás leírásánál: `A fordítás mellett a jegyzetek mappájában egy \`<alapnév>_glossary-<cél>.md\` szójegyzék is készül: videónként és célnyelvenként egy, minden fordítás ebből indul, és ezt bővíti. A fájlt kézzel is lehet szerkeszteni: a futás csak a táblázat sorait olvassa (\`| forrás | cél |\`), a többi szöveget nem írja át. A \`translate.chunk_words\` (alapértelmezés 4 000) fölötti forrásjegyzet darabokban fordul; egy bukott darab után az újraindítás a kész darabokat nem fizeti ki újra, a \`--force\` mindent újrakezd.`
-- [ ] **3. lépés:** `pnpm lint` zöld (a Markdown-lint is), commit (`docs: Document chunked translation and the glossary`, `Closes #259`).
+- [x] **1. lépés:** `docs/architecture.md` §4: a „A darabolás és a map-reduce összefűzés … teljes egészében kimarad — legfeljebb egy védőkorlát marad a kiugró esetekre.” mondat után új bekezdés: `Ez a fordításra 2026 őszén megfordult: a webináriumok forrásjegyzetei (44 ezer szó fölött) egy hívásban időtúllépésbe futottak (#258). A fordítás ezért \`translate.chunk_words\` (4 000 szó) fölött fejlécnél vágott darabokban, sorban fut, egy közös szójegyzékkel (#259, \`docs/plans/2026-10-23-fordites-darabolas-spec.md\`). A többi recept továbbra is egy hívásban dolgozik.`
+- [x] **2. lépés:** `README.md`, a fordítás leírásánál (nem `docs/usage.md`, lásd fent): `A fordítás mellett a jegyzetek mappájában egy \`<alapnév>_glossary-<cél>.md\` szójegyzék is készül: videónként és célnyelvenként egy, minden fordítás ebből indul, és ezt bővíti. A fájlt kézzel is lehet szerkeszteni: a futás csak a táblázat sorait olvassa (\`| forrás | cél |\`), a többi szöveget nem írja át. A \`translate.chunk_words\` (alapértelmezés 4 000) fölötti forrásjegyzet darabokban fordul; egy bukott darab után az újraindítás a kész darabokat nem fizeti ki újra, a \`--force\` mindent újrakezd.`
+- [x] **3. lépés:** `pnpm lint` zöld (a Markdown-lint is), commit (`docs: Document chunked translation and the glossary`, `Closes #259`).
 
 ### 8. feladat: kalibrálás (valódi pénz, külön jóváhagyással)
 
+**Issue:** #318
+
 A spec „Kalibrálás” szakasza szerint, a kód-PR előtt vagy mellett, a felhasználó jóváhagyásával.
-- [ ] **1. lépés:** a `zgWUhE6HjrI` forrásjegyzetének szószáma és a becslés (`refinery run --dry-run …` a fordítórecepttel): a becslésre legalább kétszeres ráhagyás, a felhasználó jóváhagyja a keretet.
-- [ ] **2. lépés:** a futás a lokális configgal; a darabolás folytatható, tehát egy megszakadt futás nem fizetődik ki kétszer. Mérendő: lefut-e, átmegy-e a vázkapun (ha nem, az a #42 dolga, nem ennek a szeletnek a bukása), hány darab lett és mekkora a szójegyzék, a bíró (ha be van kapcsolva) elfér-e, nincs-e időtúllépés, és a tényleges költség a `/key/info` szerint.
-- [ ] **3. lépés:** az eredmény a `docs/measurements/` alá, és ha a 4 000-es küszöb nem jó, a `DEFAULT_CHUNK_WORDS` módosítása ugyanebben a PR-ben.
+- [x] **1. lépés:** a `zgWUhE6HjrI` forrásjegyzetének szószáma és a becslés (`refinery run --dry-run …` a fordítórecepttel): a becslésre legalább kétszeres ráhagyás, a felhasználó jóváhagyja a keretet.
+- [x] **2. lépés:** a futás a lokális configgal; a darabolás folytatható, tehát egy megszakadt futás nem fizetődik ki kétszer. Mérendő: lefut-e, átmegy-e a vázkapun (ha nem, az a #42 dolga, nem ennek a szeletnek a bukása), hány darab lett és mekkora a szójegyzék, a bíró (ha be van kapcsolva) elfér-e, nincs-e időtúllépés, és a tényleges költség a `/key/info` szerint.
+- [x] **3. lépés:** az eredmény a `docs/measurements/` alá, és ha a 4 000-es küszöb nem jó, a `DEFAULT_CHUNK_WORDS` módosítása ugyanebben a PR-ben. Elvégezve: 8 000 (`docs/measurements/2026-10-24-forditas-darabolas-kalibralas.md`); az 1. lépés dry-runja pénzbe kerül, ezért szkriptes becslés váltotta, a tárgy a helyi `-QFHIoCo-Ko` lett.
 
 ### 9. feladat: kód-PR, kiadás
+
+**Issue:** #259 (a kód-PR zárja)
 
 Külön kérésre.
 - `gh pr checks`, a PR a felhasználó jóváhagyásával.

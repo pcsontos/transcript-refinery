@@ -3,7 +3,7 @@ import { recipesFor } from '../recipe/registry.js'
 import { primaryLanguage, queueLayout, splitTranslationId, translationId } from './layout.js'
 
 const FORDITASSAL = queueLayout(
-  recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] }, configPath: '/p/c.yaml' }),
+  recipesFor({ translate: { to: 'hu', recipes: ['clean-moderate', 'summary'], chunkWords: 4000 }, configPath: '/p/c.yaml' }),
 )
 
 describe('queueLayout', () => {

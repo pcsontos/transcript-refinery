@@ -120,7 +120,14 @@ describe('loadConfig', () => {
     expect(
       loadConfig({ ...MIN, translate: { to: 'hu', recipes: ['clean-moderate', 'summary'] } }, '/p/c.yaml')
         .translate,
-    ).toEqual({ to: 'hu', recipes: ['clean-moderate', 'summary'] })
+    ).toEqual({ to: 'hu', recipes: ['clean-moderate', 'summary'], chunkWords: 8000 })
+  })
+
+  it('a translate.chunk_words megadható, pozitív egész kell', () => {
+    const translate = (chunk_words: number) => ({ ...MIN, translate: { to: 'hu', recipes: ['summary'], chunk_words } })
+    expect(loadConfig(translate(1500), '/p/c.yaml').translate!.chunkWords).toBe(1500)
+    expect(() => loadConfig(translate(0), '/p/c.yaml')).toThrow(/translate\.chunk_words/)
+    expect(() => loadConfig(translate(1.5), '/p/c.yaml')).toThrow(/translate\.chunk_words/)
   })
 
   it('ismeretlen célnyelvre felsorolja az ismert nyelveket', () => {

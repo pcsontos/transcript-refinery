@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { loadConfig } from '../config.js'
 import { currentScope, RecipeTimeout } from '../model/deadline.js'
 import type { RunRuntime } from '../cli.js'
+import { GLOSSARY_SEPARATOR } from '../recipe/glossary.js'
 import { textItemId } from '../source/text.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
 import type { CallbackBody } from './job.js'
@@ -42,7 +43,7 @@ function writer(calls: { generate: number }, summaryText: string): ReturnType<Ru
     generate(_role, prompt) {
       calls.generate += 1
       return Promise.resolve({
-        value: prompt.startsWith('Translate the note below into German') ? GERMAN : summaryText,
+        value: prompt.startsWith('Translate the note below into German') ? `${GERMAN}${GLOSSARY_SEPARATOR}\n` : summaryText,
         usage: { inputTokens: 10, outputTokens: 5 },
       })
     },

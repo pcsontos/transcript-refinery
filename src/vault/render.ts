@@ -1,4 +1,5 @@
 import { countWords, toParagraphs } from '../normalize/dedupe.js'
+import { glossaryKind, glossaryTable, type GlossaryPair } from '../recipe/glossary.js'
 import type { NormalizedTranscript, SourceItem } from '../types.js'
 import { renderFrontmatter, type FrontmatterField } from './frontmatter.js'
 
@@ -181,4 +182,27 @@ export function renderRecipeNote(
     ...translationFields(item, meta.translation),
   ])
   return frontmatter + body(item, text)
+}
+
+/**
+ * Egy videó egy célnyelvű szójegyzéke (#259), az első fordításkor. Nincs `generated_at`:
+ * a fájl a későbbi fordításokkal bővül, a dátumot a vault pre-commit hookja bélyegzi.
+ * A `kind` a mappakövetésé: átnevezés után is ebből ismeri fel (`noteKey`).
+ */
+export function renderGlossaryNote(
+  item: SourceItem,
+  target: string,
+  pairs: readonly GlossaryPair[],
+  generatorVersion: string,
+): string {
+  const frontmatter = renderFrontmatter([
+    ['item_id', item.itemId],
+    ['kind', glossaryKind(target)],
+    ['title', item.title],
+    ['language', target],
+    ['source_language', item.language ?? undefined],
+    ['video_id', item.metadata.videoId],
+    ['generator', `transcript-refinery@${generatorVersion}`],
+  ])
+  return frontmatter + ['', `# ${item.title} — szójegyzék`, '', glossaryTable(pairs), ''].join('\n')
 }

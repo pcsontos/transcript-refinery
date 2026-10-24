@@ -173,6 +173,14 @@ bekezdések és a fejlécek számában kis eltérést tűr — a természetes
 viszont nem, mert ott egy fejléc egy kártya. Ha a forrás még nem készült el, a
 fordítás modellhívás nélkül kimarad, és a sor megnevezi az okot.
 
+A fordítás mellett a jegyzetek mappájában egy `<alapnév>_glossary-<cél>.md`
+szójegyzék is készül: videónként és célnyelvenként egy, minden fordítás ebből
+indul, és ezt bővíti. A fájlt kézzel is lehet szerkeszteni: a futás csak a
+táblázat sorait olvassa (`| forrás | cél |`), a többi szöveget nem írja át. A
+`translate.chunk_words` (alapértelmezés 8 000) fölötti forrásjegyzet
+darabokban fordul; egy bukott darab után az újraindítás a kész darabokat nem
+fizeti ki újra (egy bukott `--force` futás után az újabb `--force` sem).
+
 A feldolgozási sor a válogatást Obsidianba viszi. A `scan --queue` a vault
 `_queue.md` jegyzetébe fésüli a felderített videókat: forrásmappánként egy
 számozott `##` fejléc, alatta videónként egy számozott `###` fejléc, és

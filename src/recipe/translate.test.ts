@@ -4,7 +4,8 @@ import { scoreRubric } from '../rubric/types.js'
 import type { ModelRole, SourceItem } from '../types.js'
 import { bloomRecipe } from './bloom.js'
 import { cleanRecipeFor } from './clean.js'
-import { alreadyInTarget, translationOf } from './translate.js'
+import { GLOSSARY_SEPARATOR } from './glossary.js'
+import { alreadyInTarget, translationChunkPrompt, translationOf } from './translate.js'
 
 const ITEM: SourceItem = {
   itemId: 'abc123',
@@ -167,6 +168,39 @@ describe('translationOf', () => {
     expect(result.value).toBe(0)
     expect(promptok).toEqual([])
     expect(result.gaps[0]).toContain('must be in Hungarian')
+  })
+})
+
+describe('translationChunkPrompt', () => {
+  const glossary = [{ source: 'stream', target: 'adatfolyam' }]
+
+  it('a darab sorszámát, az elválasztót, a szójegyzéket és a szöveget is tartalmazza', () => {
+    const prompt = translationChunkPrompt({
+      title: 'T',
+      chunk: FORRAS,
+      glossary,
+      target: 'hu',
+      part: { index: 2, total: 3 },
+    })
+    expect(prompt).toContain('part 2 of 3')
+    expect(prompt).toContain(GLOSSARY_SEPARATOR)
+    expect(prompt).toContain('stream | adatfolyam')
+    expect(prompt).toContain('Treat each such term the same way throughout.')
+    expect(prompt).toContain('no table header, no bullets')
+    expect(prompt.split('--- NOTE ---')[1]).toContain(FORRAS)
+  })
+
+  it('part nélkül nincs darabjelzés, üres szójegyzéknél jelzi az üreset', () => {
+    const prompt = translationChunkPrompt({ title: 'T', chunk: FORRAS, glossary: [], target: 'hu' })
+    expect(prompt).not.toContain('part ')
+    expect(prompt).toContain('--- GLOSSARY ---\n(empty)')
+  })
+})
+
+describe('translation.chunkWords', () => {
+  it('alapból 8000, megadva a megadott', () => {
+    expect(translationOf(cleanRecipeFor('moderate'), 'hu').translation!.chunkWords).toBe(8000)
+    expect(translationOf(cleanRecipeFor('moderate'), 'hu', 1500).translation!.chunkWords).toBe(1500)
   })
 })
 
