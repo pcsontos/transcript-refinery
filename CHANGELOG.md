@@ -3,6 +3,45 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.23.0] — 2026-10-24
+
+A hosszú jegyzetek fordítása darabokban, sorban fut, egy videónként közös
+szójegyzékkel, és egy megszakadt fordítás a kész daraboktól folytatható.
+
+### ✨ Újdonságok
+
+- **Darabolt fordítás:** a `translate.chunk_words` (alapértelmezés: 8 000 szó)
+  fölötti forrásjegyzet fejlécnél, illetve bekezdéshatáron vágott darabokban
+  fordul; kódblokk, táblázat és lista közepén nem vág. A webináriumok
+  hosszú jegyzetei így nem futnak időtúllépésbe. A rubrika egyszer, az
+  összefűzött fordításon fut (#259).
+- **Folytatás bukás után:** a kész darabok az állapottárban maradnak, az
+  újraindítás nem fizeti ki őket újra; egy bukott `--force` futás után az újabb
+  `--force` sem. Ha a forrás, a küszöb, a célnyelv, a modell vagy a prompt
+  változik, a fordítás elölről indul (#259).
+- **Szójegyzék a fordítás mellett:** a jegyzetek mappájában videónként és
+  célnyelvenként egy `<alapnév>_glossary-<cél>.md` készül. Minden fordítás
+  ebből indul és ezt bővíti, így a kifejezések a darabok és a receptek között
+  egységesek. Kézzel is szerkeszthető: a futás csak a táblázat sorait olvassa,
+  a többi szöveget betűre megtartja. A mappakövetés áthelyezés után is
+  megtalálja, és a serve `/notes` listájában is megjelenik (#259).
+- **Figyelmeztetés a nem értelmezhető szójegyzéksorra:** a kézzel írt, nem
+  `| forrás | cél |` alakú sor kimarad, és a futás jelzi (#259).
+
+### 📚 Dokumentáció
+
+- A README és az architektúra-doksi leírja a darabolást és a szójegyzéket; a
+  kalibrálás eredménye a
+  `docs/measurements/2026-10-24-forditas-darabolas-kalibralas.md`-ben: a
+  draft modell hívásonként nagyjából fix kimenetet használ, ezért a darab
+  8 000 szavas, és a darabolt fordítás drágább, mint az egy hívásos.
+
+### 🔧 Üzemeltetés
+
+- **Kiadás:** a `src/` változott, ezért a `peter-mba` konténer új képet kér.
+  Az állapottár új táblája (`translation_chunks`) az első megnyitáskor jön
+  létre, migráció nélkül. Worker-deploy nem kell.
+
 ## [1.22.0] — 2026-10-23
 
 Egy futásban több recept is megy, minden jegyzet olvasási időt kap, a Telegram
@@ -1052,6 +1091,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.23.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.23.0
 [1.22.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.22.0
 [1.21.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.21.0
 [1.20.2]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.20.2
