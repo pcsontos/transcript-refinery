@@ -203,17 +203,17 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 - Használja: `deployNotes`, `deployLines`.
 - Ad: `export async function commandDeploy(cfg: Config): Promise<number>`.
 
-- [ ] **1. lépés: bukó tesztek** (a `cli.test.ts` meglévő mintáival; a `deployNotes`-t a meglévő tesztek módján kell helyettesíteni, vagy a 4. feladat ideiglenes repóival):
+- [x] **1. lépés: bukó tesztek** (a `cli.test.ts` meglévő mintáival; a `deployNotes`-t a meglévő tesztek módján kell helyettesíteni, vagy a 4. feladat ideiglenes repóival):
   - `deploy showroom blokk nélkül hibával áll meg`: kilépőkód 1, üzenet: `A deploy ki van kapcsolva: nincs showroom: blokk a configban.`
   - `deploy kiírja a jelentést`: kilépőkód 0, a kimenetben a `deployLines` sorai.
   - `run auto módban a futás tételeit deployolja`: `deploy: auto` → a `deployNotes` a futás kiválasztott egységeinek `itemId`-halmazával hívódik (`selected.map(u => u.item.itemId)`), a vault-push után.
   - `run manual módban nem deployol`, és `showroom: blokk nélkül nem deployol`.
   - `run --no-commit és --dry-run nem deployol`.
   - `run auto: a deploy hibája nem buktatja a futást`: a `deployNotes` dob → a kilépőkód ugyanaz, mint deploy nélkül, a kimenetben `deploy sikertelen: <első sor>`.
-- [ ] **2. lépés:** `pnpm vitest run src/cli.test.ts` → FAIL.
-- [ ] **3. lépés:** megvalósítás. `main`: `if (command === 'deploy') return commandDeploy(cfg)` a `loadCliConfig`/`validateConfig` után; az ismeretlen kapcsolót a `check-structured` mintájára (`--config` az egyetlen) utasítja el. `runFinish`: a vault-commit/push blokk után, ha `commit && cfg.showroom?.deploy === 'auto'`, `try { for (const line of deployLines(await deployNotes({ cfg, itemIds }))) console.log(line) } catch (e) { console.log(`deploy sikertelen: ${első sor}`) }`.
-- [ ] **4. lépés:** PASS, `pnpm typecheck && pnpm lint` PASS.
-- [ ] **5. lépés: commit** (`feat(cli): Add the deploy command and auto deploy after run`).
+- [x] **2. lépés:** `pnpm vitest run src/cli.test.ts` → FAIL.
+- [x] **3. lépés:** megvalósítás. `main`: `if (command === 'deploy') return commandDeploy(cfg)` a `loadCliConfig`/`validateConfig` után; az ismeretlen kapcsolót a `check-structured` mintájára (`--config` az egyetlen) utasítja el. `runFinish`: a vault-commit/push blokk után, ha `commit && cfg.showroom?.deploy === 'auto'`, `try { for (const line of deployLines(await deployNotes({ cfg, itemIds }))) console.log(line) } catch (e) { console.log(`deploy sikertelen: ${első sor}`) }`.
+- [x] **4. lépés:** PASS, `pnpm typecheck && pnpm lint` PASS.
+- [x] **5. lépés: commit** (`feat(cli): Add the deploy command and auto deploy after run`).
 
 ### 6. feladat: `auto` a serve-ben, a `ready` előtt
 

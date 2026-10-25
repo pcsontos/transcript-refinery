@@ -68,6 +68,7 @@ import { openStateReader } from './state/reader.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
+import { deployLines, deployNotes } from './deploy/deploy.js'
 import { commitPending } from './vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 import { noteFile, transcriptFile } from './vault/paths.js'
@@ -111,6 +112,7 @@ const WATCH_OPTIONS = new Set(['config', 'source', 'no-commit', 'help'])
 
 /** A check-structured kapcsolói: valódi pénzt költ, ezért egy közös kapcsoló (pl. `--dry-run`) sem maradhat csendben figyelmen kívül. */
 const CHECK_STRUCTURED_OPTIONS = new Set(['config', 'help'])
+const DEPLOY_OPTIONS = new Set(['config', 'help'])
 
 /** Az első megadott, de az `allowed`-ben nem szereplő kapcsoló neve, ha van. */
 function unsupportedOption(values: Record<string, unknown>, allowed: ReadonlySet<string>): string | undefined {
@@ -743,6 +745,17 @@ export async function commandRun(
       }
     }
 
+    // Az `auto` deploy a vault-push után, csak ennek a futásnak a tételeire. A hibája nem
+    // buktatja a futást: a jegyzetek a vaultban már megvannak, a `refinery deploy` pótolja.
+    const itemIds = new Set(selected.map((unit) => unit.item.itemId))
+    if (commit && commitError === undefined && cfg.showroom?.deploy === 'auto' && itemIds.size > 0) {
+      try {
+        for (const line of deployLines(await deployNotes({ cfg, itemIds }))) console.log(line)
+      } catch (error) {
+        console.log(`deploy sikertelen: ${(error as Error).message.split('\n')[0]}`)
+      }
+    }
+
     // A lezárás a naplóban: enélkül egy riport nélküli napló nem különböztetné
     // meg a még futót a keményen leállítottól.
     printing({ type: 'run:ended', interrupted })
@@ -1046,6 +1059,16 @@ function printHelp(topic: string | undefined): number {
   return 0
 }
 
+/** A vault jegyzeteit a showroom klónjába küldi (teljes vault, a hiányzót és a megváltozottat). */
+export async function commandDeploy(cfg: Config): Promise<number> {
+  if (cfg.showroom === null) {
+    console.error('A deploy ki van kapcsolva: nincs showroom: blokk a configban.')
+    return 1
+  }
+  for (const line of deployLines(await deployNotes({ cfg }))) console.log(line)
+  return 0
+}
+
 export async function main(argv: readonly string[]): Promise<number> {
   const command = argv[0]
   if (command === 'help') return printHelp(helpTopic(argv.slice(1)))
@@ -1138,6 +1161,14 @@ export async function main(argv: readonly string[]): Promise<number> {
     }
   }
 
+  if (command === 'deploy') {
+    const unsupported = unsupportedOption(values, DEPLOY_OPTIONS)
+    if (unsupported !== undefined) {
+      console.error(`A deploy nem ismeri a --${unsupported} kapcsolót; támogatott: --config.`)
+      return 1
+    }
+  }
+
   const { raw, cfg } = await loadCliConfig(values.config)
   await validateConfig(cfg)
 
@@ -1155,6 +1186,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   if (command === 'check-structured') {
     return commandCheckStructured(loadModelConfig(raw, process.env, cfg.configPath))
   }
+  if (command === 'deploy') return commandDeploy(cfg)
   if (command === 'list') {
     return commandList(cfg, {
       source: values.source,

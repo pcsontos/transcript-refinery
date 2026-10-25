@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ZodType } from 'zod'
 import {
   commandCheckPricing,
+  commandDeploy,
   commandList,
   commandRun,
   commandScan,
@@ -16,6 +17,7 @@ import {
   runRecipeFlags,
 } from './cli.js'
 import { loadConfig, loadModelConfig, type Config } from './config.js'
+import { deployNotes } from './deploy/deploy.js'
 import type { RunEvent } from './events.js'
 import { COMMANDS, helpText, overview } from './help.js'
 import { VERSION } from './meta.js'
@@ -199,6 +201,12 @@ const rawWithVault = (costLimitUsd: number) => ({
 
 // A `main` watch-ágát a paraméterátadás szintjén ellenőrizzük: a figyelő
 // valódi indítása (fájlfigyelés, Ctrl+C) a `watch/*.test.ts` dolga.
+// A deploy menetét a `deploy/deploy.test.ts` fedi; itt csak a bekötés számít.
+vi.mock('./deploy/deploy.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./deploy/deploy.js')>()),
+  deployNotes: vi.fn(() => Promise.resolve({ written: [], skipped: [], commits: 0, push: null })),
+}))
+
 vi.mock('./watch/command.js', () => ({
   commandWatch: vi.fn(() => Promise.resolve(0)),
 }))
@@ -2482,6 +2490,7 @@ describe('main és súgó', () => {
     ],
     'check-pricing': ['--config', '--fix'],
     'check-structured': ['--config'],
+    deploy: ['--config'],
     list: ['--config', '--source', '--channel', '--recipe', '--status', '--channels', '--limit'],
     'fetch subtitle': [
       '--out',
@@ -3287,5 +3296,111 @@ describe('áthelyezett jegyzetek követése', () => {
     expect(naplo.mock.calls.flat().join('\n')).toContain('áthelyezve: Regi/a_transcript.md → Uj/a_transcript.md')
     naplo.mockRestore()
     expect(pathOf(cfg)).toBe(uj)
+  })
+})
+
+describe('deploy', () => {
+  const showroom = (deploy: 'auto' | 'manual') => ({
+    ...rawWithVault(5),
+    showroom: { deploy, clone_path: join(work, 'klon') },
+  })
+
+  beforeEach(() => {
+    vi.mocked(deployNotes).mockClear()
+    vi.mocked(gitCommitPaths).mockClear()
+  })
+
+  afterEach(() => {
+    // Az alapértelmezett viselkedés vissza: a tesztvaultban a commit hibázik.
+    vi.mocked(gitCommitPaths).mockReset()
+    vi.mocked(gitCommitPaths).mockImplementation(() => Promise.reject(new Error('szimulált git hiba a teszthez')))
+  })
+
+  /** Egy sikeres, commitoló futás; a visszatérés a naplóba írt sorok. */
+  async function futas(raw: unknown, flags: { commit?: boolean; dryRun?: boolean } = {}) {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    vi.mocked(gitCommitPaths).mockResolvedValue(true)
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const code = await commandRun(cfg, raw, { dryRun: flags.dryRun ?? false, force: false, commit: flags.commit ?? true })
+      return { code, sorok: naplo.mock.calls.map((c) => String(c[0])), cfg }
+    } finally {
+      naplo.mockRestore()
+    }
+  }
+
+  it('deploy showroom blokk nélkül hibával áll meg', async () => {
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const cfg = loadConfig(rawWithVault(5), '/p/refinery.config.yaml')
+      expect(await commandDeploy(cfg)).toBe(1)
+      expect(hiba).toHaveBeenCalledWith('A deploy ki van kapcsolva: nincs showroom: blokk a configban.')
+      expect(deployNotes).not.toHaveBeenCalled()
+    } finally {
+      hiba.mockRestore()
+    }
+  })
+
+  it('deploy kiírja a jelentést', async () => {
+    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['a/summary.hu.mdx'], skipped: [], commits: 1, push: { pushed: true } })
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const cfg = loadConfig(showroom('manual'), '/p/refinery.config.yaml')
+      expect(await commandDeploy(cfg)).toBe(0)
+      expect(naplo.mock.calls.map((c) => String(c[0]))).toEqual(['deploy: 1 írva, 0 kihagyva, 1 commit', 'deploy: push ok'])
+      expect(deployNotes).toHaveBeenCalledWith({ cfg })
+    } finally {
+      naplo.mockRestore()
+    }
+  })
+
+  it('a main a deploynak csak a --config kapcsolót engedi', async () => {
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(showroom('manual')))
+    await mkdir(join(vault, '.git'))
+    await mkdir(join(work, 'klon', '.git'), { recursive: true })
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await main(['deploy', '--dry-run', '--config', configPath])).toBe(1)
+      expect(hiba.mock.calls[0]![0]).toContain('--dry-run')
+      expect(deployNotes).not.toHaveBeenCalled()
+      const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+      expect(await main(['deploy', '--config', configPath])).toBe(0)
+      naplo.mockRestore()
+      expect(deployNotes).toHaveBeenCalledTimes(1)
+    } finally {
+      hiba.mockRestore()
+    }
+  })
+
+  it('run auto módban a futás tételeit deployolja', async () => {
+    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['x'], skipped: [], commits: 1, push: { pushed: true } })
+    const { code, sorok, cfg } = await futas(showroom('auto'))
+    const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
+    expect(code).toBe(0)
+    expect(deployNotes).toHaveBeenCalledWith({ cfg, itemIds: new Set([item!.itemId]) })
+    expect(sorok).toContain('deploy: 1 írva, 0 kihagyva, 1 commit')
+  })
+
+  it('run manual módban és showroom: blokk nélkül nem deployol', async () => {
+    await futas(showroom('manual'))
+    expect(deployNotes).not.toHaveBeenCalled()
+    await rm(join(downloads, 'a1'), { recursive: true, force: true })
+    await futas(rawWithVault(5))
+    expect(deployNotes).not.toHaveBeenCalled()
+  })
+
+  it('run --no-commit és --dry-run nem deployol', async () => {
+    await futas(showroom('auto'), { commit: false })
+    await futas(showroom('auto'), { dryRun: true })
+    expect(deployNotes).not.toHaveBeenCalled()
+  })
+
+  it('run auto: a deploy hibája nem buktatja a futást', async () => {
+    vi.mocked(deployNotes).mockRejectedValueOnce(new Error('a klón nem a main ágon áll (masik)\nrészletek'))
+    const { code, sorok } = await futas(showroom('auto'))
+    expect(code).toBe(0)
+    expect(sorok).toContain('deploy sikertelen: a klón nem a main ágon áll (masik)')
   })
 })

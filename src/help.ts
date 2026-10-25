@@ -104,6 +104,15 @@ export const COMMANDS: readonly CommandHelp[] = [
     examples: ['refinery check-structured'],
   },
   {
+    name: 'deploy',
+    summary: 'A vault jegyzeteit .mdx-ként a showroom klónjába írja, commitolja és pusholja.',
+    usage: 'refinery deploy [kapcsolók]',
+    description:
+      'A teljes vaultot összeveti a showroom külön klónjával (showroom.clone_path), és a hiányzó vagy megváltozott jegyzeteket a site szerződése szerinti .mdx-ként kiírja, tételenként commitolja, a végén a main ágra pusholja. Csak hozzáad és frissít, nem töröl. A kihagyott jegyzeteket okkal kiírja. showroom: blokk nélkül megáll. A deploy: auto beállítás a run és a serve futását is kiegészíti, azok csak a futás tételeit küldik. Csak a --config kapcsolót ismeri.',
+    options: [CONFIG, HELP],
+    examples: ['refinery deploy'],
+  },
+  {
     name: 'list',
     summary: 'Kilistázza az elemeket típusonkénti állapottal; nem ír semmit.',
     usage: 'refinery list [kapcsolók]',
