@@ -1,3 +1,4 @@
+import { compile } from '@mdx-js/mdx'
 import { describe, expect, it } from 'vitest'
 import { frontmatter } from '../serve/notes.js'
 import { type Contract, escapeMdx, frontmatterError, mdxErrors, renderMdx } from './mdx.js'
@@ -53,6 +54,25 @@ describe('escapeMdx', () => {
 
   it('a már escape-elt jelet nem duplázza', () => {
     expect(escapeMdx('\\{x\\}')).toBe('\\{x\\}')
+  })
+
+  // a lefordított kimenet linkjei: a site ugyanezt rendereli
+  const hrefs = async (body: string) =>
+    [...String(await compile(escapeMdx(body))).matchAll(/href: "([^"]*)"/g)].map((m) => m[1])
+
+  it('az autolink működő link marad', async () => {
+    expect(await hrefs('🌐 <https://www.youtube.com/watch?v=a_b>')).toEqual(['https://www.youtube.com/watch?v=a_b'])
+    expect(await hrefs('<https://a.com/{id}*x*>')).toEqual(['https://a.com/%7Bid%7D*x*'])
+    // a link szövegében sem lehet kifejezés
+    expect(await check(escapeMdx('<https://a.com/{id}*x*>'))).toEqual([])
+  })
+
+  it('a <…> link-cél működő link marad', async () => {
+    expect(await hrefs('[t](<./f á.md>) és [u](<https://a.com/x>)')).toEqual(['./f%20%C3%A1.md', 'https://a.com/x'])
+  })
+
+  it('a soron belüli HTML-komment kimarad', () => {
+    expect(escapeMdx('a <!-- rejtett --> b')).toBe('a  b')
   })
 })
 

@@ -12,6 +12,8 @@ export interface Contract {
 
 /**
  * A vault-törzset MDX-szé teszi: kódon kívül a `{`, `}` és `<` elé `\` kerül.
+ * Kivétel a `<` után: az `<séma:…>` autolink közönséges link lesz, a `](<cél>)`
+ * link-cél érintetlen, a soron belüli `<!-- … -->` kimarad.
  * Soronként halad; a kerítés (``` vagy ~~~) és a soron belüli kód érintetlen.
  * A behúzott kód MDX-ben nem kód, ott is escape kell. A többsoros soron belüli
  * kódot nem követi (ponytail: ritka; ha kell, a törzs egészén kell keresni).
@@ -50,6 +52,23 @@ function escapeLine(line: string): string {
       const end = close === -1 ? i + length : close + length
       out += line.slice(i, end)
       i = end - 1
+    } else if (c === '<') {
+      const rest = line.slice(i)
+      const target = out.endsWith('](') ? /^<[^<>\n]*>/.exec(rest) : null
+      const comment = /^<!--.*?-->/.exec(rest)
+      const autolink = /^<([a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s<>]*)>/.exec(rest)
+      if (target) {
+        out += target[0] // `[szöveg](<cél>)`: a cél a link része, nem JSX
+      } else if (comment) {
+        // a HTML-komment MDX-ben nem fordul le; escape-elve látható szöveg lenne (ponytail: csak az egysoros)
+      } else if (autolink) {
+        // `\<url>` a site-on törött link (a `>` a href-be kerül), ezért közönséges link lesz
+        out += `[${autolink[1]!.replace(/[\\[\]{}<>*_`]/g, '\\$&')}](<${autolink[1]}>)`
+      } else {
+        out += '\\<'
+        continue
+      }
+      i += (target ?? comment ?? autolink)![0].length - 1
     } else {
       out += c === '{' || c === '}' || c === '<' ? `\\${c}` : c
     }

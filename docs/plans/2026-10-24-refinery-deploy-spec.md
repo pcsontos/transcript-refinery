@@ -69,7 +69,7 @@ Változatlan jegyzetnél nincs átalakítás és nincs LLM-hívás. A `meta.json
 
 Az átalakító egy függvény: vault-jegyzetből (frontmatter + törzs, célnyelv, a szerződés komponenslistája) `.mdx`-szöveget ad, vagy hibát. Két megvalósítás van:
 - **LLM-es**: a #278 hozza. Ebben a körben csak a teszt ad hamisat.
-- **Determinisztikus**: a vault-törzs, a kódblokkon és a soron belüli kódon kívül a `{`, `}` és `<` escape-elésével. Az alakja a végrehajtóé, de le kell fordulnia, és komponenst nem tartalmazhat.
+- **Determinisztikus**: a vault-törzs, a kódblokkon és a soron belüli kódon kívül a `{`, `}` és `<` escape-elésével. A `<` három esetben nem escape-elődik, mert ott működő linket törne vagy látható szemetet adna: az `<https://…>` autolinkből `[url](<url>)` lesz (a vaultban kb. 170 `🌐 <https://…>` sor; escape-elve a site-on a `>` a href-be kerülne), a `[szöveg](<cél>)` link-célja érintetlen, a soron belüli `<!-- … -->` kimarad (a többsoros komment escape-elve szöveg marad; a vaultban ma nincs ilyen). Az alakja a végrehajtóé, de le kell fordulnia, és komponenst nem tartalmazhat.
 
 A **frontmatter** mindkét úton ugyanaz, kódból készül, nem az LLM írja:
 - a vault mezői átnevezés nélkül (az `url` hiánya rendben van), a fent leírt pótlásokkal és igazításokkal (`-orig` levágása, `origin`, a fordítás `translation_of`-ja);
