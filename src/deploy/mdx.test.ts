@@ -146,6 +146,17 @@ describe('frontmatterError', () => {
     expect(frontmatterError('X/summary.hu.mdx', { ...TR, translation_of: 'clean' })).toMatch(/translation_of/)
   })
 
+  it('a site sémájának opcionális mezőit típus szerint nézi', () => {
+    expect(frontmatterError('X/summary.hu.mdx', { ...FIELDS, url: 'u', description: 'd', icon: 'i', full: true })).toBeNull()
+    expect(frontmatterError('X/summary.hu.mdx', { ...FIELDS, url: null })).toBe('X/summary.hu.mdx: nem szöveg: url')
+    expect(frontmatterError('X/summary.hu.mdx', { ...FIELDS, description: 1 })).toBe('X/summary.hu.mdx: nem szöveg: description')
+    expect(frontmatterError('X/summary.hu.mdx', { ...FIELDS, icon: [] })).toBe('X/summary.hu.mdx: nem szöveg: icon')
+    expect(frontmatterError('X/summary.hu.mdx', { ...TR, source_generated_at: new Date() })).toBe(
+      'X/summary.hu.mdx: nem szöveg: source_generated_at',
+    )
+    expect(frontmatterError('X/summary.hu.mdx', { ...FIELDS, full: 'igen' })).toBe('X/summary.hu.mdx: nem logikai: full')
+  })
+
   it('hiányzó kötelező mezőt megnevezi', () => {
     const { title: _t, ...nincs } = FIELDS
     expect(frontmatterError('X/summary.hu.mdx', nincs)).toBe('X/summary.hu.mdx: hiányzik: title')

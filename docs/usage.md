@@ -360,9 +360,11 @@ node dist/cli.js deploy
   második futás változatlan vaultnál nem ír és nem commitol.
 - **Csak hozzáad és frissít**, nem töröl.
 - **Biztonság:** a klónnak a `main` ágon kell állnia, különben a deploy írás nélkül
-  megáll. Írás előtt minden kimenet átmegy a site frontmatter-szabályain, az MDX
+  megáll. Írás előtt minden kimenet átmegy a site frontmatter-sémáján és
+  -szabályain (kötelező mezők, a mezők típusa, a fordítás-hármas), az MDX
   fordításon és a `contract/mdx-components.json` komponenslistáján; ami nem felel
-  meg, az nem kerül a commitba, így a site buildje nem bukhat el miatta.
+  meg, az nem kerül a commitba. A deploy ezeket a site kódjának átiratával nézi,
+  ezért ha a site szabályai változnak, a deploynak is követnie kell őket.
 - **`mdx_fallback: true`:** a jegyzet determinisztikus átalakítással készült (a
   törzs a kódon kívül escape-elve, komponens nélkül). Ha egyszer lesz LLM-es
   átalakító (#278), a deploy az ilyen jegyzeteket újra átalakítja.

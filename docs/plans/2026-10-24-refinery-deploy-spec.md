@@ -80,7 +80,7 @@ A **frontmatter** mindkét úton ugyanaz, kódból készül, nem az LLM írja:
 ### Ellenőrzés írás előtt
 
 Minden kimenetre (LLM-esre és determinisztikusra is):
-1. **Frontmatter a szerződés szerint** (showroom `docs/content-format.md`, `lib/note-frontmatter.ts`): kötelező mezők (`item_id`, `title`, `kind`, `language`, `generated_at`, `source`, `origin`), a `language` `hu` vagy `en`, a fordítás-hármas együtt, a `translation_of` egyezik a `kind`-dal. Ez ugyanaz a lista, amire a site buildje elbukik; a pontos listát a végrehajtó a site kódjával veti össze.
+1. **Frontmatter a szerződés szerint** (showroom `docs/content-format.md`, `lib/note-frontmatter.ts`): kötelező mezők (`item_id`, `title`, `kind`, `language`, `generated_at`, `source`, `origin`), az opcionális sémamezők típusa (`description`, `icon`, `url` és a fordítás-hármas szöveg, `full` logikai; a site `lib/source.ts`-e, fumadocs `pageSchema`), a `language` `hu` vagy `en`, a fordítás-hármas együtt, a `translation_of` egyezik a `kind`-dal. Ez ugyanaz a lista, amire a site buildje elbukik; a pontos listát a végrehajtó a site kódjával veti össze.
 2. **Fordítás:** `@mdx-js/mdx` `compile` (új függőség).
 3. **Komponensek:** minden JSX-elem neve, minden attribútum neve és értéke szerepel a klónban lévő `contract/mdx-components.json`-ban. Az érték csak string-literál lehet, a kötelező attribútum nem hiányozhat, HTML-elem és fragment tilos (a szerződés „Komponensek" szakasza). A listát a deploy a pull **után** olvassa be. A site ezt nem a buildben, hanem a CI tartalom-tesztjében (`tests/content.test.mjs`) nézi, tehát egy hibás komponens a deployt nem állítaná meg, de piros CI-t és rosszul renderelt oldalt adna.
 

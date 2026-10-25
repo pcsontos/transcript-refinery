@@ -85,13 +85,19 @@ const PATH = /^([^/]+)\/([^/.]+)\.([^/.]+)\.mdx$/
 const LANGUAGES = ['hu', 'en']
 const TRANSLATION_FIELDS = ['translation_of', 'source_language', 'source_generated_at']
 const REQUIRED = ['item_id', 'title', 'kind', 'language', 'generated_at', 'source', 'origin']
+// a site lib/source.ts sémájának (fumadocs pageSchema + extend) opcionális mezői
+const OPTIONAL_STRINGS = ['description', 'icon', 'url', ...TRANSLATION_FIELDS]
 
-/** A site buildjét megállító szabályok, előtte a kötelező mezők; `null`, ha rendben. */
+/** A site buildjét megállító szabályok, előtte a kötelező és az opcionális mezők típusa; `null`, ha rendben. */
 export function frontmatterError(target: string, fields: Record<string, unknown>): string | null {
   for (const field of REQUIRED) {
     const value = fields[field]
     if (typeof value !== 'string' || value === '') return `${target}: hiányzik: ${field}`
   }
+  for (const field of OPTIONAL_STRINGS) {
+    if (fields[field] !== undefined && typeof fields[field] !== 'string') return `${target}: nem szöveg: ${field}`
+  }
+  if (fields.full !== undefined && typeof fields.full !== 'boolean') return `${target}: nem logikai: full`
   const match = PATH.exec(target)
   if (!match) return `${target}: nem <tétel>/<fajta>.<nyelv>.mdx alakú`
   const [, itemId, kind, language] = match as unknown as [string, string, string, string]
