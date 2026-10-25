@@ -49,6 +49,21 @@ export async function gitPullFfOnly(repo: string, timeoutMs?: number): Promise<v
   })
 }
 
+/**
+ * Pull a helyi commitok áthelyezésével (a deploy klónja: ott csak a deploy ír, így egy
+ * elutasított push commitjai a közben előrelépett távoli ágra kerülhetnek). A
+ * commitolatlan változásokat félreteszi, majd visszarakja. Ütközésnél a rebase
+ * visszavonódik, a klón a pull előtti állapotában marad, és a hívás hibát dob.
+ */
+export async function gitPullRebase(repo: string): Promise<void> {
+  try {
+    await run('git', ['pull', '--rebase', '--autostash'], { cwd: repo })
+  } catch (error) {
+    await run('git', ['rebase', '--abort'], { cwd: repo }).catch(() => {})
+    throw error
+  }
+}
+
 /** Van-e bármilyen követetlen vagy módosított fájl a munkafában? */
 export async function isDirty(repo: string): Promise<boolean> {
   const { stdout } = await run('git', ['status', '--porcelain'], { cwd: repo })

@@ -82,17 +82,17 @@ A **frontmatter** mindkét úton ugyanaz, kódból készül, nem az LLM írja:
 Minden kimenetre (LLM-esre és determinisztikusra is):
 1. **Frontmatter a szerződés szerint** (showroom `docs/content-format.md`, `lib/note-frontmatter.ts`): kötelező mezők (`item_id`, `title`, `kind`, `language`, `generated_at`, `source`, `origin`), a `language` `hu` vagy `en`, a fordítás-hármas együtt, a `translation_of` egyezik a `kind`-dal. Ez ugyanaz a lista, amire a site buildje elbukik; a pontos listát a végrehajtó a site kódjával veti össze.
 2. **Fordítás:** `@mdx-js/mdx` `compile` (új függőség).
-3. **Komponensek:** minden JSX-elem neve, minden attribútum neve és értéke szerepel a klónban lévő `contract/mdx-components.json`-ban. Az érték csak string-literál lehet, a kötelező attribútum nem hiányozhat, HTML-elem és fragment tilos (a szerződés „Komponensek" szakasza). A listát a deploy a `git pull --ff-only` **után** olvassa be. A site ezt nem a buildben, hanem a CI tartalom-tesztjében (`tests/content.test.mjs`) nézi, tehát egy hibás komponens a deployt nem állítaná meg, de piros CI-t és rosszul renderelt oldalt adna.
+3. **Komponensek:** minden JSX-elem neve, minden attribútum neve és értéke szerepel a klónban lévő `contract/mdx-components.json`-ban. Az érték csak string-literál lehet, a kötelező attribútum nem hiányozhat, HTML-elem és fragment tilos (a szerződés „Komponensek" szakasza). A listát a deploy a pull **után** olvassa be. A site ezt nem a buildben, hanem a CI tartalom-tesztjében (`tests/content.test.mjs`) nézi, tehát egy hibás komponens a deployt nem állítaná meg, de piros CI-t és rosszul renderelt oldalt adna.
 
 Ha az LLM-es kimenet bármelyiken elbukik, a determinisztikus változat megy helyette, és a napló megnevezi az okot. Ha a determinisztikus változat is elbukik, a nyelvi változat kimarad és naplózódik, a deploy a többivel folytatódik.
 
 ### Commit és push
 
 0. **Ágellenőrzés:** ha a klón nem a `main`-en áll, a deploy hibával megáll, és nem ír semmit.
-0b. **Félbemaradt futás maradéka:** ha egy korábbi futás kiírt egy fájlt, de a commit elmaradt, az összevetés változatlannak látná, és sosem commitolná. Ezért a deploy a pull előtt a `content/notes` commitolatlan változásait egy külön commitba veszi (a klón csak a deployé, ott más nem ír).
-1. `gitPullFfOnly` a klónon (`src/vault/git.ts`). Ha elbukik (pl. egy kézi módosítás miatt), a deploy hibával áll meg, írás nincs.
+1. `gitPullRebase` a klónon (`src/vault/git.ts`: `git pull --rebase --autostash`). Nem `--ff-only`: egy elutasított push után a helyi deploy-commitok és a közben előrelépett távoli `main` szétágazna, és a fast-forward pull minden későbbi futást megállítana. A rebase a helyi commitokat a távoli ágra teszi; ez azért biztonságos, mert a klón csak a deployé, és a deploy csak a `content/notes` alá ír. Ütközésnél (pl. valaki ugyanazt a jegyzetet a távoliban kézzel módosította) a rebase visszavonódik, a deploy hibával áll meg, írás nincs.
+1b. **Félbemaradt futás maradéka:** ha egy korábbi futás kiírt egy fájlt, de a commit elmaradt, az összevetés változatlannak látná, és sosem commitolná. Ezért a deploy a pull **után** a `content/notes` commitolatlan változásait egy külön commitba veszi (a klón csak a deployé, ott más nem ír). A pull után, mert az előtte készült commit is szétágaztatna.
 2. Írás, majd **tételenként egy commit** a `gitCommitPaths`-szal, csak a tétel mappájának útjaival. Az üzenet a `noteCommitMessage` mintájára készül (a cím rövidül, az azonosító marad). A pontos alak a végrehajtóé.
-3. Egy `gitPush` a végén. A push-hiba ugyanúgy kezelődik, mint a vaultnál: a commit helyben marad, a hívó jelzi, a következő pull rendezi.
+3. Egy `gitPush` a végén. A push-hiba ugyanúgy kezelődik, mint a vaultnál: a commit helyben marad, a hívó jelzi, a következő futás pullja a távoli ágra teszi, és pusholja.
 
 A deploy **csak hozzáad és frissít**, nem töröl (a törlés: showroom #7).
 

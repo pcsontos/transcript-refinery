@@ -367,7 +367,9 @@ node dist/cli.js deploy
   törzs a kódon kívül escape-elve, komponens nélkül). Ha egyszer lesz LLM-es
   átalakító (#278), a deploy az ilyen jegyzeteket újra átalakítja.
 - **Félbemaradt futás:** a kiírt, de nem commitolt fájlokat a következő futás egy
-  „maradék” commitba veszi, a pushra váró commitokat pedig elpusholja.
+  „maradék” commitba veszi, a pushra váró commitokat pedig elpusholja. A klónon
+  `git pull --rebase` fut, így egy elbukott push után akkor is továbbmegy, ha a
+  showroom `main`-je közben előrelépett (ezért kell a külön, csak a deployé klón).
 
 ### Automatikus kiküldés
 

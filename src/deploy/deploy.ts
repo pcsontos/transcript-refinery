@@ -9,7 +9,7 @@ import {
   gitCurrentBranch,
   gitHasChanges,
   gitLastCommitIso,
-  gitPullFfOnly,
+  gitPullRebase,
   gitPush,
   type PushResult,
 } from '../vault/git.js'
@@ -76,13 +76,15 @@ export async function deployNotes(input: {
 
   const report: DeployReport = { written: [], skipped: [], commits: 0, push: null }
 
+  // Rebase, nem fast-forward: egy elutasított push commitjai különben a közben előrelépett
+  // távoli main mellett örökre beragadnának.
+  await gitPullRebase(clone)
   // Egy félbeszakadt futás kiírt, de nem commitolt fájljait az összevetés változatlannak látná.
   if (await gitHasChanges(clone, [NOTES_DIR])) {
     if (await gitCommitPaths(clone, [NOTES_DIR], noteCommitMessage('deploy', 'félbemaradt futás maradéka', '-'))) {
       report.commits += 1
     }
   }
-  await gitPullFfOnly(clone)
   const contract = JSON.parse(await readFile(join(clone, 'contract', 'mdx-components.json'), 'utf8')) as Contract
 
   const check = async (target: string, fields: Record<string, unknown>, text: string) =>
