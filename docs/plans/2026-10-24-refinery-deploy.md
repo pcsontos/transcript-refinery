@@ -124,7 +124,7 @@ Megvalósítási döntések:
 - `frontmatterError`: a showroom `lib/note-frontmatter.ts` `frontmatterError`-jának átirata (út-minta, nyelv, `item_id`/`kind`/`language` egyezés, fordítás-hármas, `translation_of === kind`), előtte a hét kötelező mező nem üres szövegként való jelenléte: `` `${target}: hiányzik: ${mező}` ``.
 - `mdxErrors`: `compile(source, { remarkPlugins: [gyűjtő] })` a `@mdx-js/mdx`-ből. A gyűjtő remark-plugin rekurzívan bejárja a fát (`unist-util-visit` nélkül, pár soros saját bejárás). Minden `mdxJsxFlowElement`/`mdxJsxTextElement` csomópontnál hibát ad, ha: a neve `null` (fragment) vagy nincs a `contract.components`-ben (a kisbetűs HTML-elem így kiesik); egy attribútum `mdxJsxExpressionAttribute` (spread), értéke nem string (kifejezés vagy érték nélküli), a neve nincs a listán, vagy enum-értéke nincs a `values`-ban; egy `required` attribútum hiányzik. Szintén hiba minden `mdxFlowExpression`/`mdxTextExpression` és `mdxjsEsm` csomópont (`{…}`, `import`/`export`). A `compile` dobása egy hibasor (az első sora).
 
-- [ ] **1. lépés: bukó tesztek**
+- [x] **1. lépés: bukó tesztek**
   - `kódon kívül escape-el, kódban nem`: ``'a < b {x} `if (n < 1) {}`'`` → ``'a \\< b \\{x\\} `if (n < 1) {}`'``; kerítésen belüli sorok változatlanok, `~~~` kerítéssel is.
   - `behúzott kódban is escape-el`: `'    a < b'` → `'    a \\< b'`.
   - `HTML-komment és <br> lefordul`: `mdxErrors(renderMdx(f, escapeMdx('<!-- x -->\n\nsor<br>')), c)` → `[]`.
@@ -134,10 +134,10 @@ Megvalósítási döntések:
   - `le nem forduló MDX hibát ad`: `'<Callout>'` (zárás nélkül) → nem üres.
   - `frontmatterError`: a site szabályainak esetei (rossz suffix, `kind`-eltérés, csonka fordítás-hármas, `translation_of ≠ kind`) és `hiányzik: title`; jó eredeti és jó fordítás → `null`.
   - `kettőspontos, idézőjeles cím a site-szabálynak megfelel`: `title: 'A: "b" #c'` → a `renderMdx` kimenetét a `frontmatter()` (`src/serve/notes.ts:97`) visszaolvasva ugyanazt a címet adja.
-- [ ] **2. lépés:** `pnpm vitest run src/deploy/mdx.test.ts` → FAIL.
-- [ ] **3. lépés:** függőség hozzáadása, a négy függvény megvalósítása. A `Contract` a teszthez a showroom `contract/mdx-components.json` mai tartalmának másolata a tesztfájlban.
-- [ ] **4. lépés:** a teszt PASS, `pnpm typecheck && pnpm lint` PASS.
-- [ ] **5. lépés: commit** (`feat(deploy): Escape and check MDX against the contract`).
+- [x] **2. lépés:** `pnpm vitest run src/deploy/mdx.test.ts` → FAIL.
+- [x] **3. lépés:** függőség hozzáadása, a négy függvény megvalósítása. A `Contract` a teszthez a showroom `contract/mdx-components.json` mai tartalmának másolata a tesztfájlban.
+- [x] **4. lépés:** a teszt PASS, `pnpm typecheck && pnpm lint` PASS.
+- [x] **5. lépés: commit** (`feat(deploy): Escape and check MDX against the contract`).
 
 ### 4. feladat: a deploy menete
 
