@@ -116,6 +116,11 @@ describe('mdxErrors', () => {
     expect((await check('<Tab title={x}>y</Tab>')).length).toBeGreaterThan(0)
   })
 
+  it('a prototípus kulcsai nem engedett nevek', async () => {
+    expect(await check('<Callout constructor="x">y</Callout>')).toEqual(['Callout: nem engedett attribútum: constructor'])
+    expect(await check('<constructor />')).toEqual(['ismeretlen komponens: constructor'])
+  })
+
   it('kifejezés és import hibát ad', async () => {
     expect((await check('{1 + 1}')).length).toBeGreaterThan(0)
     expect((await check('import X from "y"\n\nszöveg')).length).toBeGreaterThan(0)

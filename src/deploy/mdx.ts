@@ -123,13 +123,14 @@ function nodeErrors(node: MdxNode, contract: Contract, errors: string[]): void {
     errors.push(`${node.type === 'mdxjsEsm' ? 'import/export' : 'kifejezés'} nem engedett`)
   }
   if (node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement') {
-    const spec = node.name == null ? undefined : contract.components[node.name]
+    const spec = node.name != null && Object.hasOwn(contract.components, node.name) ? contract.components[node.name] : undefined
     if (spec === undefined) {
       errors.push(`ismeretlen komponens: ${node.name ?? '<>'}`)
     } else {
       const given = new Set<string>()
       for (const attr of node.attributes ?? []) {
-        const attrSpec = attr.type === 'mdxJsxAttribute' ? spec.attributes[attr.name!] : undefined
+        const attrSpec =
+          attr.type === 'mdxJsxAttribute' && Object.hasOwn(spec.attributes, attr.name!) ? spec.attributes[attr.name!] : undefined
         if (attrSpec === undefined) {
           errors.push(`${node.name}: nem engedett attribútum: ${attr.name ?? '{...}'}`)
         } else if (typeof attr.value !== 'string') {
