@@ -30,9 +30,11 @@ describe('variantOf', () => {
     expect(cli.ok && cli.fields.origin).toBe('cli')
   })
 
-  it('URL nélküli tétel url nélkül marad', () => {
+  it('az url változatlanul átmegy, URL nélküli tétel url nélkül marad', () => {
     const v = variantOf('X', { vaultKind: 'summary', fields: BASE }, NONE, null)
     expect(v.ok && 'url' in v.fields).toBe(false)
+    const withUrl = variantOf('X', { vaultKind: 'summary', fields: { ...BASE, url: 'https://a.com/v' } }, NONE, null)
+    expect(withUrl.ok && withUrl.fields.url).toBe('https://a.com/v')
   })
 
   it('nincs generated_at kihagyás', () => {
