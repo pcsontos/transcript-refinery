@@ -67,11 +67,14 @@ afterEach(async () => {
 
 const BASE = { title: 'Cím', language: 'hu', source: 'youtube', generated_at: 'T1' }
 
-/** Egy vault-jegyzet: a tételhez tartozó `<alap>_<fajta>.md`, plusz az átirat-horgony. */
+/**
+ * Egy vault-jegyzet: a tételhez tartozó `<alap>_<fajta>.md`, plusz az átirat-horgony. Az átirat
+ * mezői egy kiküldhető jegyzetéi, hogy csak a fajtája zárja ki.
+ */
 async function note(itemId: string, kind: string, fields: Record<string, unknown>, body = '# Szöveg\n\nEgy {x} < y.\n') {
   const dir = join(vault, 'notes', 'youtube')
   await mkdir(dir, { recursive: true })
-  await writeFile(join(dir, `${itemId}_transcript.md`), `---\n${stringify({ item_id: itemId, title: 'Cím' })}---\nátirat\n`)
+  await writeFile(join(dir, `${itemId}_transcript.md`), `---\n${stringify({ item_id: itemId, ...BASE })}---\nátirat\n`)
   const path = join(dir, `${itemId}_${kind}.md`)
   await writeFile(path, `---\n${stringify({ item_id: itemId, ...fields })}---\n${body}`)
   return path
@@ -105,6 +108,8 @@ describe('deployNotes', () => {
     expect(await show('content/notes/vid1/summary.en.mdx')).toContain('translation_of: summary')
     expect(JSON.parse(await show('content/notes/vid1/meta.json'))).toEqual({ title: 'Cím' })
     expect(await remoteHas('content/notes/vid1/transcript.hu.mdx')).toBe(false)
+    // az átirat kizárása nem kihagyás, nem kerül a naplóba
+    expect(report.skipped).toEqual([])
     expect(report.written.sort()).toEqual(['vid1/summary.en.mdx', 'vid1/summary.hu.mdx'])
   })
 
@@ -207,11 +212,45 @@ describe('deployNotes', () => {
     const first = await show('content/notes/vid1/glossary.hu.mdx')
     expect(first).toContain('kind: glossary')
     expect(first).not.toContain('source_language')
+    const committedAt = await git(vault, 'log', '-1', '--format=%cI', '--', path)
+    expect(first).toContain(`generated_at: ${committedAt}`)
+    expect(first).toContain('source: youtube')
+    expect(first).toContain('origin: cli')
     await new Promise((r) => setTimeout(r, 1100))
     await writeFile(path, `---\n${stringify({ item_id: 'vid1', title: 'Cím', language: 'hu', source_language: 'en' })}---\n| a | b |\n| c | d |\n`)
     await git(vault, 'commit', '-qam', 'bővítés')
     const report = await deployNotes({ cfg })
     expect(report.written).toEqual(['vid1/glossary.hu.mdx'])
+  })
+
+  it('commitolatlan szójegyzék kimarad és naplózódik', async () => {
+    await note('vid1', 'summary', BASE)
+    await git(vault, 'add', '.')
+    await git(vault, 'commit', '-qm', 'vault')
+    const path = await note('vid1', 'glossary-hu', { title: 'Cím', language: 'hu', source_language: 'en' }, '| a | b |\n')
+    const report = await deployNotes({ cfg })
+    expect(report.skipped).toEqual([{ path, reason: 'a szójegyzék még nincs commitolva' }])
+    expect(await remoteHas('content/notes/vid1/glossary.hu.mdx')).toBe(false)
+  })
+
+  it('fordítás hiányzó source_generated_at-je az eredetiből pótlódik', async () => {
+    await note('vid1', 'summary', { ...BASE, generated_at: 'T7' })
+    await note('vid1', 'summary-en', { ...BASE, language: 'en', translation_of: 'summary', source_language: 'hu' })
+    await deployNotes({ cfg })
+    expect(await show('content/notes/vid1/summary.en.mdx')).toContain('source_generated_at: T7')
+  })
+
+  it('ugyanarra a célútra eső két fájl közül az eredeti nyer', async () => {
+    await note('vid1', 'summary', BASE)
+    const translation = await note('vid1', 'summary-hu', {
+      ...BASE,
+      translation_of: 'summary',
+      source_language: 'en',
+      source_generated_at: 'T1',
+    })
+    const report = await deployNotes({ cfg })
+    expect(report.skipped).toEqual([{ path: translation, reason: 'ütközik: vid1/summary.hu.mdx' }])
+    expect(await show('content/notes/vid1/summary.hu.mdx')).not.toContain('translation_of')
   })
 
   it('nem main-en álló klónnál megáll', async () => {
