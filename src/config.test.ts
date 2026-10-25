@@ -149,6 +149,31 @@ describe('loadConfig', () => {
   })
 })
 
+describe('showroom', () => {
+  it('showroom: blokk nélkül a showroom null', () => {
+    expect(loadConfig(MIN, '/p/c.yaml').showroom).toBeNull()
+  })
+
+  it('a deploy alapértéke manual', () => {
+    expect(loadConfig({ ...MIN, showroom: { clone_path: '/x' } }, '/p/c.yaml').showroom).toEqual({
+      deploy: 'manual',
+      clonePath: '/x',
+    })
+  })
+
+  it('relatív clone_path hibát ad', () => {
+    expect(() => loadConfig({ ...MIN, showroom: { clone_path: 'x' } }, '/p/c.yaml')).toThrow(
+      /showroom\.clone_path/,
+    )
+  })
+
+  it('ismeretlen deploy-érték hibát ad', () => {
+    expect(() =>
+      loadConfig({ ...MIN, showroom: { deploy: 'mindig', clone_path: '/x' } }, '/p/c.yaml'),
+    ).toThrow(/showroom\.deploy/)
+  })
+})
+
 describe('readConfigFile', () => {
   it('hiányzó fájlnál megnevezi az útvonalat és a --config kapcsolót', async () => {
     await expect(readConfigFile(join(dir, 'nincs.yaml'))).rejects.toThrow(
@@ -383,6 +408,37 @@ describe('validateConfig', () => {
     }
     expect(message).toContain(path1)
     expect(message).toContain(path2)
+  })
+})
+
+describe('validateConfig — showroom', () => {
+  const base = async (clonePath: string) => {
+    await mkdir(join(dir, 'vault', '.git'), { recursive: true })
+    await mkdir(join(dir, 'subs'), { recursive: true })
+    return loadConfig(
+      {
+        vault: { path: join(dir, 'vault') },
+        sources: [join(dir, 'subs')],
+        showroom: { clone_path: clonePath },
+      },
+      '/p/c.yaml',
+    )
+  }
+
+  it('hibát dob, ha a klón mappája nem létezik', async () => {
+    const cfg = await base(join(dir, 'nincs'))
+    await expect(validateConfig(cfg)).rejects.toThrow('showroom.clone_path: nem létező mappa')
+  })
+
+  it('hibát dob, ha a klón nem git-repó', async () => {
+    await mkdir(join(dir, 'klon'), { recursive: true })
+    const cfg = await base(join(dir, 'klon'))
+    await expect(validateConfig(cfg)).rejects.toThrow('showroom.clone_path: nem git-repó')
+  })
+
+  it('elfogadja a git-repó klónt', async () => {
+    await mkdir(join(dir, 'klon', '.git'), { recursive: true })
+    await expect(validateConfig(await base(join(dir, 'klon')))).resolves.toBeUndefined()
   })
 })
 

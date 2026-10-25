@@ -60,6 +60,17 @@ logs:
 #   # szójegyzékkel (<alapnév>_glossary-<cél>.md a jegyzetek mellett). Elhagyható.
 #   chunk_words: 8000
 
+# Jegyzetek kiküldése a showroomba (elhagyható). A `refinery deploy` a vault
+# jegyzeteiből .mdx-et ír a showroom-repó helyi klónjába, tételenként commitol,
+# és a main-re pusholja. A clone_path egy KÜLÖN, csak a deploynak fenntartott
+# klón (nem a site fejlesztői munkapéldánya), a main ágon; a refinery nem
+# klónoz, egyszer kézzel hozd létre: git clone <showroom-repó> <clone_path>.
+# deploy: auto → a run és a serve a futás tételeit a végén kiküldi;
+# manual (alap) → csak a `refinery deploy` küld ki.
+# showroom:
+#   deploy: manual
+#   clone_path: /abs/út/refinery-showroom-deploy
+
 # Szerep → modell. A receptek szerepet kérnek, nem modellnevet; a konkrét
 # választás mérési eredmény lesz, nem vélemény (decisions/0004).
 model:
