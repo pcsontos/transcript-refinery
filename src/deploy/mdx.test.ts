@@ -158,8 +158,11 @@ describe('frontmatterError', () => {
   })
 
   it('hiányzó kötelező mezőt megnevezi', () => {
-    const { title: _t, ...nincs } = FIELDS
-    expect(frontmatterError('X/summary.hu.mdx', nincs)).toBe('X/summary.hu.mdx: hiányzik: title')
+    for (const field of Object.keys(FIELDS)) {
+      const { [field]: _f, ...nincs } = FIELDS as Record<string, unknown>
+      expect(frontmatterError('X/summary.hu.mdx', nincs)).toBe(`X/summary.hu.mdx: hiányzik: ${field}`)
+      expect(frontmatterError('X/summary.hu.mdx', { ...nincs, [field]: '' })).toBe(`X/summary.hu.mdx: hiányzik: ${field}`)
+    }
   })
 })
 
