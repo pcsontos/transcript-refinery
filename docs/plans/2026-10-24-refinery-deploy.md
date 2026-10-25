@@ -170,7 +170,7 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 8. Írás (`mkdir -p`), `meta.json`, ha hiányzik vagy más a cím. Tételenként `gitCommitPaths(clone, <a tétel írt útjai>, noteCommitMessage('deploy', cím, itemId))`.
 9. Ha volt commit: `push = await gitPush(clone)`, különben `null`.
 
-- [ ] **1. lépés: bukó tesztek.** Előkészítés: ideiglenes csupasz távoli repó (`git init --bare`), belőle klón `main`-en egy `contract/mdx-components.json`-nal (pusholva); ideiglenes vault git-repó, `vault.notes_dir` alatt jegyzetekkel; `cfg` a `loadConfig`-gal. Esetek:
+- [x] **1. lépés: bukó tesztek.** Előkészítés: ideiglenes csupasz távoli repó (`git init --bare`), belőle klón `main`-en egy `contract/mdx-components.json`-nal (pusholva); ideiglenes vault git-repó, `vault.notes_dir` alatt jegyzetekkel; `cfg` a `loadConfig`-gal. Esetek:
   - `első futás kiírja és pusholja`: magyar `summary` + `summary-en` fordítás → a távoli `main`-en `content/notes/X/summary.hu.mdx`, `summary.en.mdx` (fordításé `kind: summary`), `meta.json`; `report.commits === 1`, `push.pushed === true`; az átirat-fájlból nincs `.mdx`.
   - `második futás változatlan vaultnál nem ír és nem commitol`: `written: []`, `commits: 0`, `push: null`, és a hamis `transform` hívásszáma 0.
   - `újragenerált jegyzet frissül`: más `generated_at` → `written` tartalmazza.
@@ -187,10 +187,10 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
   - `félbemaradt írás a következő futásban commitba kerül`: a klónba kézzel írt `content/notes/X/summary.hu.mdx` (commit nélkül) a futás után a távolin van.
   - `elutasított push után a következő futás pusholja`: a távoliba egy másik klónból közben pusholt commit; az első futás `push.pushed === false` vagy a pull hibát dob (a végrehajtó a valódi viselkedést rögzíti); a második futás után a távolin ott a jegyzet.
   - `git.test.ts`: `gitCurrentBranch` → `'main'`; `gitLastCommitIso` commitolt fájlra ISO-időt, commitolatlanra `null`-t ad.
-- [ ] **2. lépés:** `pnpm vitest run src/deploy/deploy.test.ts src/vault/git.test.ts` → FAIL.
-- [ ] **3. lépés:** megvalósítás a fenti menet szerint.
-- [ ] **4. lépés:** a tesztek PASS, `pnpm typecheck && pnpm lint` PASS.
-- [ ] **5. lépés: commit** (`feat(deploy): Deploy vault notes to the showroom clone`).
+- [x] **2. lépés:** `pnpm vitest run src/deploy/deploy.test.ts src/vault/git.test.ts` → FAIL.
+- [x] **3. lépés:** megvalósítás a fenti menet szerint.
+- [x] **4. lépés:** a tesztek PASS, `pnpm typecheck && pnpm lint` PASS.
+- [x] **5. lépés: commit** (`feat(deploy): Deploy vault notes to the showroom clone`).
 
 ### 5. feladat: `refinery deploy` parancs és `auto` a `run`-ban
 

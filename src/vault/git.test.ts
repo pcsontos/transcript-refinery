@@ -4,7 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { gitCommitPaths, gitHasChanges, gitHeadShort, gitPullFfOnly, isDirty } from './git.js'
+import {
+  gitAheadCount,
+  gitCommitPaths,
+  gitCurrentBranch,
+  gitHasChanges,
+  gitHeadShort,
+  gitLastCommitIso,
+  gitPullFfOnly,
+  isDirty,
+} from './git.js'
 
 const run = promisify(execFile)
 let repo: string
@@ -141,5 +150,25 @@ describe('gitPullFfOnly időkorlát', () => {
         }
       }
     }
+  })
+})
+
+describe('gitCurrentBranch', () => {
+  it('az aktuális ág nevét adja', async () => {
+    expect(await gitCurrentBranch(repo)).toBe('main')
+  })
+})
+
+describe('gitLastCommitIso', () => {
+  it('commitolt fájlra ISO-időt, commitolatlanra null-t ad', async () => {
+    expect(await gitLastCommitIso(repo, join(repo, 'alap.txt'))).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    await writeFile(join(repo, 'uj.txt'), 'új', 'utf8')
+    expect(await gitLastCommitIso(repo, join(repo, 'uj.txt'))).toBeNull()
+  })
+})
+
+describe('gitAheadCount', () => {
+  it('upstream nélkül 0', async () => {
+    expect(await gitAheadCount(repo)).toBe(0)
   })
 })

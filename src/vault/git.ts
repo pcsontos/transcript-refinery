@@ -99,3 +99,24 @@ export async function gitHeadShort(repo: string): Promise<string> {
   const { stdout } = await run('git', ['rev-parse', '--short', 'HEAD'], { cwd: repo })
   return stdout.trim()
 }
+
+export async function gitCurrentBranch(repo: string): Promise<string> {
+  const { stdout } = await run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repo })
+  return stdout.trim()
+}
+
+/** A fájl utolsó commitjának ideje (ISO); `null`, ha a fájl még nincs commitolva. */
+export async function gitLastCommitIso(repo: string, path: string): Promise<string | null> {
+  const { stdout } = await run('git', ['log', '-1', '--format=%cI', '--', path], { cwd: repo })
+  return stdout.trim() === '' ? null : stdout.trim()
+}
+
+/** Hány commit vár pushra az upstreamhez képest; upstream nélkül 0. */
+export async function gitAheadCount(repo: string): Promise<number> {
+  try {
+    const { stdout } = await run('git', ['rev-list', '--count', '@{u}..HEAD'], { cwd: repo })
+    return Number(stdout.trim())
+  } catch {
+    return 0
+  }
+}
