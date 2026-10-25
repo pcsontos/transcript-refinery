@@ -3,6 +3,48 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.24.0] — 2026-10-25
+
+A vault jegyzetei egy paranccsal kikerülnek a showroom site-ra: a
+`refinery deploy` a site szerződése szerinti `.mdx`-ként a showroom-repóba
+írja és pusholja őket, kérésre minden futás után magától is.
+
+### ✨ Újdonságok
+
+- **`refinery deploy`:** a vault eredeti és fordított jegyzeteit, valamint a
+  szójegyzéket a showroom egy külön, csak a deploynak fenntartott klónjába
+  írja (`content/notes/<tétel>/<fajta>.<nyelv>.mdx` és `meta.json`),
+  tételenként commitolja, a végén a `main`-re pusholja; a push indítja a site
+  deployját. Csak a hiányzót és a megváltozottat írja, nem töröl, a második
+  futás változatlan vaultnál nem commitol. A nyers átirat nem megy ki (#277).
+- **Csak érvényes jegyzet megy ki:** írás előtt minden kimenet átmegy a site
+  frontmatter-szabályain és -sémáján, az MDX-fordításon és a site
+  komponenslistáján. Ami nem felel meg, kimarad, és a deploy okkal együtt
+  kiírja; a nem `hu`/`en` nyelvű jegyzetek is így maradnak ki (#277).
+- **Biztonságos átalakítás:** a jegyzet törzse a kódon kívül escape-elve kerül
+  az `.mdx`-be (`mdx_fallback: true`), a linkek és a `🌐 <https://…>` sorok
+  működő linkek maradnak. A `-orig` nyelvi végződés levágódik, a régi
+  jegyzetek hiányzó `origin`-je pótlódik (#277).
+- **Automatikus kiküldés:** a `showroom.deploy: auto` mellett a `run` és a
+  `serve` a vault-push után az adott futás tételeit is kiküldi. A deploy hibája
+  nem buktatja a futást (#277).
+- **Hibatűrő push:** ha a push elbukik, a commitok helyben maradnak, a hiba
+  oka kiíródik, és a következő futás akkor is pusholja őket, ha a showroom
+  `main`-je közben előrelépett (#277).
+
+### 📚 Dokumentáció
+
+- A `docs/usage.md` új szakasza leírja a külön klón létrehozását, a
+  `showroom:` config-blokkot, a kihagyás okait és az `auto` módot; a README
+  parancslistája és az architektúra-doksi is kiegészült.
+
+### 🔧 Üzemeltetés
+
+- **Kiadás:** a `src/` változott, ezért a `peter-mba` konténer új képet kér.
+  Új függőség: `@mdx-js/mdx`. A konténerben a deploy addig ki van kapcsolva
+  (nincs `showroom:` blokk), amíg a klón és a push-jog be nincs kötve (#322).
+  Worker-deploy nem kell.
+
 ## [1.23.0] — 2026-10-24
 
 A hosszú jegyzetek fordítása darabokban, sorban fut, egy videónként közös
@@ -1091,6 +1133,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.24.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.24.0
 [1.23.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.23.0
 [1.22.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.22.0
 [1.21.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.21.0
