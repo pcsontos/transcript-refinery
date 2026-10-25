@@ -92,7 +92,7 @@ Ha az LLM-es kimenet bármelyiken elbukik, a determinisztikus változat megy hel
 1. `gitPullRebase` a klónon (`src/vault/git.ts`: `git pull --rebase --autostash`). Nem `--ff-only`: egy elutasított push után a helyi deploy-commitok és a közben előrelépett távoli `main` szétágazna, és a fast-forward pull minden későbbi futást megállítana. A rebase a helyi commitokat a távoli ágra teszi; ez azért biztonságos, mert a klón csak a deployé, és a deploy csak a `content/notes` alá ír. Ütközésnél (pl. valaki ugyanazt a jegyzetet a távoliban kézzel módosította) a rebase visszavonódik, a deploy hibával áll meg, írás nincs.
 1b. **Félbemaradt futás maradéka:** ha egy korábbi futás kiírt egy fájlt, de a commit elmaradt, az összevetés változatlannak látná, és sosem commitolná. Ezért a deploy a pull **után** a `content/notes` commitolatlan változásait egy külön commitba veszi (a klón csak a deployé, ott más nem ír). A pull után, mert az előtte készült commit is szétágaztatna.
 2. Írás, majd **tételenként egy commit** a `gitCommitPaths`-szal, csak a tétel mappájának útjaival. Az üzenet a `noteCommitMessage` mintájára készül (a cím rövidül, az azonosító marad). A pontos alak a végrehajtóé.
-3. Egy `gitPush` a végén. A push-hiba ugyanúgy kezelődik, mint a vaultnál: a commit helyben marad, a hívó jelzi, a következő futás pullja a távoli ágra teszi, és pusholja.
+3. Egy `gitPush` a végén. A push-hiba ugyanúgy kezelődik, mint a vaultnál: a commit helyben marad, a hívó jelzi (a git kimenetéből az okkal együtt), a következő futás pullja a távoli ágra teszi, és pusholja.
 
 A deploy **csak hozzáad és frissít**, nem töröl (a törlés: showroom #7).
 

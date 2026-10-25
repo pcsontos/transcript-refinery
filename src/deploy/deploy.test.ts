@@ -295,6 +295,8 @@ describe('deployNotes', () => {
     await writeFile(join(remote, 'deny'), '')
     const first = await deployNotes({ cfg })
     expect(first.push?.pushed).toBe(false)
+    // az ok is látszik, nem csak a „Command failed: git push”
+    expect(deployLines(first).join('\n')).toContain('pre-receive hook declined')
     expect(await remoteHas('content/notes/vid1/summary.hu.mdx')).toBe(false)
     await rm(join(remote, 'deny'))
     const second = await deployNotes({ cfg })

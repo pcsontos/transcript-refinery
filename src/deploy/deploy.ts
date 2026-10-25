@@ -198,8 +198,11 @@ export function deployLines(report: DeployReport): string[] {
       .sort((a, b) => a.reason.localeCompare(b.reason) || a.path.localeCompare(b.path))
       .map((s) => `  kihagyva: ${basename(s.path)} — ${s.reason}`),
   ]
-  if (report.push !== null) {
-    lines.push(report.push.pushed ? 'deploy: push ok' : `deploy: push sikertelen: ${(report.push.reason ?? '').split('\n')[0]}`)
+  if (report.push?.pushed === true) lines.push('deploy: push ok')
+  else if (report.push !== null) {
+    // Az első sor mindig „Command failed: git push”; az ok a git kimenetében van.
+    const [first = '', ...rest] = (report.push.reason ?? '').split('\n').filter((l) => l.trim() !== '')
+    lines.push(`deploy: push sikertelen: ${first}`, ...rest.map((l) => `  ${l.trim()}`))
   }
   return lines
 }
