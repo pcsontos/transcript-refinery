@@ -50,7 +50,7 @@ A cél: `content/notes/<itemId>/<site-fajta>.<nyelv>.mdx`.
 - két vault-fájl ugyanarra a célútra esne. Ilyenkor az eredeti nyer, a másik kimarad.
 
 **A szójegyzék (`_glossary-<cél>.md`, #259) kimegy** (felhasználói döntés, 2026-10-24). A frontmatterje más, mint a recept-jegyzeteké (`src/vault/render.ts`, `renderGlossaryNote`): van `kind: glossary-<cél>`, `language`, `source_language`, de **nincs `generated_at`, `source`, `origin`**, mert a fájl a későbbi fordításokkal bővül. A deploy így kezeli (**az én döntéseim**):
-- site-fajta: `glossary`, nyelv a `language` (a célnyelv): `glossary.hu.mdx`. Nem fordítás (nincs `translation_of`), a site eredeti változatnak látja. A `kind` `glossary`-ra íródik felül; a `source_language` megmarad, mert a site a szerződésen kívüli mezőt átengedi, és a fordítás-hármas szabálya csak a `translation_of` jelenlétekor él. **Ezt a végrehajtó a site `lib/note-frontmatter.ts`-ével ellenőrzi**; ha a magányos `source_language` buktatná a buildet, a mezőt elhagyja;
+- site-fajta: `glossary`, nyelv a `language` (a célnyelv): `glossary.hu.mdx`. Nem fordítás (nincs `translation_of`), a site eredeti változatnak látja. A `kind` `glossary`-ra íródik felül; a `source_language` **kimarad**, mert a site `lib/note-frontmatter.ts` `frontmatterError`-ja a fordítás-hármasból bármelyik magányos mezőre buktatja a buildet (ellenőrizve, 2026-10-25);
 - `generated_at`: a fájl utolsó vault-commitjának ideje (`git log -1 --format=%cI -- <út>`). A deploy a vault-commit után fut, így a bővült szójegyzék új időt kap, és a változásfelismerés ugyanaz, mint a többi jegyzetnél. Ha a fájl még nincs commitolva, kimarad és naplózódik;
 - `source` és `origin`: a tétel egy recept-jegyzetéből (a tétel közös adata); ha a tételnek nincs ilyen, kimarad és naplózódik.
 
@@ -89,6 +89,7 @@ Ha az LLM-es kimenet bármelyiken elbukik, a determinisztikus változat megy hel
 ### Commit és push
 
 0. **Ágellenőrzés:** ha a klón nem a `main`-en áll, a deploy hibával megáll, és nem ír semmit.
+0b. **Félbemaradt futás maradéka:** ha egy korábbi futás kiírt egy fájlt, de a commit elmaradt, az összevetés változatlannak látná, és sosem commitolná. Ezért a deploy a pull előtt a `content/notes` commitolatlan változásait egy külön commitba veszi (a klón csak a deployé, ott más nem ír).
 1. `gitPullFfOnly` a klónon (`src/vault/git.ts`). Ha elbukik (pl. egy kézi módosítás miatt), a deploy hibával áll meg, írás nincs.
 2. Írás, majd **tételenként egy commit** a `gitCommitPaths`-szal, csak a tétel mappájának útjaival. Az üzenet a `noteCommitMessage` mintájára készül (a cím rövidül, az azonosító marad). A pontos alak a végrehajtóé.
 3. Egy `gitPush` a végén. A push-hiba ugyanúgy kezelődik, mint a vaultnál: a commit helyben marad, a hívó jelzi, a következő pull rendezi.
@@ -114,12 +115,12 @@ showroom:
 
 **`auto`**: csak az adott futás tételeire fut, nem a teljes vaultra, hogy a #278 után egy Telegram-kérés ne indítson tömeges LLM-átalakítást a régi jegyzetekre. Bekötés:
 - CLI: a vault `commitPending` + push után (`src/cli.ts:687` környéke);
-- watch: a `commitPending` után (`src/watch/round.ts:91` környéke);
-- serve: a vault-push után, a `ready` jelentés előtt, minden olyan job-úton, ami vault-jegyzetet ír (`src/serve/summary.ts` és a `src/serve/job.ts` `ready`-ágai; a pontos helyek a végrehajtóé).
+- serve: a vault-push után, a `ready` jelentés előtt. Egyetlen hely: a `runRecipes` (`src/serve/summary.ts`), mert a `job.ts` többi `ready`-ága (felirat-, szöveg-feltöltés) nem ír vaultba.
+- **watch: nincs bekötés.** A `watchRound` csak átiratot ír (modellt nem hív), az átirat pedig nem megy a site-ra, tehát a bekötésnek nem lenne mit deployolnia. Ha a watch egyszer recepteket is futtat, akkor kell (felhasználói döntés, 2026-10-25, eltérés a jegytől).
 
-**Deploy-hiba az `auto` úton** (pull, push, kivétel): a futás eredménye megmarad, a hiba nem buktatja a jobot. A CLI és a watch a push-sorhoz hasonló sorban jelzi. A serve naplózza, és a `ready` ugyanúgy megy. A Telegram nem kap róla jelzést (**az én döntésem**; ha kell, külön jegy).
+**Deploy-hiba az `auto` úton** (pull, push, kivétel): a futás eredménye megmarad, a hiba nem buktatja a jobot. A CLI a push-sorhoz hasonló sorban jelzi. A serve naplózza, és a `ready` ugyanúgy megy. A Telegram nem kap róla jelzést (**az én döntésem**; ha kell, külön jegy).
 
-A kihagyott nyelvi változatok listája (ok szerint) a kimenet része: CLI-ben és watch-ban kiírva, serve-ben naplózva.
+A kihagyott nyelvi változatok listája (ok szerint) a kimenet része: CLI-ben kiírva, serve-ben naplózva.
 
 ## Nem cél
 
@@ -146,7 +147,8 @@ Vitest, hamis gittel és hamis átalakítóval, a meglévő tesztek mintájára:
 - fordítás hiányzó `source_generated_at`-tel: pótolva megy ki; ha az eredeti sincs meg, kimarad és naplózódik;
 - fordítás hiányzó `source_language`-dzsel: kimarad és naplózódik;
 - a determinisztikus változat a `{`, `<` karaktereket tartalmazó törzsre is lefordul, a kódblokk tartalma változatlan;
-- `deploy: manual` (és `showroom:` blokk nélkül) egy CLI-, watch- vagy serve-futás nem deployol;
+- `deploy: manual` (és `showroom:` blokk nélkül) egy CLI- vagy serve-futás nem deployol;
+- egy kiírt, de commitolatlan `.mdx` a következő futásban commitba kerül;
 - `auto` mellett a futás csak a saját tételeit deployolja;
 - a serve a deployt a `ready` előtt futtatja, és a deploy hibája mellett is `ready`-t jelent.
 
