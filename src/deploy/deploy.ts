@@ -165,9 +165,11 @@ export async function deployNotes(input: {
       written.push(c.target)
     }
 
-    const first = ordered.find((c) => c.original) ?? ordered[0]
+    // Cím nélküli jelölt nem írhat `{"title":"undefined"}`-ot; ilyenből úgysem íródik fájl.
+    const titled = ordered.filter((c) => typeof c.fields.title === 'string' && c.fields.title !== '')
+    const first = titled.find((c) => c.original) ?? titled[0]
     if (first === undefined) continue
-    const title = String(first.fields.title)
+    const title = first.fields.title as string
     const metaPath = join(clone, NOTES_DIR, itemId, 'meta.json')
     const meta = `${JSON.stringify({ title }, null, 2)}\n`
     const currentMeta = await readOptional(metaPath)

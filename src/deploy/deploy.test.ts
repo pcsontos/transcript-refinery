@@ -253,6 +253,17 @@ describe('deployNotes', () => {
     expect(await show('content/notes/vid1/summary.hu.mdx')).not.toContain('translation_of')
   })
 
+  it('cím nélküli jegyzet nem írja felül a meta.json címét', async () => {
+    await note('vid1', 'summary', BASE)
+    await deployNotes({ cfg })
+    const { title: _t, ...nincs } = BASE
+    await note('vid1', 'summary', { ...nincs, generated_at: 'T2' })
+    const report = await deployNotes({ cfg })
+    expect(report.skipped.map((s) => s.reason)).toEqual(['vid1/summary.hu.mdx: hiányzik: title'])
+    expect(report.commits).toBe(0)
+    expect(JSON.parse(await show('content/notes/vid1/meta.json'))).toEqual({ title: 'Cím' })
+  })
+
   it('nem main-en álló klónnál megáll', async () => {
     await note('vid1', 'summary', BASE)
     await git(clone, 'checkout', '-b', 'masik')
