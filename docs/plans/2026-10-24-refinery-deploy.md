@@ -47,16 +47,16 @@
 **Interfészek:**
 - Ad: `export interface ShowroomConfig { deploy: 'auto' | 'manual'; clonePath: string }`, és `Config.showroom: ShowroomConfig | null`.
 
-- [ ] **1. lépés: bukó tesztek**
+- [x] **1. lépés: bukó tesztek**
   - `showroom: blokk nélkül a showroom null`: `loadConfig(alap)` → `cfg.showroom === null`.
   - `a deploy alapértéke manual`: `{ showroom: { clone_path: '/x' } }` → `{ deploy: 'manual', clonePath: '/x' }`.
   - `relatív clone_path hibát ad`: `clone_path: 'x'` → dob, az üzenet tartalmazza: `showroom.clone_path`.
   - `ismeretlen deploy-érték hibát ad`: `deploy: 'mindig'` → dob.
   - `validateConfig: nem létező klón`: dob, üzenet: `showroom.clone_path: nem létező mappa`; `nem git-repó` ugyanígy (`.git` nélküli ideiglenes mappa).
-- [ ] **2. lépés:** `pnpm vitest run src/config.test.ts` → a fenti esetek FAIL.
-- [ ] **3. lépés: megvalósítás.** `showroom: z.object({ deploy: z.enum(['auto','manual']).default('manual'), clone_path: absolutePath('showroom.clone_path') }).optional()`; a `validateConfig` a `vault.path`-ellenőrzés két sorát ismétli a `clonePath`-ra, ha nem `null`.
-- [ ] **4. lépés:** `pnpm vitest run src/config.test.ts && pnpm typecheck` → PASS.
-- [ ] **5. lépés: commit** (`feat(config): Add the showroom block`).
+- [x] **2. lépés:** `pnpm vitest run src/config.test.ts` → a fenti esetek FAIL.
+- [x] **3. lépés: megvalósítás.** `showroom: z.object({ deploy: z.enum(['auto','manual']).default('manual'), clone_path: absolutePath('showroom.clone_path') }).optional()`; a `validateConfig` a `vault.path`-ellenőrzés két sorát ismétli a `clonePath`-ra, ha nem `null`.
+- [x] **4. lépés:** `pnpm vitest run src/config.test.ts && pnpm typecheck` → PASS.
+- [x] **5. lépés: commit** (`feat(config): Add the showroom block`).
 
 ### 2. feladat: vault-jegyzet → nyelvi változat
 
@@ -85,7 +85,7 @@ A szabályok sorrendben (a hibaszövegek pontosan ezek, a napló ezeket mutatja)
 4. **Eredeti**: `siteKind = vaultKind`.
 5. `generated_at` hiányzik → `'nincs generated_at'`. `origin = originOf(fields)`, `language = lang`, `kind = siteKind`.
 
-- [ ] **1. lépés: bukó tesztek**
+- [x] **1. lépés: bukó tesztek**
   - `hu-orig eredeti hu változat lesz`: `{ language: 'hu-orig', … }`, `summary` → `target: 'X/summary.hu.mdx'`, `fields.language: 'hu'`, `fields.kind: 'summary'`.
   - `de eredeti kimarad`: `reason: 'nyelv: de'`; `language` nélkül `'nyelv: ismeretlen'`.
   - `origin nélküli régi jegyzet pótolt origint kap`: `source: 'telegram'` → `origin: 'telegram'`; más forrás → `'cli'`.
@@ -94,10 +94,10 @@ A szabályok sorrendben (a hibaszövegek pontosan ezek, a napló ezeket mutatja)
   - `hiányzó source_generated_at pótlódik az eredetiből`: testvér `clean-moderate` `generated_at: 'T1'` → `source_generated_at: 'T1'`; testvér nélkül a pontos kihagyási ok.
   - `hiányzó source_language kihagyás`.
   - `szójegyzék glossary.hu lesz`: `kind: 'glossary-hu'`, `committedAt: 'T2'`, testvér `{ source: 's', origin: 'cli' }` → `target: 'X/glossary.hu.mdx'`, `generated_at: 'T2'`, `'source_language' in fields === false`; `committedAt: null` → kihagyás.
-- [ ] **2. lépés:** `pnpm vitest run src/deploy/variant.test.ts` → FAIL (nincs modul).
-- [ ] **3. lépés:** `variantOf` megvalósítása a fenti szabályokkal.
-- [ ] **4. lépés:** a teszt PASS, `pnpm typecheck` PASS.
-- [ ] **5. lépés: commit** (`feat(deploy): Map vault notes to site variants`).
+- [x] **2. lépés:** `pnpm vitest run src/deploy/variant.test.ts` → FAIL (nincs modul).
+- [x] **3. lépés:** `variantOf` megvalósítása a fenti szabályokkal.
+- [x] **4. lépés:** a teszt PASS, `pnpm typecheck` PASS.
+- [x] **5. lépés: commit** (`feat(deploy): Map vault notes to site variants`).
 
 ### 3. feladat: MDX — escape, frontmatter-szabály, ellenőrzés
 
