@@ -155,6 +155,8 @@ Vitest, hamis gittel és hamis átalakítóval, a meglévő tesztek mintájára:
 - a determinisztikus változat a `{`, `<` karaktereket tartalmazó törzsre is lefordul, a kódblokk tartalma változatlan;
 - `deploy: manual` (és `showroom:` blokk nélkül) egy CLI- vagy serve-futás nem deployol;
 - egy kiírt, de commitolatlan `.mdx` a következő futásban commitba kerül;
+- elutasított push után, ha a showroom `main`-je közben előrelépett, a következő futás pusholja (a maradék-commit is);
+- a `🌐 <https://…>` autolink és a `[szöveg](<cél>)` link a lefordított kimenetben működő href-et ad;
 - `auto` mellett a futás csak a saját tételeit deployolja;
 - a serve a deployt a `ready` előtt futtatja, és a deploy hibája mellett is `ready`-t jelent.
 

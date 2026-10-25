@@ -244,6 +244,21 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 - [x] **2. lépés:** `pnpm test && pnpm typecheck && pnpm lint` PASS.
 - [x] **3. lépés: commit** (`docs: Document refinery deploy`).
 
+### Az Opus záró review javításai (2026-10-25)
+
+Feladatonként külön commit, a hozzá tartozó al-issue-ra hivatkozva; minden új tesztnél mutációs ellenpróba.
+
+- [x] **F1 (#327):** a klónon `gitPullRebase` (`git pull --rebase --autostash`, ütközésnél `rebase --abort`), a maradék-commit a pull után. Teszt: elutasított push, közben előrelépett távoli `main` → a következő futás pusholja.
+- [x] **F2 (#326):** az `<séma:…>` autolink `[url](<url>)` lesz, a `](<cél>)` link-cél érintetlen, a soron belüli HTML-komment kimarad. Teszt a lefordított kimenet href-jére; a valódi vault 213 jegyzete lefordul.
+- [x] **Tesztrések:** szójegyzék a deploy szintjén (commit-idő, `source`/`origin`, commitolatlan kihagyás), `url` pozitív eset, testvérből pótolt `source_generated_at`, minden kötelező mező, ütközés, átirat-kizárás nyelvvel, CLI: deploy a vault-push után, elbukott vault-commitnál nem.
+- [x] **Napló nélküli kihagyás:** csak dokumentálva (spec, `docs/usage.md`): a `scanNotes` szabálya.
+- [x] **Sématípusok:** a `frontmatterError` a `description`, `icon`, `url`, a fordítás-hármas és a `full` típusát is nézi; a usage.md mondata gyengítve.
+- [x] **`meta.json`:** cím nélküli jelöltből nem íródik `{"title":"undefined"}`.
+- [x] **Push-hiba oka:** a `deployLines` a git kimenetét is kiírja.
+- [x] **`Object.hasOwn`** a komponens- és attribútumlistán.
+- [x] **Importsorrend** a `cli.ts`-ben.
+- [x] **Ismétlődő LLM-hívás:** nyitott pontként a specben (#278).
+
 ### 8. feladat: élő próba és PR
 
 - [ ] **1. lépés:** a felhasználó létrehozza a külön klónt (`git clone git@github.com:pcsontos/refinery-showroom.git ~/github/pcsontos/refinery-showroom-deploy`), és beírja a `showroom:` blokkot (`deploy: manual`) a helyi `refinery.config.yaml`-ba.
