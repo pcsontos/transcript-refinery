@@ -2,8 +2,9 @@ import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadConfig } from '../config.js'
+import type { deployNotes } from '../deploy/deploy.js'
 import { currentScope, RecipeTimeout } from '../model/deadline.js'
 import type { RunRuntime } from '../cli.js'
 import { GLOSSARY_SEPARATOR } from '../recipe/glossary.js'
@@ -670,5 +671,81 @@ describe('runRecipes — életjel és leállás', () => {
     expect(result.ok).toBe(true)
     expect(bodies.length).toBeGreaterThanOrEqual(1)
     expect(bodies[0]).toEqual({ status: 'progress', text: 'summary: kb. 3 szó kész, még dolgozik' })
+  })
+})
+
+describe('runRecipes — deploy', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    vi.restoreAllMocks()
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  const REPORT = { written: ['x'], skipped: [], commits: 1, push: { pushed: true } }
+
+  /** A `load` a showroom-blokkal bővítve; a deploy hamis, az eseményeket a `log` gyűjti. */
+  async function futas(deploy: 'auto' | 'manual', options: { push?: typeof gitPush; deployImpl?: typeof deployNotes } = {}) {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, outDir, load } = await scene()
+    roots.push(root)
+    const log: string[] = []
+    const fake = vi.fn(
+      options.deployImpl ??
+        (async () => {
+          log.push('deploy')
+          await new Promise((resolve) => setTimeout(resolve, 20))
+          log.push('deploy kész')
+          return REPORT
+        }),
+    )
+    const result = await runRecipes({
+      videoId: ID,
+      recipes: ['summary'],
+      outDir,
+      createClient: () => client({ generate: 0 }),
+      load: async () => {
+        const loaded = await load()
+        return { ...loaded, cfg: { ...loaded.cfg, showroom: { deploy, clonePath: join(root, 'klon') } } }
+      },
+      git: gitWith(async (repo) => {
+        log.push('push')
+        return (options.push ?? gitPush)(repo)
+      }),
+      deploy: fake,
+    })
+    log.push('visszatért')
+    return { result, log, fake }
+  }
+
+  it('auto módban a push után a videó tételét deployolja, és csak utána tér vissza', async () => {
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { result, log, fake } = await futas('auto')
+    expect(result.ok).toBe(true)
+    expect(log).toEqual(['push', 'deploy', 'deploy kész', 'visszatért'])
+    expect(fake).toHaveBeenCalledWith(expect.objectContaining({ itemIds: new Set([ID]) }))
+    expect(naplo).toHaveBeenCalledWith('[deploy] 1 írva, 0 kihagyva, 1 commit')
+  })
+
+  it('manual módban nem deployol', async () => {
+    const { result, fake } = await futas('manual')
+    expect(result.ok).toBe(true)
+    expect(fake).not.toHaveBeenCalled()
+  })
+
+  it('sikertelen push után nem deployol', async () => {
+    const { result, fake } = await futas('auto', { push: () => Promise.resolve({ pushed: false }) })
+    expect(result.ok).toBe(false)
+    expect(fake).not.toHaveBeenCalled()
+  })
+
+  it('a deploy hibája mellett ok: true, a hiba a naplóban', async () => {
+    const figyelmeztetes = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { result } = await futas('auto', { deployImpl: () => Promise.reject(new Error('a klón nem a main ágon áll (masik)\nrészlet')) })
+    expect(result.ok).toBe(true)
+    expect(figyelmeztetes).toHaveBeenCalledWith('[deploy] sikertelen: a klón nem a main ágon áll (masik)')
   })
 })

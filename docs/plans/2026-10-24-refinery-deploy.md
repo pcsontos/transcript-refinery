@@ -224,15 +224,15 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 **Interfészek:**
 - `runRecipes` input bővül: `deploy?: typeof deployNotes`.
 
-- [ ] **1. lépés: bukó tesztek** (a meglévő `summary.test.ts` hamis `git`-jével és `load`-jával):
+- [x] **1. lépés: bukó tesztek** (a meglévő `summary.test.ts` hamis `git`-jével és `load`-jával):
   - `auto módban a push után a videó tételét deployolja`: a hamis `deploy` `itemIds = {videoId}`-vel hívódik, a `git.push` után, és a `runRecipes` csak utána tér vissza (`ok: true`) — vagyis a `ready` előtt.
   - `manual módban nem deployol`.
   - `sikertelen push után nem deployol`.
   - `a deploy hibája mellett ok: true`: a hamis `deploy` dob → `{ ok: true, noteUrl }`, és `console.warn` a `[deploy]` előtaggal.
-- [ ] **2. lépés:** `pnpm vitest run src/serve/summary.test.ts` → FAIL.
-- [ ] **3. lépés:** megvalósítás; a jelentés sorai `console.log('[deploy] …')`-ként, a `deployLines`-szal.
-- [ ] **4. lépés:** PASS, a teljes `pnpm test && pnpm typecheck && pnpm lint` PASS.
-- [ ] **5. lépés: commit** (`feat(serve): Deploy to the showroom before reporting ready`).
+- [x] **2. lépés:** `pnpm vitest run src/serve/summary.test.ts` → FAIL.
+- [x] **3. lépés:** megvalósítás; a jelentés sorai `console.log('[deploy] …')`-ként, a `deployLines`-szal.
+- [x] **4. lépés:** PASS, a teljes `pnpm test && pnpm typecheck && pnpm lint` PASS.
+- [x] **5. lépés: commit** (`feat(serve): Deploy to the showroom before reporting ready`).
 
 ### 7. feladat: dokumentáció
 
