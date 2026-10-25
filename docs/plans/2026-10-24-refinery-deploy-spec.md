@@ -124,6 +124,10 @@ showroom:
 
 A kihagyott nyelvi változatok listája (ok szerint) a kimenet része: CLI-ben kiírva, serve-ben naplózva.
 
+## Nyitott pontok
+
+- **Ismétlődő LLM-hívás (#278-hoz).** Ha az LLM-es átalakító egy `mdx_fallback: true` jegyzetre tartósan elbukik, a deploy minden futásban újra meghívja, és a determinisztikus változatot újraírja. A tartalom nem változik, így commit nincs, de a `written` mégis számolja, és minden futás LLM-hívást költ. A #278-nál kell eldönteni (pl. újrapróba csak új `generated_at`-nél vagy új átalakító-verziónál; a `written` csak tartalmi változásnál számoljon). Ebben a körben nincs LLM-es átalakító, ezért kód nincs rá.
+
 ## Nem cél
 
 - LLM-es átalakítás, prompt, modellbeállítás (#278).
