@@ -12,6 +12,7 @@ import {
   type Config,
   type ModelConfig,
 } from './config.js'
+import { deployLines, deployNotes } from './deploy/deploy.js'
 import { collectEvents, progressText, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
 import { commandCheckStructured } from './model/check-structured.js'
@@ -68,7 +69,6 @@ import { openStateReader } from './state/reader.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
-import { deployLines, deployNotes } from './deploy/deploy.js'
 import { commitPending } from './vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
 import { noteFile, transcriptFile } from './vault/paths.js'
