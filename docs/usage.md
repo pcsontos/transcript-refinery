@@ -320,3 +320,68 @@ pnpm web
 A felület a `http://127.0.0.1:4310` címen érhető el.
 Oldalai: áttekintő, elemek (szűrők URL-ből is: `/items?channel=<név>&kind=<típus>`),
 riport, hibák, futások.
+
+---
+
+## 8. Kiküldés a showroomba (`deploy`)
+
+A `refinery deploy` a vault jegyzeteit a [refinery-showroom](https://github.com/pcsontos/refinery-showroom)
+tartalomszerződése szerinti `.mdx`-ként a showroom **helyi klónjába** írja
+(`content/notes/<tétel>/<fajta>.<nyelv>.mdx` és `meta.json`), tételenként
+commitol, a végén a `main` ágra pusholja. A push indítja a site deployját.
+
+```bash
+# egyszer: külön, csak a deploynak fenntartott klón (nem a site fejlesztői munkapéldánya)
+git clone git@github.com:pcsontos/refinery-showroom.git ~/github/pcsontos/refinery-showroom-deploy
+```
+
+```yaml
+# refinery.config.yaml
+showroom:
+  deploy: manual                     # auto | manual (alap: manual)
+  clone_path: /abs/út/refinery-showroom-deploy
+```
+
+`showroom:` blokk nélkül a deploy ki van kapcsolva. A refinery nem klónoz, és
+induláskor ellenőrzi, hogy a `clone_path` létező git-repó.
+
+```bash
+node dist/cli.js deploy
+```
+
+- **Mit visz ki:** az eredeti és a fordított jegyzeteket, valamint a szójegyzéket
+  (`glossary.<nyelv>.mdx`). A nyers átirat nem megy ki. A `-orig` nyelvi végződés
+  levágódik (`hu-orig` → `hu`), a hiányzó `origin` pótlódik.
+- **Mit hagy ki, és miért:** a nem `hu`/`en` nyelvűt, a hiányos fordítás-mezőjűt
+  (nincs `source_language`, vagy nincs `source_generated_at` és az eredeti sincs a
+  vaultban), a `generated_at` nélkülit. A kihagyott fájlok neve okkal együtt
+  kiíródik; ezek nem hibák. **Szó nélkül** kimarad az a jegyzet, amelynek a
+  mappájában nincs azonos alapnevű `<alapnév>_transcript.md`: a deploy (mint a
+  `/notes` lista) a tételeket az átiratból indulva találja meg. Ilyenkor a
+  jegyzetet az átirata mellé kell tenni, az átirat alapnevével.
+- **Mikor ír újra:** ha nincs még meg a célfájl, vagy a `generated_at` más. A
+  második futás változatlan vaultnál nem ír és nem commitol.
+- **Csak hozzáad és frissít**, nem töröl.
+- **Biztonság:** a klónnak a `main` ágon kell állnia, különben a deploy írás nélkül
+  megáll. Írás előtt minden kimenet átmegy a site frontmatter-sémáján és
+  -szabályain (kötelező mezők, a mezők típusa, a fordítás-hármas), az MDX
+  fordításon és a `contract/mdx-components.json` komponenslistáján; ami nem felel
+  meg, az nem kerül a commitba. A deploy ezeket a site kódjának átiratával nézi,
+  ezért ha a site szabályai változnak, a deploynak is követnie kell őket.
+- **`mdx_fallback: true`:** a jegyzet determinisztikus átalakítással készült (a
+  törzs a kódon kívül escape-elve, komponens nélkül). Ha egyszer lesz LLM-es
+  átalakító (#278), a deploy az ilyen jegyzeteket újra átalakítja.
+- **Félbemaradt futás:** a kiírt, de nem commitolt fájlokat a következő futás egy
+  „maradék” commitba veszi, a pushra váró commitokat pedig elpusholja. A klónon
+  `git pull --rebase` fut, így egy elbukott push után akkor is továbbmegy, ha a
+  showroom `main`-je közben előrelépett (ezért kell a külön, csak a deployé klón).
+
+### Automatikus kiküldés
+
+`deploy: auto` mellett a `run` (a vault-push után) és a `serve` (a vault-push után,
+a `ready` jelentés előtt) **csak az adott futás tételeit** küldi ki, nem a teljes
+vaultot. `--no-commit` és `--dry-run` mellett, illetve sikertelen vault-commitnál
+nem fut. A deploy hibája nem buktatja a futást: a CLI egy `deploy sikertelen:`
+sort ír, a `serve` a naplóba (`[deploy]`), a jelentés ugyanúgy megy. A `watch`
+nem kap `auto` bekötést (csak átiratot ír, az nem megy ki).
+

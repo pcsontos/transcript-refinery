@@ -32,6 +32,8 @@ A `refinery deploy` a vault jegyzeteiből a `pcsontos/refinery-showroom` szerző
 
 A `scanNotes()` (`src/serve/notes.ts:207`) adja a tételeket és a fajtánkénti fájlokat. A fájlnév fajtája (`<alapnév>_<fajta>.md`) a vault-recept neve (`summary`, `clean-moderate`, `summary-hu`).
 
+A `scanNotes` szabálya (a `/notes` listáé is): egy jegyzetet csak akkor lát, ha **ugyanabban a mappában** van egy azonos alapnevű `<alapnév>_transcript.md`. A horgony nélküli jegyzet szó nélkül kimarad, a kihagyás-listába sem kerül, mert a deploy nem is látja. A vaultban 2026-10-25-én ez egy tételt érint: a `telegram/AI Engineer/-QFHIoCo-Ko/` két régi nevű fájlját (`_clean-deep`, `_clean-deep-hu`), mert az átiratuk a `transcripts/` alatt, más alapnévvel áll. A deploy ezt nem javítja (egy saját, horgony nélküli bejárás a `/notes`-tól eltérő képet adna). Ha kell, a fájlokat kell az átirat mellé tenni az átirat alapnevével.
+
 Egy vault-fájlból egy **nyelvi változat** lesz:
 - **Eredeti** (nincs `translation_of` a frontmatterben): a site-fajta a vault-fajta, a nyelv a `language` mező.
 - **Fordítás** (van `translation_of`): a nyelv a `language` mező (a célnyelv), a site-fajta a **fájlnév fajtája a `-<célnyelv>` végződés nélkül** (`summary-hu` → `summary`, `clean-moderate-hu` → `clean-moderate`). Nem a `translation_of`, mert az a fordítórecept forrás-azonosítója, és nem mindig a vault-fajta: a vaultban 6 `clean-moderate-hu` fájlban `translation_of: clean` áll (`src/pipeline.ts:412`), így a site két külön fajtának látná az eredetit és a fordítást. Az `.mdx`-be a `translation_of` a site-fajtával íródik felül, mert a szerződés szerint egyeznie kell a `kind`-dal. Az eredeti változatot (a `source_generated_at` pótlásához) ugyanez a kulcs találja meg (**az én döntésem**).
@@ -69,7 +71,7 @@ Változatlan jegyzetnél nincs átalakítás és nincs LLM-hívás. A `meta.json
 
 Az átalakító egy függvény: vault-jegyzetből (frontmatter + törzs, célnyelv, a szerződés komponenslistája) `.mdx`-szöveget ad, vagy hibát. Két megvalósítás van:
 - **LLM-es**: a #278 hozza. Ebben a körben csak a teszt ad hamisat.
-- **Determinisztikus**: a vault-törzs, a kódblokkon és a soron belüli kódon kívül a `{`, `}` és `<` escape-elésével. Az alakja a végrehajtóé, de le kell fordulnia, és komponenst nem tartalmazhat.
+- **Determinisztikus**: a vault-törzs, a kódblokkon és a soron belüli kódon kívül a `{`, `}` és `<` escape-elésével. A `<` három esetben nem escape-elődik, mert ott működő linket törne vagy látható szemetet adna: az `<https://…>` autolinkből `[url](<url>)` lesz (a vaultban kb. 170 `🌐 <https://…>` sor; escape-elve a site-on a `>` a href-be kerülne), a `[szöveg](<cél>)` link-célja érintetlen, a soron belüli `<!-- … -->` kimarad (a többsoros komment escape-elve szöveg marad; a vaultban ma nincs ilyen). Az alakja a végrehajtóé, de le kell fordulnia, és komponenst nem tartalmazhat.
 
 A **frontmatter** mindkét úton ugyanaz, kódból készül, nem az LLM írja:
 - a vault mezői átnevezés nélkül (az `url` hiánya rendben van), a fent leírt pótlásokkal és igazításokkal (`-orig` levágása, `origin`, a fordítás `translation_of`-ja);
@@ -80,19 +82,19 @@ A **frontmatter** mindkét úton ugyanaz, kódból készül, nem az LLM írja:
 ### Ellenőrzés írás előtt
 
 Minden kimenetre (LLM-esre és determinisztikusra is):
-1. **Frontmatter a szerződés szerint** (showroom `docs/content-format.md`, `lib/note-frontmatter.ts`): kötelező mezők (`item_id`, `title`, `kind`, `language`, `generated_at`, `source`, `origin`), a `language` `hu` vagy `en`, a fordítás-hármas együtt, a `translation_of` egyezik a `kind`-dal. Ez ugyanaz a lista, amire a site buildje elbukik; a pontos listát a végrehajtó a site kódjával veti össze.
+1. **Frontmatter a szerződés szerint** (showroom `docs/content-format.md`, `lib/note-frontmatter.ts`): kötelező mezők (`item_id`, `title`, `kind`, `language`, `generated_at`, `source`, `origin`), az opcionális sémamezők típusa (`description`, `icon`, `url` és a fordítás-hármas szöveg, `full` logikai; a site `lib/source.ts`-e, fumadocs `pageSchema`), a `language` `hu` vagy `en`, a fordítás-hármas együtt, a `translation_of` egyezik a `kind`-dal. Ez ugyanaz a lista, amire a site buildje elbukik; a pontos listát a végrehajtó a site kódjával veti össze.
 2. **Fordítás:** `@mdx-js/mdx` `compile` (új függőség).
-3. **Komponensek:** minden JSX-elem neve, minden attribútum neve és értéke szerepel a klónban lévő `contract/mdx-components.json`-ban. Az érték csak string-literál lehet, a kötelező attribútum nem hiányozhat, HTML-elem és fragment tilos (a szerződés „Komponensek" szakasza). A listát a deploy a `git pull --ff-only` **után** olvassa be. A site ezt nem a buildben, hanem a CI tartalom-tesztjében (`tests/content.test.mjs`) nézi, tehát egy hibás komponens a deployt nem állítaná meg, de piros CI-t és rosszul renderelt oldalt adna.
+3. **Komponensek:** minden JSX-elem neve, minden attribútum neve és értéke szerepel a klónban lévő `contract/mdx-components.json`-ban. Az érték csak string-literál lehet, a kötelező attribútum nem hiányozhat, HTML-elem és fragment tilos (a szerződés „Komponensek" szakasza). A listát a deploy a pull **után** olvassa be. A site ezt nem a buildben, hanem a CI tartalom-tesztjében (`tests/content.test.mjs`) nézi, tehát egy hibás komponens a deployt nem állítaná meg, de piros CI-t és rosszul renderelt oldalt adna.
 
 Ha az LLM-es kimenet bármelyiken elbukik, a determinisztikus változat megy helyette, és a napló megnevezi az okot. Ha a determinisztikus változat is elbukik, a nyelvi változat kimarad és naplózódik, a deploy a többivel folytatódik.
 
 ### Commit és push
 
 0. **Ágellenőrzés:** ha a klón nem a `main`-en áll, a deploy hibával megáll, és nem ír semmit.
-0b. **Félbemaradt futás maradéka:** ha egy korábbi futás kiírt egy fájlt, de a commit elmaradt, az összevetés változatlannak látná, és sosem commitolná. Ezért a deploy a pull előtt a `content/notes` commitolatlan változásait egy külön commitba veszi (a klón csak a deployé, ott más nem ír).
-1. `gitPullFfOnly` a klónon (`src/vault/git.ts`). Ha elbukik (pl. egy kézi módosítás miatt), a deploy hibával áll meg, írás nincs.
+1. `gitPullRebase` a klónon (`src/vault/git.ts`: `git pull --rebase --autostash`). Nem `--ff-only`: egy elutasított push után a helyi deploy-commitok és a közben előrelépett távoli `main` szétágazna, és a fast-forward pull minden későbbi futást megállítana. A rebase a helyi commitokat a távoli ágra teszi; ez azért biztonságos, mert a klón csak a deployé, és a deploy csak a `content/notes` alá ír. Ütközésnél (pl. valaki ugyanazt a jegyzetet a távoliban kézzel módosította) a rebase visszavonódik, a deploy hibával áll meg, írás nincs.
+1b. **Félbemaradt futás maradéka:** ha egy korábbi futás kiírt egy fájlt, de a commit elmaradt, az összevetés változatlannak látná, és sosem commitolná. Ezért a deploy a pull **után** a `content/notes` commitolatlan változásait egy külön commitba veszi (a klón csak a deployé, ott más nem ír). A pull után, mert az előtte készült commit is szétágaztatna.
 2. Írás, majd **tételenként egy commit** a `gitCommitPaths`-szal, csak a tétel mappájának útjaival. Az üzenet a `noteCommitMessage` mintájára készül (a cím rövidül, az azonosító marad). A pontos alak a végrehajtóé.
-3. Egy `gitPush` a végén. A push-hiba ugyanúgy kezelődik, mint a vaultnál: a commit helyben marad, a hívó jelzi, a következő pull rendezi.
+3. Egy `gitPush` a végén. A push-hiba ugyanúgy kezelődik, mint a vaultnál: a commit helyben marad, a hívó jelzi (a git kimenetéből az okkal együtt), a következő futás pullja a távoli ágra teszi, és pusholja.
 
 A deploy **csak hozzáad és frissít**, nem töröl (a törlés: showroom #7).
 
@@ -122,6 +124,10 @@ showroom:
 
 A kihagyott nyelvi változatok listája (ok szerint) a kimenet része: CLI-ben kiírva, serve-ben naplózva.
 
+## Nyitott pontok
+
+- **Ismétlődő LLM-hívás (#278-hoz).** Ha az LLM-es átalakító egy `mdx_fallback: true` jegyzetre tartósan elbukik, a deploy minden futásban újra meghívja, és a determinisztikus változatot újraírja. A tartalom nem változik, így commit nincs, de a `written` mégis számolja, és minden futás LLM-hívást költ. A #278-nál kell eldönteni (pl. újrapróba csak új `generated_at`-nél vagy új átalakító-verziónál; a `written` csak tartalmi változásnál számoljon). Ebben a körben nincs LLM-es átalakító, ezért kód nincs rá.
+
 ## Nem cél
 
 - LLM-es átalakítás, prompt, modellbeállítás (#278).
@@ -149,6 +155,8 @@ Vitest, hamis gittel és hamis átalakítóval, a meglévő tesztek mintájára:
 - a determinisztikus változat a `{`, `<` karaktereket tartalmazó törzsre is lefordul, a kódblokk tartalma változatlan;
 - `deploy: manual` (és `showroom:` blokk nélkül) egy CLI- vagy serve-futás nem deployol;
 - egy kiírt, de commitolatlan `.mdx` a következő futásban commitba kerül;
+- elutasított push után, ha a showroom `main`-je közben előrelépett, a következő futás pusholja (a maradék-commit is);
+- a `🌐 <https://…>` autolink és a `[szöveg](<cél>)` link a lefordított kimenetben működő href-et ad;
 - `auto` mellett a futás csak a saját tételeit deployolja;
 - a serve a deployt a `ready` előtt futtatja, és a deploy hibája mellett is `ready`-t jelent.
 

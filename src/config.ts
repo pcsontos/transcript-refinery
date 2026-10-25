@@ -77,6 +77,11 @@ const TranslateSchema = z.object({
     .default(DEFAULT_CHUNK_WORDS),
 })
 
+const ShowroomSchema = z.object({
+  deploy: z.enum(['auto', 'manual'], 'A showroom.deploy értéke auto vagy manual.').default('manual'),
+  clone_path: absolutePath('showroom.clone_path'),
+})
+
 const CoreSchema = z.object({
   vault: z.object({
     path: absolutePath('vault.path'),
@@ -103,6 +108,7 @@ const CoreSchema = z.object({
     .default({ path: join('.state', 'refinery.db') }),
   logs: z.object({ dir: z.string().min(1) }).default({ dir: 'logs' }),
   translate: TranslateSchema.optional(),
+  showroom: ShowroomSchema.optional(),
 })
 
 /** Egy feliratforrás: a YAML-beli útvonal és a belőle képzett név. */
@@ -124,6 +130,13 @@ export interface TranslateConfig {
   chunkWords: number
 }
 
+/** A jegyzetek kiküldése a showroom külön klónjába (#277). */
+export interface ShowroomConfig {
+  /** `auto`: a futás tételeit a futás végén kiküldi; `manual`: csak `refinery deploy`. */
+  deploy: 'auto' | 'manual'
+  clonePath: string
+}
+
 export interface Config {
   /** A betöltött konfigurációs fájl útvonala — a hibaüzenetek ezt nevezik meg. */
   configPath: string
@@ -141,6 +154,8 @@ export interface Config {
   logsDir: string
   /** A fordítás beállítása; `null`, ha a kulcs hiányzik — ilyenkor nincs fordítórecept. */
   translate: TranslateConfig | null
+  /** A showroom-deploy beállítása; `null`, ha a kulcs hiányzik — ilyenkor a deploy ki van kapcsolva. */
+  showroom: ShowroomConfig | null
 }
 
 /** A zod hibáját a mező útjával és a konfigurációs fájllal együtt dobja tovább. */
@@ -212,6 +227,7 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
     translate: c.translate
       ? { to: c.translate.to, recipes: c.translate.recipes, chunkWords: c.translate.chunk_words }
       : null,
+    showroom: c.showroom ? { deploy: c.showroom.deploy, clonePath: c.showroom.clone_path } : null,
   }
 }
 
@@ -235,6 +251,15 @@ export async function validateConfig(cfg: Config): Promise<void> {
   }
   if (!(await isDirectory(join(cfg.vaultPath, '.git')))) {
     throw new Error(`vault.path: nem git-repó: ${cfg.vaultPath} (${cfg.configPath})`)
+  }
+  if (cfg.showroom !== null) {
+    const { clonePath } = cfg.showroom
+    if (!(await isDirectory(clonePath))) {
+      throw new Error(`showroom.clone_path: nem létező mappa: ${clonePath} (${cfg.configPath})`)
+    }
+    if (!(await isDirectory(join(clonePath, '.git')))) {
+      throw new Error(`showroom.clone_path: nem git-repó: ${clonePath} (${cfg.configPath})`)
+    }
   }
 
   // A forrás neve (az útvonal utolsó szegmense) lesz a vault-beli almappa

@@ -4,7 +4,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { gitCommitPaths, gitHasChanges, gitHeadShort, gitPullFfOnly, isDirty } from './git.js'
+import {
+  gitAheadCount,
+  gitCommitPaths,
+  gitCurrentBranch,
+  gitHasChanges,
+  gitHeadShort,
+  gitLastCommitIso,
+  gitPullFfOnly,
+  gitPullRebase,
+  isDirty,
+} from './git.js'
 
 const run = promisify(execFile)
 let repo: string
@@ -141,5 +151,46 @@ describe('gitPullFfOnly időkorlát', () => {
         }
       }
     }
+  })
+})
+
+describe('gitCurrentBranch', () => {
+  it('az aktuális ág nevét adja', async () => {
+    expect(await gitCurrentBranch(repo)).toBe('main')
+  })
+})
+
+describe('gitLastCommitIso', () => {
+  it('commitolt fájlra ISO-időt, commitolatlanra null-t ad', async () => {
+    expect(await gitLastCommitIso(repo, join(repo, 'alap.txt'))).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    await writeFile(join(repo, 'uj.txt'), 'új', 'utf8')
+    expect(await gitLastCommitIso(repo, join(repo, 'uj.txt'))).toBeNull()
+  })
+})
+
+describe('gitAheadCount', () => {
+  it('upstream nélkül 0', async () => {
+    expect(await gitAheadCount(repo)).toBe(0)
+  })
+})
+
+describe('gitPullRebase', () => {
+  it('ütközésnél visszavonja a rebase-t és dob', async () => {
+    const remote = await mkdtemp(join(tmpdir(), 'refinery-git-remote-'))
+    await run('git', ['clone', '--bare', repo, remote])
+    await run('git', ['remote', 'add', 'origin', remote], { cwd: repo })
+    await run('git', ['fetch', 'origin'], { cwd: repo })
+    await run('git', ['branch', '-u', 'origin/main'], { cwd: repo })
+    const other = await mkdtemp(join(tmpdir(), 'refinery-git-other-'))
+    await run('git', ['clone', remote, other])
+    await writeFile(join(other, 'alap.txt'), 'távoli', 'utf8')
+    await run('git', ['-c', 'user.email=t@e', '-c', 'user.name=T', 'commit', '-qam', 'távoli'], { cwd: other })
+    await run('git', ['push'], { cwd: other })
+    await writeFile(join(repo, 'alap.txt'), 'helyi', 'utf8')
+    await run('git', ['commit', '-qam', 'helyi'], { cwd: repo })
+
+    await expect(gitPullRebase(repo)).rejects.toThrow()
+    expect(await gitCurrentBranch(repo)).toBe('main')
+    expect(await readFile(join(repo, 'alap.txt'), 'utf8')).toBe('helyi')
   })
 })

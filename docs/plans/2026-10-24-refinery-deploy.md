@@ -47,16 +47,16 @@
 **Interfészek:**
 - Ad: `export interface ShowroomConfig { deploy: 'auto' | 'manual'; clonePath: string }`, és `Config.showroom: ShowroomConfig | null`.
 
-- [ ] **1. lépés: bukó tesztek**
+- [x] **1. lépés: bukó tesztek**
   - `showroom: blokk nélkül a showroom null`: `loadConfig(alap)` → `cfg.showroom === null`.
   - `a deploy alapértéke manual`: `{ showroom: { clone_path: '/x' } }` → `{ deploy: 'manual', clonePath: '/x' }`.
   - `relatív clone_path hibát ad`: `clone_path: 'x'` → dob, az üzenet tartalmazza: `showroom.clone_path`.
   - `ismeretlen deploy-érték hibát ad`: `deploy: 'mindig'` → dob.
   - `validateConfig: nem létező klón`: dob, üzenet: `showroom.clone_path: nem létező mappa`; `nem git-repó` ugyanígy (`.git` nélküli ideiglenes mappa).
-- [ ] **2. lépés:** `pnpm vitest run src/config.test.ts` → a fenti esetek FAIL.
-- [ ] **3. lépés: megvalósítás.** `showroom: z.object({ deploy: z.enum(['auto','manual']).default('manual'), clone_path: absolutePath('showroom.clone_path') }).optional()`; a `validateConfig` a `vault.path`-ellenőrzés két sorát ismétli a `clonePath`-ra, ha nem `null`.
-- [ ] **4. lépés:** `pnpm vitest run src/config.test.ts && pnpm typecheck` → PASS.
-- [ ] **5. lépés: commit** (`feat(config): Add the showroom block`).
+- [x] **2. lépés:** `pnpm vitest run src/config.test.ts` → a fenti esetek FAIL.
+- [x] **3. lépés: megvalósítás.** `showroom: z.object({ deploy: z.enum(['auto','manual']).default('manual'), clone_path: absolutePath('showroom.clone_path') }).optional()`; a `validateConfig` a `vault.path`-ellenőrzés két sorát ismétli a `clonePath`-ra, ha nem `null`.
+- [x] **4. lépés:** `pnpm vitest run src/config.test.ts && pnpm typecheck` → PASS.
+- [x] **5. lépés: commit** (`feat(config): Add the showroom block`).
 
 ### 2. feladat: vault-jegyzet → nyelvi változat
 
@@ -85,7 +85,7 @@ A szabályok sorrendben (a hibaszövegek pontosan ezek, a napló ezeket mutatja)
 4. **Eredeti**: `siteKind = vaultKind`.
 5. `generated_at` hiányzik → `'nincs generated_at'`. `origin = originOf(fields)`, `language = lang`, `kind = siteKind`.
 
-- [ ] **1. lépés: bukó tesztek**
+- [x] **1. lépés: bukó tesztek**
   - `hu-orig eredeti hu változat lesz`: `{ language: 'hu-orig', … }`, `summary` → `target: 'X/summary.hu.mdx'`, `fields.language: 'hu'`, `fields.kind: 'summary'`.
   - `de eredeti kimarad`: `reason: 'nyelv: de'`; `language` nélkül `'nyelv: ismeretlen'`.
   - `origin nélküli régi jegyzet pótolt origint kap`: `source: 'telegram'` → `origin: 'telegram'`; más forrás → `'cli'`.
@@ -94,10 +94,10 @@ A szabályok sorrendben (a hibaszövegek pontosan ezek, a napló ezeket mutatja)
   - `hiányzó source_generated_at pótlódik az eredetiből`: testvér `clean-moderate` `generated_at: 'T1'` → `source_generated_at: 'T1'`; testvér nélkül a pontos kihagyási ok.
   - `hiányzó source_language kihagyás`.
   - `szójegyzék glossary.hu lesz`: `kind: 'glossary-hu'`, `committedAt: 'T2'`, testvér `{ source: 's', origin: 'cli' }` → `target: 'X/glossary.hu.mdx'`, `generated_at: 'T2'`, `'source_language' in fields === false`; `committedAt: null` → kihagyás.
-- [ ] **2. lépés:** `pnpm vitest run src/deploy/variant.test.ts` → FAIL (nincs modul).
-- [ ] **3. lépés:** `variantOf` megvalósítása a fenti szabályokkal.
-- [ ] **4. lépés:** a teszt PASS, `pnpm typecheck` PASS.
-- [ ] **5. lépés: commit** (`feat(deploy): Map vault notes to site variants`).
+- [x] **2. lépés:** `pnpm vitest run src/deploy/variant.test.ts` → FAIL (nincs modul).
+- [x] **3. lépés:** `variantOf` megvalósítása a fenti szabályokkal.
+- [x] **4. lépés:** a teszt PASS, `pnpm typecheck` PASS.
+- [x] **5. lépés: commit** (`feat(deploy): Map vault notes to site variants`).
 
 ### 3. feladat: MDX — escape, frontmatter-szabály, ellenőrzés
 
@@ -124,7 +124,7 @@ Megvalósítási döntések:
 - `frontmatterError`: a showroom `lib/note-frontmatter.ts` `frontmatterError`-jának átirata (út-minta, nyelv, `item_id`/`kind`/`language` egyezés, fordítás-hármas, `translation_of === kind`), előtte a hét kötelező mező nem üres szövegként való jelenléte: `` `${target}: hiányzik: ${mező}` ``.
 - `mdxErrors`: `compile(source, { remarkPlugins: [gyűjtő] })` a `@mdx-js/mdx`-ből. A gyűjtő remark-plugin rekurzívan bejárja a fát (`unist-util-visit` nélkül, pár soros saját bejárás). Minden `mdxJsxFlowElement`/`mdxJsxTextElement` csomópontnál hibát ad, ha: a neve `null` (fragment) vagy nincs a `contract.components`-ben (a kisbetűs HTML-elem így kiesik); egy attribútum `mdxJsxExpressionAttribute` (spread), értéke nem string (kifejezés vagy érték nélküli), a neve nincs a listán, vagy enum-értéke nincs a `values`-ban; egy `required` attribútum hiányzik. Szintén hiba minden `mdxFlowExpression`/`mdxTextExpression` és `mdxjsEsm` csomópont (`{…}`, `import`/`export`). A `compile` dobása egy hibasor (az első sora).
 
-- [ ] **1. lépés: bukó tesztek**
+- [x] **1. lépés: bukó tesztek**
   - `kódon kívül escape-el, kódban nem`: ``'a < b {x} `if (n < 1) {}`'`` → ``'a \\< b \\{x\\} `if (n < 1) {}`'``; kerítésen belüli sorok változatlanok, `~~~` kerítéssel is.
   - `behúzott kódban is escape-el`: `'    a < b'` → `'    a \\< b'`.
   - `HTML-komment és <br> lefordul`: `mdxErrors(renderMdx(f, escapeMdx('<!-- x -->\n\nsor<br>')), c)` → `[]`.
@@ -134,10 +134,10 @@ Megvalósítási döntések:
   - `le nem forduló MDX hibát ad`: `'<Callout>'` (zárás nélkül) → nem üres.
   - `frontmatterError`: a site szabályainak esetei (rossz suffix, `kind`-eltérés, csonka fordítás-hármas, `translation_of ≠ kind`) és `hiányzik: title`; jó eredeti és jó fordítás → `null`.
   - `kettőspontos, idézőjeles cím a site-szabálynak megfelel`: `title: 'A: "b" #c'` → a `renderMdx` kimenetét a `frontmatter()` (`src/serve/notes.ts:97`) visszaolvasva ugyanazt a címet adja.
-- [ ] **2. lépés:** `pnpm vitest run src/deploy/mdx.test.ts` → FAIL.
-- [ ] **3. lépés:** függőség hozzáadása, a négy függvény megvalósítása. A `Contract` a teszthez a showroom `contract/mdx-components.json` mai tartalmának másolata a tesztfájlban.
-- [ ] **4. lépés:** a teszt PASS, `pnpm typecheck && pnpm lint` PASS.
-- [ ] **5. lépés: commit** (`feat(deploy): Escape and check MDX against the contract`).
+- [x] **2. lépés:** `pnpm vitest run src/deploy/mdx.test.ts` → FAIL.
+- [x] **3. lépés:** függőség hozzáadása, a négy függvény megvalósítása. A `Contract` a teszthez a showroom `contract/mdx-components.json` mai tartalmának másolata a tesztfájlban.
+- [x] **4. lépés:** a teszt PASS, `pnpm typecheck && pnpm lint` PASS.
+- [x] **5. lépés: commit** (`feat(deploy): Escape and check MDX against the contract`).
 
 ### 4. feladat: a deploy menete
 
@@ -170,7 +170,7 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 8. Írás (`mkdir -p`), `meta.json`, ha hiányzik vagy más a cím. Tételenként `gitCommitPaths(clone, <a tétel írt útjai>, noteCommitMessage('deploy', cím, itemId))`.
 9. Ha volt commit: `push = await gitPush(clone)`, különben `null`.
 
-- [ ] **1. lépés: bukó tesztek.** Előkészítés: ideiglenes csupasz távoli repó (`git init --bare`), belőle klón `main`-en egy `contract/mdx-components.json`-nal (pusholva); ideiglenes vault git-repó, `vault.notes_dir` alatt jegyzetekkel; `cfg` a `loadConfig`-gal. Esetek:
+- [x] **1. lépés: bukó tesztek.** Előkészítés: ideiglenes csupasz távoli repó (`git init --bare`), belőle klón `main`-en egy `contract/mdx-components.json`-nal (pusholva); ideiglenes vault git-repó, `vault.notes_dir` alatt jegyzetekkel; `cfg` a `loadConfig`-gal. Esetek:
   - `első futás kiírja és pusholja`: magyar `summary` + `summary-en` fordítás → a távoli `main`-en `content/notes/X/summary.hu.mdx`, `summary.en.mdx` (fordításé `kind: summary`), `meta.json`; `report.commits === 1`, `push.pushed === true`; az átirat-fájlból nincs `.mdx`.
   - `második futás változatlan vaultnál nem ír és nem commitol`: `written: []`, `commits: 0`, `push: null`, és a hamis `transform` hívásszáma 0.
   - `újragenerált jegyzet frissül`: más `generated_at` → `written` tartalmazza.
@@ -187,10 +187,10 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
   - `félbemaradt írás a következő futásban commitba kerül`: a klónba kézzel írt `content/notes/X/summary.hu.mdx` (commit nélkül) a futás után a távolin van.
   - `elutasított push után a következő futás pusholja`: a távoliba egy másik klónból közben pusholt commit; az első futás `push.pushed === false` vagy a pull hibát dob (a végrehajtó a valódi viselkedést rögzíti); a második futás után a távolin ott a jegyzet.
   - `git.test.ts`: `gitCurrentBranch` → `'main'`; `gitLastCommitIso` commitolt fájlra ISO-időt, commitolatlanra `null`-t ad.
-- [ ] **2. lépés:** `pnpm vitest run src/deploy/deploy.test.ts src/vault/git.test.ts` → FAIL.
-- [ ] **3. lépés:** megvalósítás a fenti menet szerint.
-- [ ] **4. lépés:** a tesztek PASS, `pnpm typecheck && pnpm lint` PASS.
-- [ ] **5. lépés: commit** (`feat(deploy): Deploy vault notes to the showroom clone`).
+- [x] **2. lépés:** `pnpm vitest run src/deploy/deploy.test.ts src/vault/git.test.ts` → FAIL.
+- [x] **3. lépés:** megvalósítás a fenti menet szerint.
+- [x] **4. lépés:** a tesztek PASS, `pnpm typecheck && pnpm lint` PASS.
+- [x] **5. lépés: commit** (`feat(deploy): Deploy vault notes to the showroom clone`).
 
 ### 5. feladat: `refinery deploy` parancs és `auto` a `run`-ban
 
@@ -203,17 +203,17 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 - Használja: `deployNotes`, `deployLines`.
 - Ad: `export async function commandDeploy(cfg: Config): Promise<number>`.
 
-- [ ] **1. lépés: bukó tesztek** (a `cli.test.ts` meglévő mintáival; a `deployNotes`-t a meglévő tesztek módján kell helyettesíteni, vagy a 4. feladat ideiglenes repóival):
+- [x] **1. lépés: bukó tesztek** (a `cli.test.ts` meglévő mintáival; a `deployNotes`-t a meglévő tesztek módján kell helyettesíteni, vagy a 4. feladat ideiglenes repóival):
   - `deploy showroom blokk nélkül hibával áll meg`: kilépőkód 1, üzenet: `A deploy ki van kapcsolva: nincs showroom: blokk a configban.`
   - `deploy kiírja a jelentést`: kilépőkód 0, a kimenetben a `deployLines` sorai.
   - `run auto módban a futás tételeit deployolja`: `deploy: auto` → a `deployNotes` a futás kiválasztott egységeinek `itemId`-halmazával hívódik (`selected.map(u => u.item.itemId)`), a vault-push után.
   - `run manual módban nem deployol`, és `showroom: blokk nélkül nem deployol`.
   - `run --no-commit és --dry-run nem deployol`.
   - `run auto: a deploy hibája nem buktatja a futást`: a `deployNotes` dob → a kilépőkód ugyanaz, mint deploy nélkül, a kimenetben `deploy sikertelen: <első sor>`.
-- [ ] **2. lépés:** `pnpm vitest run src/cli.test.ts` → FAIL.
-- [ ] **3. lépés:** megvalósítás. `main`: `if (command === 'deploy') return commandDeploy(cfg)` a `loadCliConfig`/`validateConfig` után; az ismeretlen kapcsolót a `check-structured` mintájára (`--config` az egyetlen) utasítja el. `runFinish`: a vault-commit/push blokk után, ha `commit && cfg.showroom?.deploy === 'auto'`, `try { for (const line of deployLines(await deployNotes({ cfg, itemIds }))) console.log(line) } catch (e) { console.log(`deploy sikertelen: ${első sor}`) }`.
-- [ ] **4. lépés:** PASS, `pnpm typecheck && pnpm lint` PASS.
-- [ ] **5. lépés: commit** (`feat(cli): Add the deploy command and auto deploy after run`).
+- [x] **2. lépés:** `pnpm vitest run src/cli.test.ts` → FAIL.
+- [x] **3. lépés:** megvalósítás. `main`: `if (command === 'deploy') return commandDeploy(cfg)` a `loadCliConfig`/`validateConfig` után; az ismeretlen kapcsolót a `check-structured` mintájára (`--config` az egyetlen) utasítja el. `runFinish`: a vault-commit/push blokk után, ha `commit && cfg.showroom?.deploy === 'auto'`, `try { for (const line of deployLines(await deployNotes({ cfg, itemIds }))) console.log(line) } catch (e) { console.log(`deploy sikertelen: ${első sor}`) }`.
+- [x] **4. lépés:** PASS, `pnpm typecheck && pnpm lint` PASS.
+- [x] **5. lépés: commit** (`feat(cli): Add the deploy command and auto deploy after run`).
 
 ### 6. feladat: `auto` a serve-ben, a `ready` előtt
 
@@ -224,15 +224,15 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 **Interfészek:**
 - `runRecipes` input bővül: `deploy?: typeof deployNotes`.
 
-- [ ] **1. lépés: bukó tesztek** (a meglévő `summary.test.ts` hamis `git`-jével és `load`-jával):
+- [x] **1. lépés: bukó tesztek** (a meglévő `summary.test.ts` hamis `git`-jével és `load`-jával):
   - `auto módban a push után a videó tételét deployolja`: a hamis `deploy` `itemIds = {videoId}`-vel hívódik, a `git.push` után, és a `runRecipes` csak utána tér vissza (`ok: true`) — vagyis a `ready` előtt.
   - `manual módban nem deployol`.
   - `sikertelen push után nem deployol`.
   - `a deploy hibája mellett ok: true`: a hamis `deploy` dob → `{ ok: true, noteUrl }`, és `console.warn` a `[deploy]` előtaggal.
-- [ ] **2. lépés:** `pnpm vitest run src/serve/summary.test.ts` → FAIL.
-- [ ] **3. lépés:** megvalósítás; a jelentés sorai `console.log('[deploy] …')`-ként, a `deployLines`-szal.
-- [ ] **4. lépés:** PASS, a teljes `pnpm test && pnpm typecheck && pnpm lint` PASS.
-- [ ] **5. lépés: commit** (`feat(serve): Deploy to the showroom before reporting ready`).
+- [x] **2. lépés:** `pnpm vitest run src/serve/summary.test.ts` → FAIL.
+- [x] **3. lépés:** megvalósítás; a jelentés sorai `console.log('[deploy] …')`-ként, a `deployLines`-szal.
+- [x] **4. lépés:** PASS, a teljes `pnpm test && pnpm typecheck && pnpm lint` PASS.
+- [x] **5. lépés: commit** (`feat(serve): Deploy to the showroom before reporting ready`).
 
 ### 7. feladat: dokumentáció
 
@@ -240,13 +240,29 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 - Módosítás: `docs/usage.md` (a `refinery deploy` szakasza: mit visz ki, mit hagy ki, `auto`/`manual`, a külön klón létrehozása egy `git clone` sorral, a `mdx_fallback` jelentése)
 - Módosítás: `README.md` (parancslista egy sora), `docs/architecture.md` (egy bekezdés a `src/deploy/`-ról, ha a fájl modulonként leírja a felépítést)
 
-- [ ] **1. lépés:** a szövegek megírása; a `refinery help deploy` kimenete és a `docs/usage.md` ugyanazt mondja.
-- [ ] **2. lépés:** `pnpm test && pnpm typecheck && pnpm lint` PASS.
-- [ ] **3. lépés: commit** (`docs: Document refinery deploy`).
+- [x] **1. lépés:** a szövegek megírása; a `refinery help deploy` kimenete és a `docs/usage.md` ugyanazt mondja.
+- [x] **2. lépés:** `pnpm test && pnpm typecheck && pnpm lint` PASS.
+- [x] **3. lépés: commit** (`docs: Document refinery deploy`).
+
+### Az Opus záró review javításai (2026-10-25)
+
+Feladatonként külön commit, a hozzá tartozó al-issue-ra hivatkozva; minden új tesztnél mutációs ellenpróba.
+
+- [x] **F1 (#327):** a klónon `gitPullRebase` (`git pull --rebase --autostash`, ütközésnél `rebase --abort`), a maradék-commit a pull után. Teszt: elutasított push, közben előrelépett távoli `main` → a következő futás pusholja.
+- [x] **F2 (#326):** az `<séma:…>` autolink `[url](<url>)` lesz, a `](<cél>)` link-cél érintetlen, a soron belüli HTML-komment kimarad. Teszt a lefordított kimenet href-jére; a valódi vault 213 jegyzete lefordul.
+- [x] **Tesztrések:** szójegyzék a deploy szintjén (commit-idő, `source`/`origin`, commitolatlan kihagyás), `url` pozitív eset, testvérből pótolt `source_generated_at`, minden kötelező mező, ütközés, átirat-kizárás nyelvvel, CLI: deploy a vault-push után, elbukott vault-commitnál nem.
+- [x] **Napló nélküli kihagyás:** csak dokumentálva (spec, `docs/usage.md`): a `scanNotes` szabálya.
+- [x] **Sématípusok:** a `frontmatterError` a `description`, `icon`, `url`, a fordítás-hármas és a `full` típusát is nézi; a usage.md mondata gyengítve.
+- [x] **`meta.json`:** cím nélküli jelöltből nem íródik `{"title":"undefined"}`.
+- [x] **Push-hiba oka:** a `deployLines` a git kimenetét is kiírja.
+- [x] **`Object.hasOwn`** a komponens- és attribútumlistán.
+- [x] **Importsorrend** a `cli.ts`-ben.
+- [x] **Ismétlődő LLM-hívás:** nyitott pontként a specben (#278).
 
 ### 8. feladat: élő próba és PR
 
-- [ ] **1. lépés:** a felhasználó létrehozza a külön klónt (`git clone git@github.com:pcsontos/refinery-showroom.git ~/github/pcsontos/refinery-showroom-deploy`), és beírja a `showroom:` blokkot (`deploy: manual`) a helyi `refinery.config.yaml`-ba.
-- [ ] **2. lépés:** `pnpm build && node dist/cli.js deploy`. Elvárt: a kihagyások listája (ok szerint) és egy push ok sor; a showroom `main`-jén új commitok; a Workers Build zöld; a site-on adminként látszanak a jegyzetek; a showroom CI-ja zöld.
-- [ ] **3. lépés:** második `pnpm build && node dist/cli.js deploy` → `0 commit`, push nélkül.
+- [x] **1. lépés:** a felhasználó létrehozza a külön klónt (`git clone git@github.com:pcsontos/refinery-showroom.git ~/github/pcsontos/refinery-showroom-deploy`), és beírja a `showroom:` blokkot (`deploy: manual`) a helyi `refinery.config.yaml`-ba.
+- [x] **2. lépés:** `pnpm build && node dist/cli.js deploy`. Elvárt: a kihagyások listája (ok szerint) és egy push ok sor; a showroom `main`-jén új commitok; a Workers Build zöld; a site-on adminként látszanak a jegyzetek; a showroom CI-ja zöld.
+- [x] **3. lépés:** második `pnpm build && node dist/cli.js deploy` → `0 commit`, push nélkül.
+  Eredmény (2026-10-25): az első futás ideiglenesen tiltott pusholással 204 fájlt írt, 58 commitot, 6 kihagyást (5 `de`, 1 `hi-orig`); a showroom `pnpm test` (278) és `pnpm build` a deploy-klónban zöld; a második futás pusholta a 58 commitot; a Workers Build és a showroom CI zöld (`864044f`). A site-on adminként a jegyzetek megjelenését a felhasználó nézi meg.
 - [ ] **4. lépés:** PR a kód-ágról (`Refs #277`, a #278 és a #322 megemlítve); a CI-t `gh pr checks`-szel kell ellenőrizni merge előtt.
