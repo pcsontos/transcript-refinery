@@ -355,7 +355,10 @@ node dist/cli.js deploy
 - **Mit hagy ki, és miért:** a nem `hu`/`en` nyelvűt, a hiányos fordítás-mezőjűt
   (nincs `source_language`, vagy nincs `source_generated_at` és az eredeti sincs a
   vaultban), a `generated_at` nélkülit. A kihagyott fájlok neve okkal együtt
-  kiíródik; ezek nem hibák.
+  kiíródik; ezek nem hibák. **Szó nélkül** kimarad az a jegyzet, amelynek a
+  mappájában nincs azonos alapnevű `<alapnév>_transcript.md`: a deploy (mint a
+  `/notes` lista) a tételeket az átiratból indulva találja meg. Ilyenkor a
+  jegyzetet az átirata mellé kell tenni, az átirat alapnevével.
 - **Mikor ír újra:** ha nincs még meg a célfájl, vagy a `generated_at` más. A
   második futás változatlan vaultnál nem ír és nem commitol.
 - **Csak hozzáad és frissít**, nem töröl.

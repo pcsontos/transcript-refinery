@@ -32,6 +32,8 @@ A `refinery deploy` a vault jegyzeteiből a `pcsontos/refinery-showroom` szerző
 
 A `scanNotes()` (`src/serve/notes.ts:207`) adja a tételeket és a fajtánkénti fájlokat. A fájlnév fajtája (`<alapnév>_<fajta>.md`) a vault-recept neve (`summary`, `clean-moderate`, `summary-hu`).
 
+A `scanNotes` szabálya (a `/notes` listáé is): egy jegyzetet csak akkor lát, ha **ugyanabban a mappában** van egy azonos alapnevű `<alapnév>_transcript.md`. A horgony nélküli jegyzet szó nélkül kimarad, a kihagyás-listába sem kerül, mert a deploy nem is látja. A vaultban 2026-10-25-én ez egy tételt érint: a `telegram/AI Engineer/-QFHIoCo-Ko/` két régi nevű fájlját (`_clean-deep`, `_clean-deep-hu`), mert az átiratuk a `transcripts/` alatt, más alapnévvel áll. A deploy ezt nem javítja (egy saját, horgony nélküli bejárás a `/notes`-tól eltérő képet adna). Ha kell, a fájlokat kell az átirat mellé tenni az átirat alapnevével.
+
 Egy vault-fájlból egy **nyelvi változat** lesz:
 - **Eredeti** (nincs `translation_of` a frontmatterben): a site-fajta a vault-fajta, a nyelv a `language` mező.
 - **Fordítás** (van `translation_of`): a nyelv a `language` mező (a célnyelv), a site-fajta a **fájlnév fajtája a `-<célnyelv>` végződés nélkül** (`summary-hu` → `summary`, `clean-moderate-hu` → `clean-moderate`). Nem a `translation_of`, mert az a fordítórecept forrás-azonosítója, és nem mindig a vault-fajta: a vaultban 6 `clean-moderate-hu` fájlban `translation_of: clean` áll (`src/pipeline.ts:412`), így a site két külön fajtának látná az eredetit és a fordítást. Az `.mdx`-be a `translation_of` a site-fajtával íródik felül, mert a szerződés szerint egyeznie kell a `kind`-dal. Az eredeti változatot (a `source_generated_at` pótlásához) ugyanez a kulcs találja meg (**az én döntésem**).
