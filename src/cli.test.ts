@@ -34,7 +34,7 @@ import { skeletonOf } from './rubric/skeleton.js'
 import { discoverAll, folderSource } from './source/folder.js'
 import { openState } from './state/db.js'
 import type { ModelRole } from './types.js'
-import { gitCommitPaths } from './vault/git.js'
+import { gitCommitPaths, gitPush } from './vault/git.js'
 import { commandWatch } from './watch/command.js'
 import { lintVaultMarkdown } from './vault/lint.js'
 import { noteBody } from './vault/note-body.js'
@@ -50,6 +50,8 @@ vi.mock('./vault/git.js', async (importOriginal) => {
     ...actual,
     gitPullFfOnly: vi.fn(() => Promise.resolve(undefined)),
     gitCommitPaths: vi.fn(() => Promise.reject(new Error('szimulált git hiba a teszthez'))),
+    // valódi, csak a hívási sorrend miatt figyelt
+    gitPush: vi.fn(actual.gitPush),
     // A tesztvault nem git-repó: minden jegyzet fájlja „változottnak” számít.
     gitHasChanges: vi.fn(() => Promise.resolve(true)),
   }
@@ -3395,6 +3397,31 @@ describe('deploy', () => {
     await futas(showroom('auto'), { commit: false })
     await futas(showroom('auto'), { dryRun: true })
     expect(deployNotes).not.toHaveBeenCalled()
+  })
+
+  it('run auto: a deploy a vault-push után fut', async () => {
+    vi.mocked(gitPush).mockClear()
+    await futas(showroom('auto'))
+    const [push] = vi.mocked(gitPush).mock.invocationCallOrder
+    const [deploy] = vi.mocked(deployNotes).mock.invocationCallOrder
+    expect(push).toBeDefined()
+    expect(push!).toBeLessThan(deploy!)
+  })
+
+  it('run auto: elbukott vault-commit után nem deployol', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    const raw = showroom('auto')
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    // a gitCommitPaths itt az alapértelmezés szerint hibát dob
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await expect(commandRun(cfg, raw, { dryRun: false, force: false, commit: true })).rejects.toThrow('szimulált git hiba')
+      expect(deployNotes).not.toHaveBeenCalled()
+    } finally {
+      naplo.mockRestore()
+      hiba.mockRestore()
+    }
   })
 
   it('run auto: a deploy hibája nem buktatja a futást', async () => {
