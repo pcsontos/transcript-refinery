@@ -240,9 +240,9 @@ A menet (`cfg.showroom` nem `null`, a hívó gondoskodik róla; ha `null`, dob):
 - Módosítás: `docs/usage.md` (a `refinery deploy` szakasza: mit visz ki, mit hagy ki, `auto`/`manual`, a külön klón létrehozása egy `git clone` sorral, a `mdx_fallback` jelentése)
 - Módosítás: `README.md` (parancslista egy sora), `docs/architecture.md` (egy bekezdés a `src/deploy/`-ról, ha a fájl modulonként leírja a felépítést)
 
-- [ ] **1. lépés:** a szövegek megírása; a `refinery help deploy` kimenete és a `docs/usage.md` ugyanazt mondja.
-- [ ] **2. lépés:** `pnpm test && pnpm typecheck && pnpm lint` PASS.
-- [ ] **3. lépés: commit** (`docs: Document refinery deploy`).
+- [x] **1. lépés:** a szövegek megírása; a `refinery help deploy` kimenete és a `docs/usage.md` ugyanazt mondja.
+- [x] **2. lépés:** `pnpm test && pnpm typecheck && pnpm lint` PASS.
+- [x] **3. lépés: commit** (`docs: Document refinery deploy`).
 
 ### 8. feladat: élő próba és PR
 

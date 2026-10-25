@@ -240,6 +240,19 @@ A 3. pont nem opcionális kényelem. Automata commit nélkül a munkafa piszkos 
 és akkor a *következő* futás előtti pull bicsaklik meg: a „ne commitolj" és a
 „húzz minden futás előtt" kizárják egymást.
 
+### Kiküldés a showroomba
+
+A `src/deploy/` a vault jegyzeteiből a showroom-site szerződése szerinti `.mdx`-et
+ír a site külön klónjába (`refinery deploy`, vagy `showroom.deploy: auto` mellett a
+`run` és a `serve` végén). Három egy felelősségű fájl: `variant.ts` (vault-jegyzet →
+nyelvi változat vagy megnevezett kihagyási ok, tiszta függvény), `mdx.ts` (escape,
+a site frontmatter-szabályai, `compile` és a komponenslista ellenőrzése) és
+`deploy.ts` (ágellenőrzés, pull, összevetés, írás, tételenkénti commit, push). Az
+ellenőrzés szigorúbb a site-énál: ami nem felel meg, nem kerül a commitba, mert
+egyetlen hibás jegyzet a site buildjét is megállítaná. Az LLM-es átalakító (#278)
+egyetlen opcionális `transform` függvényként csatlakozik; nélküle a determinisztikus
+változat megy, `mdx_fallback: true` jelzővel.
+
 ### Frontmatter
 
 Minden jegyzet rögzíti a származását — **metaadatfájl nélkül is**

@@ -280,6 +280,9 @@ pnpm exec refinery watch
 
 # 6. Olvasási felület (Web UI) indítása (http://127.0.0.1:4310)
 pnpm web
+
+# 7. A vault jegyzeteinek kiküldése a showroom-site klónjába (showroom: blokk a configban)
+pnpm exec refinery deploy
 ```
 
 > [!TIP]
