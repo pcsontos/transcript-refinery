@@ -261,7 +261,8 @@ Feladatonként külön commit, a hozzá tartozó al-issue-ra hivatkozva; minden 
 
 ### 8. feladat: élő próba és PR
 
-- [ ] **1. lépés:** a felhasználó létrehozza a külön klónt (`git clone git@github.com:pcsontos/refinery-showroom.git ~/github/pcsontos/refinery-showroom-deploy`), és beírja a `showroom:` blokkot (`deploy: manual`) a helyi `refinery.config.yaml`-ba.
-- [ ] **2. lépés:** `pnpm build && node dist/cli.js deploy`. Elvárt: a kihagyások listája (ok szerint) és egy push ok sor; a showroom `main`-jén új commitok; a Workers Build zöld; a site-on adminként látszanak a jegyzetek; a showroom CI-ja zöld.
-- [ ] **3. lépés:** második `pnpm build && node dist/cli.js deploy` → `0 commit`, push nélkül.
+- [x] **1. lépés:** a felhasználó létrehozza a külön klónt (`git clone git@github.com:pcsontos/refinery-showroom.git ~/github/pcsontos/refinery-showroom-deploy`), és beírja a `showroom:` blokkot (`deploy: manual`) a helyi `refinery.config.yaml`-ba.
+- [x] **2. lépés:** `pnpm build && node dist/cli.js deploy`. Elvárt: a kihagyások listája (ok szerint) és egy push ok sor; a showroom `main`-jén új commitok; a Workers Build zöld; a site-on adminként látszanak a jegyzetek; a showroom CI-ja zöld.
+- [x] **3. lépés:** második `pnpm build && node dist/cli.js deploy` → `0 commit`, push nélkül.
+  Eredmény (2026-10-25): az első futás ideiglenesen tiltott pusholással 204 fájlt írt, 58 commitot, 6 kihagyást (5 `de`, 1 `hi-orig`); a showroom `pnpm test` (278) és `pnpm build` a deploy-klónban zöld; a második futás pusholta a 58 commitot; a Workers Build és a showroom CI zöld (`864044f`). A site-on adminként a jegyzetek megjelenését a felhasználó nézi meg.
 - [ ] **4. lépés:** PR a kód-ágról (`Refs #277`, a #278 és a #322 megemlítve); a CI-t `gh pr checks`-szel kell ellenőrizni merge előtt.
