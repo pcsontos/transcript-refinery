@@ -244,14 +244,20 @@ A 3. pont nem opcionális kényelem. Automata commit nélkül a munkafa piszkos 
 
 A `src/deploy/` a vault jegyzeteiből a showroom-site szerződése szerinti `.mdx`-et
 ír a site külön klónjába (`refinery deploy`, vagy `showroom.deploy: auto` mellett a
-`run` és a `serve` végén). Három egy felelősségű fájl: `variant.ts` (vault-jegyzet →
+`run` és a `serve` végén). Egy-egy felelősségű fájlok: `variant.ts` (vault-jegyzet →
 nyelvi változat vagy megnevezett kihagyási ok, tiszta függvény), `mdx.ts` (escape,
-a site frontmatter-szabályai, `compile` és a komponenslista ellenőrzése) és
-`deploy.ts` (ágellenőrzés, pull, összevetés, írás, tételenkénti commit, push). Az
+fejléc-levágás, a site frontmatter-szabályai, `compile` és a komponenslista
+ellenőrzése), `cards.ts` (a kártyák kódos `<Accordions>`-bontása), `verbatim.ts`
+(az LLM-kimenet szó szerinti ellenőrzése), `llm.ts` (prompt, darabolás, újrapróba,
+költségplafon) és `deploy.ts` (ágellenőrzés, pull, útválasztás fajta szerint,
+összevetés, írás, tételenkénti commit, push). Az
 ellenőrzés szigorúbb a site-énál: ami nem felel meg, nem kerül a commitba, mert
 egyetlen hibás jegyzet a site buildjét is megállítaná. Az LLM-es átalakító (#278)
-egyetlen opcionális `transform` függvényként csatlakozik; nélküle a determinisztikus
-változat megy, `mdx_fallback: true` jelzővel.
+egy opcionális `Transform`: a `clean-*`, `summary`, `notes` oldalt tagolja, a
+kimenetet darabonként szóra egyezésig ellenőrzi. Nélküle, vagy két bukás után a
+determinisztikus változat megy, `mdx_fallback: true` jelzővel (a bukás mellé
+`mdx_failed: <generated_at>`, hogy a deploy ne hívjon rá újra). A kártyákat kód
+bontja, a szójegyzék és az ismeretlen fajta végleges, escape-elt.
 
 ### Frontmatter
 

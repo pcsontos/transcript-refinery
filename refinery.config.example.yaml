@@ -93,6 +93,7 @@ model:
   # külön kulcs, nem örököl a forrásrecepttől. A bíró mindig a `judge`.
   # recipes:
   #   notes: claude-sonnet-5
+  #   mdx: claude-sonnet-5-5   # a `refinery deploy` MDX-átalakítójának modellje (hiányában a draft)
   # Telegramról választható modellek (opcionális). A `/model` parancs ebből a
   # listából kínál modellt receptenként; ami nincs itt, azt nem lehet kérni
   # (a pricing tele van tts-, kép- és embedding-modellekkel, azokat nem

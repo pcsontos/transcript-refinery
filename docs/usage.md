@@ -368,9 +368,28 @@ node dist/cli.js deploy
   fordításon és a `contract/mdx-components.json` komponenslistáján; ami nem felel
   meg, az nem kerül a commitba. A deploy ezeket a site kódjának átiratával nézi,
   ezért ha a site szabályai változnak, a deploynak is követnie kell őket.
+- **LLM-es tagolás:** a `clean-*`, `summary` és `notes` oldalakat (nyelvi
+  változatonként, a fordítást is) a modell webes olvasásra tagolja: bevezető
+  `Röviden` / `In brief` blokk, címek, rövid bekezdések, kiemelés. Az eredeti
+  szöveg egyetlen szava sem változhat: kódos ellenőrzés veti össze szóról szóra,
+  és ami eltér, nem megy ki. A modell a `model.recipes.mdx` (hiányában a `draft`).
+  A `flashcards`, `qa` és `bloom` oldalt kód bontja `<Accordions>`-ra, modell
+  nélkül; a szójegyzék és az ismeretlen fajta csak escape-elve megy ki.
+  `LITELLM_API_KEY` vagy modell-config nélkül a deploy egy sorban jelzi, és az
+  LLM-es oldalakat a determinisztikus változattal írja.
 - **`mdx_fallback: true`:** a jegyzet determinisztikus átalakítással készült (a
-  törzs a kódon kívül escape-elve, komponens nélkül). Ha egyszer lesz LLM-es
-  átalakító (#278), a deploy az ilyen jegyzeteket újra átalakítja.
+  törzs a kódon kívül escape-elve, komponens nélkül). A következő deploy, amelyik
+  kap átalakítót, újra átalakítja. A kártya, a szójegyzék és az ismeretlen fajta
+  végleges, ezeknél nincs fallback-jelző.
+- **`mdx_failed: <generated_at>`:** az oldal átalakítása kétszer elbukott (vagy a
+  modellhívás hibát dobott, vagy a kártyák nem bonthatók). A deploy nem próbálja
+  újra, amíg a jegyzet `generated_at`-je ugyanaz; `refinery deploy --retry-failed`
+  vagy a jegyzet változása után igen.
+- **Költségplafon:** a deploy futásonként a `cost_limit_usd`-ig hív modellt; a
+  folyamatban lévő oldal befejeződik, a többi ebben a futásban fallback (a már
+  kint lévő oldal érintetlen marad, `mdx_failed` nélkül). A jelentés kiírja az
+  átalakítás tokenjeit, költségét és a kimaradt oldalak számát; a következő
+  `refinery deploy` folytatja, így a teljes kör adagonként megy.
 - **Félbemaradt futás:** a kiírt, de nem commitolt fájlokat a következő futás egy
   „maradék” commitba veszi, a pushra váró commitokat pedig elpusholja. A klónon
   `git pull --rebase` fut, így egy elbukott push után akkor is továbbmegy, ha a
