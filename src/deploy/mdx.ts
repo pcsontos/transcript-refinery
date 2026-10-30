@@ -76,6 +76,13 @@ function escapeLine(line: string): string {
   return out
 }
 
+/** A törzs eleji `# Cím` sor és az utána álló `🌐 …` sor (ha van) külön; a `rest` a maradék. */
+export function splitHeader(body: string): { header: string; rest: string } {
+  const match = /^(# [^\n]*)(?:\n\s*\n(🌐 [^\n]*))?/.exec(body)
+  if (!match) return { header: '', rest: body }
+  return { header: match[2] ? `${match[1]}\n\n${match[2]}` : match[1]!, rest: body.slice(match[0].length).trimStart() }
+}
+
 export function renderMdx(fields: Record<string, unknown>, body: string): string {
   return `---\n${stringify(fields, { lineWidth: 0 })}---\n\n${body}`
 }
