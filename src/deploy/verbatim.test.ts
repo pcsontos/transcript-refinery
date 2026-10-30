@@ -23,6 +23,15 @@ describe('verbatimError', () => {
     expect(verbatimError('## Példa\n\nSzöveg', '### Egy példa\n\nSzöveg')).not.toBeNull()
   })
 
+  it('sor eleji félkövér bevezető címmé emelhető, a szövege nem tűnhet el', () => {
+    const original = '**A tisztulásról.** Az első kérdés volt.\n\nMásik bekezdés.'
+    expect(verbatimError(original, '## A tisztulásról\n\nAz első kérdés volt.\n\nMásik bekezdés.')).toBeNull()
+    // más szövegű cím továbbra is új cím: a szava kimarad az eredeti bevezetőből
+    expect(verbatimError(original, '## Egy másik cím\n\nAz első kérdés volt.\n\nMásik bekezdés.')).not.toBeNull()
+    // a félkövér nem a sor elején áll: nem ismert cím
+    expect(verbatimError('Elöl **fontos rész** van.', '## fontos rész\n\nElöl van.')).not.toBeNull()
+  })
+
   it('kicserélt szó bukik', () => {
     expect(verbatimError(ORIGINAL, 'Az első mondat. A második szöveg. A harmadik mondat.')).toContain('szónál')
   })

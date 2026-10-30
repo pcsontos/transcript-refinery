@@ -17,7 +17,7 @@ function lineWords(line: string): string[] {
 
 /**
  * A szöveg szósorozata Markdown-jelölők nélkül; a kódblokk egy egység (a tartalma szóközre normalizálva).
- * A címsor sora a `headings`-be is kerül; ha `keep` meg van adva, az abban nem szereplő cím kimarad (új cím).
+ * A címsor sora és a sor eleji félkövér szöveg a `headings`-be is kerül; ha `keep` meg van adva, az abban nem szereplő cím kimarad (új cím).
  */
 function wordsOf(text: string, keep?: Set<string>): { words: string[]; headings: Set<string> } {
   const words: string[] = []
@@ -37,6 +37,9 @@ function wordsOf(text: string, keep?: Set<string>): { words: string[]; headings:
     } else {
       const heading = /^ {0,3}#{1,6}\s+(.*)$/.exec(line)?.[1]
       if (heading === undefined) {
+        // a sor eleji félkövér bevezető (`**Cím.** Szöveg`) ismert cím is: a modell címmé emelheti
+        const lead = /^\s*(?:(?:[-*+]|\d+[.)])\s+)?\*\*(.+?)\*\*/.exec(line)?.[1]
+        if (lead !== undefined) headings.add(lineWords(lead).join(' '))
         words.push(...lineWords(line))
         continue
       }
