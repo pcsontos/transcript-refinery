@@ -398,8 +398,9 @@ node dist/cli.js deploy
 ### Automatikus kiküldés
 
 `deploy: auto` mellett a `run` (a vault-push után) és a `serve` (a vault-push után,
-a `ready` jelentés előtt) **csak az adott futás tételeit** küldi ki, nem a teljes
-vaultot. `--no-commit` és `--dry-run` mellett, illetve sikertelen vault-commitnál
+a jelentés után: az LLM-es átalakítás percekig tarthat, a Telegram-válasz nem vár
+rá, a site-link addig 404-et adhat) **csak az adott futás tételeit** küldi ki, nem a
+teljes vaultot. `--no-commit` és `--dry-run` mellett, illetve sikertelen vault-commitnál
 nem fut. A deploy hibája nem buktatja a futást: a CLI egy `deploy sikertelen:`
 sort ír, a `serve` a naplóba (`[deploy]`), a jelentés ugyanúgy megy. A `watch`
 nem kap `auto` bekötést (csak átiratot ír, az nem megy ki).

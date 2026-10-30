@@ -3,6 +3,7 @@ import { basename, join, relative, sep } from 'node:path'
 import { commandRun, type RunRuntime } from '../cli.js'
 import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { deployLines, deployNotes } from '../deploy/deploy.js'
+import { mdxTransformFor } from '../deploy/llm.js'
 import { progressText, type RunEvent as CoreEvent } from '../events.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { assertOverrideModels, withRecipeModels } from '../model/recipe-model.js'
@@ -219,16 +220,28 @@ export async function runRecipes(input: {
   }
   const pushed = await git.push(cfg.vaultPath)
   if (!pushed.pushed) return { ok: false, error: 'A push nem sikerült, a commit lokálisan maradt.' }
-  // Az `auto` deploy a `ready` előtt fut, hogy a jelentés után a jegyzet a site-on is ott legyen.
-  // A hibája nem buktatja a jobot: a jegyzet a vaultban megvan, a `refinery deploy` pótolja.
-  if (cfg.showroom?.deploy === 'auto') {
-    try {
-      const report = await (input.deploy ?? deployNotes)({ cfg, itemIds: new Set([input.videoId]) })
-      for (const line of deployLines(report)) console.log(`[deploy] ${line.replace(/^deploy: /, '')}`)
-    } catch (error) {
-      console.warn(`[deploy] sikertelen: ${firstLine(error instanceof Error ? error.message : String(error))}`)
-    }
-  }
+  // Az `auto` deploy a jelentés (`ready`/`failed`) után fut, a `followUp`-ban: az LLM-es átalakítás percekig
+  // tarthat, a válasz nem vár rá. A hibája nem buktatja a jobot: a jegyzet a vaultban megvan, a
+  // `refinery deploy` pótolja. A site-link addig 404-et adhat.
+  const followUp =
+    cfg.showroom?.deploy === 'auto'
+      ? async (): Promise<void> => {
+          try {
+            const transform = mdxTransformFor(loaded.raw, cfg, input.createClient)
+            if (typeof transform === 'string') console.log(`[deploy] LLM-átalakítás nélkül: ${transform}`)
+            const itemIds = new Set([input.videoId])
+            const report = await (input.deploy ?? deployNotes)({
+              cfg,
+              itemIds,
+              ...(typeof transform === 'string' ? {} : { transform }),
+            })
+            for (const line of deployLines(report)) console.log(`[deploy] ${line.replace(/^deploy: /, '')}`)
+          } catch (error) {
+            console.warn(`[deploy] sikertelen: ${firstLine(error instanceof Error ? error.message : String(error))}`)
+          }
+        }
+      : undefined
+  const finish = (outcome: RecipesOutcome): RecipesOutcome => (followUp === undefined ? outcome : { ...outcome, followUp })
   // Ha a leállás mellett más recept közönséges hibával bukott, az a hibasorba kerül (a leállásról a rákérdezés már szólt):
   // a `done` nélküli, hagyományos hibaút a hibát mondja, nem csak a leállást.
   const otherFailure = events.some((event) => event.type === 'item:failed' && event.timedOut !== true)
@@ -238,17 +251,17 @@ export async function runRecipes(input: {
       const path = notePaths[index]
       if (!stalled.has(id) && path != null && (await exists(path))) done.push(id)
     }
-    return { ok: false, error: firstLine([...stalled.values()][0]!), done }
+    return finish({ ok: false, error: firstLine([...stalled.values()][0]!), done })
   }
   if (code !== 0) {
     const reported = stalled.size > 0 ? events.filter((event) => !(event.type === 'item:failed' && event.timedOut === true)) : events
-    return { ok: false, error: failureLine(reported, 'A futás megállt.') }
+    return finish({ ok: false, error: failureLine(reported, 'A futás megállt.') })
   }
-  if (transcriptPath === null) return { ok: false, error: 'A jegyzet nem készült el.' }
+  if (transcriptPath === null) return finish({ ok: false, error: 'A jegyzet nem készült el.' })
   for (const path of notePaths) {
-    if (path === null || !(await exists(path))) return { ok: false, error: failureLine(events, 'A jegyzet nem készült el.') }
+    if (path === null || !(await exists(path))) return finish({ ok: false, error: failureLine(events, 'A jegyzet nem készült el.') })
   }
   // A vaulton belüli út forge-független: a Worker nem olvassa, csak eltárolja.
   const noteUrl = relative(cfg.vaultPath, transcriptPath).split(sep).join('/')
-  return { ok: true, noteUrl }
+  return finish({ ok: true, noteUrl })
 }

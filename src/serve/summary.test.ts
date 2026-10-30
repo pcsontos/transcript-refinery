@@ -721,11 +721,13 @@ describe('runRecipes — deploy', () => {
     return { result, log, fake }
   }
 
-  it('auto módban a push után a videó tételét deployolja, és csak utána tér vissza', async () => {
+  it('auto módban a deploy nem fut a visszatérés előtt, a followUp futtatja', async () => {
     const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
     const { result, log, fake } = await futas('auto')
     expect(result.ok).toBe(true)
-    expect(log).toEqual(['push', 'deploy', 'deploy kész', 'visszatért'])
+    expect(log).toEqual(['push', 'visszatért'])
+    await result.followUp!()
+    expect(log).toEqual(['push', 'visszatért', 'deploy', 'deploy kész'])
     expect(fake).toHaveBeenCalledWith(expect.objectContaining({ itemIds: new Set([ID]) }))
     expect(naplo).toHaveBeenCalledWith('[deploy] 1 írva, 0 kihagyva, 1 commit')
   })
@@ -733,6 +735,7 @@ describe('runRecipes — deploy', () => {
   it('manual módban nem deployol', async () => {
     const { result, fake } = await futas('manual')
     expect(result.ok).toBe(true)
+    expect(result.followUp).toBeUndefined()
     expect(fake).not.toHaveBeenCalled()
   })
 
@@ -746,6 +749,7 @@ describe('runRecipes — deploy', () => {
     const figyelmeztetes = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { result } = await futas('auto', { deployImpl: () => Promise.reject(new Error('a klón nem a main ágon áll (masik)\nrészlet')) })
     expect(result.ok).toBe(true)
+    await result.followUp!()
     expect(figyelmeztetes).toHaveBeenCalledWith('[deploy] sikertelen: a klón nem a main ágon áll (masik)')
   })
 })

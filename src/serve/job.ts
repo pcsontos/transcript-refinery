@@ -31,7 +31,13 @@ export type CallbackBody =
   /** Egy recept a futásidő-korlát miatt leállt; a Worker rákérdez az újrapróbálásra. */
   | { status: 'stalled'; text: string }
 
-export type RecipesOutcome = { ok: true; noteUrl: string } | { ok: false; error: string; done?: string[] }
+/**
+ * `followUp`: a jelentés (`ready`/`failed`) után futó munka, pl. a hosszan tartó showroom-deploy.
+ * Nem dobhat: a hibáját maga naplózza.
+ */
+export type RecipesOutcome = ({ ok: true; noteUrl: string } | { ok: false; error: string; done?: string[] }) & {
+  followUp?: () => Promise<void>
+}
 
 export interface JobEffects {
   store: ObjectStore
@@ -300,13 +306,14 @@ async function runRecipeJob(
   await forgetWork(effects, job.videoId)
   if (outcome.ok) {
     await report(effects, job.jobId, { status: 'ready', title: loaded.title, noteUrl: outcome.noteUrl })
-    return
+  } else {
+    await report(effects, job.jobId, {
+      status: 'failed',
+      error: outcome.error,
+      ...(outcome.done === undefined ? {} : { done: outcome.done }),
+    })
   }
-  await report(effects, job.jobId, {
-    status: 'failed',
-    error: outcome.error,
-    ...(outcome.done === undefined ? {} : { done: outcome.done }),
-  })
+  await outcome.followUp?.()
 }
 
 /** A `signal` csak a receptjobot állítja meg; a felirat-job lefut, az eredményét a Worker elnyeli. */
