@@ -1,12 +1,13 @@
 import { execFile } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { stringify } from 'yaml'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Config, loadConfig } from '../config.js'
-import { deployLines, deployNotes, type Transform } from './deploy.js'
+import { deployLines, deployNotes } from './deploy.js'
+import type { Transform, TransformResult } from './llm.js'
 
 const run = promisify(execFile)
 const git = async (cwd: string, ...args: string[]) => (await run('git', args, { cwd })).stdout.trim()
@@ -19,6 +20,8 @@ const CONTRACT = {
         title: { type: 'string', required: false },
       },
     },
+    Accordions: { attributes: { type: { type: 'enum', values: ['single', 'multiple'], required: false } } },
+    Accordion: { attributes: { title: { type: 'string', required: true } } },
   },
 }
 
@@ -89,7 +92,21 @@ const remoteHas = async (path: string) => {
     return false
   }
 }
-const VALID: Transform = () => Promise.resolve('Jó <Callout type="note">x</Callout>')
+
+/** `run`-onként sorban ad eredményt (az utolsó ismétlődik; `Error` dobás), és számolja a hívást. */
+function fakeTransform(...results: (TransformResult | Error)[]): Transform & { calls: number } {
+  const transform = {
+    calls: 0,
+    run: () => {
+      const result = results[Math.min(transform.calls++, results.length - 1)]!
+      return result instanceof Error ? Promise.reject(result) : Promise.resolve(result)
+    },
+    usage: () => ({ inputTokens: 0, outputTokens: 0, usd: 0, budgetSkipped: 0 }),
+  }
+  return transform
+}
+const final = (body: string): TransformResult => ({ kind: 'final', body })
+const valid = () => fakeTransform(final('Jó <Callout type="note">x</Callout>'))
 
 describe('deployNotes', () => {
   it('első futás kiírja és pusholja', async () => {
@@ -115,13 +132,12 @@ describe('deployNotes', () => {
 
   it('második futás változatlan vaultnál nem ír és nem commitol', async () => {
     await note('vid1', 'summary', BASE)
-    const transform = vi.fn(VALID)
+    const transform = valid()
     await deployNotes({ cfg, transform })
-    expect(transform).toHaveBeenCalled()
-    transform.mockClear()
+    expect(transform.calls).toBe(1)
     const report = await deployNotes({ cfg, transform })
     expect(report).toMatchObject({ written: [], commits: 0, push: null })
-    expect(transform).not.toHaveBeenCalled()
+    expect(transform.calls).toBe(1)
   })
 
   it('újragenerált jegyzet frissül', async () => {
@@ -138,14 +154,14 @@ describe('deployNotes', () => {
     await deployNotes({ cfg })
     expect(await show('content/notes/vid1/summary.hu.mdx')).toContain('mdx_fallback: true')
     expect((await deployNotes({ cfg })).written).toEqual([])
-    const report = await deployNotes({ cfg, transform: VALID })
+    const report = await deployNotes({ cfg, transform: valid() })
     expect(report.written).toEqual(['vid1/summary.hu.mdx'])
     expect(await show('content/notes/vid1/summary.hu.mdx')).not.toContain('mdx_fallback')
   })
 
   it('le nem forduló transform-kimenet helyett a determinisztikus megy', async () => {
     await note('vid1', 'summary', BASE)
-    const report = await deployNotes({ cfg, transform: () => Promise.resolve('<Callout>') })
+    const report = await deployNotes({ cfg, transform: fakeTransform(final('<Callout>')) })
     expect(await show('content/notes/vid1/summary.hu.mdx')).toContain('mdx_fallback: true')
     expect(report.skipped.map((s) => s.reason).join('\n')).toContain('LLM-kimenet elvetve')
   })
@@ -155,7 +171,7 @@ describe('deployNotes', () => {
       await rm(join(clone, 'content'), { recursive: true, force: true })
       await git(clone, 'reset', '-q', '--hard', 'origin/main')
       await note('vid1', 'summary', { ...BASE, generated_at: out })
-      const report = await deployNotes({ cfg, transform: () => Promise.resolve(out) })
+      const report = await deployNotes({ cfg, transform: fakeTransform(final(out)) })
       expect(report.skipped.map((s) => s.reason).join('\n')).toContain('LLM-kimenet elvetve')
       expect(await show('content/notes/vid1/summary.hu.mdx')).toContain('mdx_fallback: true')
     }
@@ -163,7 +179,7 @@ describe('deployNotes', () => {
 
   it('jó transform-kimenet megy, jelző nélkül', async () => {
     await note('vid1', 'summary', BASE)
-    await deployNotes({ cfg, transform: VALID })
+    await deployNotes({ cfg, transform: valid() })
     const out = await show('content/notes/vid1/summary.hu.mdx')
     expect(out).toContain('<Callout type="note">x</Callout>')
     expect(out).not.toContain('mdx_fallback')
@@ -178,7 +194,7 @@ describe('deployNotes', () => {
     await writeFile(join(other, 'contract', 'mdx-components.json'), JSON.stringify(wide))
     await git(other, 'commit', '-qam', 'Foo')
     await git(other, 'push')
-    const report = await deployNotes({ cfg, transform: () => Promise.resolve('<Foo />') })
+    const report = await deployNotes({ cfg, transform: fakeTransform(final('<Foo />')) })
     expect(report.skipped).toEqual([])
     expect(await show('content/notes/vid1/summary.hu.mdx')).not.toContain('mdx_fallback')
   })
@@ -330,6 +346,136 @@ describe('deployNotes', () => {
     expect(await show('content/notes/vid2/summary.hu.mdx')).toBe('félbemaradt')
     expect(await show('README.md')).toBe('kézi')
     expect(JSON.parse(await show('content/notes/vid1/meta.json'))).toEqual({ title: 'Cím' })
+  })
+
+  describe('útvonalak', () => {
+    const read = (target: string) => readFile(join(clone, 'content', 'notes', target), 'utf8')
+
+    it('kártya végleges, átalakító nélkül is', async () => {
+      await note('vid1', 'flashcards', BASE, '# Cím\n\n## K\n\nV\n')
+      const report = await deployNotes({ cfg })
+      const out = await show('content/notes/vid1/flashcards.hu.mdx')
+      expect(out).toContain('<Accordions')
+      expect(out).not.toContain('mdx_fallback')
+      expect(report.written).toEqual(['vid1/flashcards.hu.mdx'])
+      expect((await deployNotes({ cfg })).written).toEqual([])
+    })
+
+    it('régi fallback kártya átalakító nélkül is újraíródik', async () => {
+      await note('vid1', 'flashcards', BASE, '# Cím\n\n## K\n\nV\n')
+      const target = join(clone, 'content', 'notes', 'vid1', 'flashcards.hu.mdx')
+      await mkdir(dirname(target), { recursive: true })
+      await writeFile(
+        target,
+        `---\n${stringify({ item_id: 'vid1', title: 'Cím', kind: 'flashcards', language: 'hu', generated_at: 'T1', source: 'youtube', origin: 'cli', mdx_fallback: true })}---\n\nrégi\n`,
+      )
+      await deployNotes({ cfg })
+      const out = await read('vid1/flashcards.hu.mdx')
+      expect(out).toContain('<Accordions')
+      expect(out).not.toContain('mdx_fallback')
+    })
+
+    it('nem bontható kártya mdx_failed-et kap, és nem íródik újra', async () => {
+      await note('vid1', 'qa', BASE, '# Cím\n\nCsak szöveg\n')
+      await deployNotes({ cfg })
+      const out = await show('content/notes/vid1/qa.hu.mdx')
+      expect(out).toContain('mdx_fallback: true')
+      expect(out).toContain('mdx_failed: T1')
+      expect((await deployNotes({ cfg })).written).toEqual([])
+    })
+
+    it('szójegyzék végleges', async () => {
+      await note('vid1', 'summary', BASE)
+      await note('vid1', 'glossary-hu', { title: 'Cím', language: 'hu', source_language: 'en' }, '| a | b |\n')
+      await git(vault, 'add', '.')
+      await git(vault, 'commit', '-qm', 'vault')
+      await deployNotes({ cfg })
+      expect(await show('content/notes/vid1/glossary.hu.mdx')).not.toContain('mdx_fallback')
+    })
+
+    it('LLM-fajta transform nélkül fallback, mdx_failed nélkül', async () => {
+      await note('vid1', 'summary', BASE)
+      await deployNotes({ cfg })
+      const out = await show('content/notes/vid1/summary.hu.mdx')
+      expect(out).toContain('mdx_fallback: true')
+      expect(out).not.toContain('mdx_failed')
+    })
+
+    it('kétszer bukott oldal mdx_failed-et kap, a következő futás nem hív, a --retry-failed igen', async () => {
+      await note('vid1', 'summary', BASE)
+      const transform = fakeTransform({ kind: 'failed', reason: 'szó szerinti eltérés' })
+      const report = await deployNotes({ cfg, transform })
+      const out = await show('content/notes/vid1/summary.hu.mdx')
+      expect(out).toContain('mdx_fallback: true')
+      expect(out).toContain('mdx_failed: T1')
+      expect(report.skipped.map((s) => s.reason).join('\n')).toContain('LLM-kimenet elvetve')
+      await deployNotes({ cfg, transform })
+      expect(transform.calls).toBe(1)
+      await deployNotes({ cfg, transform, retryFailed: true })
+      expect(transform.calls).toBe(2)
+      // új generated_at mellett retryFailed nélkül is hív
+      await note('vid1', 'summary', { ...BASE, generated_at: 'T2' })
+      await deployNotes({ cfg, transform })
+      expect(transform.calls).toBe(3)
+    })
+
+    it('a plafon után nincs LLM-hívás, a kint lévő oldal marad', async () => {
+      await note('vid1', 'summary', BASE)
+      await deployNotes({ cfg })
+      const before = await read('vid1/summary.hu.mdx')
+      await note('vid2', 'summary', BASE)
+      const report = await deployNotes({ cfg, transform: fakeTransform({ kind: 'budget' }) })
+      expect(await read('vid1/summary.hu.mdx')).toBe(before)
+      expect(report.written).toEqual(['vid2/summary.hu.mdx'])
+      const fresh = await show('content/notes/vid2/summary.hu.mdx')
+      expect(fresh).toContain('mdx_fallback: true')
+      expect(fresh).not.toContain('mdx_failed')
+      // a következő futás átalakítja
+      await deployNotes({ cfg, transform: valid() })
+      expect(await show('content/notes/vid2/summary.hu.mdx')).not.toContain('mdx_fallback')
+    })
+
+    it('átalakított oldal a második futásban 0 hívás, 0 commit', async () => {
+      await note('vid1', 'summary', BASE)
+      const transform = valid()
+      await deployNotes({ cfg, transform })
+      const report = await deployNotes({ cfg, transform })
+      expect(transform.calls).toBe(1)
+      expect(report.commits).toBe(0)
+    })
+
+    it('a végleges kimenetet a deploy is ellenőrzi', async () => {
+      await note('vid1', 'summary', BASE)
+      const report = await deployNotes({ cfg, transform: fakeTransform(final('<Foo />')) })
+      const out = await show('content/notes/vid1/summary.hu.mdx')
+      expect(out).toContain('mdx_fallback: true')
+      expect(out).toContain('mdx_failed: T1')
+      expect(report.skipped.map((s) => s.reason).join('\n')).toContain('ismeretlen komponens')
+    })
+
+    it('a transform dobása is mdx_failed', async () => {
+      await note('vid1', 'summary', BASE)
+      const transform = fakeTransform(new Error('finish_reason: length\nrészletek'))
+      const report = await deployNotes({ cfg, transform })
+      expect(await show('content/notes/vid1/summary.hu.mdx')).toContain('mdx_failed: T1')
+      expect(report.skipped.map((s) => s.reason)).toContain('LLM-kimenet elvetve: finish_reason: length')
+      await deployNotes({ cfg, transform })
+      expect(transform.calls).toBe(1)
+      await deployNotes({ cfg, transform, retryFailed: true })
+      expect(transform.calls).toBe(2)
+    })
+  })
+
+  it('deployLines kiírja a költséget', () => {
+    const base = { written: [], skipped: [], commits: 0, push: null }
+    const usage = { inputTokens: 10, outputTokens: 20, usd: 0.0123, budgetSkipped: 1 }
+    expect(deployLines({ ...base, transform: usage })).toContain(
+      'deploy: átalakítás: 10+20 token, 0.0123 $, 1 oldal kimaradt a költségplafon miatt',
+    )
+    expect(deployLines({ ...base, transform: { ...usage, budgetSkipped: 0 } })).toContain(
+      'deploy: átalakítás: 10+20 token, 0.0123 $',
+    )
+    expect(deployLines({ ...base, transform: null }).join('\n')).not.toContain('átalakítás')
   })
 
   it('showroom blokk nélkül dob', async () => {

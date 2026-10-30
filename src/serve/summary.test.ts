@@ -685,7 +685,7 @@ describe('runRecipes — deploy', () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
   })
 
-  const REPORT = { written: ['x'], skipped: [], commits: 1, push: { pushed: true } }
+  const REPORT = { written: ['x'], skipped: [], commits: 1, push: { pushed: true }, transform: null }
 
   /** A `load` a showroom-blokkal bővítve; a deploy hamis, az eseményeket a `log` gyűjti. */
   async function futas(deploy: 'auto' | 'manual', options: { push?: typeof gitPush; deployImpl?: typeof deployNotes } = {}) {
