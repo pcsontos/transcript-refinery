@@ -144,7 +144,9 @@ export async function gitFetch(repo: string): Promise<void> {
 /** A fájl tartalma egy revízióban (`<rev>:<út>`); `null`, ha ott nincs. */
 export async function gitShowOptional(repo: string, rev: string, path: string): Promise<string | null> {
   try {
-    const { stdout } = await run('git', ['show', `${rev}:${path}`], { cwd: repo, maxBuffer: 64 * 1024 * 1024 })
+    // LC_ALL=C: a lenti illesztés az angol hibaüzenetre épül, más nyelvű gitnél nem találna.
+    const env = { ...process.env, LC_ALL: 'C' }
+    const { stdout } = await run('git', ['show', `${rev}:${path}`], { cwd: repo, env, maxBuffer: 64 * 1024 * 1024 })
     return stdout
   } catch (error) {
     if (/does not exist|exists on disk, but not in/.test((error as Error).message)) return null
