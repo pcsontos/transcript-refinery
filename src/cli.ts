@@ -12,14 +12,14 @@ import {
   type Config,
   type ModelConfig,
 } from './config.js'
-import { deployLines, deployNotes } from './deploy/deploy.js'
+import { type DeployFilter, deployHeader, deployLines, deployNotes, dryRunLines } from './deploy/deploy.js'
 import { MDX_MODEL_KEY, mdxTransformFor, type Transform } from './deploy/llm.js'
 import { collectEvents, progressText, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
 import { commandCheckStructured } from './model/check-structured.js'
 import { createModelClient, type ModelClient, type ModelClientOptions } from './model/client.js'
 import { applyPricingFix, comparePricing, fetchLivePricing } from './model/pricing-check.js'
-import { assertRecipeModels, modelConfigFor, usedModels } from './model/recipe-model.js'
+import { assertRecipeModels, modelConfigFor, usedModels, withRecipeModels } from './model/recipe-model.js'
 import { toolChoiceFallback } from './model/tool-fallback.js'
 import { classifyCaptions } from './normalize/classify.js'
 import { countWords, dedupeLines } from './normalize/dedupe.js'
@@ -113,7 +113,9 @@ const WATCH_OPTIONS = new Set(['config', 'source', 'no-commit', 'help'])
 
 /** A check-structured kapcsolói: valódi pénzt költ, ezért egy közös kapcsoló (pl. `--dry-run`) sem maradhat csendben figyelmen kívül. */
 const CHECK_STRUCTURED_OPTIONS = new Set(['config', 'help'])
-const DEPLOY_OPTIONS = new Set(['config', 'retry-failed', 'help'])
+const DEPLOY_OPTIONS = new Set(['config', 'retry-failed', 'item', 'kind', 'channel', 'source', 'model', 'dry-run', 'help'])
+/** A csak a deploynál értelmes kapcsolók; máshol csendben figyelmen kívül maradnának. */
+const DEPLOY_ONLY = ['item', 'kind', 'model'] as const
 
 /** Az első megadott, de az `allowed`-ben nem szereplő kapcsoló neve, ha van. */
 function unsupportedOption(values: Record<string, unknown>, allowed: ReadonlySet<string>): string | undefined {
@@ -122,6 +124,13 @@ function unsupportedOption(values: Record<string, unknown>, allowed: ReadonlySet
   return Object.entries(values).find(
     ([name, value]) => !allowed.has(name) && value !== undefined && value !== false,
   )?.[0]
+}
+
+/** Vesszős és/vagy ismételt kapcsoló értékeinek uniója; `undefined`, ha nem adták meg, hiba, ha üres. */
+function listFlag(name: string, values: string[] | undefined): string[] | undefined | { error: string } {
+  if (values === undefined) return undefined
+  const list = values.flatMap((v) => v.split(',')).map((s) => s.trim()).filter((s) => s !== '')
+  return list.length > 0 ? list : { error: `A --${name} értéke üres.` }
 }
 
 /** A `--limit` csak tízes pozitív egész; a `Number()` a `0x10`-et és az `1e1`-et is elfogadná. */
@@ -1069,18 +1078,34 @@ function deployTransform(raw: unknown, cfg: Config, createClient?: RunRuntime['c
   return undefined
 }
 
-/** A vault jegyzeteit a showroom klónjába küldi (teljes vault, a hiányzót és a megváltozottat). */
+/** A vault jegyzeteit a showroom klónjába küldi (szűrés nélkül a teljes vault, a hiányzót és a megváltozottat). */
 export async function commandDeploy(
   cfg: Config,
   raw: unknown,
-  opts: { retryFailed?: boolean; createClient?: RunRuntime['createClient'] } = {},
+  opts: {
+    retryFailed?: boolean
+    dryRun?: boolean
+    filter?: DeployFilter
+    model?: string
+    createClient?: RunRuntime['createClient']
+  } = {},
 ): Promise<number> {
   if (cfg.showroom === null) {
     console.error('A deploy ki van kapcsolva: nincs showroom: blokk a configban.')
     return 1
   }
-  const transform = deployTransform(raw, cfg, opts.createClient)
-  for (const line of deployLines(await deployNotes({ cfg, transform, retryFailed: opts.retryFailed }))) console.log(line)
+  const { model, dryRun = false, filter } = opts
+  const transform = mdxTransformFor(model === undefined ? raw : withRecipeModels(raw, { [MDX_MODEL_KEY]: model }), cfg, opts.createClient)
+  if (typeof transform === 'string' && model !== undefined) {
+    console.error(`--model: ${transform}`)
+    return 1
+  }
+  const header = deployHeader(filter ?? {}, { dryRun, model })
+  if (header !== null) console.log(header)
+  if (typeof transform === 'string') console.log(`deploy: LLM-átalakítás nélkül: ${transform}`)
+  const llm = typeof transform === 'string' ? undefined : transform
+  const report = await deployNotes({ cfg, transform: llm, retryFailed: opts.retryFailed, dryRun, filter })
+  for (const line of dryRun ? dryRunLines(report, llm !== undefined) : deployLines(report)) console.log(line)
   return 0
 }
 
@@ -1109,6 +1134,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       limit: { type: 'string' },
       recipe: { type: 'string', multiple: true },
       'dry-run': { type: 'boolean', default: false },
+      item: { type: 'string', multiple: true },
+      kind: { type: 'string', multiple: true },
+      model: { type: 'string' },
       force: { type: 'boolean', default: false },
       'no-commit': { type: 'boolean', default: false },
       'retry-failed': { type: 'boolean', default: false },
@@ -1179,7 +1207,29 @@ export async function main(argv: readonly string[]): Promise<number> {
   if (command === 'deploy') {
     const unsupported = unsupportedOption(values, DEPLOY_OPTIONS)
     if (unsupported !== undefined) {
-      console.error(`A deploy nem ismeri a --${unsupported} kapcsolót; támogatott: --config, --retry-failed.`)
+      console.error(
+        `A deploy nem ismeri a --${unsupported} kapcsolót; támogatott: --config, --retry-failed, --item, --kind, --channel, --source, --model, --dry-run.`,
+      )
+      return 1
+    }
+  } else {
+    const misplaced = DEPLOY_ONLY.find((name) => values[name] !== undefined)
+    if (misplaced !== undefined) {
+      console.error(`A --${misplaced} csak a deploy kapcsolója.`)
+      return 1
+    }
+  }
+  const deployItems = command === 'deploy' ? listFlag('item', values.item) : undefined
+  const deployKinds = command === 'deploy' ? listFlag('kind', values.kind) : undefined
+  for (const name of ['channel', 'source'] as const) {
+    if (command === 'deploy' && values[name] === '') {
+      console.error(`A --${name} értéke üres.`)
+      return 1
+    }
+  }
+  for (const list of [deployItems, deployKinds]) {
+    if (list !== undefined && !Array.isArray(list)) {
+      console.error(list.error)
       return 1
     }
   }
@@ -1201,7 +1251,20 @@ export async function main(argv: readonly string[]): Promise<number> {
   if (command === 'check-structured') {
     return commandCheckStructured(loadModelConfig(raw, process.env, cfg.configPath))
   }
-  if (command === 'deploy') return commandDeploy(cfg, raw, { retryFailed: values['retry-failed'] })
+  if (command === 'deploy') {
+    const filter: DeployFilter = {
+      ...(Array.isArray(deployItems) && { items: deployItems }),
+      ...(Array.isArray(deployKinds) && { kinds: deployKinds }),
+      ...(values.channel && { channel: values.channel }),
+      ...(values.source && { source: values.source }),
+    }
+    return commandDeploy(cfg, raw, {
+      retryFailed: values['retry-failed'],
+      dryRun: values['dry-run'],
+      filter: Object.keys(filter).length > 0 ? filter : undefined,
+      model: values.model,
+    })
+  }
   if (command === 'list') {
     return commandList(cfg, {
       source: values.source,

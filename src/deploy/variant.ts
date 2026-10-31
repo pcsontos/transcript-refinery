@@ -20,6 +20,14 @@ function stamp(value: unknown): string | null {
 const textOf = (value: unknown) => (typeof value === 'string' ? value : '')
 const noOrig = (tag: unknown) => textOf(tag).replace(/-orig$/, '')
 
+/** A vault-fajtából a site-fajta (a célfájl nevében álló): `glossary-*` → `glossary`, a fordításnál a `-<nyelv>` levágva. */
+export function siteKindOf(vaultKind: string, fields: Record<string, unknown>): string {
+  if (/^glossary-/.test(vaultKind)) return 'glossary'
+  if (fields.translation_of === undefined) return vaultKind
+  const suffix = `-${noOrig(fields.language)}`
+  return vaultKind.endsWith(suffix) ? vaultKind.slice(0, -suffix.length) : vaultKind
+}
+
 /**
  * Egy vault-jegyzetből a showroom szerződése szerinti nyelvi változat, vagy a
  * kihagyás oka. `siblings`: a tétel többi jegyzetének mezői vault-fajta szerint;

@@ -41,7 +41,7 @@ const ALLOWED_ATTRIBUTES = ['title', 'type']
 function forbiddenError(original: string, output: string): string | null {
   const prose = output.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm, '')
   for (const tag of prose.matchAll(/<([A-Z][\w.]*)((?:\s+[\w-]+(?:="[^"]*")?)*)\s*\/?>/g)) {
-    for (const attr of tag[2]!.matchAll(/\s([\w-]+)/g)) {
+    for (const attr of tag[2]!.matchAll(/\s([\w-]+)(?:="[^"]*")?/g)) {
       if (!ALLOWED_ATTRIBUTES.includes(attr[1]!)) return `${tag[1]}: nem engedett attribútum: ${attr[1]} (csak ${ALLOWED_ATTRIBUTES.join(', ')})`
     }
   }

@@ -135,3 +135,29 @@ export async function gitAheadCount(repo: string): Promise<number> {
     return 0
   }
 }
+
+/** `git fetch`: csak a távoli követő ágakat frissíti, a munkafát és a helyi ágat nem. */
+export async function gitFetch(repo: string): Promise<void> {
+  await run('git', ['fetch'], { cwd: repo })
+}
+
+/** A fájl tartalma egy revízióban (`<rev>:<út>`); `null`, ha ott nincs. */
+export async function gitShowOptional(repo: string, rev: string, path: string): Promise<string | null> {
+  try {
+    // LC_ALL=C: a lenti illesztés az angol hibaüzenetre épül, más nyelvű gitnél nem találna.
+    const env = { ...process.env, LC_ALL: 'C' }
+    const { stdout } = await run('git', ['show', `${rev}:${path}`], { cwd: repo, env, maxBuffer: 64 * 1024 * 1024 })
+    return stdout
+  } catch (error) {
+    if (/does not exist|exists on disk, but not in/.test((error as Error).message)) return null
+    throw error
+  }
+}
+
+/** Az upstreamtől helyben eltérő fájlok (pusholatlan commit, munkafa, követetlen), repó-relatív úttal. */
+export async function gitLocalChanges(repo: string, paths: readonly string[]): Promise<Set<string>> {
+  const base = (await run('git', ['merge-base', 'HEAD', '@{u}'], { cwd: repo })).stdout.trim()
+  const changed = await run('git', ['diff', '--name-only', base, '--', ...paths], { cwd: repo })
+  const untracked = await run('git', ['ls-files', '--others', '--exclude-standard', '--', ...paths], { cwd: repo })
+  return new Set([...changed.stdout.split('\n'), ...untracked.stdout.split('\n')].filter((l) => l !== ''))
+}
