@@ -3,6 +3,39 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.26.0] — 2026-10-31
+
+A `refinery deploy` mostantól célzottan is futtatható: egy-egy tételre, fajtára,
+csatornára vagy forrásra szűrhető, és szárazon előre megmutatja, mit tenne.
+
+### ✨ Újdonságok
+
+- **Szűrés:** `--item <id,…>`, `--kind <fajta,…>` (a `clean` minden
+  `clean-*`-ra illik), `--channel <név>` és `--source <név>`; a szűrők
+  egymással ÉS-kapcsolatban állnak. Ismeretlen tétel vagy fajta, illetve üres
+  érték hibát ad, mielőtt a deploy a showroom klónjához nyúlna. Ha semmi nem
+  illik a szűrőre, a deploy ezt egy sorban jelzi, és nem csinál semmit (#340).
+- **Újragenerálás `--item`-mel:** a megadott tétel oldalai akkor is újra
+  elkészülnek, ha a jegyzet nem változott, és az `mdx_failed` jelzésű oldalt is
+  újrapróbálja. Ha az újragenerálás elbukik, a kint lévő, már végleges oldal
+  marad (#340).
+- **`--model <név>`:** erre az egy futásra ez a modell tagolja az oldalakat; az
+  ismeretlen vagy ár nélküli név hibát ad (#340).
+- **`--dry-run`:** kiírja oldalanként, mit tenne (új, frissítés,
+  újragenerálás, kihagyás és az oka), és hány oldalhoz hívna modellt. Nem ír,
+  nem commitol, nem pushol, nem hív modellt, a klónon csak `git fetch` fut
+  (#340).
+
+### 🔧 Javítások
+
+- **Többszavas Callout-címek:** az 1.25.0 az LLM-kimenetet elvetette, ha egy
+  `Callout` címe több szóból állt (pl. „Nem kell félni tőlük”), így az oldal
+  fallbackként ment ki. Az ilyen oldalakat egy `--item`-es vagy
+  `--retry-failed`-es deploy újra megpróbálja (#340).
+- **Látható `mdx_failed`:** a `--retry-failed` nélkül kimaradó, korábban
+  elbukott oldalak most kihagyás-sorként megjelennek a deploy kimenetében
+  (#340).
+
 ## [1.25.0] — 2026-10-31
 
 A `refinery deploy` a jegyzeteket már nem csak escape-eli, hanem a draft
@@ -1183,6 +1216,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.26.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.26.0
 [1.25.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.25.0
 [1.24.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.24.0
 [1.23.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.23.0
