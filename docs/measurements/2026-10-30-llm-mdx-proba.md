@@ -25,6 +25,18 @@
 - **Kis-nagybetű:** a lazításra nem volt szükség, ilyen bukás nem jött.
 - **Bukási arány:** 10 oldalból 2 bukott, ebből 1 a javítással megoldódott, 1 valódi átfogalmazás. A minta kicsi.
 
+## Komponenshasználat és prompt-iteráció
+
+Az elfogadási deploy után a felhasználó jelezte: a modell a bevezetőn kívül egyetlen komponenst sem használt (négy deployolt oldalon pontosan egy `Callout`, a bevezető), csak széthúzta a szöveget. Ok: a prompt „csak ahol a szöveg kínálja" szabálya (a spec 4. pontja) túl óvatos volt. Döntés (felhasználó, 2026-10-31): erősen ösztönözzön, Steps/Cards/Accordions/Tabs/Callout, a szó szerinti szabály marad.
+
+| Kör | Prompt | Oldal | Komponensek | Költség |
+|---|---|---|---|---|
+| 1 | ösztönző szabály, példákkal | `summary`, `clean-moderate` (kicsi) | Tabs a korszakokra, Accordion a bemutatkozásra, `warning` | 0,037 $ |
+| 2 | sorrend → Steps, Accordion nem a törzsre, `warning` csak valódi figyelmeztetésre | ugyanaz | Steps a korszakokra, a bemutatkozás alcím, `warning` megszűnt | 0,032 $ |
+| 3 | ugyanaz | IBM `clean-moderate.en` (2000 szó) | Steps (5), Cards (2), Callout (2) | 0,088 $ |
+
+Összesen 0,157 $. A kis `clean-moderate` oldal csak Callout-ot kapott (beszélgetős intro, nincs lépéssor vagy fogalomlista). Ismert: a `Step` belsejében a korszak címe `###` címként marad (a `Step`-nek nincs `title` attribútuma). Ezek a kimenetek **nem kerültek a showroomba**: a már kint lévő, régi prompttal készült négy oldal újraírásához `--retry-failed` nem elég (nem fallback), ezt külön kell eldönteni.
+
 ## Backfill-becslés
 
 A showroomban most `mdx_fallback: true` oldal, LLM-fajtára (`clean-*`, `summary`, `notes`), nyelvenként:
