@@ -125,6 +125,14 @@ describe('createMdxTransform', () => {
     expect(client.prompts[1]).toContain('nem engedett attribútum: description')
   })
 
+  it('a többszavas, ékezetes title értékének szavai nem attribútumok', async () => {
+    const callout = `${INTRO}\n\n<Callout type="warning" title="Mit kell felismerés">\nSzöveg egy.\n</Callout>`
+    const client = fakeClient([callout])
+    const result = await run(createMdxTransform({ client, modelConfig: MODEL }), BODY)
+    expect(result.kind).toBe('final')
+    expect(client.prompts).toHaveLength(1)
+  })
+
   it('kép vagy link-referencia-definíció, ami az eredetiben nincs, bukás', async () => {
     for (const bad of ['Szöveg egy. ![kép](x.png)', 'Szöveg egy.\n\n[ref]: <https://x.example>']) {
       const client = fakeClient([`${INTRO}\n\n${bad}`, `${INTRO}\n\n${bad}`])
