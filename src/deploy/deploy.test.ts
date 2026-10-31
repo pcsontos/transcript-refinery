@@ -6,7 +6,7 @@ import { promisify } from 'node:util'
 import { stringify } from 'yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Config, loadConfig } from '../config.js'
-import { deployLines, deployNotes } from './deploy.js'
+import { type DeployReport, deployLines, deployNotes, dryRunLines } from './deploy.js'
 import type { Transform, TransformResult } from './llm.js'
 
 const run = promisify(execFile)
@@ -678,5 +678,120 @@ describe('újragenerálás', () => {
     expect(report.planned[0]?.action).toBe('regenerate')
     expect(report.written).toEqual([])
     expect(report.commits).toBe(0)
+  })
+})
+
+describe('szárazfutás', () => {
+  const CARDS = '# Cím\n\n## K\n\nV\n'
+  const deny = async () => {
+    const hook = join(remote, 'hooks', 'pre-receive')
+    await writeFile(hook, '#!/bin/sh\n[ -e "$(dirname "$0")/../deny" ] && exit 1\nexit 0\n')
+    await chmod(hook, 0o755)
+    await writeFile(join(remote, 'deny'), '')
+  }
+
+  it('nem ír, nem commitol, nem pushol, nem hív modellt', async () => {
+    await note('vid1', 'summary', BASE)
+    await mkdir(join(clone, 'content', 'notes', 'vid9'), { recursive: true })
+    await writeFile(join(clone, 'content', 'notes', 'vid9', 'summary.hu.mdx'), 'maradék')
+    const state = async () => [
+      await git(clone, 'rev-parse', 'HEAD'),
+      await git(clone, 'status', '--porcelain'),
+      await git(remote, 'rev-parse', 'main'),
+      await git(vault, 'status', '--porcelain'),
+    ]
+    const before = await state()
+    const t = valid()
+    const report = await deployNotes({ cfg, transform: t, dryRun: true })
+    expect(await state()).toEqual(before)
+    expect(t.calls).toBe(0)
+    expect(report).toMatchObject({ commits: 0, push: null })
+    expect(report.planned).toEqual([{ target: 'vid1/summary.hu.mdx', action: 'new', route: 'llm' }])
+  })
+
+  it('a lista és az utána futó éles deploy ugyanazt választja', async () => {
+    await note('vid1', 'summary', BASE)
+    await deployNotes({ cfg, itemIds: new Set(['vid1']) })
+    await note('vid3', 'notes', BASE)
+    await deployNotes({ cfg, itemIds: new Set(['vid3']), transform: fakeTransform({ kind: 'failed', reason: 'rossz' }) })
+    await note('vid4', 'summary', BASE)
+    await deployNotes({ cfg, itemIds: new Set(['vid4']), transform: valid() })
+    await note('vid2', 'qa', BASE, CARDS)
+    const transform = fakeTransform({ kind: 'failed', reason: 'rossz' })
+    for (const opts of [{}, { retryFailed: true }, { filter: { items: ['vid4'] } }]) {
+      const calls = transform.calls
+      const dry = await deployNotes({ cfg, transform, dryRun: true, ...opts })
+      expect(transform.calls).toBe(calls)
+      const live = await deployNotes({ cfg, transform, ...opts })
+      expect(dry.planned).toEqual(live.planned)
+      expect(dry.unchanged).toBe(live.unchanged)
+      // az átalakítás kimenetén múló kihagyásokat a szárazfutás nem ismeri
+      const failed = (r: DeployReport) => r.skipped.filter((x) => x.reason.startsWith('mdx_failed'))
+      expect(failed(dry)).toEqual(failed(live))
+      if (opts.retryFailed) {
+        expect(live.planned).toContainEqual({ target: 'vid3/notes.hu.mdx', action: 'retry', route: 'llm' })
+      } else if (opts.filter) {
+        expect(live.planned).toEqual([{ target: 'vid4/summary.hu.mdx', action: 'regenerate', route: 'llm' }])
+      } else {
+        expect(live.skipped).toContainEqual(expect.objectContaining({ target: 'vid3/notes.hu.mdx', reason: 'mdx_failed (--retry-failed nélkül)' }))
+      }
+    }
+  })
+
+  it('előrébb járó távoli main oldalát változatlannak látja', async () => {
+    await note('vid1', 'summary', BASE)
+    await deployNotes({ cfg })
+    await git(clone, 'reset', '-q', '--hard', 'HEAD~1')
+    const head = await git(clone, 'rev-parse', 'HEAD')
+    const report = await deployNotes({ cfg, dryRun: true })
+    expect(report.planned).toEqual([])
+    expect(report.unchanged).toBe(1)
+    expect(await git(clone, 'rev-parse', 'HEAD')).toBe(head)
+  })
+
+  it('pusholatlan helyi commit oldalát változatlannak látja', async () => {
+    await note('vid1', 'summary', BASE)
+    await deny()
+    expect((await deployNotes({ cfg })).push?.pushed).toBe(false)
+    const dry = await deployNotes({ cfg, dryRun: true })
+    expect(dry.planned).toEqual([])
+    expect(dry.unchanged).toBe(1)
+    await rm(join(remote, 'deny'))
+    const live = await deployNotes({ cfg })
+    expect(live.planned).toEqual([])
+    expect(live.pendingCommits).toBe(1)
+  })
+
+  it('dryRunLines a mintát követi', () => {
+    const report: DeployReport = {
+      written: [],
+      skipped: [{ path: '/v/B_notes-de.md', reason: 'nyelv: de' }],
+      commits: 0,
+      push: null,
+      transform: null,
+      planned: [
+        { target: 'S/clean-moderate.hu.mdx', action: 'update', route: 'llm' },
+        { target: 'Q/qa.hu.mdx', action: 'new', route: 'cards' },
+        { target: 'Q/glossary.hu.mdx', action: 'regenerate', route: 'plain' },
+        { target: 'Q/notes.hu.mdx', action: 'retry', route: 'llm' },
+      ],
+      unchanged: 4,
+      pendingCommits: 0,
+    }
+    expect(dryRunLines(report, true)).toEqual([
+      '  frissítés      S/clean-moderate.hu.mdx  LLM',
+      '  új             Q/qa.hu.mdx              kód',
+      '  újragenerálás  Q/glossary.hu.mdx        escape',
+      '  frissítés      Q/notes.hu.mdx           LLM (mdx_failed, újrapróbálva)',
+      '  kihagyva       B_notes-de.md            nyelv: de',
+      'deploy (szárazfutás): 4 oldalt írna, ebből 2 oldalhoz hívna modellt; 1 kihagyva, 4 változatlan',
+    ])
+    const noLlm = dryRunLines(report, false)
+    expect(noLlm[0]).toBe('  frissítés      S/clean-moderate.hu.mdx  fallback, nincs átalakító')
+    expect(noLlm.at(-1)).toContain('ebből 0 oldalhoz')
+    expect(dryRunLines({ ...report, planned: [] }, true)).toEqual([
+      '  kihagyva  B_notes-de.md  nyelv: de',
+      'deploy (szárazfutás): nincs mit írni; 1 kihagyva, 4 változatlan',
+    ])
   })
 })

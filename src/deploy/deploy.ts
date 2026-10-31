@@ -7,10 +7,13 @@ import {
   gitAheadCount,
   gitCommitPaths,
   gitCurrentBranch,
+  gitFetch,
   gitHasChanges,
   gitLastCommitIso,
+  gitLocalChanges,
   gitPullRebase,
   gitPush,
+  gitShowOptional,
   type PushResult,
 } from '../vault/git.js'
 import { FRONTMATTER } from '../vault/lint.js'
@@ -113,8 +116,9 @@ export async function deployNotes(input: {
   transform?: Transform
   retryFailed?: boolean
   filter?: DeployFilter
+  dryRun?: boolean
 }): Promise<DeployReport> {
-  const { cfg, itemIds, transform, retryFailed = false, filter } = input
+  const { cfg, itemIds, transform, retryFailed = false, filter, dryRun = false } = input
   if (cfg.showroom === null) throw new Error('A deploy ki van kapcsolva: nincs showroom: blokk a configban.')
   const clone = cfg.showroom.clonePath
 
@@ -159,18 +163,33 @@ export async function deployNotes(input: {
 
   const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 0 }
 
-  // Rebase, nem fast-forward: egy elutasított push commitjai különben a közben előrelépett
-  // távoli main mellett örökre beragadnának.
-  await gitPullRebase(clone)
-  report.pendingCommits = await gitAheadCount(clone)
-  // Egy félbeszakadt futás kiírt, de nem commitolt fájljait az összevetés változatlannak látná.
-  if (await gitHasChanges(clone, [NOTES_DIR])) {
-    if (await gitCommitPaths(clone, [NOTES_DIR], noteCommitMessage('deploy', 'félbemaradt futás maradéka', '-'))) {
-      report.commits += 1
-      report.pendingCommits += 1
+  // Az oldal jelenlegi tartalma az összevetéshez. Élesben a munkafa a pull után; szárazfutásban
+  // a távoli main, rajta a helyi eltérésekkel (épp a `pull --rebase --autostash` utáni állapot).
+  let read = (target: string) => readOptional(join(clone, NOTES_DIR, target))
+  let contract: Contract
+  if (dryRun) {
+    await gitFetch(clone)
+    const local = await gitLocalChanges(clone, [NOTES_DIR])
+    read = (target) => {
+      const path = `${NOTES_DIR}/${target}`
+      return local.has(path) ? readOptional(join(clone, path)) : gitShowOptional(clone, '@{u}', path)
     }
+    report.pendingCommits = (await gitAheadCount(clone)) + ((await gitHasChanges(clone, [NOTES_DIR])) ? 1 : 0)
+    contract = { components: {} } // szárazfutásban nincs átalakítás, a szerződés nem kell
+  } else {
+    // Rebase, nem fast-forward: egy elutasított push commitjai különben a közben előrelépett
+    // távoli main mellett örökre beragadnának.
+    await gitPullRebase(clone)
+    report.pendingCommits = await gitAheadCount(clone)
+    // Egy félbeszakadt futás kiírt, de nem commitolt fájljait az összevetés változatlannak látná.
+    if (await gitHasChanges(clone, [NOTES_DIR])) {
+      if (await gitCommitPaths(clone, [NOTES_DIR], noteCommitMessage('deploy', 'félbemaradt futás maradéka', '-'))) {
+        report.commits += 1
+        report.pendingCommits += 1
+      }
+    }
+    contract = JSON.parse(await readFile(join(clone, 'contract', 'mdx-components.json'), 'utf8')) as Contract
   }
-  const contract = JSON.parse(await readFile(join(clone, 'contract', 'mdx-components.json'), 'utf8')) as Contract
 
   const check = async (target: string, fields: Record<string, unknown>, text: string) =>
     frontmatterError(target, fields) ?? (await mdxErrors(text, contract))[0] ?? null
@@ -228,7 +247,7 @@ export async function deployNotes(input: {
     const ordered = [...candidates.values()].sort((a, b) => Number(b.original) - Number(a.original) || a.target.localeCompare(b.target))
     for (const c of ordered.filter((o) => kindMatches(o.siteKind))) {
       const abs = join(clone, NOTES_DIR, c.target)
-      const existing = await readOptional(abs)
+      const existing = await read(c.target)
       const old = existing === null ? null : frontmatter(existing)
       const route = routeOf(c.siteKind)
       const action = decide(old, c.fields.generated_at, route, { force: filter?.items !== undefined, retryFailed, hasTransform: transform !== undefined })
@@ -241,6 +260,7 @@ export async function deployNotes(input: {
         continue
       }
       report.planned.push({ target: c.target, action, route })
+      if (dryRun) continue
 
       const converted = await convert(c, route)
       if (converted === 'budget') {
@@ -281,6 +301,8 @@ export async function deployNotes(input: {
       written.push(c.target)
     }
 
+    if (dryRun) continue
+
     // Cím nélküli jelölt nem írhat `{"title":"undefined"}`-ot; ilyenből úgysem íródik fájl.
     const titled = ordered.filter((c) => typeof c.fields.title === 'string' && c.fields.title !== '')
     const first = titled.find((c) => c.original) ?? titled[0]
@@ -301,6 +323,7 @@ export async function deployNotes(input: {
     if (await gitCommitPaths(clone, paths, noteCommitMessage('deploy', title, itemId))) report.commits += 1
   }
 
+  if (dryRun) return report
   report.transform = transform?.usage() ?? null
   // Egy korábbi, elutasított push commitjai is ide tartoznak.
   if (report.commits > 0 || (await gitAheadCount(clone)) > 0) report.push = await gitPush(clone)
@@ -331,4 +354,32 @@ export function deployLines(report: DeployReport): string[] {
     lines.push(`deploy: push sikertelen: ${first}`, ...rest.map((l) => `  ${l.trim()}`))
   }
   return lines
+}
+
+const ACTION_LABEL: Record<DeployAction, string> = { new: 'új', update: 'frissítés', retry: 'frissítés', regenerate: 'újragenerálás' }
+
+/** A szárazfutás sorai; `hasTransform`: van-e LLM-átalakító. */
+export function dryRunLines(report: DeployReport, hasTransform: boolean): string[] {
+  if (report.noMatch === true) return deployLines(report)
+  const routeText = (route: Route) => (route === 'cards' ? 'kód' : route === 'plain' ? 'escape' : hasTransform ? 'LLM' : 'fallback, nincs átalakító')
+  const rows = [
+    ...report.planned.map((p) => [
+      ACTION_LABEL[p.action],
+      p.target,
+      routeText(p.route) + (p.action === 'retry' ? ' (mdx_failed, újrapróbálva)' : ''),
+    ]),
+    ...[...report.skipped]
+      .sort((a, b) => a.reason.localeCompare(b.reason) || a.path.localeCompare(b.path))
+      .map((s) => ['kihagyva', s.target ?? basename(s.path), s.reason]),
+  ] as [string, string, string][]
+  const w1 = Math.max(0, ...rows.map((r) => r[0].length))
+  const w2 = Math.max(0, ...rows.map((r) => r[1].length))
+  const k = report.skipped.length
+  const modelCalls = report.planned.filter((p) => p.route === 'llm' && hasTransform).length
+  return [
+    ...rows.map(([a, b, c]) => `  ${a.padEnd(w1)}  ${b.padEnd(w2)}  ${c}`),
+    report.planned.length === 0
+      ? `deploy (szárazfutás): nincs mit írni; ${k} kihagyva, ${report.unchanged} változatlan`
+      : `deploy (szárazfutás): ${report.planned.length} oldalt írna, ebből ${modelCalls} oldalhoz hívna modellt; ${k} kihagyva, ${report.unchanged} változatlan`,
+  ]
 }
