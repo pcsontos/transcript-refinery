@@ -356,6 +356,22 @@ export function deployLines(report: DeployReport): string[] {
   return lines
 }
 
+/** A jelentés első sora: a szűrés és a modell; `null`, ha éles futásban egyik sincs. */
+export function deployHeader(filter: DeployFilter, opts: { dryRun: boolean; model?: string }): string | null {
+  const parts = [
+    filter.items && `tétel: ${filter.items.join(', ')}`,
+    filter.kinds && `fajta: ${filter.kinds.join(', ')}`,
+    filter.channel && `csatorna: ${filter.channel}`,
+    filter.source && `forrás: ${filter.source}`,
+  ].filter((p): p is string => p !== undefined && p !== '')
+  const segments = [
+    parts.length > 0 ? `szűrés: ${parts.join('; ')}` : opts.dryRun ? 'szűrés nélkül' : null,
+    opts.model === undefined ? null : `modell: ${opts.model}`,
+  ].filter((p): p is string => p !== null)
+  if (segments.length === 0) return null
+  return `${opts.dryRun ? 'deploy (szárazfutás)' : 'deploy'}: ${segments.join(' · ')}`
+}
+
 const ACTION_LABEL: Record<DeployAction, string> = { new: 'új', update: 'frissítés', retry: 'frissítés', regenerate: 'újragenerálás' }
 
 /** A szárazfutás sorai; `hasTransform`: van-e LLM-átalakító. */

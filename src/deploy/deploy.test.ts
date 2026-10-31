@@ -6,7 +6,7 @@ import { promisify } from 'node:util'
 import { stringify } from 'yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Config, loadConfig } from '../config.js'
-import { type DeployReport, deployLines, deployNotes, dryRunLines } from './deploy.js'
+import { type DeployReport, deployHeader, deployLines, deployNotes, dryRunLines } from './deploy.js'
 import type { Transform, TransformResult } from './llm.js'
 
 const run = promisify(execFile)
@@ -793,5 +793,15 @@ describe('szárazfutás', () => {
       '  kihagyva  B_notes-de.md  nyelv: de',
       'deploy (szárazfutás): nincs mit írni; 1 kihagyva, 4 változatlan',
     ])
+  })
+})
+
+describe('deployHeader', () => {
+  it('deployHeader a szűrést és a modellt írja', () => {
+    expect(deployHeader({ items: ['SlGRN8jh2RI'], kinds: ['summary'] }, { dryRun: false })).toBe('deploy: szűrés: tétel: SlGRN8jh2RI; fajta: summary')
+    expect(deployHeader({ items: ['a', 'b'] }, { dryRun: true })).toBe('deploy (szárazfutás): szűrés: tétel: a, b')
+    expect(deployHeader({}, { dryRun: true })).toBe('deploy (szárazfutás): szűrés nélkül')
+    expect(deployHeader({ channel: 'X' }, { dryRun: false, model: 'm' })).toBe('deploy: szűrés: csatorna: X · modell: m')
+    expect(deployHeader({}, { dryRun: false })).toBeNull()
   })
 })

@@ -355,7 +355,7 @@ node dist/cli.js deploy
 - **Mit hagy ki, és miért:** a nem `hu`/`en` nyelvűt, a hiányos fordítás-mezőjűt
   (nincs `source_language`, vagy nincs `source_generated_at` és az eredeti sincs a
   vaultban), a `generated_at` nélkülit. A kihagyott fájlok neve okkal együtt
-  kiíródik; ezek nem hibák. **Szó nélkül** kimarad az a jegyzet, amelynek a
+  kiíródik; ezek nem hibák. Az `mdx_failed` oldal is kihagyottként, okkal listázódik. **Szó nélkül** kimarad az a jegyzet, amelynek a
   mappájában nincs azonos alapnevű `<alapnév>_transcript.md`: a deploy (mint a
   `/notes` lista) a tételeket az átiratból indulva találja meg. Ilyenkor a
   jegyzetet az átirata mellé kell tenni, az átirat alapnevével.
@@ -397,6 +397,45 @@ node dist/cli.js deploy
   „maradék” commitba veszi, a pushra váró commitokat pedig elpusholja. A klónon
   `git pull --rebase` fut, így egy elbukott push után akkor is továbbmegy, ha a
   showroom `main`-je közben előrelépett (ezért kell a külön, csak a deployé klón).
+
+### Szűrés, újragenerálás és szárazfutás
+
+A kézi `deploy` szűkíthető, és előre megnézhető, mit tenne:
+
+```bash
+node dist/cli.js deploy --dry-run --item SlGRN8jh2RI
+node dist/cli.js deploy --item SlGRN8jh2RI --kind summary --model <név>
+node dist/cli.js deploy --channel "Csatorna A" --kind clean
+```
+
+- **`--item <id,…>`:** csak ezek a tételek. Vesszős lista és/vagy ismétlés
+  (`--item a,b`, `--item a --item b`), az értékek uniója. Ismeretlen id hiba (kilépés
+  1-gyel), a klón érintése és modellhívás előtt. Üres érték (`--item=`) is hiba, nem a
+  teljes vault.
+- **`--kind <fajta,…>`:** csak ezek az oldalfajták (`summary`, `notes`, `qa`,
+  `flashcards`, `bloom`, `clean-mild`, `clean-moderate`, `clean-deep`, `glossary`);
+  ugyanúgy vesszős/ismételhető. A rövid `clean` minden `clean-*` fajtára illik. A
+  fordítás ugyanazt a fajtanevet kapja, ezért a `--kind summary` mindkét nyelvet viszi.
+- **`--channel`, `--source`:** a `list` kapcsolóival azonos jelentés (pontos egyezés,
+  kis- és nagybetű nélkül), de a vault-jegyzetek frontmatterének `channel` / `source`
+  mezőjén, így a másik gép által feldolgozott tételek is kiválaszthatók. A szűrők
+  kapcsolata ÉS.
+- **Újragenerálás:** az `--item`-mel kiválasztott oldalak (`--kind` nélkül a tétel
+  minden oldala, az `mdx_failed` is, `--retry-failed` nélkül) akkor is újra átmennek a
+  modellen, ha a jegyzet nem változott. Ha az újragenerálás elbukik, a kint lévő oldal
+  marad, és a jelentés kiírja az okot. A `--channel`, `--source`, `--kind` önmagában
+  nem kényszerít újragenerálást.
+- **`--model <név>`:** csak erre a futásra ez a modell tagol (a `model.recipes.mdx`
+  helyett). A névnek a `pricing:` blokkban ismertnek kell lennie, különben hiba.
+- **Függő munka:** a félbemaradt futás maradéka és a pusholatlan commitok szűrt
+  futásban is kimennek; a jelentés külön sorban jelzi (`korábbi futás függő munkája
+  is kimegy`).
+- **`--dry-run`:** kiírja, mely oldalakat írná (`új`, `frissítés`, `újragenerálás`),
+  melyik útvonalon (`LLM`, `kód`, `escape`), mit hagyna ki és miért (az `mdx_failed`
+  oldalt is), és hány oldal változatlan. Nem ír, nem commitol, nem pushol, nem hív
+  modellt; a klónon csak `git fetch` fut, és a távoli `main`-nel (rajta a helyi,
+  pusholatlan állapottal) vet össze. **A költségplafont nem látja előre: az éles futás
+  kevesebb oldalt írhat LLM-mel, mint a lista.**
 
 ### Automatikus kiküldés
 

@@ -2492,7 +2492,7 @@ describe('main és súgó', () => {
     ],
     'check-pricing': ['--config', '--fix'],
     'check-structured': ['--config'],
-    deploy: ['--config'],
+    deploy: ['--config', '--retry-failed', '--item', '--kind', '--channel', '--source', '--model', '--dry-run'],
     list: ['--config', '--source', '--channel', '--recipe', '--status', '--channels', '--limit'],
     'fetch subtitle': [
       '--out',
@@ -3357,24 +3357,143 @@ describe('deploy', () => {
     }
   })
 
-  it('a main a deploynak a --config és a --retry-failed kapcsolót engedi', async () => {
+  it('a main a deploynak az új kapcsolókat is engedi, a többit nem', async () => {
     const configPath = join(work, 'refinery.config.yaml')
     await writeFile(configPath, JSON.stringify(showroom('manual')))
     await mkdir(join(vault, '.git'))
     await mkdir(join(work, 'klon', '.git'), { recursive: true })
     const hiba = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
-      expect(await main(['deploy', '--dry-run', '--config', configPath])).toBe(1)
-      expect(hiba.mock.calls[0]![0]).toContain('--dry-run')
-      expect(hiba.mock.calls[0]![0]).toContain('--config, --retry-failed')
+      expect(await main(['deploy', '--limit', '1', '--config', configPath])).toBe(1)
+      expect(hiba.mock.calls[0]![0]).toContain('--limit')
+      expect(hiba.mock.calls[0]![0]).toContain('--config, --retry-failed, --item, --kind, --channel, --source, --model, --dry-run')
       expect(deployNotes).not.toHaveBeenCalled()
-      const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
       expect(await main(['deploy', '--retry-failed', '--config', configPath])).toBe(0)
-      naplo.mockRestore()
       expect(deployNotes).toHaveBeenCalledTimes(1)
       expect(deployNotes).toHaveBeenCalledWith(expect.objectContaining({ retryFailed: true }))
     } finally {
       hiba.mockRestore()
+      naplo.mockRestore()
+    }
+  })
+
+  /** Egy `main(['deploy', …])` hívás a mockolt `deployNotes`-szal; a visszatérés a hívás bemenete. */
+  async function deployArgs(args: string[]) {
+    const configPath = join(work, 'refinery.config.yaml')
+    await writeFile(configPath, JSON.stringify(showroom('manual')))
+    await mkdir(join(vault, '.git'), { recursive: true })
+    await mkdir(join(work, 'klon', '.git'), { recursive: true })
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const code = await main(['deploy', ...args, '--config', configPath])
+      return { code, hiba: hiba.mock.calls.map((c) => String(c[0])), input: vi.mocked(deployNotes).mock.calls[0]?.[0] }
+    } finally {
+      hiba.mockRestore()
+      naplo.mockRestore()
+    }
+  }
+
+  it('az --item és a --kind vesszővel, ismételve és szóközzel is ugyanazt adja', async () => {
+    for (const args of [['--item=a,b'], ['--item', 'a,b'], ['--item=a', '--item', 'b'], ['--item', 'a, b']]) {
+      vi.mocked(deployNotes).mockClear()
+      expect((await deployArgs(args)).input?.filter?.items).toEqual(['a', 'b'])
+    }
+    for (const args of [['--kind=summary,clean'], ['--kind', 'summary', '--kind', 'clean']]) {
+      vi.mocked(deployNotes).mockClear()
+      expect((await deployArgs(args)).input?.filter?.kinds).toEqual(['summary', 'clean'])
+    }
+    vi.mocked(deployNotes).mockClear()
+    const { input } = await deployArgs(['--channel', 'C', '--source', 'S', '--dry-run'])
+    expect(input?.filter).toEqual({ channel: 'C', source: 'S' })
+    expect(input?.dryRun).toBe(true)
+  })
+
+  it('üres --item hiba, nem teljes vault', async () => {
+    for (const args of [['--item='], ['--item', ',']]) {
+      vi.mocked(deployNotes).mockClear()
+      const { code, hiba } = await deployArgs(args)
+      expect(code).toBe(1)
+      expect(hiba).toContain('A --item értéke üres.')
+      expect(deployNotes).not.toHaveBeenCalled()
+    }
+  })
+
+  it('az --item, a --kind és a --model más parancsnál hiba', async () => {
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      expect(await main(['list', '--item', 'a'])).toBe(1)
+      expect(await main(['run', '--model', 'm'])).toBe(1)
+      expect(hiba.mock.calls.map((c) => String(c[0]))).toEqual([
+        'A --item csak a deploy kapcsolója.',
+        'A --model csak a deploy kapcsolója.',
+      ])
+    } finally {
+      hiba.mockRestore()
+    }
+  })
+
+  it('a --model a kliensnek a megadott modellt adja, és a fejlécbe írja', async () => {
+    const alap = showroom('manual')
+    const raw = { ...alap, pricing: { ...alap.pricing, 'masik-modell': alap.pricing['proba-draft'] } }
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    let seen = ''
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const createClient = (view: { models: { draft: string } }) => {
+        seen = view.models.draft
+        return hamisKliens({ generate: 0 })
+      }
+      await commandDeploy(cfg, raw, { model: 'masik-modell', createClient })
+      expect(seen).toBe('masik-modell')
+      expect(String(naplo.mock.calls[0]![0])).toBe('deploy: modell: masik-modell')
+      expect(vi.mocked(deployNotes).mock.calls[0]![0].transform).toBeDefined()
+      const withRecipe = { ...raw, model: { ...raw.model, recipes: { mdx: 'masik-modell' } } }
+      seen = ''
+      await commandDeploy(loadConfig(withRecipe, '/p/refinery.config.yaml'), withRecipe, { createClient })
+      expect(seen).toBe('masik-modell')
+      seen = ''
+      await commandDeploy(cfg, raw, { createClient })
+      expect(seen).toBe('proba-draft')
+    } finally {
+      naplo.mockRestore()
+    }
+  })
+
+  it('ismeretlen --model hibával áll meg, deploy nélkül', async () => {
+    const hiba = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const raw = showroom('manual')
+      const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+      expect(await commandDeploy(cfg, raw, { model: 'nincs-ilyen', createClient: () => hamisKliens({ generate: 0 }) })).toBe(1)
+      expect(String(hiba.mock.calls[0]![0])).toMatch(/^--model: pricing: nincs ára/)
+      expect(deployNotes).not.toHaveBeenCalled()
+    } finally {
+      hiba.mockRestore()
+    }
+  })
+
+  it('a --dry-run a szárazfutás sorait írja', async () => {
+    vi.mocked(deployNotes).mockResolvedValueOnce({
+      written: [],
+      skipped: [],
+      commits: 0,
+      push: null,
+      transform: null,
+      planned: [{ target: 'a/qa.hu.mdx', action: 'new', route: 'cards' }],
+      unchanged: 0,
+      pendingCommits: 0,
+    })
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      const raw = showroom('manual')
+      expect(await commandDeploy(loadConfig(raw, '/p/refinery.config.yaml'), raw, { dryRun: true })).toBe(0)
+      const sorok = naplo.mock.calls.map((c) => String(c[0]))
+      expect(sorok[0]).toBe('deploy (szárazfutás): szűrés nélkül')
+      expect(sorok.at(-1)).toBe('deploy (szárazfutás): 1 oldalt írna, ebből 0 oldalhoz hívna modellt; 0 kihagyva, 0 változatlan')
+    } finally {
+      naplo.mockRestore()
     }
   })
 

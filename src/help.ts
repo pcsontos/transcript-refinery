@@ -108,9 +108,26 @@ export const COMMANDS: readonly CommandHelp[] = [
     summary: 'A vault jegyzeteit .mdx-ként a showroom klónjába írja, commitolja és pusholja.',
     usage: 'refinery deploy [kapcsolók]',
     description:
-      'A teljes vaultot összeveti a showroom külön klónjával (showroom.clone_path), és a hiányzó vagy megváltozott jegyzeteket a site szerződése szerinti .mdx-ként kiírja, tételenként commitolja, a végén a main ágra pusholja. Csak hozzáad és frissít, nem töröl. A kihagyott jegyzeteket okkal kiírja. showroom: blokk nélkül megáll. A deploy: auto beállítás a run és a serve futását is kiegészíti, azok csak a futás tételeit küldik. A clean-*, summary és notes oldalakat LLM tagolja webes olvasásra (model.recipes.mdx, hiányában a draft modell), a kártyákat (flashcards, qa, bloom) kód bontja accordionra; az LLM-hívás futásonként a cost_limit_usd-ig megy, a maradék a következő deployra vár. A kétszer elbukott oldal mdx_failed jelzést kap, és csak a --retry-failed vagy a jegyzet változása után próbálkozik újra. Csak a --config és a --retry-failed kapcsolót ismeri.',
-    options: [CONFIG, ['--retry-failed', 'az LLM-átalakításnál korábban elbukott (mdx_failed) oldalakat is újra megpróbálja'], HELP],
-    examples: ['refinery deploy'],
+      'A teljes vaultot összeveti a showroom külön klónjával (showroom.clone_path), és a hiányzó vagy megváltozott jegyzeteket a site szerződése szerinti .mdx-ként kiírja, tételenként commitolja, a végén a main ágra pusholja. Csak hozzáad és frissít, nem töröl. A kihagyott jegyzeteket okkal kiírja. showroom: blokk nélkül megáll. A deploy: auto beállítás a run és a serve futását is kiegészíti, azok csak a futás tételeit küldik. A clean-*, summary és notes oldalakat LLM tagolja webes olvasásra (model.recipes.mdx, hiányában a draft modell), a kártyákat (flashcards, qa, bloom) kód bontja accordionra; az LLM-hívás futásonként a cost_limit_usd-ig megy, a maradék a következő deployra vár. A kétszer elbukott oldal mdx_failed jelzést kap, és csak a --retry-failed vagy a jegyzet változása után próbálkozik újra. Szűrhető tételre (--item), fajtára (--kind), csatornára és forrásra; az --item újragenerálja a tétel oldalait (a --model másik modellel), a --dry-run előre kiírja, mit tenne.',
+    options: [
+      CONFIG,
+      ['--retry-failed', 'az LLM-átalakításnál korábban elbukott (mdx_failed) oldalakat is újra megpróbálja'],
+      ['--item <id,…>', 'csak ezek a tételek; az oldalaik akkor is újragenerálódnak, ha nem változtak'],
+      [
+        '--kind <fajta,…>',
+        'csak ezek a fajták (summary, notes, qa, flashcards, bloom, clean-mild, clean-moderate, clean-deep, glossary; clean = minden clean-*)',
+      ],
+      ['--source <név>', 'csak a megadott forrás (a vault-jegyzet source mezője szerint)'],
+      ['--channel <név>', 'csak a megadott csatorna (a vault-jegyzet channel mezője szerint)'],
+      ['--model <név>', 'erre a futásra ez a modell tagol (a pricing: blokkban ismert név)'],
+      ['--dry-run', 'csak kiírja, mit tenne: nem ír, nem commitol, nem hív modellt (a költségplafont nem látja előre)'],
+      HELP,
+    ],
+    examples: [
+      'refinery deploy',
+      'refinery deploy --dry-run --item SlGRN8jh2RI',
+      'refinery deploy --item SlGRN8jh2RI --kind summary --model <név>',
+    ],
   },
   {
     name: 'list',
