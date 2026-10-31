@@ -3,6 +3,56 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.25.0] — 2026-10-31
+
+A `refinery deploy` a jegyzeteket már nem csak escape-eli, hanem a draft
+modellel a showroom komponenseire (lépések, kártyák, harmonikák, fülek,
+kiemelések) szerkeszti át, és minden kimenő szót ellenőriz az eredetihez képest.
+
+### ✨ Újdonságok
+
+- **LLM-es MDX-átalakítás:** a `clean`, `summary` és `notes` jegyzetek törzsét a
+  modell a szöveg alakjának megfelelő komponensekbe rendezi (Steps, Cards,
+  Accordions, Tabs, Callout). A komponens csak a meglévő szöveget fogja körbe;
+  a főtartalom nem kerül harmonikába, a figyelmeztetés csak valódi
+  figyelmeztetés. A modell a `model.recipes.mdx` kulcsból jön, ennek hiányában
+  a draft modell (#278).
+- **Szóról szóra ellenőrzés:** az átalakított szöveg szósorozatát a deploy az
+  eredetivel veti össze (a kis- és nagybetű, a kódblokkok és a linkcélok
+  számítanak; a jelölés, a komponensek és az új címsorok nem). Nem engedett át
+  kitalált komponens-attribútumot, rejtett szót hordozó új képet vagy
+  hivatkozás-definíciót, és a pénznem-, előjel- és százalékjel is szó marad,
+  így a „10 $" → „10 €" hibát jelez. Egy félkövér bevezető sor előléptethető
+  címsorrá (#278).
+- **Egyszeri újrapróbálás:** a bukott darabot a deploy a hibával együtt egyszer
+  újrakéri; a hosszú jegyzetek darabokban fordulnak, a bevezető külön hívásban.
+  Kétszer bukott oldal `mdx_failed` jelölést kap, és addig kimarad, amíg a
+  jegyzet meg nem változik, vagy a `refinery deploy --retry-failed` nem fut
+  (#278).
+- **Költséghatár:** ha a költséghatár elfogyott, a deploy nem hív több modellt,
+  a már kiküldött oldalak érintetlenek maradnak. A deploy sorai kiírják az
+  átalakítás tokenjeit és költségét (#278).
+- **Kártya-jegyzetek harmonikaként:** a `flashcards`, `qa` és `bloom` jegyzetek
+  modell nélkül, kóddal Accordion-ná alakulnak; az Obsidian `%%…%%` kártyaazonosító
+  sorai kimaradnak, az idézőjel és az `&` a címekben escape-elve kerül ki
+  (#278).
+- **Serve:** az `auto` deploy a „kész" válasz után fut, a Telegram-válasz nem
+  vár rá. LLM nélkül futó deploynál a napló ezt egy sorban jelzi (#278).
+
+### 📚 Dokumentáció
+
+- A `docs/usage.md` leírja az LLM-es utat, az `mdx_failed` jelölést és a
+  költséghatárt; a konfigpélda ismeri a `model.recipes.mdx` kulcsot. A
+  mérési jegyzet rögzíti a próba három körét, a költségeket és a
+  darabméret-döntést; a teljes vault utólagos átalakítása becslés szerint
+  kb. 23–33 USD.
+
+### 🔧 Üzemeltetés
+
+- **Kiadás:** a `src/` változott, ezért a `peter-mba` konténer új képet kér.
+  Worker-deploy nem kell. A `peter-mba` konfigjában a `model.recipes.mdx`
+  kulcs opcionális: nélküle a draft modell dolgozik.
+
 ## [1.24.0] — 2026-10-25
 
 A vault jegyzetei egy paranccsal kikerülnek a showroom site-ra: a
@@ -1133,6 +1183,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.25.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.25.0
 [1.24.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.24.0
 [1.23.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.23.0
 [1.22.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.22.0
