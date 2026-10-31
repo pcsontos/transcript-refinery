@@ -90,6 +90,8 @@ function decide(
     if (stamp(old.mdx_failed) !== generatedAt) return 'update'
     return o.retryFailed || o.force ? 'retry' : 'failed'
   }
+  // Átalakító nélkül nincs mivel újragenerálni; a kint lévő végleges oldal marad (a szárazfutás is ezt lássa).
+  if (route === 'llm' && !o.hasTransform) return 'unchanged'
   return o.force ? 'regenerate' : 'unchanged'
 }
 
@@ -394,6 +396,9 @@ export function dryRunLines(report: DeployReport, hasTransform: boolean): string
   const modelCalls = report.planned.filter((p) => p.route === 'llm' && hasTransform).length
   return [
     ...rows.map(([a, b, c]) => `  ${a.padEnd(w1)}  ${b.padEnd(w2)}  ${c}`),
+    ...(report.pendingCommits > 0
+      ? [`deploy (szárazfutás): korábbi futás függő munkája is kimegy: ${report.pendingCommits} commit`]
+      : []),
     report.planned.length === 0
       ? `deploy (szárazfutás): nincs mit írni; ${k} kihagyva, ${report.unchanged} változatlan`
       : `deploy (szárazfutás): ${report.planned.length} oldalt írna, ebből ${modelCalls} oldalhoz hívna modellt; ${k} kihagyva, ${report.unchanged} változatlan`,

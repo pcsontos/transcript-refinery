@@ -3420,6 +3420,16 @@ describe('deploy', () => {
     }
   })
 
+  it('üres --channel és --source hiba, nem szűretlen futás', async () => {
+    for (const name of ['channel', 'source']) {
+      vi.mocked(deployNotes).mockClear()
+      const { code, hiba } = await deployArgs([`--${name}=`])
+      expect(code).toBe(1)
+      expect(hiba).toContain(`A --${name} értéke üres.`)
+      expect(deployNotes).not.toHaveBeenCalled()
+    }
+  })
+
   it('az --item, a --kind és a --model más parancsnál hiba', async () => {
     const hiba = vi.spyOn(console, 'error').mockImplementation(() => {})
     try {

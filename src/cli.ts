@@ -1221,6 +1221,12 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
   const deployItems = command === 'deploy' ? listFlag('item', values.item) : undefined
   const deployKinds = command === 'deploy' ? listFlag('kind', values.kind) : undefined
+  for (const name of ['channel', 'source'] as const) {
+    if (command === 'deploy' && values[name] === '') {
+      console.error(`A --${name} értéke üres.`)
+      return 1
+    }
+  }
   for (const list of [deployItems, deployKinds]) {
     if (list !== undefined && !Array.isArray(list)) {
       console.error(list.error)

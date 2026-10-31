@@ -762,6 +762,26 @@ describe('szárazfutás', () => {
     expect(live.pendingCommits).toBe(1)
   })
 
+  it('átalakító nélkül az --item a végleges LLM-es oldalt változatlannak látja, szárazfutásban is', async () => {
+    await note('vid1', 'summary', BASE)
+    await deployNotes({ cfg, transform: valid() })
+    const filter = { items: ['vid1'] }
+    const dry = await deployNotes({ cfg, dryRun: true, filter })
+    const live = await deployNotes({ cfg, filter })
+    expect(dry.planned).toEqual([])
+    expect(live.planned).toEqual([])
+    expect(dry.unchanged).toBe(1)
+    expect(live.written).toEqual([])
+  })
+
+  it('dryRunLines jelzi a függő munkát', () => {
+    const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 2 }
+    expect(dryRunLines(report, true)).toEqual([
+      'deploy (szárazfutás): korábbi futás függő munkája is kimegy: 2 commit',
+      'deploy (szárazfutás): nincs mit írni; 0 kihagyva, 0 változatlan',
+    ])
+  })
+
   it('dryRunLines a mintát követi', () => {
     const report: DeployReport = {
       written: [],
