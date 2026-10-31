@@ -435,6 +435,23 @@ describe('deployNotes', () => {
       expect(await show('content/notes/vid2/summary.hu.mdx')).not.toContain('mdx_fallback')
     })
 
+    it('plafon egy futásban: az első végleges, a kint lévő fallback érintetlen, az új fallback mdx_failed nélkül', async () => {
+      await note('vid1', 'summary', BASE)
+      await note('vid2', 'summary', BASE)
+      await note('vid3', 'summary', BASE)
+      await deployNotes({ cfg }) // mind a háromból fallback kerül ki
+      await note('vid1', 'summary', { ...BASE, generated_at: 'T2' }) // újragenerált: sorra kerül
+      await note('vid4', 'summary', BASE) // új oldal
+      const before = await read('vid2/summary.hu.mdx')
+      const transform = fakeTransform(final('Jó <Callout type="note">x</Callout>'), { kind: 'budget' })
+      await deployNotes({ cfg, transform })
+      expect(await read('vid1/summary.hu.mdx')).not.toContain('mdx_fallback')
+      expect(await read('vid2/summary.hu.mdx')).toBe(before)
+      const fresh = await read('vid4/summary.hu.mdx')
+      expect(fresh).toContain('mdx_fallback: true')
+      expect(fresh).not.toContain('mdx_failed')
+    })
+
     it('átalakított oldal a második futásban 0 hívás, 0 commit', async () => {
       await note('vid1', 'summary', BASE)
       const transform = valid()

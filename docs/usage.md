@@ -386,8 +386,11 @@ node dist/cli.js deploy
   újra, amíg a jegyzet `generated_at`-je ugyanaz; `refinery deploy --retry-failed`
   vagy a jegyzet változása után igen.
 - **Költségplafon:** a deploy futásonként a `cost_limit_usd`-ig hív modellt; a
-  folyamatban lévő oldal befejeződik, a többi ebben a futásban fallback (a már
-  kint lévő oldal érintetlen marad, `mdx_failed` nélkül). A jelentés kiírja az
+  folyamatban lévő oldal befejeződik (a plafont csak az oldal elején nézi, egy
+  többdarabos `clean-deep` utána is végigmegy), a többi ebben a futásban fallback.
+  A már kint lévő oldal akkor marad érintetlen, ha a jegyzet `generated_at`-je
+  nem változott; ha közben újragenerálták, az új fallback íródik ki. Egyik sem
+  kap `mdx_failed`-et. A jelentés kiírja az
   átalakítás tokenjeit, költségét és a kimaradt oldalak számát; a következő
   `refinery deploy` folytatja, így a teljes kör adagonként megy.
 - **Félbemaradt futás:** a kiírt, de nem commitolt fájlokat a következő futás egy
@@ -400,7 +403,10 @@ node dist/cli.js deploy
 `deploy: auto` mellett a `run` (a vault-push után) és a `serve` (a vault-push után,
 a jelentés után: az LLM-es átalakítás percekig tarthat, a Telegram-válasz nem vár
 rá, a site-link addig 404-et adhat) **csak az adott futás tételeit** küldi ki, nem a
-teljes vaultot. `--no-commit` és `--dry-run` mellett, illetve sikertelen vault-commitnál
+teljes vaultot. Amíg a deploy fut, a `serve` kapuja foglalt: egy újabb
+Telegram-kérés 409-et kap (a Worker sorban tartja és újrapróbálja), a `/status`
+a már jelentett jobot még dolgozónak mutatja, és a `/cancel` a deployt nem állítja
+le. `--no-commit` és `--dry-run` mellett, illetve sikertelen vault-commitnál
 nem fut. A deploy hibája nem buktatja a futást: a CLI egy `deploy sikertelen:`
 sort ír, a `serve` a naplóba (`[deploy]`), a jelentés ugyanúgy megy. A `watch`
 nem kap `auto` bekötést (csak átiratot ír, az nem megy ki).

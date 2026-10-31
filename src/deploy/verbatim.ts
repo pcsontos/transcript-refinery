@@ -1,17 +1,28 @@
-const PUNCTUATION = /^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu
+// pénznem, előjel és százalék jelentést hordoz: szóként marad (a többi jel csak jelölő vagy írásjel)
+const MEANING = '$€£¥%+°'
+const isMark = (c: string) => /[\p{P}\p{S}]/u.test(c) && !MEANING.includes(c)
+
+function trimMarks(word: string): string {
+  const chars = [...word]
+  let start = 0
+  let end = chars.length
+  while (start < end && isMark(chars[start]!)) start++
+  while (end > start && isMark(chars[end - 1]!)) end--
+  return chars.slice(start, end).join('')
+}
+
 const JSX_TAG = /(?<!\\)<\/?[A-Z][\w.]*(?:\s+[\w-]+(?:="[^"]*")?)*\s*\/?>/g
 
-/** Egy sor szavai a jelölők nélkül: komponenscímke, link, autolink, `>`, listajel, escape. */
-function lineWords(line: string): string[] {
-  return line
-    .replace(JSX_TAG, ' ')
+/** Egy sor szavai a jelölők nélkül: komponenscímke (csak a kimeneten), link, autolink, `>`, listajel, escape. */
+function lineWords(line: string, tags: boolean): string[] {
+  return (tags ? line.replace(JSX_TAG, ' ') : line)
     .replace(/\[([^\]]*)\]\(<?([^)>\s]*)>?\)/g, (_, text: string, url: string) => (text === url ? text : `${text} ${url}`))
     .replace(/<([a-zA-Z][a-zA-Z0-9+.-]{1,31}:[^\s<>]*)>/g, '$1')
     .replace(/^(?:\s*>)+/, '')
     .replace(/^\s*(?:[-*+]|\d+[.)])\s+/, '')
     .replace(/\\([\p{P}\p{S}])/gu, '$1')
     .split(/\s+/)
-    .map((word) => word.replace(PUNCTUATION, ''))
+    .map(trimMarks)
     .filter((word) => word !== '')
 }
 
@@ -39,11 +50,11 @@ function wordsOf(text: string, keep?: Set<string>): { words: string[]; headings:
       if (heading === undefined) {
         // a sor eleji félkövér bevezető (`**Cím.** Szöveg`) ismert cím is: a modell címmé emelheti
         const lead = /^\s*(?:(?:[-*+]|\d+[.)])\s+)?\*\*(.+?)\*\*/.exec(line)?.[1]
-        if (lead !== undefined) headings.add(lineWords(lead).join(' '))
-        words.push(...lineWords(line))
+        if (lead !== undefined) headings.add(lineWords(lead, keep !== undefined).join(' '))
+        words.push(...lineWords(line, keep !== undefined))
         continue
       }
-      const headingWords = lineWords(heading)
+      const headingWords = lineWords(heading, keep !== undefined)
       headings.add(headingWords.join(' '))
       if (keep === undefined || keep.has(headingWords.join(' '))) words.push(...headingWords)
     }

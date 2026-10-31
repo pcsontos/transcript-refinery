@@ -32,6 +32,19 @@ describe('verbatimError', () => {
     expect(verbatimError('Elöl **fontos rész** van.', '## fontos rész\n\nElöl van.')).not.toBeNull()
   })
 
+  it('a pénznem, az előjel és a százalékjel jelentést hordoz, cseréje bukik', () => {
+    expect(verbatimError('Ez 10 $ volt.', 'Ez 10 € volt.')).not.toBeNull()
+    expect(verbatimError('Ma -5 fok van.', 'Ma +5 fok van.')).not.toBeNull()
+    expect(verbatimError('Ez 5% volt.', 'Ez 5 volt.')).not.toBeNull()
+    // a kiemelés jelölői továbbra sem számítanak
+    expect(verbatimError('Ez $300 volt.', 'Ez **$300** volt.')).toBeNull()
+  })
+
+  it('az eredetiben álló <T> nem komponens, nem tűnhet el', () => {
+    expect(verbatimError('A Promise<T> típus.', 'A Promise típus.')).not.toBeNull()
+    expect(verbatimError('A Promise<T> típus.', 'A Promise\\<T\\> típus.')).toBeNull()
+  })
+
   it('kicserélt szó bukik', () => {
     expect(verbatimError(ORIGINAL, 'Az első mondat. A második szöveg. A harmadik mondat.')).toContain('szónál')
   })

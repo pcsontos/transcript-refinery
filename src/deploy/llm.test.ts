@@ -14,6 +14,14 @@ const CONTRACT: Contract = {
     },
     Steps: { attributes: {} },
     Step: { attributes: {} },
+    Cards: { attributes: {} },
+    Card: {
+      attributes: {
+        title: { type: 'string', required: true },
+        href: { type: 'string', required: false },
+        description: { type: 'string', required: false },
+      },
+    },
   },
 }
 
@@ -107,6 +115,39 @@ describe('createMdxTransform', () => {
     const result = await run(createMdxTransform({ client, modelConfig: MODEL }), BODY)
     expect(result.kind).toBe('final')
     expect(client.prompts[1]).toContain('ismeretlen komponens: Foo')
+  })
+
+  it('a title és a type mellé tett attribútum (href, description) bukás', async () => {
+    const card = `${INTRO}\n\n<Cards>\n\n<Card title="X" description="Kitalált." href="https://x.example">\n\nSzöveg egy.\n\n</Card>\n\n</Cards>`
+    const client = fakeClient([card, `${INTRO}\n\nSzöveg egy.`])
+    const result = await run(createMdxTransform({ client, modelConfig: MODEL }), BODY)
+    expect(result.kind).toBe('final')
+    expect(client.prompts[1]).toContain('nem engedett attribútum: description')
+  })
+
+  it('kép vagy link-referencia-definíció, ami az eredetiben nincs, bukás', async () => {
+    for (const bad of ['Szöveg egy. ![kép](x.png)', 'Szöveg egy.\n\n[ref]: <https://x.example>']) {
+      const client = fakeClient([`${INTRO}\n\n${bad}`, `${INTRO}\n\n${bad}`])
+      const result = await run(createMdxTransform({ client, modelConfig: MODEL }), BODY)
+      expect(result.kind).toBe('failed')
+    }
+  })
+
+  it('a bevezető-hívás kimenete a blokkon kívül mást nem tartalmazhat', async () => {
+    const body = '# Cím\n\nEgy kettő három négy.\n\n## Rész\n\nÖt hat hét nyolc.'
+    const extra = `${INTRO}\n\nValami más.`
+    const client = fakeClient(['Egy kettő három négy.', '## Rész\n\nÖt hat hét nyolc.', extra, extra])
+    const result = await run(createMdxTransform({ client, modelConfig: MODEL, chunkWords: 5 }), body)
+    expect(result).toMatchObject({ kind: 'failed' })
+    expect(client.prompts).toHaveLength(4)
+  })
+
+  it('a kétszer bukó darab után a transform failed, és nem hív tovább', async () => {
+    const body = '# Cím\n\nEgy kettő három négy.\n\n## Rész\n\nÖt hat hét nyolc.'
+    const client = fakeClient(['Rossz.', 'Rossz.', 'x', 'x'])
+    const result = await run(createMdxTransform({ client, modelConfig: MODEL, chunkWords: 5 }), body)
+    expect(result.kind).toBe('failed')
+    expect(client.prompts).toHaveLength(2)
   })
 
   it('hosszú törzs darabokban megy, a bevezető külön hívás', async () => {

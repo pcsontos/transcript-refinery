@@ -32,6 +32,23 @@ export const INTRO_TITLES: Record<SiteLanguage, string> = { hu: 'Röviden', en: 
 
 const LANGUAGE_NAMES: Record<SiteLanguage, string> = { hu: 'Hungarian', en: 'English' }
 const ATTEMPTS = 2
+const ALLOWED_ATTRIBUTES = ['title', 'type']
+
+/**
+ * A szó szerinti ellenőrzés elől elrejtett új tartalom: a `title`/`type`-on kívüli attribútum
+ * (pl. `Card description`, `href`), kép, link-referencia-definíció, ha az eredetiben nincs.
+ */
+function forbiddenError(original: string, output: string): string | null {
+  const prose = output.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gm, '')
+  for (const tag of prose.matchAll(/<([A-Z][\w.]*)((?:\s+[\w-]+(?:="[^"]*")?)*)\s*\/?>/g)) {
+    for (const attr of tag[2]!.matchAll(/\s([\w-]+)/g)) {
+      if (!ALLOWED_ATTRIBUTES.includes(attr[1]!)) return `${tag[1]}: nem engedett attribútum: ${attr[1]} (csak ${ALLOWED_ATTRIBUTES.join(', ')})`
+    }
+  }
+  if (/!\[/.test(prose) && !/!\[/.test(original)) return 'új kép nem engedett'
+  if (/^\s*\[[^\]]+\]:\s/m.test(prose) && !/^\s*\[[^\]]+\]:\s/m.test(original)) return 'új link-referencia-definíció nem engedett'
+  return null
+}
 
 function componentLines(contract: Contract): string {
   return Object.entries(contract.components)
@@ -75,7 +92,7 @@ export function mdxPrompt(input: {
           '- A component only wraps text that is already there, in the original order: move no sentence out of place and write no new sentence inside a component. Its title attribute may be a new short label; do not repeat the title as a heading inside the component. Leave a blank line between a component tag and the Markdown inside it.',
           '- Allowed components and attributes (string literal values only):',
           componentLines(contract),
-          '- No import/export, no {…} expressions, no raw HTML.',
+          '- Use only the title and type attributes of components, never href or description. No images, no link reference definitions, no import/export, no {…} expressions, no raw HTML.',
           '- Escape { } and < in text as \\{ \\} \\<. Leave fenced code blocks exactly as they are. Write <https://…> links as [https://…](<https://…>).',
           '- Output only the MDX. Do not wrap it in a code fence.',
           intro === 'inline'
@@ -140,7 +157,7 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
             const taken = takeIntro(output, title)
             if (taken === null) return `hiányzik a(z) „${title}” című bevezető blokk az elején`
             intro = taken.intro
-            return (await compile(output)) ?? verbatimError(text, taken.rest)
+            return (await compile(output)) ?? forbiddenError(text, output) ?? verbatimError(text, taken.rest)
           },
         )
         if (!done.ok) return { kind: 'failed', reason: done.reason }
@@ -151,7 +168,7 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
           const done = await attempt(
             (error) =>
               mdxPrompt({ text, ...base(language, contract), intro: 'none', part: { index: i + 1, total: chunks.length }, error }),
-            async (output) => (await compile(output)) ?? verbatimError(text, output),
+            async (output) => (await compile(output)) ?? forbiddenError(text, output) ?? verbatimError(text, output),
           )
           if (!done.ok) return { kind: 'failed', reason: done.reason }
           parts.push(done.output.trim())
@@ -164,7 +181,7 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
             if (taken === null) return `hiányzik a(z) „${title}” című bevezető blokk`
             if (taken.rest !== '') return 'a bevezető blokkon kívül más is van a kimenetben'
             intro = taken.intro
-            return compile(output)
+            return (await compile(output)) ?? forbiddenError(rest, output)
           },
         )
         if (!done.ok) return { kind: 'failed', reason: done.reason }

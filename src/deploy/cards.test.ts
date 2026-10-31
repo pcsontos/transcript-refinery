@@ -58,6 +58,12 @@ describe('cardsMdx', () => {
     expect(out).not.toContain('%%')
   })
 
+  it('pontos kimenet (golden)', () => {
+    expect(cardsMdx('# C\n\n## K\n\nV', 'flashcards')).toBe(
+      '# C\n\n<Accordions type="multiple">\n\n<Accordion title="K">\n\nV\n\n</Accordion>\n\n</Accordions>\n',
+    )
+  })
+
   it('bájtra azonos kétszer', () => {
     for (const [body, kind] of [
       ['# C\n\n## K\n\nV', 'flashcards'],
