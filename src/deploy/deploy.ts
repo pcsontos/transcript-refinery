@@ -231,7 +231,7 @@ export async function deployNotes(input: {
       const existing = await readOptional(abs)
       const old = existing === null ? null : frontmatter(existing)
       const route = routeOf(c.siteKind)
-      const action = decide(old, c.fields.generated_at, route, { force: false, retryFailed, hasTransform: transform !== undefined })
+      const action = decide(old, c.fields.generated_at, route, { force: filter?.items !== undefined, retryFailed, hasTransform: transform !== undefined })
       if (action === 'failed') {
         report.skipped.push({ path: c.path, target: c.target, reason: 'mdx_failed (--retry-failed nélkül)' })
         continue
@@ -258,6 +258,12 @@ export async function deployNotes(input: {
           continue
         } else failed = route === 'llm' ? `LLM-kimenet elvetve: ${error}` : error
       } else if (typeof converted === 'object') failed = converted.failed ?? null
+      // A kint lévő, végleges oldalt az elbukott újragenerálás nem cserélheti fallbackre.
+      const keep = action === 'regenerate' && old !== null && old.mdx_fallback !== true
+      if (keep && text === null) {
+        report.skipped.push({ path: c.path, reason: `${failed ?? 'nincs átalakító'}; a kint lévő oldal marad` })
+        continue
+      }
       if (failed !== null) report.skipped.push({ path: c.path, reason: failed })
       if (text === null) {
         const fields = { ...c.fields, mdx_fallback: true, ...(failed !== null ? { mdx_failed: c.fields.generated_at } : {}) }
@@ -269,6 +275,7 @@ export async function deployNotes(input: {
         }
         text = candidate
       }
+      if (text === existing) continue
       await mkdir(dirname(abs), { recursive: true })
       await writeFile(abs, text, 'utf8')
       written.push(c.target)

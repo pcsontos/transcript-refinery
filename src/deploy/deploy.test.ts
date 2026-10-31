@@ -615,3 +615,68 @@ describe('szűrés', () => {
     }
   })
 })
+
+describe('újragenerálás', () => {
+  const CARDS = '# Cím\n\n## K\n\nV\n'
+
+  it('--item a változatlan LLM-es oldalt újra a modellre küldi, nélküle nem', async () => {
+    await note('vid1', 'summary', BASE)
+    await note('vid2', 'summary', BASE)
+    await deployNotes({ cfg, transform: valid() })
+    const t = fakeTransform(final('Új <Callout type="note">y</Callout>'))
+    await deployNotes({ cfg, transform: t })
+    expect(t.calls).toBe(0)
+    const report = await deployNotes({ cfg, transform: t, filter: { items: ['vid1'], kinds: ['summary'] } })
+    expect(t.calls).toBe(1)
+    expect(report.planned).toEqual([{ target: 'vid1/summary.hu.mdx', action: 'regenerate', route: 'llm' }])
+    expect(await show('content/notes/vid1/summary.hu.mdx')).toContain('y</Callout>')
+    expect(await show('content/notes/vid2/summary.hu.mdx')).toContain('x</Callout>')
+  })
+
+  it('--item kind nélkül a tétel minden oldalát újragenerálja', async () => {
+    await note('vid1', 'summary', BASE)
+    await note('vid1', 'notes', BASE)
+    await note('vid1', 'qa', BASE, CARDS)
+    await deployNotes({ cfg, transform: valid() })
+    const t = valid()
+    const report = await deployNotes({ cfg, transform: t, filter: { items: ['vid1'] } })
+    expect(report.planned.map((p) => p.action)).toEqual(['regenerate', 'regenerate', 'regenerate'])
+    expect(t.calls).toBe(2)
+  })
+
+  it('--item felülírja az mdx_failed-et', async () => {
+    await note('vid1', 'summary', BASE)
+    await deployNotes({ cfg, transform: fakeTransform({ kind: 'failed', reason: 'rossz' }) })
+    const t = valid()
+    const report = await deployNotes({ cfg, transform: t, filter: { items: ['vid1'] } })
+    expect(report.planned[0]?.action).toBe('retry')
+    expect(t.calls).toBe(1)
+  })
+
+  it('elbukott újragenerálás nem rontja a kint lévő oldalt', async () => {
+    await note('vid1', 'summary', BASE)
+    await deployNotes({ cfg, transform: valid() })
+    const before = await show('content/notes/vid1/summary.hu.mdx')
+    for (const t of [
+      fakeTransform({ kind: 'failed', reason: 'rossz' }),
+      fakeTransform(new Error('hálózat')),
+      fakeTransform(final('<Callout>')),
+    ]) {
+      const report = await deployNotes({ cfg, transform: t, filter: { items: ['vid1'] } })
+      const after = await show('content/notes/vid1/summary.hu.mdx')
+      expect(after).toBe(before)
+      expect(after).not.toMatch(/mdx_fallback|mdx_failed/)
+      expect(report.commits).toBe(0)
+      expect(report.skipped[0]?.reason).toMatch(/; a kint lévő oldal marad$/)
+    }
+  })
+
+  it('bájtra azonos újragenerálás nem ír és nem commitol', async () => {
+    await note('vid1', 'qa', BASE, CARDS)
+    await deployNotes({ cfg })
+    const report = await deployNotes({ cfg, filter: { items: ['vid1'] } })
+    expect(report.planned[0]?.action).toBe('regenerate')
+    expect(report.written).toEqual([])
+    expect(report.commits).toBe(0)
+  })
+})
