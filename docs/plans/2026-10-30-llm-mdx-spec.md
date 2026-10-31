@@ -73,7 +73,7 @@ Ez az anti-cél kapuja; a fordíthatóság és a #277 komponens-ellenőrzése me
 
 A `notes` és a `summary` törzsében már vannak címek, félkövér címkék (`**Example:**`), listák és kódblokkok (mermaid), ezért a megtisztítás **mindkét oldalon** ugyanaz, és a meglévő szerkezet szövege is védett (az én döntéseim):
 
-1. **Csak a kimenetből** hagyandó el: a bevezető blokk (az első, rögzített című `<Callout>`), a komponenscímkék és minden attribútumuk (a `title` is), valamint azok a címsor-sorok, amelyeknek a szövege nem egy eredeti címsor szövege (vagyis az új címek).
+1. **Csak a kimenetből** hagyandó el: a bevezető blokk (az első, rögzített című `<Callout>`), a komponenscímkék és minden attribútumuk (a `title` is), valamint azok a címsor-sorok, amelyeknek a szövege nem egy eredeti címsor szövege és nem is egy eredeti sor eleji félkövér szöveg (vagyis az új címek). A sor eleji félkövér bevezető (`**Cím.** Szöveg`) címmé emelhető; felhasználói döntés, 2026-10-30, az első `clean-deep` mérés után (a modell ezt rendszeresen megteszi).
 2. **Mindkét oldalon** elhagyandó: a Markdown-jelölők (`#`-ok, `**`, `*`, `_`, listajel, számozás, `>`), az escape-jelek. A meglévő címek *szövege* így szóként marad mindkét oldalon: az eredeti cím nem tűnhet el és nem fogalmazható át, de a szintje változhat.
 3. Kódblokk tartalma szóközre normalizálva, egy egységként kerül a sorozatba, változatlanul kell maradnia. Linknél a szöveg és az URL is szóként számít (a 🌐 sor is).
 4. Mindkét oldalon: Unicode-normalizálás (NFC), írásjelek levágása, szavakra bontás szóközök mentén.

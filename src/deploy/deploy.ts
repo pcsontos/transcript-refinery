@@ -14,16 +14,10 @@ import {
   type PushResult,
 } from '../vault/git.js'
 import { FRONTMATTER } from '../vault/lint.js'
+import { cardsMdx } from './cards.js'
+import type { Transform, TransformUsage } from './llm.js'
 import { type Contract, escapeMdx, frontmatterError, mdxErrors, renderMdx } from './mdx.js'
 import { type SiteLanguage, variantOf } from './variant.js'
-
-/** Az LLM-es átalakító (#278): a vault-törzsből `.mdx`-törzs. A frontmattert nem írja. */
-export type Transform = (input: {
-  fields: Record<string, unknown>
-  body: string
-  language: SiteLanguage
-  contract: Contract
-}) => Promise<string>
 
 export interface DeployReport {
   /** A `content/notes`-hoz képest: `<tétel>/<fajta>.<nyelv>.mdx`. */
@@ -31,6 +25,8 @@ export interface DeployReport {
   skipped: { path: string; reason: string }[]
   commits: number
   push: PushResult | null
+  /** Az LLM-es átalakítás használata; `null`, ha nem volt átalakító. */
+  transform: TransformUsage | null
 }
 
 const NOTES_DIR = 'content/notes'
@@ -47,10 +43,18 @@ async function readOptional(path: string): Promise<string | null> {
   }
 }
 
+/** Az oldal útja: LLM-es tagolás, kódos kártyabontás vagy a determinisztikus (végleges) escape. */
+function routeOf(siteKind: string): 'llm' | 'cards' | 'plain' {
+  if (['clean-mild', 'clean-moderate', 'clean-deep', 'summary', 'notes'].includes(siteKind)) return 'llm'
+  if (['flashcards', 'qa', 'bloom'].includes(siteKind)) return 'cards'
+  return 'plain'
+}
+
 /** Egy vault-fájl egy kiküldendő nyelvi változata. */
 interface Candidate {
   path: string
   target: string
+  siteKind: string
   language: SiteLanguage
   fields: Record<string, unknown>
   body: string
@@ -61,20 +65,22 @@ interface Candidate {
  * A vault jegyzeteit a showroom szerződése szerinti `.mdx`-ként a showroom
  * külön klónjába írja, tételenként commitol, a végén pushol. Csak hozzáad és
  * frissít. `itemIds`: csak ezek a tételek (az `auto` út); nélküle a teljes vault.
+ * `retryFailed`: a korábban elbukott (`mdx_failed`) átalakítást is újra megpróbálja.
  */
 export async function deployNotes(input: {
   cfg: Config
   itemIds?: ReadonlySet<string>
   transform?: Transform
+  retryFailed?: boolean
 }): Promise<DeployReport> {
-  const { cfg, itemIds, transform } = input
+  const { cfg, itemIds, transform, retryFailed = false } = input
   if (cfg.showroom === null) throw new Error('A deploy ki van kapcsolva: nincs showroom: blokk a configban.')
   const clone = cfg.showroom.clonePath
 
   const branch = await gitCurrentBranch(clone)
   if (branch !== 'main') throw new Error(`showroom.clone_path: a klón nem a main ágon áll (${branch})`)
 
-  const report: DeployReport = { written: [], skipped: [], commits: 0, push: null }
+  const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null }
 
   // Rebase, nem fast-forward: egy elutasított push commitjai különben a közben előrelépett
   // távoli main mellett örökre beragadnának.
@@ -89,6 +95,26 @@ export async function deployNotes(input: {
 
   const check = async (target: string, fields: Record<string, unknown>, text: string) =>
     frontmatterError(target, fields) ?? (await mdxErrors(text, contract))[0] ?? null
+
+  /** Az oldal törzse az útja szerint; `{}`: nincs átalakító (fallback), `failed`: az ok, `budget`: a plafon miatt kimaradt. */
+  const convert = async (
+    c: Candidate,
+    route: 'llm' | 'cards' | 'plain',
+  ): Promise<{ body: string } | { failed?: string } | 'budget'> => {
+    if (route === 'plain') return { body: escapeMdx(c.body) }
+    if (route === 'cards') {
+      const body = cardsMdx(c.body, c.siteKind as 'flashcards' | 'qa' | 'bloom')
+      return body === null ? { failed: 'a kártyák nem bonthatók' } : { body }
+    }
+    if (transform === undefined) return {}
+    try {
+      const result = await transform.run({ siteKind: c.siteKind, body: c.body, language: c.language, contract })
+      if (result.kind === 'budget') return 'budget'
+      return result.kind === 'final' ? { body: result.body } : { failed: `LLM-kimenet elvetve: ${result.reason}` }
+    } catch (e) {
+      return { failed: `LLM-kimenet elvetve: ${(e as Error).message.split('\n')[0]}` }
+    }
+  }
 
   for (const [itemId, item] of await scanNotes(cfg.notesRoot)) {
     if (itemIds !== undefined && !itemIds.has(itemId)) continue
@@ -113,6 +139,7 @@ export async function deployNotes(input: {
       const next: Candidate = {
         path: n.path,
         target: v.target,
+        siteKind: v.siteKind,
         language: v.language,
         fields: v.fields,
         body: n.body,
@@ -133,25 +160,34 @@ export async function deployNotes(input: {
       const abs = join(clone, NOTES_DIR, c.target)
       const existing = await readOptional(abs)
       const old = existing === null ? null : frontmatter(existing)
+      const route = routeOf(c.siteKind)
       const changed =
         old === null ||
         stamp(old.generated_at) !== c.fields.generated_at ||
-        (old.mdx_fallback === true && transform !== undefined)
+        (old.mdx_fallback === true &&
+          (route !== 'llm' || transform !== undefined) &&
+          (retryFailed || stamp(old.mdx_failed) !== c.fields.generated_at))
       if (!changed) continue
 
-      let text: string | null = null
-      if (transform !== undefined) {
-        try {
-          const candidate = renderMdx(c.fields, await transform({ fields: c.fields, body: c.body, language: c.language, contract }))
-          const error = await check(c.target, c.fields, candidate)
-          if (error === null) text = candidate
-          else report.skipped.push({ path: c.path, reason: `LLM-kimenet elvetve: ${error}` })
-        } catch (e) {
-          report.skipped.push({ path: c.path, reason: `LLM-kimenet elvetve: ${(e as Error).message.split('\n')[0]}` })
-        }
+      const converted = await convert(c, route)
+      if (converted === 'budget') {
+        // a kint lévő oldal marad; az új a determinisztikus változatot kapja, `mdx_failed` nélkül
+        if (old !== null && stamp(old.generated_at) === c.fields.generated_at) continue
       }
+      let text: string | null = null
+      let failed: string | null = null
+      if (typeof converted === 'object' && 'body' in converted) {
+        const candidate = renderMdx(c.fields, converted.body)
+        const error = await check(c.target, c.fields, candidate)
+        if (error === null) text = candidate
+        else if (route === 'plain') {
+          report.skipped.push({ path: c.path, reason: error })
+          continue
+        } else failed = route === 'llm' ? `LLM-kimenet elvetve: ${error}` : error
+      } else if (typeof converted === 'object') failed = converted.failed ?? null
+      if (failed !== null) report.skipped.push({ path: c.path, reason: failed })
       if (text === null) {
-        const fields = { ...c.fields, mdx_fallback: true }
+        const fields = { ...c.fields, mdx_fallback: true, ...(failed !== null ? { mdx_failed: c.fields.generated_at } : {}) }
         const candidate = renderMdx(fields, escapeMdx(c.body))
         const error = await check(c.target, fields, candidate)
         if (error !== null) {
@@ -185,6 +221,7 @@ export async function deployNotes(input: {
     if (await gitCommitPaths(clone, paths, noteCommitMessage('deploy', title, itemId))) report.commits += 1
   }
 
+  report.transform = transform?.usage() ?? null
   // Egy korábbi, elutasított push commitjai is ide tartoznak.
   if (report.commits > 0 || (await gitAheadCount(clone)) > 0) report.push = await gitPush(clone)
   return report
@@ -198,6 +235,13 @@ export function deployLines(report: DeployReport): string[] {
       .sort((a, b) => a.reason.localeCompare(b.reason) || a.path.localeCompare(b.path))
       .map((s) => `  kihagyva: ${basename(s.path)} — ${s.reason}`),
   ]
+  if (report.transform !== null) {
+    const { inputTokens, outputTokens, usd, budgetSkipped } = report.transform
+    lines.push(
+      `deploy: átalakítás: ${inputTokens}+${outputTokens} token, ${usd.toFixed(4)} $` +
+        (budgetSkipped > 0 ? `, ${budgetSkipped} oldal kimaradt a költségplafon miatt` : ''),
+    )
+  }
   if (report.push?.pushed === true) lines.push('deploy: push ok')
   else if (report.push !== null) {
     // Az első sor mindig „Command failed: git push”; az ok a git kimenetében van.

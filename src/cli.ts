@@ -13,6 +13,7 @@ import {
   type ModelConfig,
 } from './config.js'
 import { deployLines, deployNotes } from './deploy/deploy.js'
+import { MDX_MODEL_KEY, mdxTransformFor, type Transform } from './deploy/llm.js'
 import { collectEvents, progressText, summarize, type RunEvent } from './events.js'
 import { createCostGuard, estimateItemUsd, type CostGuard } from './model/budget.js'
 import { commandCheckStructured } from './model/check-structured.js'
@@ -112,7 +113,7 @@ const WATCH_OPTIONS = new Set(['config', 'source', 'no-commit', 'help'])
 
 /** A check-structured kapcsolói: valódi pénzt költ, ezért egy közös kapcsoló (pl. `--dry-run`) sem maradhat csendben figyelmen kívül. */
 const CHECK_STRUCTURED_OPTIONS = new Set(['config', 'help'])
-const DEPLOY_OPTIONS = new Set(['config', 'help'])
+const DEPLOY_OPTIONS = new Set(['config', 'retry-failed', 'help'])
 
 /** Az első megadott, de az `allowed`-ben nem szereplő kapcsoló neve, ha van. */
 function unsupportedOption(values: Record<string, unknown>, allowed: ReadonlySet<string>): string | undefined {
@@ -520,7 +521,7 @@ export async function commandRun(
   let reportFallback: (name: string) => void = () => undefined
   if (recipe || queueMode || listed.length > 0) {
     const modelConfig = loadModelConfig(raw, process.env, cfg.configPath)
-    assertRecipeModels(modelConfig, Object.keys(registry))
+    assertRecipeModels(modelConfig, [...Object.keys(registry), MDX_MODEL_KEY])
     const fallback = toolChoiceFallback((name) => reportFallback(name))
     const createClient = runtime.createClient ?? createModelClient
     const clients = new Map<string, ModelClient>()
@@ -750,7 +751,8 @@ export async function commandRun(
     const itemIds = new Set(selected.map((unit) => unit.item.itemId))
     if (commit && commitError === undefined && cfg.showroom?.deploy === 'auto' && itemIds.size > 0) {
       try {
-        for (const line of deployLines(await deployNotes({ cfg, itemIds }))) console.log(line)
+        const transform = deployTransform(raw, cfg, runtime.createClient)
+        for (const line of deployLines(await deployNotes({ cfg, itemIds, transform }))) console.log(line)
       } catch (error) {
         console.log(`deploy sikertelen: ${(error as Error).message.split('\n')[0]}`)
       }
@@ -1059,13 +1061,26 @@ function printHelp(topic: string | undefined): number {
   return 0
 }
 
+/** A deploy LLM-es átalakítója; kulcs vagy modell-config nélkül egy sor jelzi, és a deploy anélkül fut. */
+function deployTransform(raw: unknown, cfg: Config, createClient?: RunRuntime['createClient']): Transform | undefined {
+  const transform = mdxTransformFor(raw, cfg, createClient)
+  if (typeof transform !== 'string') return transform
+  console.log(`deploy: LLM-átalakítás nélkül: ${transform}`)
+  return undefined
+}
+
 /** A vault jegyzeteit a showroom klónjába küldi (teljes vault, a hiányzót és a megváltozottat). */
-export async function commandDeploy(cfg: Config): Promise<number> {
+export async function commandDeploy(
+  cfg: Config,
+  raw: unknown,
+  opts: { retryFailed?: boolean; createClient?: RunRuntime['createClient'] } = {},
+): Promise<number> {
   if (cfg.showroom === null) {
     console.error('A deploy ki van kapcsolva: nincs showroom: blokk a configban.')
     return 1
   }
-  for (const line of deployLines(await deployNotes({ cfg }))) console.log(line)
+  const transform = deployTransform(raw, cfg, opts.createClient)
+  for (const line of deployLines(await deployNotes({ cfg, transform, retryFailed: opts.retryFailed }))) console.log(line)
   return 0
 }
 
@@ -1164,7 +1179,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   if (command === 'deploy') {
     const unsupported = unsupportedOption(values, DEPLOY_OPTIONS)
     if (unsupported !== undefined) {
-      console.error(`A deploy nem ismeri a --${unsupported} kapcsolót; támogatott: --config.`)
+      console.error(`A deploy nem ismeri a --${unsupported} kapcsolót; támogatott: --config, --retry-failed.`)
       return 1
     }
   }
@@ -1186,7 +1201,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   if (command === 'check-structured') {
     return commandCheckStructured(loadModelConfig(raw, process.env, cfg.configPath))
   }
-  if (command === 'deploy') return commandDeploy(cfg)
+  if (command === 'deploy') return commandDeploy(cfg, raw, { retryFailed: values['retry-failed'] })
   if (command === 'list') {
     return commandList(cfg, {
       source: values.source,

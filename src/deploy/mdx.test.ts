@@ -1,7 +1,7 @@
 import { compile } from '@mdx-js/mdx'
 import { describe, expect, it } from 'vitest'
 import { frontmatter } from '../serve/notes.js'
-import { type Contract, escapeMdx, frontmatterError, mdxErrors, renderMdx } from './mdx.js'
+import { type Contract, escapeMdx, frontmatterError, mdxErrors, renderMdx, splitHeader } from './mdx.js'
 
 // A showroom contract/mdx-components.json mai tartalmának másolata (f1d7f0d).
 const CONTRACT: Contract = {
@@ -172,5 +172,22 @@ describe('renderMdx', () => {
     const out = renderMdx({ ...FIELDS, title }, 'törzs')
     expect(frontmatter(out)?.title).toBe(title)
     expect(out.endsWith('\n\ntörzs')).toBe(true)
+  })
+})
+
+describe('splitHeader', () => {
+  it('cím + 🌐 sor', () => {
+    expect(splitHeader('# Cím\n\n🌐 <https://x>\n\n\nSzöveg')).toEqual({
+      header: '# Cím\n\n🌐 <https://x>',
+      rest: 'Szöveg',
+    })
+  })
+
+  it('🌐 nélkül csak a cím', () => {
+    expect(splitHeader('# Cím\n\nSzöveg')).toEqual({ header: '# Cím', rest: 'Szöveg' })
+  })
+
+  it('fejléc nélkül változatlan', () => {
+    expect(splitHeader('Szöveg\n\n# Később')).toEqual({ header: '', rest: 'Szöveg\n\n# Később' })
   })
 })

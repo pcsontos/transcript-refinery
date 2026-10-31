@@ -108,8 +108,8 @@ export const COMMANDS: readonly CommandHelp[] = [
     summary: 'A vault jegyzeteit .mdx-ként a showroom klónjába írja, commitolja és pusholja.',
     usage: 'refinery deploy [kapcsolók]',
     description:
-      'A teljes vaultot összeveti a showroom külön klónjával (showroom.clone_path), és a hiányzó vagy megváltozott jegyzeteket a site szerződése szerinti .mdx-ként kiírja, tételenként commitolja, a végén a main ágra pusholja. Csak hozzáad és frissít, nem töröl. A kihagyott jegyzeteket okkal kiírja. showroom: blokk nélkül megáll. A deploy: auto beállítás a run és a serve futását is kiegészíti, azok csak a futás tételeit küldik. Csak a --config kapcsolót ismeri.',
-    options: [CONFIG, HELP],
+      'A teljes vaultot összeveti a showroom külön klónjával (showroom.clone_path), és a hiányzó vagy megváltozott jegyzeteket a site szerződése szerinti .mdx-ként kiírja, tételenként commitolja, a végén a main ágra pusholja. Csak hozzáad és frissít, nem töröl. A kihagyott jegyzeteket okkal kiírja. showroom: blokk nélkül megáll. A deploy: auto beállítás a run és a serve futását is kiegészíti, azok csak a futás tételeit küldik. A clean-*, summary és notes oldalakat LLM tagolja webes olvasásra (model.recipes.mdx, hiányában a draft modell), a kártyákat (flashcards, qa, bloom) kód bontja accordionra; az LLM-hívás futásonként a cost_limit_usd-ig megy, a maradék a következő deployra vár. A kétszer elbukott oldal mdx_failed jelzést kap, és csak a --retry-failed vagy a jegyzet változása után próbálkozik újra. Csak a --config és a --retry-failed kapcsolót ismeri.',
+    options: [CONFIG, ['--retry-failed', 'az LLM-átalakításnál korábban elbukott (mdx_failed) oldalakat is újra megpróbálja'], HELP],
     examples: ['refinery deploy'],
   },
   {

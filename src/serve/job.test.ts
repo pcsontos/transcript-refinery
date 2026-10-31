@@ -589,6 +589,65 @@ describe('runJob — leállt recept és életjel', () => {
     expect(callbacks).toEqual([{ status: 'failed', error: 'hiba' }])
   })
 
+  it('a kész válasz a followUp előtt megy ki', async () => {
+    const seen: number[] = []
+    const callbacks: CallbackBody[] = []
+    const store = memoryStore({
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' })),
+    })
+    const effects: JobEffects = {
+      ...emptyEffects(store),
+      readPair: () => Promise.resolve(pair({})),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+      refine: () =>
+        Promise.resolve({
+          ok: true,
+          noteUrl: 'a.md',
+          followUp: () => {
+            seen.push(callbacks.length)
+            return Promise.resolve()
+          },
+        }),
+    }
+    await runJob({ ...job, recipes: ['summary'] }, effects)
+    expect(seen).toEqual([1])
+    expect(callbacks.map((body) => body.status)).toEqual(['ready'])
+  })
+
+  it('a leállt (done-os) kimenet followUp-ja is a záró üzenet után fut', async () => {
+    const seen: number[] = []
+    const callbacks: CallbackBody[] = []
+    const store = memoryStore({
+      [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+      [`videos/${ID}/info.json`]: new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' })),
+    })
+    const effects: JobEffects = {
+      ...emptyEffects(store),
+      readPair: () => Promise.resolve(pair({})),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+      refine: () =>
+        Promise.resolve({
+          ok: false,
+          error: 'leállt',
+          done: ['summary-hu'],
+          followUp: () => {
+            seen.push(callbacks.length)
+            return Promise.resolve()
+          },
+        }),
+    }
+    await runJob({ ...job, recipes: ['summary'] }, effects)
+    expect(seen).toEqual([1])
+    expect(callbacks).toEqual([{ status: 'failed', error: 'leállt', done: ['summary-hu'] }])
+  })
+
   it('a refine közben küldött életjel a Workerhez megy, a záró üzenet előtt', async () => {
     const callbacks = await run((_videoId, _recipes, _lang, _signal, notify) => {
       notify?.({ status: 'progress', text: 'még dolgozik' })
