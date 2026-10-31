@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { variantOf } from './variant.js'
+import { siteKindOf, variantOf } from './variant.js'
 
 const BASE = { generated_at: 'T1', source: 'youtube', title: 'Cím', language: 'hu-orig' }
 const NONE = new Map<string, Record<string, unknown>>()
@@ -102,5 +102,15 @@ describe('variantOf', () => {
       ok: false,
       reason: 'a tételnek nincs forrás-adata',
     })
+  })
+})
+
+describe('siteKindOf', () => {
+  it('siteKindOf a vault-fajtából a site-fajtát adja', () => {
+    expect(siteKindOf('summary', { language: 'hu' })).toBe('summary')
+    expect(siteKindOf('summary-de', { language: 'de', translation_of: 'summary' })).toBe('summary')
+    expect(siteKindOf('notes-en', { language: 'en-orig', translation_of: 'notes' })).toBe('notes')
+    expect(siteKindOf('glossary-hu', { language: 'hu' })).toBe('glossary')
+    expect(siteKindOf('clean-deep', { language: 'hu' })).toBe('clean-deep')
   })
 })

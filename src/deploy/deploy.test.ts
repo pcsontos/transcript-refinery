@@ -499,3 +499,104 @@ describe('deployNotes', () => {
     await expect(deployNotes({ cfg: { ...cfg, showroom: null } })).rejects.toThrow('showroom')
   })
 })
+
+describe('szűrés', () => {
+  const translation = (kind: string, language: string, extra: Record<string, unknown> = {}) => ({
+    ...BASE,
+    language,
+    translation_of: kind,
+    source_language: 'hu-orig',
+    source_generated_at: 'T1',
+    ...extra,
+  })
+
+  it('tételszűrés: más tételre nem hív modellt és nem ír', async () => {
+    await note('A', 'summary', BASE)
+    await note('B', 'summary', BASE)
+    const transform = valid()
+    const report = await deployNotes({ cfg, transform, filter: { items: ['A'] } })
+    expect(transform.calls).toBe(1)
+    expect(report.written).toEqual(['A/summary.hu.mdx'])
+    expect(await remoteHas('content/notes/B/summary.hu.mdx')).toBe(false)
+  })
+
+  it('ismeretlen tétel a klón érintése előtt hibát ad', async () => {
+    await note('A', 'summary', BASE)
+    const transform = valid()
+    const before = [await git(clone, 'rev-parse', 'HEAD'), await git(clone, 'status', '--porcelain')]
+    await expect(deployNotes({ cfg, transform, filter: { items: ['A', 'X', 'Y'] } })).rejects.toThrow(
+      '--item: nincs ilyen tétel a vaultban: X, Y',
+    )
+    await expect(deployNotes({ cfg, transform, filter: { kinds: ['clean', 'foo'] } })).rejects.toThrow(
+      '--kind: ismeretlen fajta: foo. Ismert: clean, clean-mild',
+    )
+    expect([await git(clone, 'rev-parse', 'HEAD'), await git(clone, 'status', '--porcelain')]).toEqual(before)
+    expect(transform.calls).toBe(0)
+  })
+
+  it('fajtaszűrés: summary mindkét nyelven, clean minden clean-*', async () => {
+    await note('vid1', 'summary', BASE)
+    await note('vid1', 'summary-en', translation('summary', 'en'))
+    await note('vid1', 'notes', BASE)
+    await note('vid1', 'clean-mild', BASE)
+    await note('vid1', 'clean-deep', BASE)
+    const first = await deployNotes({ cfg, filter: { kinds: ['summary'] } })
+    expect(first.written.sort()).toEqual(['vid1/summary.en.mdx', 'vid1/summary.hu.mdx'])
+    const second = await deployNotes({ cfg, filter: { kinds: ['clean'] } })
+    expect(second.written.sort()).toEqual(['vid1/clean-deep.hu.mdx', 'vid1/clean-mild.hu.mdx'])
+  })
+
+  it('fajtaszűrés: a kizárt fajta kihagyása nem látszik, a kiválasztotté igen', async () => {
+    await note('vid1', 'summary', BASE)
+    const summaryDe = await note('vid1', 'summary-de', translation('summary', 'de', { language: 'de' }))
+    await note('vid1', 'qa-de', translation('qa', 'de', { language: 'de' }))
+    const report = await deployNotes({ cfg, filter: { kinds: ['summary'] } })
+    expect(report.skipped).toEqual([{ path: summaryDe, reason: 'nyelv: de' }])
+  })
+
+  it('fajtaszűrés mellett a szójegyzék megkapja a testvér forrás-adatát', async () => {
+    await note('vid1', 'summary', BASE)
+    await note('vid1', 'glossary-hu', { title: 'Cím', language: 'hu', source_language: 'en' }, '| a | b |\n')
+    await git(vault, 'add', '.')
+    await git(vault, 'commit', '-qm', 'vault')
+    const report = await deployNotes({ cfg, filter: { kinds: ['glossary'] } })
+    expect(report.written).toEqual(['vid1/glossary.hu.mdx'])
+    expect(await show('content/notes/vid1/glossary.hu.mdx')).toContain('source: youtube')
+  })
+
+  it('fajtaszűrt futás meta.json-ja a teljes futás címét írja', async () => {
+    await note('vid1', 'summary', { ...BASE, title: 'Eredeti' })
+    await note('vid1', 'summary-en', translation('summary', 'en', { title: 'Translated' }))
+    await deployNotes({ cfg, filter: { kinds: ['summary'] } })
+    expect(JSON.parse(await show('content/notes/vid1/meta.json'))).toEqual({ title: 'Eredeti' })
+    await note('vid2', 'clean-deep', { ...BASE, title: 'Mély' })
+    await note('vid2', 'summary', { ...BASE, title: 'Össz' })
+    await deployNotes({ cfg, filter: { kinds: ['summary'] } })
+    expect(JSON.parse(await show('content/notes/vid2/meta.json'))).toEqual({ title: 'Mély' })
+  })
+
+  it('csatorna- és forrásszűrés a vault frontmatterén, kis- és nagybetű nélkül', async () => {
+    await note('A', 'summary', { ...BASE, channel: 'Csatorna A' })
+    await note('B', 'summary', { ...BASE, channel: 'Más' })
+    const byChannel = await deployNotes({ cfg, filter: { channel: 'csatorna a' } })
+    expect(byChannel.written).toEqual(['A/summary.hu.mdx'])
+    const bySource = await deployNotes({ cfg, filter: { source: 'YOUTUBE', items: ['B'] } })
+    expect(bySource.written).toEqual(['B/summary.hu.mdx'])
+  })
+
+  it('semmire nem illeszkedő szűrés: nincs találat, a klón érintetlen', async () => {
+    await note('A', 'summary', { ...BASE, channel: 'Csatorna A' })
+    await mkdir(join(clone, 'content', 'notes', 'vid9'), { recursive: true })
+    await writeFile(join(clone, 'content', 'notes', 'vid9', 'summary.hu.mdx'), 'maradék')
+    const before = [await git(clone, 'rev-parse', 'HEAD'), await git(clone, 'status', '--porcelain')]
+    for (const filter of [
+      { items: ['A'], channel: 'Más' },
+      { items: ['A'], kinds: ['qa'] },
+    ]) {
+      const report = await deployNotes({ cfg, filter })
+      expect(report).toMatchObject({ noMatch: true, commits: 0, push: null })
+      expect(deployLines(report)).toEqual(['deploy: Nincs a szűrőnek megfelelő jegyzet.'])
+      expect([await git(clone, 'rev-parse', 'HEAD'), await git(clone, 'status', '--porcelain')]).toEqual(before)
+    }
+  })
+})

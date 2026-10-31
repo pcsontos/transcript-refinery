@@ -17,7 +17,7 @@ import { FRONTMATTER } from '../vault/lint.js'
 import { cardsMdx } from './cards.js'
 import type { Transform, TransformUsage } from './llm.js'
 import { type Contract, escapeMdx, frontmatterError, mdxErrors, renderMdx } from './mdx.js'
-import { type SiteLanguage, variantOf } from './variant.js'
+import { type SiteLanguage, siteKindOf, variantOf } from './variant.js'
 
 export interface DeployReport {
   /** A `content/notes`-hoz képest: `<tétel>/<fajta>.<nyelv>.mdx`. */
@@ -27,6 +27,21 @@ export interface DeployReport {
   push: PushResult | null
   /** Az LLM-es átalakítás használata; `null`, ha nem volt átalakító. */
   transform: TransformUsage | null
+  /** Szűrt futás, amelyre egyetlen jegyzet sem illett; a klónhoz nem nyúlt. */
+  noMatch?: true
+}
+
+const LLM_KINDS = ['clean-mild', 'clean-moderate', 'clean-deep', 'summary', 'notes'] as const
+const CARD_KINDS = ['flashcards', 'qa', 'bloom'] as const
+/** A site-oldal ismert fajtái (a `--kind` nevei, a rövid `clean` nélkül). */
+export const SITE_KINDS = [...LLM_KINDS, ...CARD_KINDS, 'glossary'] as const
+
+/** A kézi deploy szűrői; `items`: az id-k, `kinds`: site-fajták vagy a rövid `clean`. */
+export interface DeployFilter {
+  items?: readonly string[]
+  kinds?: readonly string[]
+  channel?: string
+  source?: string
 }
 
 const NOTES_DIR = 'content/notes'
@@ -45,8 +60,8 @@ async function readOptional(path: string): Promise<string | null> {
 
 /** Az oldal útja: LLM-es tagolás, kódos kártyabontás vagy a determinisztikus (végleges) escape. */
 function routeOf(siteKind: string): 'llm' | 'cards' | 'plain' {
-  if (['clean-mild', 'clean-moderate', 'clean-deep', 'summary', 'notes'].includes(siteKind)) return 'llm'
-  if (['flashcards', 'qa', 'bloom'].includes(siteKind)) return 'cards'
+  if ((LLM_KINDS as readonly string[]).includes(siteKind)) return 'llm'
+  if ((CARD_KINDS as readonly string[]).includes(siteKind)) return 'cards'
   return 'plain'
 }
 
@@ -72,10 +87,47 @@ export async function deployNotes(input: {
   itemIds?: ReadonlySet<string>
   transform?: Transform
   retryFailed?: boolean
+  filter?: DeployFilter
 }): Promise<DeployReport> {
-  const { cfg, itemIds, transform, retryFailed = false } = input
+  const { cfg, itemIds, transform, retryFailed = false, filter } = input
   if (cfg.showroom === null) throw new Error('A deploy ki van kapcsolva: nincs showroom: blokk a configban.')
   const clone = cfg.showroom.clonePath
+
+  const kinds = filter?.kinds
+  const unknownKinds = (kinds ?? []).filter((k) => k !== 'clean' && !(SITE_KINDS as readonly string[]).includes(k))
+  if (unknownKinds.length > 0) {
+    throw new Error(`--kind: ismeretlen fajta: ${unknownKinds.join(', ')}. Ismert: clean, ${SITE_KINDS.join(', ')}`)
+  }
+  const kindMatches = (siteKind: string) =>
+    kinds === undefined || kinds.includes(siteKind) || (kinds.includes('clean') && siteKind.startsWith('clean-'))
+  const same = (field: unknown, wanted: string | undefined) =>
+    wanted === undefined || (typeof field === 'string' && field.toLocaleLowerCase() === wanted.toLocaleLowerCase())
+
+  // Vault-fázis: a klón érintése előtt dől el, mely tételek és jegyzetek jönnek szóba.
+  const vaultItems = await scanNotes(cfg.notesRoot)
+  const unknownItems = (filter?.items ?? []).filter((id) => !vaultItems.has(id))
+  if (unknownItems.length > 0) throw new Error(`--item: nincs ilyen tétel a vaultban: ${unknownItems.join(', ')}`)
+  const selected = new Map<string, Map<string, { path: string; fields: Record<string, unknown>; body: string }>>()
+  for (const [itemId, item] of vaultItems) {
+    if (itemIds !== undefined && !itemIds.has(itemId)) continue
+    if (filter?.items !== undefined && !filter.items.includes(itemId)) continue
+    const notes = new Map<string, { path: string; fields: Record<string, unknown>; body: string }>()
+    for (const [kind, file] of item.files) {
+      if (kind === 'transcript') continue
+      const text = await readFile(file.path, 'utf8')
+      const fields = frontmatter(text)
+      if (fields !== null) notes.set(kind, { path: file.path, fields, body: text.replace(FRONTMATTER, '').trimStart() })
+    }
+    const all = [...notes.values()]
+    if (!all.some((n) => same(n.fields.channel, filter?.channel)) || !all.some((n) => same(n.fields.source, filter?.source))) continue
+    selected.set(itemId, notes)
+  }
+  if (
+    filter !== undefined &&
+    ![...selected.values()].some((notes) => [...notes].some(([kind, n]) => kindMatches(siteKindOf(kind, n.fields))))
+  ) {
+    return { written: [], skipped: [], commits: 0, push: null, transform: null, noMatch: true }
+  }
 
   const branch = await gitCurrentBranch(clone)
   if (branch !== 'main') throw new Error(`showroom.clone_path: a klón nem a main ágon áll (${branch})`)
@@ -116,16 +168,7 @@ export async function deployNotes(input: {
     }
   }
 
-  for (const [itemId, item] of await scanNotes(cfg.notesRoot)) {
-    if (itemIds !== undefined && !itemIds.has(itemId)) continue
-
-    const notes = new Map<string, { path: string; fields: Record<string, unknown>; body: string }>()
-    for (const [kind, file] of item.files) {
-      if (kind === 'transcript') continue
-      const text = await readFile(file.path, 'utf8')
-      const fields = frontmatter(text)
-      if (fields !== null) notes.set(kind, { path: file.path, fields, body: text.replace(FRONTMATTER, '').trimStart() })
-    }
+  for (const [itemId, notes] of selected) {
     const siblings = new Map([...notes].map(([kind, n]) => [kind, n.fields]))
 
     const candidates = new Map<string, Candidate>()
@@ -133,7 +176,7 @@ export async function deployNotes(input: {
       const committedAt = /^glossary-/.test(kind) ? await gitLastCommitIso(cfg.vaultPath, n.path) : null
       const v = variantOf(itemId, { vaultKind: kind, fields: n.fields }, siblings, committedAt)
       if (!v.ok) {
-        report.skipped.push({ path: n.path, reason: v.reason })
+        if (kindMatches(siteKindOf(kind, n.fields))) report.skipped.push({ path: n.path, reason: v.reason })
         continue
       }
       const next: Candidate = {
@@ -148,15 +191,15 @@ export async function deployNotes(input: {
       const taken = candidates.get(v.target)
       if (taken === undefined || (next.original && !taken.original)) {
         candidates.set(v.target, next)
-        if (taken !== undefined) report.skipped.push({ path: taken.path, reason: `ütközik: ${v.target}` })
-      } else {
+        if (taken !== undefined && kindMatches(v.siteKind)) report.skipped.push({ path: taken.path, reason: `ütközik: ${v.target}` })
+      } else if (kindMatches(v.siteKind)) {
         report.skipped.push({ path: next.path, reason: `ütközik: ${v.target}` })
       }
     }
 
     const written: string[] = []
     const ordered = [...candidates.values()].sort((a, b) => Number(b.original) - Number(a.original) || a.target.localeCompare(b.target))
-    for (const c of ordered) {
+    for (const c of ordered.filter((o) => kindMatches(o.siteKind))) {
       const abs = join(clone, NOTES_DIR, c.target)
       const existing = await readOptional(abs)
       const old = existing === null ? null : frontmatter(existing)
@@ -229,6 +272,7 @@ export async function deployNotes(input: {
 
 /** A jelentés terminálsorai (CLI és serve-napló közös): összesítő, kihagyások, push. */
 export function deployLines(report: DeployReport): string[] {
+  if (report.noMatch === true) return ['deploy: Nincs a szűrőnek megfelelő jegyzet.']
   const lines = [
     `deploy: ${report.written.length} írva, ${report.skipped.length} kihagyva, ${report.commits} commit`,
     ...[...report.skipped]
