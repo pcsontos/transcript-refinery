@@ -19,14 +19,23 @@ import type { Transform, TransformUsage } from './llm.js'
 import { type Contract, escapeMdx, frontmatterError, mdxErrors, renderMdx } from './mdx.js'
 import { type SiteLanguage, siteKindOf, variantOf } from './variant.js'
 
+export type Route = 'llm' | 'cards' | 'plain'
+export type DeployAction = 'new' | 'update' | 'retry' | 'regenerate'
+
 export interface DeployReport {
   /** A `content/notes`-hoz képest: `<tétel>/<fajta>.<nyelv>.mdx`. */
   written: string[]
-  skipped: { path: string; reason: string }[]
+  skipped: { path: string; reason: string; target?: string }[]
   commits: number
   push: PushResult | null
   /** Az LLM-es átalakítás használata; `null`, ha nem volt átalakító. */
   transform: TransformUsage | null
+  /** Amit írásra kiválasztott, sorrendben. */
+  planned: { target: string; action: DeployAction; route: Route }[]
+  /** Az illeszkedő, nem írandó jelöltek száma. */
+  unchanged: number
+  /** A pull utáni pusholatlan commitok és a maradék-commit; ezek a szűrőtől függetlenül kimennek. */
+  pendingCommits: number
   /** Szűrt futás, amelyre egyetlen jegyzet sem illett; a klónhoz nem nyúlt. */
   noMatch?: true
 }
@@ -59,10 +68,26 @@ async function readOptional(path: string): Promise<string | null> {
 }
 
 /** Az oldal útja: LLM-es tagolás, kódos kártyabontás vagy a determinisztikus (végleges) escape. */
-function routeOf(siteKind: string): 'llm' | 'cards' | 'plain' {
+function routeOf(siteKind: string): Route {
   if ((LLM_KINDS as readonly string[]).includes(siteKind)) return 'llm'
   if ((CARD_KINDS as readonly string[]).includes(siteKind)) return 'cards'
   return 'plain'
+}
+
+/** Az „írná-e” döntés; az éles futás és a szárazfutás közös kódja. */
+function decide(
+  old: Record<string, unknown> | null,
+  generatedAt: unknown,
+  route: Route,
+  o: { force: boolean; retryFailed: boolean; hasTransform: boolean },
+): DeployAction | 'unchanged' | 'failed' {
+  if (old === null) return 'new'
+  if (stamp(old.generated_at) !== generatedAt) return 'update'
+  if (old.mdx_fallback === true && (route !== 'llm' || o.hasTransform)) {
+    if (stamp(old.mdx_failed) !== generatedAt) return 'update'
+    return o.retryFailed || o.force ? 'retry' : 'failed'
+  }
+  return o.force ? 'regenerate' : 'unchanged'
 }
 
 /** Egy vault-fájl egy kiküldendő nyelvi változata. */
@@ -126,21 +151,23 @@ export async function deployNotes(input: {
     filter !== undefined &&
     ![...selected.values()].some((notes) => [...notes].some(([kind, n]) => kindMatches(siteKindOf(kind, n.fields))))
   ) {
-    return { written: [], skipped: [], commits: 0, push: null, transform: null, noMatch: true }
+    return { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 0, noMatch: true }
   }
 
   const branch = await gitCurrentBranch(clone)
   if (branch !== 'main') throw new Error(`showroom.clone_path: a klón nem a main ágon áll (${branch})`)
 
-  const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null }
+  const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 0 }
 
   // Rebase, nem fast-forward: egy elutasított push commitjai különben a közben előrelépett
   // távoli main mellett örökre beragadnának.
   await gitPullRebase(clone)
+  report.pendingCommits = await gitAheadCount(clone)
   // Egy félbeszakadt futás kiírt, de nem commitolt fájljait az összevetés változatlannak látná.
   if (await gitHasChanges(clone, [NOTES_DIR])) {
     if (await gitCommitPaths(clone, [NOTES_DIR], noteCommitMessage('deploy', 'félbemaradt futás maradéka', '-'))) {
       report.commits += 1
+      report.pendingCommits += 1
     }
   }
   const contract = JSON.parse(await readFile(join(clone, 'contract', 'mdx-components.json'), 'utf8')) as Contract
@@ -151,7 +178,7 @@ export async function deployNotes(input: {
   /** Az oldal törzse az útja szerint; `{}`: nincs átalakító (fallback), `failed`: az ok, `budget`: a plafon miatt kimaradt. */
   const convert = async (
     c: Candidate,
-    route: 'llm' | 'cards' | 'plain',
+    route: Route,
   ): Promise<{ body: string } | { failed?: string } | 'budget'> => {
     if (route === 'plain') return { body: escapeMdx(c.body) }
     if (route === 'cards') {
@@ -204,13 +231,16 @@ export async function deployNotes(input: {
       const existing = await readOptional(abs)
       const old = existing === null ? null : frontmatter(existing)
       const route = routeOf(c.siteKind)
-      const changed =
-        old === null ||
-        stamp(old.generated_at) !== c.fields.generated_at ||
-        (old.mdx_fallback === true &&
-          (route !== 'llm' || transform !== undefined) &&
-          (retryFailed || stamp(old.mdx_failed) !== c.fields.generated_at))
-      if (!changed) continue
+      const action = decide(old, c.fields.generated_at, route, { force: false, retryFailed, hasTransform: transform !== undefined })
+      if (action === 'failed') {
+        report.skipped.push({ path: c.path, target: c.target, reason: 'mdx_failed (--retry-failed nélkül)' })
+        continue
+      }
+      if (action === 'unchanged') {
+        report.unchanged += 1
+        continue
+      }
+      report.planned.push({ target: c.target, action, route })
 
       const converted = await convert(c, route)
       if (converted === 'budget') {
@@ -275,6 +305,7 @@ export function deployLines(report: DeployReport): string[] {
   if (report.noMatch === true) return ['deploy: Nincs a szűrőnek megfelelő jegyzet.']
   const lines = [
     `deploy: ${report.written.length} írva, ${report.skipped.length} kihagyva, ${report.commits} commit`,
+    ...(report.pendingCommits > 0 ? [`deploy: korábbi futás függő munkája is kimegy: ${report.pendingCommits} commit`] : []),
     ...[...report.skipped]
       .sort((a, b) => a.reason.localeCompare(b.reason) || a.path.localeCompare(b.path))
       .map((s) => `  kihagyva: ${basename(s.path)} — ${s.reason}`),

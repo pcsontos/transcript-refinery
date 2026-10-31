@@ -133,10 +133,11 @@ describe('deployNotes', () => {
   it('második futás változatlan vaultnál nem ír és nem commitol', async () => {
     await note('vid1', 'summary', BASE)
     const transform = valid()
-    await deployNotes({ cfg, transform })
+    const first = await deployNotes({ cfg, transform })
+    expect(first.planned).toEqual([{ target: 'vid1/summary.hu.mdx', action: 'new', route: 'llm' }])
     expect(transform.calls).toBe(1)
     const report = await deployNotes({ cfg, transform })
-    expect(report).toMatchObject({ written: [], commits: 0, push: null })
+    expect(report).toMatchObject({ written: [], commits: 0, push: null, planned: [], unchanged: 1 })
     expect(transform.calls).toBe(1)
   })
 
@@ -146,6 +147,7 @@ describe('deployNotes', () => {
     await note('vid1', 'summary', { ...BASE, generated_at: 'T2' })
     const report = await deployNotes({ cfg })
     expect(report.written).toContain('vid1/summary.hu.mdx')
+    expect(report.planned[0]?.action).toBe('update')
     expect(await show('content/notes/vid1/summary.hu.mdx')).toContain('generated_at: T2')
   })
 
@@ -299,7 +301,8 @@ describe('deployNotes', () => {
     const stray = join(clone, 'content', 'notes', 'vid1', 'summary.hu.mdx')
     await mkdir(dirname(stray), { recursive: true })
     await writeFile(stray, 'félbemaradt')
-    await deployNotes({ cfg })
+    const report = await deployNotes({ cfg })
+    expect(report.pendingCommits).toBe(1)
     expect(await show('content/notes/vid1/summary.hu.mdx')).toBe('félbemaradt')
   })
 
@@ -317,7 +320,12 @@ describe('deployNotes', () => {
     await rm(join(remote, 'deny'))
     const second = await deployNotes({ cfg })
     expect(second.push?.pushed).toBe(true)
+    expect(second.pendingCommits).toBe(1)
+    expect(deployLines(second)).toContain('deploy: korábbi futás függő munkája is kimegy: 1 commit')
     expect(await remoteHas('content/notes/vid1/summary.hu.mdx')).toBe(true)
+    const third = await deployNotes({ cfg })
+    expect(third.pendingCommits).toBe(0)
+    expect(deployLines(third).join('\n')).not.toContain('függő munka')
   })
 
   it('elutasított push után előrelépett távoli main mellett is pusholja', async () => {
@@ -402,17 +410,24 @@ describe('deployNotes', () => {
     })
 
     it('kétszer bukott oldal mdx_failed-et kap, a következő futás nem hív, a --retry-failed igen', async () => {
-      await note('vid1', 'summary', BASE)
+      const vaultPath = await note('vid1', 'summary', BASE)
       const transform = fakeTransform({ kind: 'failed', reason: 'szó szerinti eltérés' })
       const report = await deployNotes({ cfg, transform })
       const out = await show('content/notes/vid1/summary.hu.mdx')
       expect(out).toContain('mdx_fallback: true')
       expect(out).toContain('mdx_failed: T1')
       expect(report.skipped.map((s) => s.reason).join('\n')).toContain('LLM-kimenet elvetve')
-      await deployNotes({ cfg, transform })
+      const second = await deployNotes({ cfg, transform })
       expect(transform.calls).toBe(1)
-      await deployNotes({ cfg, transform, retryFailed: true })
+      expect(second.skipped).toContainEqual({
+        path: vaultPath,
+        target: 'vid1/summary.hu.mdx',
+        reason: 'mdx_failed (--retry-failed nélkül)',
+      })
+      expect(deployLines(second)).toContain('  kihagyva: vid1_summary.md — mdx_failed (--retry-failed nélkül)')
+      const retried = await deployNotes({ cfg, transform, retryFailed: true })
       expect(transform.calls).toBe(2)
+      expect(retried.planned).toEqual([{ target: 'vid1/summary.hu.mdx', action: 'retry', route: 'llm' }])
       // új generated_at mellett retryFailed nélkül is hív
       await note('vid1', 'summary', { ...BASE, generated_at: 'T2' })
       await deployNotes({ cfg, transform })
@@ -484,7 +499,7 @@ describe('deployNotes', () => {
   })
 
   it('deployLines kiírja a költséget', () => {
-    const base = { written: [], skipped: [], commits: 0, push: null }
+    const base = { written: [], skipped: [], commits: 0, push: null, planned: [], unchanged: 0, pendingCommits: 0 }
     const usage = { inputTokens: 10, outputTokens: 20, usd: 0.0123, budgetSkipped: 1 }
     expect(deployLines({ ...base, transform: usage })).toContain(
       'deploy: átalakítás: 10+20 token, 0.0123 $, 1 oldal kimaradt a költségplafon miatt',
