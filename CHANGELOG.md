@@ -3,6 +3,29 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.27.0] — 2026-11-01
+
+A Telegram „kész” üzenet linkje a site-ra mutat, és a `refinery deploy` a nem
+magyar és nem angol nyelvű eredeti jegyzeteket is kiviszi a site-ra.
+
+### ✨ Újdonságok
+
+- **Link a site-ra:** a Worker a jegyzetlinket az új `SITE_URL` változóból
+  építi (éles értéke `https://transcripts.peteroncode.dev`). Az alaprecept
+  linkje nyelv nélküli, a `hu` és `en` fordításé a nyelvi úton nyílik. Más
+  célnyelvű fordításnál és üres `SITE_URL` esetén a link a Worker `/notes`
+  oldalára mutat; a `/link` mindig a Workeren marad (#279).
+- **Más nyelvű eredetik:** a deploy kiviszi azt az eredetit, amelynek nyelve a
+  site ISO 639-1 listáján szerepel (pl. holland); a fordítás továbbra is csak
+  `hu` vagy `en` lehet. A bevezető Callout címe holland, német, spanyol, francia
+  és olasz nyelven is megvan, más nyelvre „In brief” (#334).
+
+### 🔧 Javítások
+
+- **Eredeti nélküli fordítás:** az a fordítás, amelynek az eredetije nincs a
+  site-on, kimarad `nincs eredeti változat a site-on` okkal, hogy a site
+  buildje ne bukjon el (#334).
+
 ## [1.26.0] — 2026-10-31
 
 A `refinery deploy` mostantól célzottan is futtatható: egy-egy tételre, fajtára,
@@ -1216,6 +1239,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.27.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.27.0
 [1.26.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.26.0
 [1.25.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.25.0
 [1.24.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.24.0
