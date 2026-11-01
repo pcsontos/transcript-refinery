@@ -28,13 +28,13 @@ describe('variantOf', () => {
     })
   })
 
-  it('nem hu/en fordítás kimarad, nem hu/en szójegyzék eredetiként kimegy', () => {
+  it('nem hu/en fordítás és nem hu/en szójegyzék kimarad (a szójegyzék viselkedése változatlan)', () => {
     const tr = { ...BASE, language: 'de', translation_of: 'summary', source_language: 'hu', source_generated_at: 'T1' }
     expect(variantOf('X', { vaultKind: 'summary-de', fields: tr }, NONE, null)).toEqual({ ok: false, reason: 'nyelv: de' })
     const siblings = new Map([['summary', { source: 'youtube' }]])
-    expect(variantOf('X', { vaultKind: 'glossary-nl', fields: { ...BASE, language: 'nl' } }, siblings, 'T2')).toMatchObject({
-      ok: true,
-      target: 'X/glossary.nl.mdx',
+    expect(variantOf('X', { vaultKind: 'glossary-nl', fields: { ...BASE, language: 'nl' } }, siblings, 'T2')).toEqual({
+      ok: false,
+      reason: 'nyelv: nl',
     })
   })
 

@@ -58,7 +58,8 @@ export function variantOf(
 ): Variant {
   const { vaultKind, fields } = note
   const lang = noOrig(fields.language)
-  const known = fields.translation_of !== undefined ? TRANSLATION_LANGUAGES.includes(lang) : ISO_639_1.has(lang)
+  // a szójegyzék nyelve marad hu/en (a spec: változatlan); másképp egy második eredeti törné a site buildjét
+  const known = fields.translation_of === undefined && !/^glossary-/.test(vaultKind) ? ISO_639_1.has(lang) : TRANSLATION_LANGUAGES.includes(lang)
   if (!known) {
     return { ok: false, reason: `nyelv: ${textOf(fields.language) || 'ismeretlen'}` }
   }
