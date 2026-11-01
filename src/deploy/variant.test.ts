@@ -11,15 +11,30 @@ describe('variantOf', () => {
     if (v.ok) expect(v.fields).toMatchObject({ language: 'hu', kind: 'summary', title: 'Cím' })
   })
 
-  it('de eredeti kimarad', () => {
-    expect(variantOf('X', { vaultKind: 'summary', fields: { ...BASE, language: 'de' } }, NONE, null)).toEqual({
+  it('listás nyelvű eredeti kimegy, a listán kívüli és a hiányzó kimarad', () => {
+    expect(variantOf('X', { vaultKind: 'summary', fields: { ...BASE, language: 'nl-orig' } }, NONE, null)).toMatchObject({
+      ok: true,
+      target: 'X/summary.nl.mdx',
+      language: 'nl',
+    })
+    expect(variantOf('X', { vaultKind: 'summary', fields: { ...BASE, language: 'xx' } }, NONE, null)).toEqual({
       ok: false,
-      reason: 'nyelv: de',
+      reason: 'nyelv: xx',
     })
     const { language: _l, ...nincs } = BASE
     expect(variantOf('X', { vaultKind: 'summary', fields: nincs }, NONE, null)).toEqual({
       ok: false,
       reason: 'nyelv: ismeretlen',
+    })
+  })
+
+  it('nem hu/en fordítás kimarad, nem hu/en szójegyzék eredetiként kimegy', () => {
+    const tr = { ...BASE, language: 'de', translation_of: 'summary', source_language: 'hu', source_generated_at: 'T1' }
+    expect(variantOf('X', { vaultKind: 'summary-de', fields: tr }, NONE, null)).toEqual({ ok: false, reason: 'nyelv: de' })
+    const siblings = new Map([['summary', { source: 'youtube' }]])
+    expect(variantOf('X', { vaultKind: 'glossary-nl', fields: { ...BASE, language: 'nl' } }, siblings, 'T2')).toMatchObject({
+      ok: true,
+      target: 'X/glossary.nl.mdx',
     })
   })
 

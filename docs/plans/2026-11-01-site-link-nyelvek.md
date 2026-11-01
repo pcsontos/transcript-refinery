@@ -153,7 +153,7 @@ Expected: PASS. Commit a `commit-message` skill-lel (`feat(worker): …`).
 - Produces: `export const ISO_639_1: ReadonlySet<string>` és `export const TRANSLATION_LANGUAGES: readonly string[]` (`['hu', 'en']`) a `variant.ts`-ben; a `mdx.ts` ezeket importálja (a saját `LANGUAGES`-e törlődik).
 - Produces: a `SiteLanguage` típus törlődik; ahol állt, `string`.
 
-- [ ] **Step 1: Failing tesztek**
+- [x] **Step 1: Failing tesztek**
 
 `variant.test.ts` — a „de eredeti kimarad" teszt helyére:
 
@@ -195,29 +195,29 @@ expect(mdxPrompt({ ...base, language: 'pt' })).toContain('title="In brief"')
 
 (a `base`-ben a `language: 'hu' as const` → `language: 'hu'`).
 
-- [ ] **Step 2: Futtatás, bukik**
+- [x] **Step 2: Futtatás, bukik**
 
 Run: `pnpm vitest run src/deploy/variant.test.ts src/deploy/mdx.test.ts src/deploy/llm.test.ts`
 Expected: FAIL a fenti elvárásokon.
 
-- [ ] **Step 3: Nyelvi szabály**
+- [x] **Step 3: Nyelvi szabály**
 
 - `variant.ts`: `ISO_639_1` a showroom `lib/note-frontmatter.ts:7-20` listájának betű szerinti másolata, fölötte egysoros megjegyzés a forrással (a `mdx.ts:90` „átirata" mintájára). A `variantOf` feltétele: `fields.translation_of !== undefined ? TRANSLATION_LANGUAGES.includes(lang) : ISO_639_1.has(lang)`; a kihagyási ok változatlan (`nyelv: …`).
 - `mdx.ts` `frontmatterError`: a site szövegeivel (`lib/note-frontmatter.ts:31-36`): fordításnál `${target}: a fordítás nyelvi suffixe (${language}) csak hu vagy en lehet`, eredetinél `${target}: az eredeti változat nyelvi suffixe (${language}) nem kétbetűs, kisbetűs ISO 639-1 kód`.
 - `llm.ts`: a `LANGUAGE_NAMES` helyett `new Intl.DisplayNames(['en'], { type: 'language' }).of(language)`; az `INTRO_TITLES` `Record<string, string>` a Global Constraints hét értékével, a két felhasználási helyen `INTRO_TITLES[language] ?? 'In brief'`.
 - `SiteLanguage` törlése, a négy helyen `string`.
 
-- [ ] **Step 4: Futtatás, zöld**
+- [x] **Step 4: Futtatás, zöld**
 
 Run: `pnpm vitest run src/deploy && pnpm typecheck`
 Expected: PASS.
 
-- [ ] **Step 5: Doksi**
+- [x] **Step 5: Doksi**
 
 - `docs/usage.md:355`: „a nem `hu`/`en` nyelvűt" → „a site listáján (ISO 639-1) kívüli vagy hiányzó nyelvűt, a nem `hu`/`en` célnyelvű fordítást".
 - deploy-spec `:48` és `:135`: a nyelvi kihagyás csak a listán kívüli / hiányzó eredeti nyelvre és a nem `hu`/`en` fordításra vonatkozik (#334); a `:135` „nem hu/en eredeti (showroom #11)" pont törlődik.
 
-- [ ] **Step 6: Teljes ellenőrzés és commit**
+- [x] **Step 6: Teljes ellenőrzés és commit**
 
 Run: `pnpm typecheck && pnpm lint && pnpm test`
 Expected: PASS. Commit (`feat(deploy): …`).

@@ -20,7 +20,7 @@ import { FRONTMATTER } from '../vault/lint.js'
 import { cardsMdx } from './cards.js'
 import type { Transform, TransformUsage } from './llm.js'
 import { type Contract, escapeMdx, frontmatterError, mdxErrors, renderMdx } from './mdx.js'
-import { type SiteLanguage, siteKindOf, variantOf } from './variant.js'
+import { siteKindOf, variantOf } from './variant.js'
 
 export type Route = 'llm' | 'cards' | 'plain'
 export type DeployAction = 'new' | 'update' | 'retry' | 'regenerate'
@@ -100,7 +100,7 @@ interface Candidate {
   path: string
   target: string
   siteKind: string
-  language: SiteLanguage
+  language: string
   fields: Record<string, unknown>
   body: string
   original: boolean
