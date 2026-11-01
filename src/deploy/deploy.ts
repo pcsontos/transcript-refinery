@@ -245,6 +245,14 @@ export async function deployNotes(input: {
       }
     }
 
+    // A site buildje eredeti nélküli fordításnál elbukna, ezért az árva fordítás kimarad.
+    const withOriginal = new Set([...candidates.values()].filter((c) => c.original).map((c) => c.siteKind))
+    for (const [target, c] of candidates) {
+      if (c.original || withOriginal.has(c.siteKind)) continue
+      candidates.delete(target)
+      if (kindMatches(c.siteKind)) report.skipped.push({ path: c.path, reason: 'nincs eredeti változat a site-on' })
+    }
+
     const written: string[] = []
     const ordered = [...candidates.values()].sort((a, b) => Number(b.original) - Number(a.original) || a.target.localeCompare(b.target))
     for (const c of ordered.filter((o) => kindMatches(o.siteKind))) {

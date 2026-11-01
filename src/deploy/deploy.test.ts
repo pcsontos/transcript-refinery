@@ -569,6 +569,40 @@ describe('szűrés', () => {
     expect(report.skipped).toEqual([{ path: summaryDe, reason: 'nyelv: de' }])
   })
 
+  it('az eredeti nélküli fordítás kimarad, a napló megnevezi', async () => {
+    const orig = await note('vid1', 'summary', { ...BASE, language: 'xx' })
+    const tr = await note('vid1', 'summary-hu', {
+      ...BASE,
+      language: 'hu',
+      translation_of: 'summary',
+      source_language: 'xx',
+      source_generated_at: 'T1',
+    })
+    const report = await deployNotes({ cfg })
+    expect(report.skipped).toEqual(
+      expect.arrayContaining([
+        { path: orig, reason: 'nyelv: xx' },
+        { path: tr, reason: 'nincs eredeti változat a site-on' },
+      ]),
+    )
+    expect(await remoteHas('content/notes/vid1/summary.hu.mdx')).toBe(false)
+  })
+
+  it('szűrt futásban az árva fordítás oka csak a szűrt fajtánál látszik', async () => {
+    await note('vid1', 'summary', { ...BASE, language: 'xx' })
+    const tr = await note('vid1', 'summary-hu', {
+      ...BASE,
+      language: 'hu',
+      translation_of: 'summary',
+      source_language: 'xx',
+      source_generated_at: 'T1',
+    })
+    await note('vid1', 'qa-hu', { ...BASE, language: 'hu', translation_of: 'qa', source_language: 'xx', source_generated_at: 'T1' })
+    const report = await deployNotes({ cfg, filter: { items: ['vid1'], kinds: ['summary'] } })
+    expect(report.skipped).toContainEqual({ path: tr, reason: 'nincs eredeti változat a site-on' })
+    expect(report.skipped.some((x) => x.path.endsWith('vid1_qa-hu.md'))).toBe(false)
+  })
+
   it('fajtaszűrés mellett a szójegyzék megkapja a testvér forrás-adatát', async () => {
     await note('vid1', 'summary', BASE)
     await note('vid1', 'glossary-hu', { title: 'Cím', language: 'hu', source_language: 'en' }, '| a | b |\n')

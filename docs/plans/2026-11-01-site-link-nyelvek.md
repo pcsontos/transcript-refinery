@@ -233,7 +233,7 @@ Expected: PASS. Commit (`feat(deploy): …`).
 **Interfaces:**
 - Consumes: a 2. feladat nyelvi szabálya (`xx` eredeti → kihagyás).
 
-- [ ] **Step 1: Failing tesztek a `deploy.test.ts`-ben**
+- [x] **Step 1: Failing tesztek a `deploy.test.ts`-ben**
 
 ```ts
 it('az eredeti nélküli fordítás kimarad, a napló megnevezi', async () => {
@@ -265,21 +265,21 @@ it('szűrt futásban az árva fordítás oka csak a szűrt fajtánál látszik',
 
 (Ha a `DeployFilter` mezőnevei mások, a `deploy.ts:52` szerint kell igazítani; a viselkedés a lényeg.)
 
-- [ ] **Step 2: Futtatás, bukik**
+- [x] **Step 2: Futtatás, bukik**
 
 Run: `pnpm vitest run src/deploy/deploy.test.ts`
 Expected: FAIL (a fordítás kimegy, nincs ilyen ok).
 
-- [ ] **Step 3: Szűrés a `deploy.ts`-ben**
+- [x] **Step 3: Szűrés a `deploy.ts`-ben**
 
 A jelöltgyűjtő `for` ciklus után, az `ordered` előtt: azoknak a fajtáknak a halmaza, amelyeknek van eredeti jelöltje (`c.original`); a többi fajtájú, nem eredeti jelölt törlődik a `candidates`-ből, és ha `kindMatches(c.siteKind)`, a `report.skipped`-be kerül a fenti okkal. A szárazfutás ugyanezt a ciklust használja (`deploy.ts:265`), külön ág nem kell.
 
-- [ ] **Step 4: Futtatás, zöld; meglévő tesztek**
+- [x] **Step 4: Futtatás, zöld; meglévő tesztek**
 
 Run: `pnpm vitest run src/deploy`
 Expected: PASS. Ha egy meglévő teszt csak fordítást deployol eredeti nélkül, a teszt kapja meg az eredetit (`note(…, 'summary', BASE)`); a szabály nem lazul (Review Focus 5).
 
-- [ ] **Step 5: Teljes ellenőrzés és commit**
+- [x] **Step 5: Teljes ellenőrzés és commit**
 
 Run: `pnpm typecheck && pnpm lint && pnpm test`
 Expected: PASS. Commit (`fix(deploy): …`).
