@@ -50,7 +50,7 @@
 - Produces: `runReadyMessage(title: string, run: Pick<RunRow, 'jobId' | 'recipes' | 'lang'>, linkBase: string, siteUrl: string, kinds?: readonly string[]): string` — a `siteUrl` a `linkBase` után, a `kinds` előtt.
 - Produces: `WorkerDeps.siteUrl: string`.
 
-- [ ] **Step 0: Cloudflare dashboard ellenőrzése (kézi, a felhasználó)**
+- [x] **Step 0: Cloudflare dashboard ellenőrzése (kézi, a felhasználó)**
 
 A fájlbeli `[vars]` deploykor lecseréli a dashboardon kézzel állított sima változókat. Cloudflare → Workers → `transcript-refinery` → Settings → Variables and Secrets: csak **Secret** típusú sorok legyenek. Ha van sima (Plaintext) változó, az is kerüljön a `[vars]`-ba, különben a deploy törli. Eredmény a PR-leírásba.
 
