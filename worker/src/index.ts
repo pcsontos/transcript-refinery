@@ -20,6 +20,7 @@ interface Env {
   TELEGRAM_WEBHOOK_SECRET: string
   REFINERY_SERVE_SECRET: string
   SERVE_URL: string
+  SITE_URL?: string
 }
 
 interface ExecutionContext {
@@ -80,6 +81,7 @@ function deps(env: Env, linkBase = ''): WorkerDeps {
     allowedEmails: env.TELEGRAM_ALLOWED_EMAILS,
     botUsername: env.TELEGRAM_BOT_USERNAME,
     linkBase,
+    siteUrl: env.SITE_URL ?? '',
     store: createD1Store(env.DB),
     now: () => Date.now(),
     newToken,

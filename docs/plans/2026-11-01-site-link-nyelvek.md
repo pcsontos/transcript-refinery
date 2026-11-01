@@ -54,7 +54,7 @@
 
 A fájlbeli `[vars]` deploykor lecseréli a dashboardon kézzel állított sima változókat. Cloudflare → Workers → `transcript-refinery` → Settings → Variables and Secrets: csak **Secret** típusú sorok legyenek. Ha van sima (Plaintext) változó, az is kerüljön a `[vars]`-ba, különben a deploy törli. Eredmény a PR-leírásba.
 
-- [ ] **Step 1: Failing tesztek a `plan.test.ts`-ben**
+- [x] **Step 1: Failing tesztek a `plan.test.ts`-ben**
 
 A meglévő `runReadyMessage`-hívások (`:151`, `:298`, `:301`) kapnak egy `''` negyedik argumentumot (a mai linkek maradnak). Új teszt:
 
@@ -83,12 +83,12 @@ it('a SITE_URL-lel az alaprecept nyelv nélküli, a hu/en fordítás nyelvi site
 })
 ```
 
-- [ ] **Step 2: Futtatás, bukik**
+- [x] **Step 2: Futtatás, bukik**
 
 Run: `pnpm vitest run worker/src/plan.test.ts`
 Expected: FAIL (a site-linkes elvárások; a régi hívások a plusz `''`-vel még zöldek lehetnek).
 
-- [ ] **Step 3: `noteLink` és az új `runReadyMessage`-szignatúra a `plan.ts`-ben**
+- [x] **Step 3: `noteLink` és az új `runReadyMessage`-szignatúra a `plan.ts`-ben**
 
 ```ts
 const SITE_TRANSLATIONS = ['hu', 'en']
@@ -105,23 +105,23 @@ export function noteLink(run: Pick<RunRow, 'jobId' | 'lang'>, kind: string, link
 
 A `runReadyMessage` törzsében a link `noteLink(run, kind, linkBase, siteUrl)`.
 
-- [ ] **Step 4: `WorkerDeps.siteUrl`, a négy hívó és az `index.ts`**
+- [x] **Step 4: `WorkerDeps.siteUrl`, a négy hívó és az `index.ts`**
 
 - `handle.ts`: `WorkerDeps`-be `siteUrl: string`; a négy `runReadyMessage(…, deps.linkBase, …)` hívás `deps.linkBase, deps.siteUrl`-t ad át (a `:605`-ös a `body.done`-t ötödiknek).
 - `index.ts`: `Env`-be `SITE_URL?: string`; a `deps()` visszaadott objektumába `siteUrl: env.SITE_URL ?? ''`.
 - `handle.test.ts`: a `deps()` gyár (`:57`) alapértéke `siteUrl: ''`.
 
-- [ ] **Step 5: Failing tesztek a `handle.test.ts`-ben**
+- [x] **Step 5: Failing tesztek a `handle.test.ts`-ben**
 
 - A `/start` teszt (`:663` körül) mintájára: `deps(store, { siteUrl: 'https://site.test' })` mellett a küldött sor továbbra is `https://worker.test/link?t=${TOKEN_A}`.
 - A `:378`-as kész-visszahívás teszt mintájára: `siteUrl: 'https://site.test'` mellett a küldött üzenet `Cím · notes. A jegyzet megvan.\nhttps://site.test/notes/${ID}/notes`.
 
-- [ ] **Step 6: Futtatás, zöld**
+- [x] **Step 6: Futtatás, zöld**
 
 Run: `pnpm vitest run worker/src/plan.test.ts worker/src/handle.test.ts && npx tsc -p worker/tsconfig.json --noEmit`
 Expected: PASS, típushiba nincs.
 
-- [ ] **Step 7: Konfiguráció és doksi**
+- [x] **Step 7: Konfiguráció és doksi**
 
 - `worker/wrangler.toml` végére:
   ```toml
@@ -132,7 +132,7 @@ Expected: PASS, típushiba nincs.
 - `scripts/telegram-debug.sh`: a `.dev.vars`-blokkba `printf 'SITE_URL=\n'` (a helyben készült jegyzet nem kerül a site-ra).
 - `docs/operations/telegram-worker-topology.md` táblájába sor: **Jegyzetlink alapja (`SITE_URL`)** | `worker/wrangler.toml` `[vars]` | `https://transcripts.peteroncode.dev`; alaprecept nyelv nélkül (a site a böngésző nyelvére irányít), `hu`/`en` fordítás a nyelvi úton, más célnyelv és üres érték a Worker `/notes` linkje; a `/link` mindig a Workeren.
 
-- [ ] **Step 8: Teljes ellenőrzés és commit**
+- [x] **Step 8: Teljes ellenőrzés és commit**
 
 Run: `pnpm typecheck && pnpm lint && pnpm test`
 Expected: PASS. Commit a `commit-message` skill-lel (`feat(worker): …`).

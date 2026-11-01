@@ -148,7 +148,7 @@ describe('mondatok', () => {
   })
 
   it('a cím újsora és vezérlőkaraktere egy szóköz, a link marad a második sor', () => {
-    expect(runReadyMessage('Cím\nhttps://evil.example\u0007', run({ recipes: ['notes'] }), 'https://w.test')).toBe(
+    expect(runReadyMessage('Cím\nhttps://evil.example\u0007', run({ recipes: ['notes'] }), 'https://w.test', '')).toBe(
       `Cím https://evil.example · notes. A jegyzet megvan.\nhttps://w.test/notes/${ID}/notes`,
     )
     expect(readyLine('Cím\r\nmásodik')).toBe('Cím második. A felirat megvan.')
@@ -295,11 +295,34 @@ describe('futások', () => {
     expect(runQueuedLine({ videoId: 'abcdefghijk', title: 'Egy\nkettő' }, part)).toBe(
       'Sorba került [abcdefghijk] Egy kettő: qa',
     )
-    expect(runReadyMessage('Cím\n', run({ recipes: ['notes'] }), 'https://w.test')).toBe(
+    expect(runReadyMessage('Cím\n', run({ recipes: ['notes'] }), 'https://w.test', '')).toBe(
       `Cím · notes. A jegyzet megvan.\nhttps://w.test/notes/${ID}/notes`,
     )
-    expect(runReadyMessage('Cím', run({ recipes: ['summary', 'notes'], lang: 'de' }), 'https://w.test')).toBe(
+    expect(runReadyMessage('Cím', run({ recipes: ['summary', 'notes'], lang: 'de' }), 'https://w.test', '')).toBe(
       `Cím · de. A fordítás megvan.\nhttps://w.test/notes/${ID}/summary-de\nhttps://w.test/notes/${ID}/notes-de`,
+    )
+  })
+
+  it('a SITE_URL-lel az alaprecept nyelv nélküli, a hu/en fordítás nyelvi site-link, a többi Worker-link', () => {
+    const site = 'https://site.test'
+    expect(runReadyMessage('Cím', run({ recipes: ['notes'] }), 'https://w.test', site)).toBe(
+      `Cím · notes. A jegyzet megvan.\nhttps://site.test/notes/${ID}/notes`,
+    )
+    expect(runReadyMessage('Cím', run({ recipes: ['summary', 'qa'], lang: 'en' }), 'https://w.test', site)).toBe(
+      `Cím · en. A fordítás megvan.\nhttps://site.test/en/notes/${ID}/summary\nhttps://site.test/en/notes/${ID}/qa`,
+    )
+    expect(runReadyMessage('Cím', run({ recipes: ['summary'], lang: 'hu' }), 'https://w.test', site)).toBe(
+      `Cím · hu. A fordítás megvan.\nhttps://site.test/hu/notes/${ID}/summary`,
+    )
+    expect(runReadyMessage('Cím', run({ recipes: ['summary'], lang: 'de' }), 'https://w.test', site)).toBe(
+      `Cím · de. A fordítás megvan.\nhttps://w.test/notes/${ID}/summary-de`,
+    )
+    expect(runReadyMessage('Cím', run({ recipes: ['notes'] }), 'https://w.test', 'https://site.test/')).toBe(
+      `Cím · notes. A jegyzet megvan.\nhttps://site.test/notes/${ID}/notes`,
+    )
+    // done-ág: a kész részek fajtanevei <recept>-<nyelv> alakúak
+    expect(runReadyMessage('Cím', run({ recipes: ['summary', 'qa'], lang: 'en' }), 'https://w.test', site, ['summary-en'])).toBe(
+      `Cím · en. A fordítás megvan.\nhttps://site.test/en/notes/${ID}/summary`,
     )
   })
 

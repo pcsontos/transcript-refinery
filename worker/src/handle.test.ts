@@ -77,6 +77,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
     allowedEmails: 'en@example.com',
     botUsername: 'refinery_bot',
     linkBase: 'https://worker.test',
+    siteUrl: '',
     store,
     now: () => 1_000_000,
     newToken: () => String.fromCharCode(65 + next++).repeat(43),
@@ -382,6 +383,15 @@ describe('handleCallback', () => {
     expect(repeat.sent).toEqual([])
   })
 
+  it('a SITE_URL mellett a kész futás linkje a site-ra mutat', async () => {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['notes'], null, { status: 'accepted', notified: false }))
+    const site = deps(store, { siteUrl: 'https://site.test' })
+    await handleCallback(`5:${ID}:notes`, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, site)
+    expect(site.sent).toEqual([`Cím · notes. A jegyzet megvan.\nhttps://site.test/notes/${ID}/notes`])
+  })
+
   it('a futás hibasora a chatbe megy, a futás failed, a felirat sora marad', async () => {
     const store = await boundStore()
     await store.insert(readyRow())
@@ -672,6 +682,12 @@ describe('kötés', () => {
       used: false,
     })
     expect(await store.token(await hashToken(TOKEN_B))).toBeNull()
+  })
+
+  it('a SITE_URL mellett is a Worker originjén marad a /link', async () => {
+    const flow = deps(memoryStore(), { siteUrl: 'https://site.test' })
+    await handleUpdate(message(2, 42, '/start'), flow)
+    expect(flow.sent).toEqual([`Kösd össze a Google-fiókoddal (10 percig érvényes): https://worker.test/link?t=${TOKEN_A}`])
   })
 
   it('a /link visszatérő tokenre irányít, a visszatérés köt, és a régi sorok a fiókhoz kerülnek', async () => {
@@ -1352,7 +1368,7 @@ describe('szöveges bemenet', () => {
 
   it('a kész futás linkje /notes/t-…/summary', async () => {
     const id = await textItemId(BODY)
-    expect(runReadyMessage('Cím', { jobId: `5:${id}`, recipes: ['summary'], lang: null }, 'https://worker.test')).toBe(
+    expect(runReadyMessage('Cím', { jobId: `5:${id}`, recipes: ['summary'], lang: null }, 'https://worker.test', '')).toBe(
       `Cím · summary. A jegyzet megvan.\nhttps://worker.test/notes/${id}/summary`,
     )
   })
