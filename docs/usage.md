@@ -352,7 +352,7 @@ node dist/cli.js deploy
 - **Mit visz ki:** az eredeti és a fordított jegyzeteket, valamint a szójegyzéket
   (`glossary.<nyelv>.mdx`). A nyers átirat nem megy ki. A `-orig` nyelvi végződés
   levágódik (`hu-orig` → `hu`), a hiányzó `origin` pótlódik.
-- **Mit hagy ki, és miért:** a nem `hu`/`en` nyelvűt, a hiányos fordítás-mezőjűt
+- **Mit hagy ki, és miért:** a site listáján (ISO 639-1) kívüli vagy hiányzó nyelvűt, a nem `hu`/`en` célnyelvű fordítást, a hiányos fordítás-mezőjűt
   (nincs `source_language`, vagy nincs `source_generated_at` és az eredeti sincs a
   vaultban), a `generated_at` nélkülit. A kihagyott fájlok neve okkal együtt
   kiíródik; ezek nem hibák. Az `mdx_failed` oldal is kihagyottként, okkal listázódik. **Szó nélkül** kimarad az a jegyzet, amelynek a

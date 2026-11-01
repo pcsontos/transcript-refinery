@@ -58,7 +58,7 @@ const run = (transform: ReturnType<typeof createMdxTransform>, body: string, lan
   transform.run({ siteKind: 'summary', body, language, contract: CONTRACT })
 
 describe('mdxPrompt', () => {
-  const base = { text: 'Szöveg.', language: 'hu' as const, contract: CONTRACT, intro: 'inline' as const }
+  const base = { text: 'Szöveg.', language: 'hu', contract: CONTRACT, intro: 'inline' as const }
 
   it('a prompt a szerződés komponenseit sorolja', () => {
     const contract: Contract = { components: { ...CONTRACT.components, Foo: { attributes: {} } } }
@@ -70,6 +70,9 @@ describe('mdxPrompt', () => {
   it('a bevezető címszavát nyelv szerint kéri', () => {
     expect(mdxPrompt(base)).toContain('title="Röviden"')
     expect(mdxPrompt({ ...base, language: 'en' })).toContain('title="In brief"')
+    expect(mdxPrompt({ ...base, language: 'nl' })).toContain('title="Kort gezegd"')
+    expect(mdxPrompt({ ...base, language: 'nl' })).toContain('introduction in Dutch')
+    expect(mdxPrompt({ ...base, language: 'pt' })).toContain('title="In brief"')
     expect(mdxPrompt({ ...base, intro: 'none' })).not.toContain('Callout type="note"')
   })
 })

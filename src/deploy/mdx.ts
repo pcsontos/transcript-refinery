@@ -1,6 +1,7 @@
 import { compile } from '@mdx-js/mdx'
 import { stringify } from 'yaml'
 import { FRONTMATTER } from '../vault/lint.js'
+import { ISO_639_1, TRANSLATION_LANGUAGES } from './variant.js'
 
 /** A showroom `contract/mdx-components.json` alakja. */
 export interface Contract {
@@ -89,7 +90,6 @@ export function renderMdx(fields: Record<string, unknown>, body: string): string
 
 // a site lib/note-frontmatter.ts-ének átirata (f1d7f0d); a path a content/notes-hoz képest
 const PATH = /^([^/]+)\/([^/.]+)\.([^/.]+)\.mdx$/
-const LANGUAGES = ['hu', 'en']
 const TRANSLATION_FIELDS = ['translation_of', 'source_language', 'source_generated_at']
 const REQUIRED = ['item_id', 'title', 'kind', 'language', 'generated_at', 'source', 'origin']
 // a site lib/source.ts sémájának (fumadocs pageSchema + extend) opcionális mezői
@@ -108,8 +108,12 @@ export function frontmatterError(target: string, fields: Record<string, unknown>
   const match = PATH.exec(target)
   if (!match) return `${target}: nem <tétel>/<fajta>.<nyelv>.mdx alakú`
   const [, itemId, kind, language] = match as unknown as [string, string, string, string]
-  if (!LANGUAGES.includes(language)) {
-    return `${target}: a nyelvi suffix (${language}) csak ${LANGUAGES.join(' vagy ')} lehet`
+  if (fields.translation_of !== undefined) {
+    if (!TRANSLATION_LANGUAGES.includes(language)) {
+      return `${target}: a fordítás nyelvi suffixe (${language}) csak ${TRANSLATION_LANGUAGES.join(' vagy ')} lehet`
+    }
+  } else if (!ISO_639_1.has(language)) {
+    return `${target}: az eredeti változat nyelvi suffixe (${language}) nem kétbetűs, kisbetűs ISO 639-1 kód`
   }
   if (fields.item_id !== itemId) return `${target}: az item_id nem a mappa neve (${itemId})`
   if (fields.kind !== kind) return `${target}: a kind nem a fájlnév fajtája (${kind})`

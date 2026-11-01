@@ -140,7 +140,9 @@ describe('frontmatterError', () => {
   })
 
   it('a site szabályait érvényesíti', () => {
-    expect(frontmatterError('X/summary.de.mdx', FIELDS)).toMatch(/nyelvi suffix/)
+    expect(frontmatterError('X/summary.nl.mdx', { ...FIELDS, language: 'nl' })).toBeNull()
+    expect(frontmatterError('X/summary.xx.mdx', { ...FIELDS, language: 'xx' })).toMatch(/ISO 639-1/)
+    expect(frontmatterError('X/summary.nl.mdx', { ...TR, language: 'nl' })).toMatch(/fordítás nyelvi suffixe/)
     expect(frontmatterError('X/clean.hu.mdx', FIELDS)).toMatch(/kind/)
     expect(frontmatterError('X/summary.hu.mdx', { ...FIELDS, source_language: 'en' })).toMatch(/csak együtt/)
     expect(frontmatterError('X/summary.hu.mdx', { ...TR, translation_of: 'clean' })).toMatch(/translation_of/)

@@ -165,10 +165,22 @@ export function videoIdOf(jobId: string): string {
   return jobId.slice(jobId.lastIndexOf(':') + 1)
 }
 
+const SITE_TRANSLATIONS = ['hu', 'en']
+
+/** A jegyzet linkje: `siteUrl`-lel a site-ra (alaprecept nyelv nélkül, hu/en fordítás nyelvvel), különben a Workerre. */
+export function noteLink(run: Pick<RunRow, 'jobId' | 'lang'>, kind: string, linkBase: string, siteUrl: string): string {
+  const id = videoIdOf(run.jobId)
+  const site = siteUrl.replace(/\/+$/, '')
+  if (site === '' || (run.lang !== null && !SITE_TRANSLATIONS.includes(run.lang))) return `${linkBase}/notes/${id}/${kind}`
+  if (run.lang === null) return `${site}/notes/${id}/${kind}`
+  return `${site}/${run.lang}/notes/${id}/${kind.slice(0, -(run.lang.length + 1))}`
+}
+
 export function runReadyMessage(
   title: string,
   run: Pick<RunRow, 'jobId' | 'recipes' | 'lang'>,
   linkBase: string,
+  siteUrl: string,
   /** Az elkészült jegyzetek fajtái; hiányában a futás összes fajtája. Leállt futásnál csak a kész részek. */
   kinds: readonly string[] = runKinds(run),
 ): string {
@@ -176,7 +188,7 @@ export function runReadyMessage(
     run.lang === null
       ? `${flatTitle(title)} · ${run.recipes.join(', ')}. A jegyzet megvan.`
       : `${flatTitle(title)} · ${run.lang}. A fordítás megvan.`
-  return [head, ...kinds.map((kind) => `${linkBase}/notes/${videoIdOf(run.jobId)}/${kind}`)].join('\n')
+  return [head, ...kinds.map((kind) => noteLink(run, kind, linkBase, siteUrl))].join('\n')
 }
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/

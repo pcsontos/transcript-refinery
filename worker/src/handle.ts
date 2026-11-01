@@ -94,6 +94,8 @@ export interface WorkerDeps {
   allowedEmails: string
   botUsername: string
   linkBase: string
+  /** A site origin-je; üresen a jegyzetlinkek a Workerre mutatnak. */
+  siteUrl: string
   store: JobStore
   now: () => number
   newToken: () => string
@@ -586,7 +588,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
       row.chatId,
       body.status === 'failed'
         ? runFailedLine(row, run, body.error)
-        : runReadyMessage(body.title, run, deps.linkBase),
+        : runReadyMessage(body.title, run, deps.linkBase, deps.siteUrl),
     )
     return
   }
@@ -602,7 +604,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
   if (body.status === 'failed' && body.done !== undefined) {
     // Recept-leállás: a rákérdezés már kiment, a záró üzenet csak az elkészült jegyzeteket linkeli (ha van).
     if (body.done.length > 0) {
-      const sent = await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase, body.done))
+      const sent = await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase, deps.siteUrl, body.done))
       if (!sent) return
     }
     run.status = 'failed'
@@ -628,7 +630,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
     return
   }
   run.noteUrl = body.noteUrl
-  const sent = await deps.send(row.chatId, runReadyMessage(body.title, run, deps.linkBase))
+  const sent = await deps.send(row.chatId, runReadyMessage(body.title, run, deps.linkBase, deps.siteUrl))
   if (!sent) {
     run.status = 'accepted'
     await deps.store.saveRun(run)
@@ -696,7 +698,7 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     return []
   }
   if (action.type === 'resend') {
-    if (run !== null) await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase))
+    if (run !== null) await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase, deps.siteUrl))
     return []
   }
   const override = await pickOverride(row, recipes, lang, deps)

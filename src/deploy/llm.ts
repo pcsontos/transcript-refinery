@@ -5,7 +5,6 @@ import { modelConfigFor } from '../model/recipe-model.js'
 import { retrying } from '../model/retry.js'
 import { splitForTranslation } from '../recipe/split.js'
 import { type Contract, escapeMdx, mdxErrors, splitHeader } from './mdx.js'
-import type { SiteLanguage } from './variant.js'
 import { takeIntro, verbatimError } from './verbatim.js'
 
 export type TransformResult =
@@ -22,15 +21,23 @@ export interface TransformUsage {
 
 /** Az LLM-es átalakító (#278): vault-törzsből `.mdx`-törzs. A frontmattert nem írja. */
 export interface Transform {
-  run(input: { siteKind: string; body: string; language: SiteLanguage; contract: Contract }): Promise<TransformResult>
+  run(input: { siteKind: string; body: string; language: string; contract: Contract }): Promise<TransformResult>
   usage(): TransformUsage
 }
 
 export const MDX_MODEL_KEY = 'mdx'
 export const MDX_CHUNK_WORDS = 8000
-export const INTRO_TITLES: Record<SiteLanguage, string> = { hu: 'Röviden', en: 'In brief' }
-
-const LANGUAGE_NAMES: Record<SiteLanguage, string> = { hu: 'Hungarian', en: 'English' }
+export const INTRO_TITLES: Record<string, string> = {
+  hu: 'Röviden',
+  en: 'In brief',
+  nl: 'Kort gezegd',
+  de: 'Kurz gesagt',
+  es: 'En resumen',
+  fr: 'En bref',
+  it: 'In breve',
+}
+const introTitle = (language: string) => INTRO_TITLES[language] ?? 'In brief'
+const LANGUAGE_NAMES = new Intl.DisplayNames(['en'], { type: 'language' })
 const ATTEMPTS = 2
 const ALLOWED_ATTRIBUTES = ['title', 'type']
 
@@ -63,15 +70,15 @@ function componentLines(contract: Contract): string {
 
 export function mdxPrompt(input: {
   text: string
-  language: SiteLanguage
+  language: string
   contract: Contract
   intro: 'inline' | 'none' | 'only'
   part?: { index: number; total: number }
   error?: string
 }): string {
   const { text, language, contract, intro, part, error } = input
-  const callout = `<Callout type="note" title="${INTRO_TITLES[language]}">`
-  const introText = `a short introduction in ${LANGUAGE_NAMES[language]} to the whole text below (what it is about and what the reader takes away), a few sentences or 3–5 bullet points`
+  const callout = `<Callout type="note" title="${introTitle(language)}">`
+  const introText = `a short introduction in ${LANGUAGE_NAMES.of(language) ?? language} to the whole text below (what it is about and what the reader takes away), a few sentences or 3–5 bullet points`
   const rules =
     intro === 'only'
       ? `Write only one ${callout} block: ${introText}. Output nothing else.`
@@ -132,7 +139,7 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
     return { ok: false, reason: error! }
   }
 
-  const base = (language: SiteLanguage, contract: Contract) => ({ language, contract })
+  const base = (language: string, contract: Contract) => ({ language, contract })
 
   return {
     async run({ body, language, contract }) {
@@ -143,7 +150,7 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
       const { header, rest } = splitHeader(body)
       const chunks = splitForTranslation(rest, chunkWords)
       if (chunks.length === 0) return { kind: 'failed', reason: 'üres törzs' }
-      const title = INTRO_TITLES[language]
+      const title = introTitle(language)
       const callout = (intro: string) => `<Callout type="note" title="${title}">\n${intro}\n</Callout>`
       const compile = async (output: string) => (await mdxErrors(output, contract))[0] ?? null
       const sections: string[] = []

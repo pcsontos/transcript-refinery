@@ -45,7 +45,7 @@ Egy vault-fájlból egy **nyelvi változat** lesz:
 A cél: `content/notes/<itemId>/<site-fajta>.<nyelv>.mdx`.
 
 **Kimarad és naplózódik:**
-- a nyelv nem `hu` vagy `en`, vagy hiányzik (eredetinél és fordításnál is; a feloldás a showroom #11, illetve a #281);
+- a nyelv hiányzik, az eredetinél nincs az ISO 639-1 listán, a fordításnál nem `hu` vagy `en` (#334; a további célnyelvek a #281);
 - a fordításnál a `source_language` hiányzik, vagy a `source_generated_at` hiányzik és nem pótolható (lásd a döntéseket);
 - a **nyers átirat** (`_transcript.md`): nem megy a site-ra (felhasználói döntés, 2026-10-24); naplózni sem kell, mert nem hiba;
 - nincs `generated_at` (a szójegyzék kivételével, lent);
@@ -132,7 +132,7 @@ A kihagyott nyelvi változatok listája (ok szerint) a kimenet része: CLI-ben k
 
 - LLM-es átalakítás, prompt, modellbeállítás (#278).
 - A site-repó klónja és push-joga a konténerben (homelab-compose; a felhasználó külön lépésben csinálja, emlékeztető: #322).
-- `de` és más célnyelvek (#281), nem `hu`/`en` eredeti (showroom #11).
+- `de` és más célnyelvek (#281).
 - Törlés a site-ról (showroom #7).
 
 ## Elfogadási feltétel

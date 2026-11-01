@@ -60,6 +60,7 @@ Gyakori kérdés, hogy melyik beállítás hol él a rendszerben:
 | **Telegram Webhook URL** | **A Telegram szerverein** (Telegram Bot API) | Nem lokális fájl! A Telegram API `setWebhook` metódusával lett beállítva: `https://transcript-refinery.peteroncode.workers.dev/telegram`. |
 | **Worker célpont (`SERVE_URL`)** | **Cloudflare Secret** | A Worker ebből tudja, hova kell küldenie a munkát: `https://refinery-mba.peteroncode.dev`. |
 | **Közös titok (`REFINERY_SERVE_SECRET`)** | **Három, egymástól független példány** | Hitelesíti a Worker kéréseit a démon felé (`Authorization: Bearer ...`). Az éles konténer a homelab Infisical-projekt `/MacbookAir/Secrets` mappájából kapja (`just render peter-mba`), a helyi fejlesztés a Transcript Refinery projekt `/peter-mbp` útjáról, a Worker pedig Cloudflare Secretként. Az értékük kézzel van egyeztetve, lásd a „A közös titok rotálása” szakaszt. |
+| **Jegyzetlink alapja (`SITE_URL`)** | `worker/wrangler.toml` `[vars]` | `https://transcripts.peteroncode.dev`. Az alaprecept linkje nyelv nélküli (a site a böngésző nyelvére irányít), a `hu`/`en` fordításé a nyelvi úton; más célnyelv és üres érték esetén a Worker `/notes` linkje. A `/link` mindig a Workeren marad. |
 | **D1 Adatbázis azonosító** | `worker/wrangler.toml` | A Worker adatbázis kötése (`binding = "DB"`, id: `4fd2c124-7dcf-42a9-9e65-2ee224113967`). |
 | **peter-mba Docker környezet** | `homelab/services/refinery/` | `docker-compose.yml` és `config.peter-mba.yaml` kezeli a könyvtárak és hálózatok csatolását. |
 

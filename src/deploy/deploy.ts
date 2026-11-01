@@ -20,7 +20,7 @@ import { FRONTMATTER } from '../vault/lint.js'
 import { cardsMdx } from './cards.js'
 import type { Transform, TransformUsage } from './llm.js'
 import { type Contract, escapeMdx, frontmatterError, mdxErrors, renderMdx } from './mdx.js'
-import { type SiteLanguage, siteKindOf, variantOf } from './variant.js'
+import { siteKindOf, variantOf } from './variant.js'
 
 export type Route = 'llm' | 'cards' | 'plain'
 export type DeployAction = 'new' | 'update' | 'retry' | 'regenerate'
@@ -100,7 +100,7 @@ interface Candidate {
   path: string
   target: string
   siteKind: string
-  language: SiteLanguage
+  language: string
   fields: Record<string, unknown>
   body: string
   original: boolean
@@ -243,6 +243,14 @@ export async function deployNotes(input: {
       } else if (kindMatches(v.siteKind)) {
         report.skipped.push({ path: next.path, reason: `ütközik: ${v.target}` })
       }
+    }
+
+    // A site buildje eredeti nélküli fordításnál elbukna, ezért az árva fordítás kimarad.
+    const withOriginal = new Set([...candidates.values()].filter((c) => c.original).map((c) => c.siteKind))
+    for (const [target, c] of candidates) {
+      if (c.original || withOriginal.has(c.siteKind)) continue
+      candidates.delete(target)
+      if (kindMatches(c.siteKind)) report.skipped.push({ path: c.path, reason: 'nincs eredeti változat a site-on' })
     }
 
     const written: string[] = []
