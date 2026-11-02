@@ -325,7 +325,7 @@ riport, hibák, futások.
 Kötelező a `REFINERY_CONFIG` (a konfig helye), a címet a compose adja (`NITRO_HOST=0.0.0.0`,
 `NITRO_PORT=4310`). A vault és a napló csak olvasható mount; a `/data/state` viszont írható
 kell legyen, mert élő író mellett a WAL-módú állapottár csak olvasható mounton nem nyílik meg
-(a kód így is `readOnly: true`-val nyit). Korlát: a `docker exec … refinery run` futás
+(a kód így is `readOnly: true`-val nyit). A konfigban a `state.path` és a `logs.dir` **abszolút** legyen: a web a relatív utat az image build-idejű `/src/` gyökeréhez oldja, nem a konfig mappájához, és hiba nélkül üres korpuszt mutat. Korlát: a `docker exec … refinery run` futás
 (PID ≠ 1) „meghalt"-nak látszik, miközben fut ([#351](https://github.com/pcsontos/transcript-refinery/issues/351)).
 
 ---

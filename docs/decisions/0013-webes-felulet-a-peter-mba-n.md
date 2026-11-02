@@ -50,4 +50,11 @@ Authelia adja a homelab-oldalon.
   még nincs futás (felirat-letöltés, `notes`), a SIGTERM-et senki nem kezeli.
 - **Ismert korlát:** a `docker exec … refinery run` futás (PID ≠ 1) a
   felületen „meghalt"-nak látszik, miközben fut — [#351](https://github.com/pcsontos/transcript-refinery/issues/351).
+- **Fordított hiba:** a `serve` futásainak `run:started.pid` értéke 1, a web saját
+  PID-terében pedig az 1-es PID mindig a web saját folyamata. Ha egy futás
+  `run:ended` nélkül hal meg (OOM, `docker kill`, SIGKILL a türelmi idő után), a
+  felület örökre „fut"-nak mutatja — ugyanaz az ok, mint a #351-ben.
+- **Abszolút utak:** a web konténerben a konfig relatív `state.path` és `logs.dir`
+  értékét az image build-idejű `/src/` gyökeréhez oldja fel, nem a konfig
+  mappájához; hiba nélkül üres korpuszt mutat. A konfigban abszolút utat kell adni.
 - Spec: [2026-11-02-refinery-web-image-spec.md](../plans/2026-11-02-refinery-web-image-spec.md).
