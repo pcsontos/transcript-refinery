@@ -3,6 +3,28 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.28.0] — 2026-11-02
+
+A webes felület ugyanabban az image-ben kerül ki, mint a `refinery serve`, és a
+`docker stop` a futó futást szabályosan lezárja.
+
+### ✨ Újdonságok
+
+- **Web az image-ben:** a `ghcr.io/pcsontos/transcript-refinery` image a
+  webes felületet is tartalmazza (`node /app/web/server/index.mjs`), így a
+  peter-mba-n konténerben is futtatható, Authelia mögött (ADR 0013, #349).
+- **Karcsúbb image:** a futó image csak a futási függőségeket tartalmazza, 452 MB
+  a korábbi 888 MB helyett.
+- **Közös verzió:** a `web/package.json` ugyanazt a verziót viseli, mint a
+  gyökér, a kiadás mindkettőt együtt emeli.
+
+### 🔧 Javítások
+
+- **Szabályos leállás:** a `SIGTERM` (`docker stop`) ugyanúgy lezárja a futó
+  futást, mint a Ctrl+C: `run:ended` `interrupted: true`, riport, 130-as
+  kilépőkód. A tétlen `serve` 143-mal lép ki, ahelyett hogy a türelmi idő után
+  `SIGKILL` érné (#349).
+
 ## [1.27.0] — 2026-11-01
 
 A Telegram „kész” üzenet linkje a site-ra mutat, és a `refinery deploy` a nem
@@ -1239,6 +1261,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.28.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.28.0
 [1.27.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.27.0
 [1.26.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.26.0
 [1.25.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.25.0
