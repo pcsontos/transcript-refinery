@@ -1,8 +1,9 @@
+import { EventEmitter } from 'node:events'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { commandServe, serveEffects } from './command.js'
+import { commandServe, installIdleExit, serveEffects } from './command.js'
 import type { ObjectStore } from './r2.js'
 
 function memoryStore(initial: Record<string, Uint8Array> = {}): ObjectStore & { objects: Record<string, Uint8Array> } {
@@ -134,5 +135,27 @@ describe('commandServe környezeti változók ellenőrzése', () => {
     const controller = new AbortController()
     await effects.refine('abcdefghijk', ['summary'], undefined, controller.signal)
     expect(seen[0]?.signal).toBe(controller.signal)
+  })
+})
+
+describe('installIdleExit', () => {
+  it('tétlen kapunál SIGTERM-re 143-mal kilép', () => {
+    const target = new EventEmitter()
+    const codes: number[] = []
+    installIdleExit({ current: null }, target, (code) => void codes.push(code))
+
+    target.emit('SIGTERM')
+
+    expect(codes).toEqual([143])
+  })
+
+  it('foglalt kapunál nem lép ki: a futás saját kezelője zár le', () => {
+    const target = new EventEmitter()
+    const codes: number[] = []
+    installIdleExit({ current: 'job-1' }, target, (code) => void codes.push(code))
+
+    target.emit('SIGTERM')
+
+    expect(codes).toEqual([])
   })
 })

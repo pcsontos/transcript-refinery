@@ -37,6 +37,37 @@ describe('countRunLogs', () => {
 })
 
 describe('installSigint', () => {
+  it('a SIGTERM-re is futtatja a kezelőt', () => {
+    const target = new EventEmitter()
+    let calls = 0
+    installSigint(() => void calls++, target)
+
+    target.emit('SIGTERM')
+    expect(calls).toBe(1)
+  })
+
+  it('a SIGINT és a SIGTERM együtt is csak egyszer futtat', () => {
+    const target = new EventEmitter()
+    let calls = 0
+    installSigint(() => void calls++, target)
+
+    target.emit('SIGTERM')
+    target.emit('SIGINT')
+    target.emit('SIGTERM')
+    expect(calls).toBe(1)
+  })
+
+  it('a leiratkozás a SIGTERM-kezelőt is eltávolítja', () => {
+    const target = new EventEmitter()
+    let calls = 0
+    const uninstall = installSigint(() => void calls++, target)
+
+    uninstall()
+    target.emit('SIGTERM')
+
+    expect(calls).toBe(0)
+  })
+
   it('a SIGINT-re egyszer futtatja a kezelőt', () => {
     const target = new EventEmitter()
     let calls = 0

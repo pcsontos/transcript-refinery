@@ -93,6 +93,22 @@ function missing(env: NodeJS.ProcessEnv): string | null {
   return null
 }
 
+/**
+ * A tétlen serve SIGTERM-re azonnal kilép. PID 1-ként a Node kezelő nélkül
+ * nem állna le, és a Docker a türelmi idő után SIGKILL-t küldene. Futás
+ * közben a `commandRun` saját kezelője zárja le a futást és lép ki.
+ */
+// ponytail: foglalt kapu futás nélkül (felirat-letöltés, notes) → SIGKILL a türelmi idő után; abort, ha zavar.
+export function installIdleExit(
+  gate: ServeGate,
+  target: { on(event: string, listener: () => void): unknown } = process,
+  exit: (code: number) => void = (code) => process.exit(code),
+): void {
+  target.on('SIGTERM', () => {
+    if (gate.current === null) exit(143)
+  })
+}
+
 export async function commandServe(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   let configArg: string | undefined
   try {
@@ -172,6 +188,7 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     },
   })
   const gate: ServeGate = { current: null }
+  installIdleExit(gate)
   const server = createServeServer({
     secret,
     gate,
