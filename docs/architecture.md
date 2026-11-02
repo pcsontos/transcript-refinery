@@ -490,7 +490,7 @@ csak akkor kötelező, ha `--recipe` fut.
 - **A felület:** `mise exec -- pnpm web` lefordítja a magot és a felületet, és a
   `127.0.0.1:4310`-en indítja — kézzel, amikor nézni akarod; háttérszolgáltatás
   nincs. Egy futó CLI-köteg élőben követhető rajta: a futásnapló sorait SSE-n
-  kapja.
+  kapja. A peter-mba-n konténerben, Authelia mögött is fut (ADR 0013).
 
 ## 13. Amit szándékosan nem építünk
 
@@ -503,7 +503,7 @@ csak akkor kötelező, ha `--recipe` fut.
 - **Provider-váltó réteg az alkalmazásban** — a routingot, a tartalék-útvonalat és
   a terheléselosztást a LiteLLM végzi.
 - **Publikus kitettség, tunnel, autentikációs réteg** — a rendszer egy privát
-  hálózaton belül marad.
+  hálózaton belül marad. Kivétel: a webes felület Authelia mögött (ADR 0013).
 - **n8n (vagy más munkafolyamat-motor) a v1 motorjaként** — a döntési történet maga is a projekt
   értéke, és azt egy vizuális folyamatábra nem adja vissza.
 - **LLM-generált cikk automatikus publikálása** mások videóiból.

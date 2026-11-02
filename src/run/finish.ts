@@ -22,8 +22,9 @@ export function countRunLogs(dir: string): number {
 }
 
 /**
- * A Ctrl+C is riportot hagy maga után. Egyszeri lefutás: a második SIGINT ne
- * írjon félbehagyott riportot az elsőre.
+ * A Ctrl+C és a SIGTERM (`docker stop`) is riportot hagy maga után. Egyszeri
+ * lefutás: a második jel (akár a másik fajta) ne írjon félbehagyott riportot
+ * az elsőre.
  *
  * A visszaadott függvény leiratkozik: hívás után a `commandRun` visszatérte
  * után egy késői jel ne fusson neki egy már lezárt állapottárnak.
@@ -42,5 +43,9 @@ export function installSigint(
     handler()
   }
   target.on('SIGINT', listener)
-  return () => target.off?.('SIGINT', listener)
+  target.on('SIGTERM', listener)
+  return () => {
+    target.off?.('SIGINT', listener)
+    target.off?.('SIGTERM', listener)
+  }
 }
