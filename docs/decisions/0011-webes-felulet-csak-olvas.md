@@ -19,7 +19,7 @@ nem kér.
   nézetmodellek, a futásnapló követése. A `web/` szerverútvonalai egy-egy
   mag-függvényt hívnak.
 - A bíró hiánylistája az állapottárba kerül, műtermékenként egy JSON-sorban.
-- Csak a `127.0.0.1`-en figyel, hitelesítés nélkül.
+- Csak a `127.0.0.1`-en figyel, hitelesítés nélkül. A konténeres telepítésre lásd: [0013](0013-webes-felulet-a-peter-mba-n.md).
 
 ## Mi döntötte el
 

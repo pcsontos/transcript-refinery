@@ -321,6 +321,13 @@ A felület a `http://127.0.0.1:4310` címen érhető el.
 Oldalai: áttekintő, elemek (szűrők URL-ből is: `/items?channel=<név>&kind=<típus>`),
 riport, hibák, futások.
 
+**Konténerben** (peter-mba, ADR 0013) ugyanabból az image-ből indul: `node /app/web/server/index.mjs`.
+Kötelező a `REFINERY_CONFIG` (a konfig helye), a címet a compose adja (`NITRO_HOST=0.0.0.0`,
+`NITRO_PORT=4310`). A vault és a napló csak olvasható mount; a `/data/state` viszont írható
+kell legyen, mert élő író mellett a WAL-módú állapottár csak olvasható mounton nem nyílik meg
+(a kód így is `readOnly: true`-val nyit). Korlát: a `docker exec … refinery run` futás
+(PID ≠ 1) „meghalt"-nak látszik, miközben fut ([#351](https://github.com/pcsontos/transcript-refinery/issues/351)).
+
 ---
 
 ## 8. Kiküldés a showroomba (`deploy`)
