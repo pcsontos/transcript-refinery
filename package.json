@@ -1,6 +1,6 @@
 {
   "name": "transcript-refinery",
-  "version": "1.29.0",
+  "version": "1.30.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.6.0",
