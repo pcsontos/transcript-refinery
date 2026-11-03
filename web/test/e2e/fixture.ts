@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { discoverAll, openState } from 'transcript-refinery'
 
-/** Egy lezárt futás riporttal, és egy „futó", aminek a pid-je a tesztfolyamaté. */
+/** Egy lezárt futás riporttal, és egy „futó", amit a friss fájlideje tart élve. */
 export const FINISHED_RUN = '2026-09-10T08-00-00'
 export const RUNNING_RUN = '2026-09-11T09-00-00'
 

@@ -53,8 +53,10 @@ Authelia adja a homelab-oldalon.
   konténerek között hamis volt: a `docker exec … refinery run` futás (PID ≠ 1)
   „meghalt"-nak, a `run:ended` nélkül elhalt `serve`-futás (PID 1) örökre
   „fut"-nak látszott. Ma a napló fájlideje dönt: az író 30 mp-enként frissíti,
-  90 mp-nél régebbi fájlidő „meghalt". Így a `docker exec`-es futás és az
-  újraindult `serve` is helyesen látszik. Spec:
+  90 mp-nél régebbi fájlidő „meghalt". Így a `docker exec`-es futásnak és az
+  újraindult `serve`-nek is helyesen kell látszania; hogy a fájlidő a
+  konténerek között időben átlátszik-e, az élő próba a homelab
+  web-telepítésnél mutatja meg (még nincs ellenőrizve). Spec:
   [2026-11-03-futas-eletjel-spec.md](../plans/2026-11-03-futas-eletjel-spec.md).
 - **Abszolút utak:** a web konténerben a konfig relatív `state.path` és `logs.dir`
   értékét az image build-idejű `/src/` gyökeréhez oldja fel, nem a konfig

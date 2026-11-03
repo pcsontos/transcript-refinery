@@ -1,6 +1,6 @@
-import { appendFile } from 'node:fs/promises'
+import { appendFile, utimes } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { $fetch, fetch, setup } from '@nuxt/test-utils/e2e'
 import type {
   ArtifactDetail,
@@ -33,6 +33,9 @@ describe('API', async () => {
     env: { REFINERY_CONFIG: fixture.configPath },
     setupTimeout: 300_000,
   })
+  // A „futó" futás élését a napló fájlideje adja (90 mp-es küszöb): a lassú
+  // build után frissíteni kell, különben „meghalt"-nak látszik.
+  beforeAll(() => utimes(fixture.runningLog, new Date(), new Date()))
 
   it('az áttekintő a szintetikus állapotot adja', async () => {
     const overview = await $fetch<Overview>('/api/overview')
