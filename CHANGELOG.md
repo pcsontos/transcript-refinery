@@ -3,6 +3,20 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.29.0] — 2026-11-03
+
+A webes felület a futás élését a napló életjeléből látja, így a `docker exec`-kel
+indított és a konténer-újraindulás előtt elhalt futás is a helyes állapotot mutatja.
+
+### 🔧 Javítások
+
+- **Fut vagy meghalt:** a futó folyamat 30 mp-enként frissíti a futásnapló
+  fájlidejét (új sor nélkül), a felület pedig ebből dönt: 90 mp-nél régebbi
+  fájlidő „meghalt”. A `docker exec … refinery run` futás többé nem látszik
+  „meghalt”-nak futás közben, és a `run:ended` nélkül elhalt `serve`-futás sem
+  marad örökre „fut”. Egy elhalt futás legfeljebb ~2 perc múlva, oldal-újratöltés
+  után látszik „meghalt”-nak; az élő követés is ugyanezt a jelet figyeli (#351).
+
 ## [1.28.0] — 2026-11-02
 
 A webes felület ugyanabban az image-ben kerül ki, mint a `refinery serve`, és a
@@ -1261,6 +1275,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.29.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.29.0
 [1.28.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.28.0
 [1.27.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.27.0
 [1.26.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.26.0
