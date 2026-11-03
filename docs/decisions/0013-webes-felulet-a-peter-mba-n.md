@@ -48,12 +48,14 @@ Authelia adja a homelab-oldalon.
   tétlen `serve` 143-mal lép ki. Mérve: a leállás 10 mp alatt végez, ezért
   `stop_grace_period` nem kell. Ismert korlát: ha a `serve` kapuja foglalt, de
   még nincs futás (felirat-letöltés, `notes`), a SIGTERM-et senki nem kezeli.
-- **Ismert korlát:** a `docker exec … refinery run` futás (PID ≠ 1) a
-  felületen „meghalt"-nak látszik, miközben fut — [#351](https://github.com/pcsontos/transcript-refinery/issues/351).
-- **Fordított hiba:** a `serve` futásainak `run:started.pid` értéke 1, a web saját
-  PID-terében pedig az 1-es PID mindig a web saját folyamata. Ha egy futás
-  `run:ended` nélkül hal meg (OOM, `docker kill`, SIGKILL a türelmi idő után), a
-  felület örökre „fut"-nak mutatja — ugyanaz az ok, mint a #351-ben.
+- **Futás élése (megoldva, [#351](https://github.com/pcsontos/transcript-refinery/issues/351)):**
+  a „fut" / „meghalt" döntés eredetileg a `run:started.pid`-ből jött, ami
+  konténerek között hamis volt: a `docker exec … refinery run` futás (PID ≠ 1)
+  „meghalt"-nak, a `run:ended` nélkül elhalt `serve`-futás (PID 1) örökre
+  „fut"-nak látszott. Ma a napló fájlideje dönt: az író 30 mp-enként frissíti,
+  90 mp-nél régebbi fájlidő „meghalt". Így a `docker exec`-es futás és az
+  újraindult `serve` is helyesen látszik. Spec:
+  [2026-11-03-futas-eletjel-spec.md](../plans/2026-11-03-futas-eletjel-spec.md).
 - **Abszolút utak:** a web konténerben a konfig relatív `state.path` és `logs.dir`
   értékét az image build-idejű `/src/` gyökeréhez oldja fel, nem a konfig
   mappájához; hiba nélkül üres korpuszt mutat. A konfigban abszolút utat kell adni.

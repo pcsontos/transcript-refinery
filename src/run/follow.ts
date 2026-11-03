@@ -1,12 +1,13 @@
 import { stat } from 'node:fs/promises'
 import { liveRunState, type LiveRunState } from '../view/live.js'
 import { readRunEvents, type RunLogLine } from './logfile.js'
+import type { WriterAlive } from './status.js'
 
 export interface FollowOptions {
   /** A böngésző utolsó ismert offsetje (`Last-Event-ID`); a fájl méreténél nagyobbra 0. */
   fromOffset: number
   intervalMs: number
-  isAlive: (pid: number) => boolean
+  isAlive: WriterAlive
   signal: AbortSignal
   /** A várakozás; a tesztek a napló bővítésére használják. */
   sleep?: (ms: number) => Promise<void>
@@ -22,12 +23,8 @@ export interface FollowedLine {
 
 const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-function startedPid(lines: readonly RunLogLine[]): number | null {
-  for (const line of lines) {
-    if (line.type === 'run:started') return line.pid
-  }
-  return null
-}
+const hasStarted = (lines: readonly RunLogLine[]): boolean =>
+  lines.some((line) => line.type === 'run:started')
 
 const hasEnded = (lines: readonly RunLogLine[]): boolean =>
   lines.some((line) => line.type === 'run:ended')
@@ -42,8 +39,8 @@ const hasEnded = (lines: readonly RunLogLine[]): boolean =>
  *
  * Véget ér: ha a naplóban nincs `run:started` (változás előtti napló) vagy már
  * lezárt; ha követés közben megjön a `run:ended` — egy utolsó olvasás után, mert
- * a megszakítás ágán a fő ág még írhat —; ha a folyamat már nem él, egy utolsó
- * olvasás után; vagy ha a `signal` megszakad.
+ * a megszakítás ágán a fő ág még írhat —; ha az író életjele elhalt
+ * (`isWriterAlive`), egy utolsó olvasás után; vagy ha a `signal` megszakad.
  */
 export async function* followRunLog(
   path: string,
@@ -61,13 +58,12 @@ export async function* followRunLog(
     if (end > from) yield { line, end, state: liveRunState(lines) }
   }
 
-  const pid = startedPid(lines)
-  if (pid === null || hasEnded(lines)) return
+  if (!hasStarted(lines) || hasEnded(lines)) return
 
   while (!opts.signal.aborted) {
     // Az élést a várakozás ELŐTT nézzük: egy leállt folyamat után még egy
     // olvasás jár, hogy az utolsó sorai se vesszenek el.
-    const alive = opts.isAlive(pid)
+    const alive = await opts.isAlive(path)
     await sleep(opts.intervalMs)
     if (opts.signal.aborted) return
 

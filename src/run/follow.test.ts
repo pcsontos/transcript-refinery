@@ -34,7 +34,7 @@ async function types(opts: Partial<FollowOptions>): Promise<string[]> {
   const lines = followRunLog(path, {
     fromOffset: 0,
     intervalMs: 1,
-    isAlive: () => true,
+    isAlive: () => Promise.resolve(true),
     signal: new AbortController().signal,
     sleep: appending([]),
     ...opts,
@@ -64,7 +64,7 @@ describe('followRunLog', () => {
     const lines = followRunLog(path, {
       fromOffset: Buffer.byteLength(head),
       intervalMs: 1,
-      isAlive: () => true,
+      isAlive: () => Promise.resolve(true),
       signal: new AbortController().signal,
       sleep: appending([]),
     })
@@ -82,13 +82,25 @@ describe('followRunLog', () => {
   it('leállt folyamat után egy utolsó olvasással zár', async () => {
     await writeFile(path, line(started))
     const got = await types({
-      isAlive: () => false,
+      isAlive: () => Promise.resolve(false),
       sleep: appending([
         line({ type: 'scan:found', count: 1 }),
         line({ type: 'item:start', itemId: 'a', title: 'szintetikus' }),
       ]),
     })
     expect(got).toEqual(['run:started', 'scan:found'])
+  })
+
+  it('az író élését a napló útjával kérdezi', async () => {
+    await writeFile(path, line(started))
+    const asked: string[] = []
+    await types({
+      isAlive: (p) => {
+        asked.push(p)
+        return Promise.resolve(false)
+      },
+    })
+    expect(asked).toEqual([path])
   })
 
   it('a run:started nélküli (régi) naplót kiadja és zár', async () => {
