@@ -1,5 +1,10 @@
 import type { RunLogLine } from './logfile.js'
 
+/** Ilyen időközönként frissíti az író a napló fájlidejét (`openRunLog`). */
+export const HEARTBEAT_MS = 30_000
+/** Ennél régebbi fájlidő: az író halott. A küszöb 3× az időköz. */
+export const STALE_MS = 90_000
+
 /** Egy futás állapota; a felület magyarul írja ki. */
 export type RunStatus =
   | 'running'

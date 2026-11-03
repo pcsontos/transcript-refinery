@@ -1,6 +1,7 @@
-import { closeSync, mkdirSync, openSync, writeSync } from 'node:fs'
+import { closeSync, futimesSync, mkdirSync, openSync, writeSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { EventSink } from '../events.js'
+import { HEARTBEAT_MS } from './status.js'
 
 export interface RunLog {
   /** A napló útvonala; a riport és a konzol ezt nevezi meg. */
@@ -16,11 +17,24 @@ export interface RunLog {
  * létjogosultsága, hogy egy éjszaka közepén megszakadt futás után is legyen
  * nyom — egy pufferelt stream pont abban a pillanatban veszítené el az utolsó
  * sorokat, amiért a napló egyáltalán készül.
+ *
+ * A nyitott napló fájlideje esemény nélkül is `HEARTBEAT_MS`-enként frissül:
+ * a felület ebből látja, él-e még az író (`isWriterAlive`).
  */
 export function openRunLog(path: string): RunLog {
   mkdirSync(dirname(path), { recursive: true })
   const fd = openSync(path, 'a')
   let closed = false
+  // Az életjel nem tartja életben a folyamatot; a hibája (pl. eltűnt fájl) nem
+  // döntheti el a futást.
+  const heartbeat = setInterval(() => {
+    try {
+      futimesSync(fd, new Date(), new Date())
+    } catch {
+      // szándékosan elnyelve
+    }
+  }, HEARTBEAT_MS)
+  heartbeat.unref()
 
   return {
     path,
@@ -38,6 +52,8 @@ export function openRunLog(path: string): RunLog {
     close() {
       if (closed) return
       closed = true
+      // Előbb az időzítő: a lezárt leírón a `futimesSync` `EBADF`-et dobna.
+      clearInterval(heartbeat)
       closeSync(fd)
     },
   }
