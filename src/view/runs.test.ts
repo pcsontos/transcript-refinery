@@ -107,7 +107,7 @@ describe('readRuns és readRun', () => {
       line({ type: 'run:started', command: 'run --queue', pid: 22 }),
     )
 
-    const runs = await readRuns({ logsDir: dir }, (pid) => pid === 22)
+    const runs = await readRuns({ logsDir: dir }, (p) => Promise.resolve(p.endsWith('2026-09-11T09-00-00.jsonl')))
     expect(runs.map((r) => [r.runId, r.status, r.command])).toEqual([
       ['2026-09-11T09-00-00', 'running', 'run --queue'],
       ['2026-09-10T08-00-00', 'done', 'run'],
@@ -123,7 +123,7 @@ describe('readRuns és readRun', () => {
     )
     await writeFile(join(dir, '2026-09-10T08-00-00.md'), '# Futás\n')
 
-    const run = await readRun({ logsDir: dir }, '2026-09-10T08-00-00', () => false)
+    const run = await readRun({ logsDir: dir }, '2026-09-10T08-00-00', () => Promise.resolve(false))
     expect(run?.summary.status).toBe('interrupted')
     expect(run?.lines.map((l) => l.type)).toEqual(['run:started', 'scan:found', 'run:ended'])
     expect(run?.state.units).toBe(4)

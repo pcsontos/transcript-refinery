@@ -460,7 +460,7 @@ describe('readReports', () => {
         .join('\n') + '\n',
     )
 
-    const reports = await readReports(cfg, () => false)
+    const reports = await readReports(cfg, () => Promise.resolve(false))
     expect(reports.hasState).toBe(true)
     expect(reports.kpis).toMatchObject({ words: 10, transcribed: 1 })
     expect(reports.kpis.spentUsd).toBeCloseTo(0.03, 10)

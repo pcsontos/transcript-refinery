@@ -53,7 +53,13 @@ export {
   type RunLogEntry,
   type RunLogLine,
 } from './run/logfile.js'
-export { isPidAlive, runStatus, type RunStatus, type RunStatusContext } from './run/status.js'
+export {
+  isWriterAlive,
+  runStatus,
+  type RunStatus,
+  type RunStatusContext,
+  type WriterAlive,
+} from './run/status.js'
 export { liveRunState, type LiveRunState } from './view/live.js'
 export {
   loadRun,

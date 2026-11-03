@@ -7,7 +7,7 @@ import {
   type RunFiles,
   type RunLogLine,
 } from '../run/logfile.js'
-import { isPidAlive, runStatus, type RunStatus } from '../run/status.js'
+import { isWriterAlive, runStatus, type RunStatus, type WriterAlive } from '../run/status.js'
 import { liveRunState, type LiveRunState } from './live.js'
 
 /** Egy futás a futáslistában. */
@@ -62,18 +62,21 @@ export function summarizeRun(
 /** Egy futás beolvasása: a sorai és az összegzése. */
 export async function loadRun(
   files: RunFiles,
-  isAlive: (pid: number) => boolean,
+  isAlive: WriterAlive,
 ): Promise<{ summary: RunSummaryView; lines: RunLogLine[] }> {
   const chunk = await readRunEvents(files.logPath)
   const lines = chunk.lines.map((entry) => entry.line)
-  const status = runStatus(lines, { isAlive, hasReport: files.reportPath !== null })
+  const status = runStatus(lines, {
+    writerAlive: await isAlive(files.logPath),
+    hasReport: files.reportPath !== null,
+  })
   return { summary: summarizeRun(files, lines, status, chunk.invalid), lines }
 }
 
 /** A naplómappa futásai, legújabb elöl. */
 export async function readRuns(
   cfg: Pick<Config, 'logsDir'>,
-  isAlive: (pid: number) => boolean = isPidAlive,
+  isAlive: WriterAlive = isWriterAlive,
 ): Promise<RunSummaryView[]> {
   const runs = await listRuns(cfg.logsDir)
   return Promise.all(runs.map(async (files) => (await loadRun(files, isAlive)).summary))
@@ -92,7 +95,7 @@ export interface RunDetail {
 export async function readRun(
   cfg: Pick<Config, 'logsDir'>,
   runId: string,
-  isAlive: (pid: number) => boolean = isPidAlive,
+  isAlive: WriterAlive = isWriterAlive,
 ): Promise<RunDetail | null> {
   const files = findRun(cfg.logsDir, runId)
   if (!files) return null

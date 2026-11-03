@@ -4,7 +4,7 @@ import { queuePath, readQueueFile } from '../queue/file.js'
 import { checkedPairs, parseQueue } from '../queue/parse.js'
 import { recipesFor, type Registry } from '../recipe/registry.js'
 import type { KindCorpus } from '../run/report.js'
-import { isPidAlive } from '../run/status.js'
+import { isWriterAlive, type WriterAlive } from '../run/status.js'
 import { discoverAll } from '../source/folder.js'
 import type { CorpusStatus, SourceStatus } from '../state/db.js'
 import type { ArtifactRow } from '../state/queries.js'
@@ -173,7 +173,7 @@ export async function readOverview(
     Config,
     'sources' | 'languages' | 'statePath' | 'notesRoot' | 'logsDir' | 'translate' | 'configPath'
   >,
-  isAlive: (pid: number) => boolean = isPidAlive,
+  isAlive: WriterAlive = isWriterAlive,
 ): Promise<Overview> {
   const registry = recipesFor(cfg)
   const discovered = await discoverAll(cfg.sources, cfg.languages)

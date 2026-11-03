@@ -1,4 +1,4 @@
-import { findRun, followRunLog, isPidAlive, parseEventId } from 'transcript-refinery'
+import { findRun, followRunLog, isWriterAlive, parseEventId } from 'transcript-refinery'
 
 /**
  * Egy futás eseményei SSE-n. Az üzenet `id`-je a sor utáni bájt-offset: a
@@ -20,7 +20,7 @@ export default defineEventHandler(async (event) => {
       const followed = followRunLog(files.logPath, {
         fromOffset: parseEventId(getHeader(event, 'last-event-id')),
         intervalMs: 500,
-        isAlive: isPidAlive,
+        isAlive: isWriterAlive,
         signal: controller.signal,
       })
       for await (const { line, end, state } of followed) {
