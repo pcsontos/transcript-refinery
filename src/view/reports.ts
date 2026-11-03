@@ -1,7 +1,7 @@
 import type { Config } from '../config.js'
 import { ARTIFACT_KIND } from '../pipeline.js'
 import { recipesFor, type Registry } from '../recipe/registry.js'
-import { isPidAlive, type RunStatus } from '../run/status.js'
+import { isWriterAlive, type RunStatus, type WriterAlive } from '../run/status.js'
 import { discoverAll } from '../source/folder.js'
 import type { ItemRow } from '../state/queries.js'
 import { openStateReader } from '../state/reader.js'
@@ -300,7 +300,7 @@ export async function readReports(
     Config,
     'sources' | 'languages' | 'statePath' | 'translate' | 'configPath' | 'logsDir'
   >,
-  isAlive: (pid: number) => boolean = isPidAlive,
+  isAlive: WriterAlive = isWriterAlive,
 ): Promise<Reports> {
   const registry = recipesFor(cfg)
   const discovered = await discoverAll(cfg.sources, cfg.languages)

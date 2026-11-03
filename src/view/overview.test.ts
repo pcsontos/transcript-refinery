@@ -243,7 +243,7 @@ describe('readOverview', () => {
       `${JSON.stringify({ type: 'run:started', command: 'run', pid: 4242 })}\n`,
     )
 
-    const overview = await readOverview(cfg, (pid) => pid === 4242)
+    const overview = await readOverview(cfg, () => Promise.resolve(true))
     expect(overview.corpus.find((c) => c.kind === 'summary')?.status).toEqual(expected)
     expect(overview.queue).toEqual([{ recipe: 'summary', checked: 1, done: 1, failed: 0, pending: 0 }])
     expect(overview.running.map((r) => r.runId)).toEqual(['2026-09-11T09-00-00'])

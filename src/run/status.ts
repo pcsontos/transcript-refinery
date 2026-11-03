@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import type { RunLogLine } from './logfile.js'
 
 /** Ilyen időközönként frissíti az író a napló fájlidejét (`openRunLog`). */
@@ -17,8 +18,8 @@ export type RunStatus =
   | 'unknown'
 
 export interface RunStatusContext {
-  /** Él-e a megadott folyamat. A tesztek hamis függvényt adnak. */
-  isAlive: (pid: number) => boolean
+  /** Él-e a napló írója (`isWriterAlive`). */
+  writerAlive: boolean
   /** Elkészült-e a futás riportja. */
   hasReport: boolean
 }
@@ -38,7 +39,7 @@ export function runStatus(lines: readonly RunLogLine[], ctx: RunStatusContext): 
   const done = lines.some((line) => line.type === 'run:done')
 
   if (started?.type === 'run:started') {
-    if (ended?.type !== 'run:ended') return ctx.isAlive(started.pid) ? 'running' : 'died'
+    if (ended?.type !== 'run:ended') return ctx.writerAlive ? 'running' : 'died'
     if (ended.interrupted) return 'interrupted'
     if (aborted) return 'capped'
     if (done) return 'done'
@@ -50,18 +51,21 @@ export function runStatus(lines: readonly RunLogLine[], ctx: RunStatusContext): 
   return ctx.hasReport ? 'closed' : 'unknown'
 }
 
+/** Él-e a napló írója; a tesztek hamis függvényt adnak. */
+export type WriterAlive = (logPath: string) => Promise<boolean>
+
 /**
- * Él-e a folyamat. A `kill(pid, 0)` jelet nem küld, csak ellenőriz. `EPERM`: a
- * folyamat létezik, csak nem a miénk — tehát él.
+ * Él-e a napló írója: az író `HEARTBEAT_MS`-enként frissíti a fájlidőt
+ * (`openRunLog`), így legfeljebb `STALE_MS`-es fájlidő élő írót jelent. A
+ * jövőbeli fájlidő (órakülönbség) is élőnek számít; a hiányzó fájl halottnak.
  *
- * Ismert korlát: egy újrahasznosított pid ritkán hamis „fut"-ot adhat; a
- * felület ezért mindig kiírja az utolsó esemény óta eltelt időt.
+ * Ismert korlát: egy 90 mp-nél hosszabban blokkolt eseményhurok átmenetileg
+ * „meghalt"-ot ad; a futás oldala ilyenkor csak újratöltés után követ újra.
  */
-export function isPidAlive(pid: number): boolean {
+export async function isWriterAlive(logPath: string, now: number = Date.now()): Promise<boolean> {
   try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM'
+    return now - (await stat(logPath)).mtimeMs <= STALE_MS
+  } catch {
+    return false
   }
 }
