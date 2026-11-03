@@ -3,6 +3,17 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.30.0] — 2026-11-03
+
+A webes felület fejlécében látszik a verziószám, így frissítés után ránézésre
+kiderül, hogy a konténer az új image-en fut-e.
+
+### ✨ Újdonságok
+
+- **Verzió a fejlécben:** a „Transcript Refinery” cím mellett halványan
+  `v{verzió}` látszik, a `web/package.json`-ból, az image buildelésekor
+  rögzítve (#357).
+
 ## [1.29.0] — 2026-11-03
 
 A webes felület a futás élését a napló életjeléből látja, így a `docker exec`-kel
@@ -1275,6 +1286,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.30.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.30.0
 [1.29.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.29.0
 [1.28.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.28.0
 [1.27.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.27.0
