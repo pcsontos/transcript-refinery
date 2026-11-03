@@ -8,13 +8,18 @@ const items: NavigationMenuItem[] = [
   { label: 'Hibák', icon: 'i-lucide-triangle-alert', to: '/failures' },
   { label: 'Futások', icon: 'i-lucide-activity', to: '/runs' },
 ]
+
+const { appVersion } = useRuntimeConfig().public
 </script>
 
 <template>
   <div class="min-h-screen">
     <header class="border-b border-default">
       <UContainer class="flex items-center gap-6 py-2">
-        <span class="font-semibold">Transcript Refinery</span>
+        <span class="flex items-baseline gap-2">
+          <span class="font-semibold">Transcript Refinery</span>
+          <span class="text-sm text-muted">v{{ appVersion }}</span>
+        </span>
         <UNavigationMenu orientation="horizontal" :items="items" />
       </UContainer>
     </header>

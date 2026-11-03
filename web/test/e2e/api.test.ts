@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { appendFile, utimes } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -22,6 +23,10 @@ type RunResponse = RunDetail & { reportHtml: string | null }
 
 const eventIds = (text: string): string[] =>
   [...text.matchAll(/^id: (\d+)$/gm)].map((match) => match[1] ?? '')
+
+const { version: webVersion } = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+) as { version: string }
 
 const fixture = await createFixture()
 
@@ -252,5 +257,12 @@ describe('API', async () => {
     expect(run).toContain('item:refined')
     expect(run).toContain('$0.0123')
     expect(run).toContain('Riport')
+  })
+
+  it('a fejlécben a cím mellett a web verziója látszik', async () => {
+    const html = await $fetch<string>('/')
+    const header = html.match(/<header[\s\S]*?<\/header>/)?.[0] ?? ''
+    expect(header).toContain('Transcript Refinery')
+    expect(header).toContain(`v${webVersion}`)
   })
 })
