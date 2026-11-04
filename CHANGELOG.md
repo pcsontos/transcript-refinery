@@ -3,6 +3,19 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.30.1] — 2026-11-04
+
+A `qa` jegyzet oldala többé nem marad ki a `refinery deploy`-ból, ha a modell a
+választ üres sor nélkül írja a kérdés alá.
+
+### 🔧 Javítások
+
+- **Kérdés-válasz kártya üres sor nélkül:** ha a félkövér, `?`-re végződő
+  kérdéssor alatt a válasz a következő sorban kezdődik (üres sor nélkül), a
+  deploy ezt is kártyává bontja, és nem hagyja ki az oldalt „a kártyák nem
+  bonthatók” üzenettel. A `?` nélküli, teljesen félkövér sor a válasz része
+  marad, nem nyit új kártyát (#361).
+
 ## [1.30.0] — 2026-11-03
 
 A webes felület fejlécében látszik a verziószám, így frissítés után ránézésre
@@ -1286,6 +1299,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.30.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.30.1
 [1.30.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.30.0
 [1.29.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.29.0
 [1.28.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.28.0
