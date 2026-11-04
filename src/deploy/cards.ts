@@ -8,6 +8,7 @@ function attribute(title: string): string {
 /**
  * A kártya-jegyzet (`flashcards`, `qa`, `bloom`) törzsét `<Accordions>`-szé bontja,
  * kérdésenként egy `<Accordion>`-nal; a kérdés után álló minden bekezdés a válasz.
+ * `qa`-nál a kérdés a bekezdés `?**`-ra végződő, teljesen félkövér első sora; a bekezdés többi sora a válasz első bekezdése.
  * Az Obsidian `%%…%%` soraiból (Decks kártya-azonosító) semmi nem kerül ki.
  * `null`, ha nincs kérdés vagy van üres válaszú kérdés: a hívó a fallbacket írja.
  */
@@ -24,9 +25,10 @@ export function cardsMdx(body: string, siteKind: 'flashcards' | 'qa' | 'bloom'):
   const cards: { title: string; answer: string[] }[] = []
   for (const part of parts) {
     const heading = /^ {0,3}## ([^\n]+)$/.exec(part)?.[1]
-    const bold = siteKind === 'qa' ? /^\*\*([^\n]+)\*\*$/.exec(part)?.[1] : undefined
+    const [first = '', ...tail] = part.split('\n')
+    const bold = siteKind === 'qa' ? /^\*\*(.+\?)\*\*\s*$/.exec(first)?.[1] : undefined
     const question = heading !== undefined ? /^\*\*(.+)\*\*$/.exec(heading)?.[1] ?? heading : bold
-    if (question !== undefined) cards.push({ title: question, answer: [] })
+    if (question !== undefined) cards.push({ title: question, answer: heading === undefined && tail.length > 0 ? [tail.join('\n')] : [] })
     else (cards.at(-1)?.answer ?? preamble).push(part)
   }
   if (cards.length === 0 || cards.some((card) => card.answer.length === 0)) return null

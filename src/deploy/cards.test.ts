@@ -35,6 +35,26 @@ describe('cardsMdx', () => {
     expect(cardsMdx('# Cím\n\n## **Mi ez?**\n\nV', 'qa')).toContain('<Accordion title="Mi ez?">')
   })
 
+  it('qa: a válasz üres sor nélkül követi a kérdést', () => {
+    const out = cardsMdx('# Cím\n\n**Mi ez?**\nV1\n\nV2', 'qa')!
+    expect(out).toContain('<Accordion title="Mi ez?">\n\nV1\n\nV2\n\n</Accordion>')
+  })
+
+  it('qa: sor végi szóköz a kérdéssor után', () => {
+    expect(cardsMdx('# Cím\n\n**Mi ez?**  \nV', 'qa')).toContain('<Accordion title="Mi ez?">\n\nV\n\n</Accordion>')
+  })
+
+  it('qa: vegyes forma, két kártya', () => {
+    const out = cardsMdx('# Cím\n\n**A?**\n\nVA\n\n**B?**\nVB', 'qa')!
+    expect(out.match(/<Accordion title=/g)).toHaveLength(2)
+    expect(out).toContain('<Accordion title="B?">\n\nVB\n\n</Accordion>')
+  })
+
+  it('qa: a ? nélküli félkövér bekezdés a válasz része', () => {
+    const out = cardsMdx('# Cím\n\n**Mi ez?**\n\n**V:** **Teljesen félkövér.**\n\nV2', 'qa')!
+    expect(out.match(/<Accordion title=/g)).toHaveLength(1)
+  })
+
   it('a válaszban álló félkövér bekezdés nem kérdés flashcardsnál', () => {
     const out = cardsMdx('# Cím\n\n## K\n\n**Teljesen félkövér.**\n\nV', 'flashcards')!
     expect(out.match(/<Accordion title=/g)).toHaveLength(1)
@@ -67,9 +87,10 @@ describe('cardsMdx', () => {
   it('bájtra azonos kétszer', () => {
     for (const [body, kind] of [
       ['# C\n\n## K\n\nV', 'flashcards'],
-      ['# C\n\n**K**\n\nV', 'qa'],
+      ['# C\n\n**K?**\nV', 'qa'],
       ['# C\n\n## K\n\nV\n\n**Why:** M', 'bloom'],
     ] as const) {
+      expect(cardsMdx(body, kind)).not.toBeNull()
       expect(cardsMdx(body, kind)).toBe(cardsMdx(body, kind))
     }
   })
