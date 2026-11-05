@@ -49,6 +49,15 @@ describe('downloadDirect', () => {
     expect(await files(dir)).toEqual([])
   })
 
+  it('hangkiterjesztésű URL-en érkező HTML-oldal sem kerül archívumba', async () => {
+    const dir = await stagingDir()
+    expect(await downloadDirect('https://x.hu/ep.mp3', dir, reply('<html>lejárt</html>', 200, 'text/html; charset=utf-8'))).toEqual({
+      ok: false,
+      reason: 'nem hangfájl (text/html)',
+    })
+    expect(await files(dir)).toEqual([])
+  })
+
   it('404 → hiba, a staging üres', async () => {
     const dir = await stagingDir()
     expect(await downloadDirect('https://x.hu/a.mp3', dir, reply('', 404))).toEqual({ ok: false, reason: 'HTTP 404' })

@@ -219,23 +219,29 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
       if (deps.stopped()) return
       const entry = feed.entries[index]
       if (entry === undefined) continue
-      const hash = directTarget(entry.url).hash
-      const label = `${entry.title} [${hash}]`
-      sink({ type: 'item:start', itemId: hash, title: label })
-      if (ids.has(hash) && !deps.overwrite) {
-        await skipped(label, hash)
-        continue
+      // Egy rossz epizód (pl. értelmezhetetlen URL) hibasor, a többi tovább megy.
+      try {
+        const hash = directTarget(entry.url).hash
+        const label = `${entry.title} [${hash}]`
+        sink({ type: 'item:start', itemId: hash, title: label })
+        if (ids.has(hash) && !deps.overwrite) {
+          await skipped(label, hash)
+          continue
+        }
+        sink({ type: 'item:step', itemId: hash, step: 'letöltés' })
+        const result = await downloadDirect(entry.url, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) })
+        if (!result.ok) {
+          await failed(entry.url, 'reason' in result ? result.reason : 'nem hangfájl (feed)', hash)
+          continue
+        }
+        const info = result.path.replace(/\.[A-Za-z0-9]+$/, '.info.json')
+        await writeFile(join(store.staging, info), JSON.stringify(entry.raw, null, 2))
+        ids.add(hash)
+        await commitItem([result.path, info], hash, label)
+      } catch (error) {
+        sink({ type: 'item:start', itemId: entry.url, title: entry.url })
+        await failed(entry.url, (error as Error).message, entry.url)
       }
-      sink({ type: 'item:step', itemId: hash, step: 'letöltés' })
-      const result = await downloadDirect(entry.url, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) })
-      if (!result.ok) {
-        await failed(entry.url, 'reason' in result ? result.reason : 'nem hangfájl (feed)', hash)
-        continue
-      }
-      const info = result.path.replace(/\.[A-Za-z0-9]+$/, '.info.json')
-      await writeFile(join(store.staging, info), JSON.stringify(entry.raw, null, 2))
-      ids.add(hash)
-      await commitItem([result.path, info], hash, label)
     }
   }
 

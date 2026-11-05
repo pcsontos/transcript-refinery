@@ -283,6 +283,16 @@ describe('podcast-feed', () => {
     expect(lines[1]).toMatch(/^letöltve: x \[/)
   })
 
+  it('egy értelmezhetetlen epizód-URL hibasor, a többi epizód letöltődik', async () => {
+    const odd = JSON.stringify({ _type: 'playlist', title: 'Podcast', entries: [{ url: 'nem-url', title: 'Rossz' }, { url: E2 + '#x', title: 'Második' }] })
+    const oddRunner: ProcessRunner = (args) => Promise.resolve(args[0] === '--version' ? ok('1') : ok(odd))
+    const root = await tmp()
+    const run = deps(localAudioStore(root), { runner: oddRunner, calls: [], downloads: () => [] }, { fetchImpl, pick: 'all' })
+    await runAudioFetch([FEED], run.deps)
+    expect(run.lines[0]).toMatch(/^hiba: nem-url: /)
+    expect(run.lines[1]).toBe(`letöltve: Második [${hash(E2)}]`)
+  })
+
   it('--pick nem feedre: hiba, nincs letöltés', async () => {
     const { root, lines } = await feedRun(['https://f.hu/x.mp3'], { pick: [1] })
     expect(lines).toEqual(['hiba: https://f.hu/x.mp3: a --pick csak feedhez adható meg'])

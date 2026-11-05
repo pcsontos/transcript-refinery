@@ -82,10 +82,12 @@ export async function downloadDirect(
     return { ok: false, reason: `HTTP ${response.status}` }
   }
   const type = baseType(response.headers.get('content-type'))
-  const ext = info.ext ?? extensionFor(type)
+  // A hangkiterjesztésű URL sem hang, ha a szerver HTML-t, XML-t vagy JSON-t ad (lejárt link, hibaoldal).
+  const textual = type !== null && (type.startsWith('text/') || FEED_TYPES.includes(type) || /^application\/(?:json|xhtml\+xml)$/.test(type))
+  const ext = textual && info.ext !== null ? null : (info.ext ?? extensionFor(type))
   if (ext === null) {
     await response.body?.cancel()
-    if (target === undefined && type !== null && FEED_TYPES.includes(type)) return { ok: false, feed: true }
+    if (target === undefined && info.ext === null && type !== null && FEED_TYPES.includes(type)) return { ok: false, feed: true }
     return { ok: false, reason: `nem hangfájl (${type ?? 'ismeretlen'})` }
   }
   const path = `${target?.dir ?? info.dir}/${target?.name ?? info.name} [${info.hash}].${ext}`
