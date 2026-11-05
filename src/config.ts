@@ -1,4 +1,5 @@
 import { readFile, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
@@ -82,6 +83,32 @@ const ShowroomSchema = z.object({
   clone_path: absolutePath('showroom.clone_path'),
 })
 
+const isHttpUrl = (value: string): boolean => {
+  try {
+    const { protocol } = new URL(value)
+    return protocol === 'http:' || protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+const AudioSchema = z
+  .object({
+    dir: absolutePath('audio.dir').optional(),
+    work_dir: absolutePath('audio.work_dir').optional(),
+    s3: z
+      .object({
+        endpoint: z.string().refine(isHttpUrl, 'Az audio.s3.endpoint http(s) URL kell legyen.'),
+        region: z.string().min(1, 'Az audio.s3.region kötelező.'),
+        bucket: z.string().min(1, 'Az audio.s3.bucket kötelező.'),
+        prefix: z.string().default(''),
+        path_style: z.boolean().default(true),
+        access_key_id: z.string().min(1, 'Az audio.s3.access_key_id kötelező.'),
+      })
+      .optional(),
+  })
+  .refine((audio) => audio.dir !== undefined || audio.s3 !== undefined, 'Az audio blokkban a dir és az s3 közül legalább egy kell.')
+
 const CoreSchema = z.object({
   vault: z.object({
     path: absolutePath('vault.path'),
@@ -109,6 +136,7 @@ const CoreSchema = z.object({
   logs: z.object({ dir: z.string().min(1) }).default({ dir: 'logs' }),
   translate: TranslateSchema.optional(),
   showroom: ShowroomSchema.optional(),
+  audio: AudioSchema.optional(),
 })
 
 /** Egy feliratforrás: a YAML-beli útvonal és a belőle képzett név. */
@@ -137,6 +165,26 @@ export interface ShowroomConfig {
   clonePath: string
 }
 
+/** Az audio S3-tárolója; a titok (`AUDIO_S3_SECRET_ACCESS_KEY`) env-ből jön. */
+export interface AudioS3Config {
+  endpoint: string
+  region: string
+  bucket: string
+  /** Üres, vagy `valami/` alakú (a perjelek levágva, a végén egy `/`). */
+  prefix: string
+  pathStyle: boolean
+  accessKeyId: string
+}
+
+/** A hangletöltés (`fetch audio`) tárolója (pcsontos/issue-tracker#2). */
+export interface AudioConfig {
+  /** Helyi archív mappa; `null`, ha csak S3 van. */
+  dir: string | null
+  /** S3-nál ide tölt le a hang feltöltés előtt. */
+  workDir: string
+  s3: AudioS3Config | null
+}
+
 export interface Config {
   /** A betöltött konfigurációs fájl útvonala — a hibaüzenetek ezt nevezik meg. */
   configPath: string
@@ -156,6 +204,13 @@ export interface Config {
   translate: TranslateConfig | null
   /** A showroom-deploy beállítása; `null`, ha a kulcs hiányzik — ilyenkor a deploy ki van kapcsolva. */
   showroom: ShowroomConfig | null
+  /** A hangletöltés beállítása; `null`, ha a kulcs hiányzik. */
+  audio: AudioConfig | null
+}
+
+function normalizePrefix(raw: string): string {
+  const trimmed = raw.replace(/^\/+|\/+$/g, '')
+  return trimmed === '' ? '' : `${trimmed}/`
 }
 
 /** A zod hibáját a mező útjával és a konfigurációs fájllal együtt dobja tovább. */
@@ -228,6 +283,22 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
       ? { to: c.translate.to, recipes: c.translate.recipes, chunkWords: c.translate.chunk_words }
       : null,
     showroom: c.showroom ? { deploy: c.showroom.deploy, clonePath: c.showroom.clone_path } : null,
+    audio: c.audio
+      ? {
+          dir: c.audio.dir ?? null,
+          workDir: c.audio.work_dir ?? join(tmpdir(), 'refinery-audio'),
+          s3: c.audio.s3
+            ? {
+                endpoint: c.audio.s3.endpoint,
+                region: c.audio.s3.region,
+                bucket: c.audio.s3.bucket,
+                prefix: normalizePrefix(c.audio.s3.prefix),
+                pathStyle: c.audio.s3.path_style,
+                accessKeyId: c.audio.s3.access_key_id,
+              }
+            : null,
+        }
+      : null,
   }
 }
 
