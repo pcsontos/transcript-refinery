@@ -8,6 +8,7 @@ import {
   createYtdlpRunner,
   downloadArgs,
   originalSubtitleLang,
+  parseFeedProbe,
   parsePlaylistProbe,
   parseVideoProbe,
   playlistProbeArgs,
@@ -207,5 +208,21 @@ process.exit(0)
     } finally {
       process.env.PATH = previous
     }
+  })
+})
+
+describe('parseFeedProbe', () => {
+  it('url # nélkül, a raw megmarad, url nélküli elem kimarad', () => {
+    const first = { _type: 'url', url: 'https://f.hu/1.mp3#__youtubedl_smuggle=x', title: 'Első', timestamp: 100, duration: 60 }
+    const json = JSON.stringify({ _type: 'playlist', title: '', entries: [first, { title: 'url nélkül' }, { url: 'https://f.hu/2.mp3' }] })
+    expect(parseFeedProbe(json)).toEqual({
+      title: 'névtelen',
+      entries: [
+        { url: 'https://f.hu/1.mp3', title: 'Első', duration: 60, timestamp: 100, raw: first },
+        { url: 'https://f.hu/2.mp3', title: 'névtelen', duration: null, timestamp: null, raw: { url: 'https://f.hu/2.mp3' } },
+      ],
+    })
+    expect(parseFeedProbe('nem json')).toBeNull()
+    expect(parseFeedProbe(JSON.stringify({ _type: 'video' }))).toBeNull()
   })
 })

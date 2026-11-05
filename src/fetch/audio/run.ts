@@ -1,12 +1,15 @@
-import { readdir, stat } from 'node:fs/promises'
+import { readdir, stat, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
+import { sanitizeSegment } from '../../vault/sanitize.js'
 import type { EventSink } from '../../events.js'
 import { openRunLog, type RunLog } from '../../run/log.js'
 import { reserveRunId, runId } from '../../run/id.js'
 import { classifyAudioInput } from '../classify.js'
+import type { Pick } from './args.js'
 import { playlistDir, videoDir } from '../subtitle/skip.js'
 import {
   audioDownloadArgs,
+  parseFeedProbe,
   parsePlaylistProbe,
   parseVideoProbe,
   playlistProbeArgs,
@@ -17,9 +20,10 @@ import {
   YTDLP_MISSING,
 } from '../subtitle/ytdlp.js'
 import { directTarget, downloadDirect } from './direct.js'
+import { detectFeed, feedHash, feedMessages, resolvePick } from './feed.js'
 import { audioId, type AudioStore } from './store.js'
 
-export type AudioOutcome = 'downloaded' | 'skipped' | 'failed' | 'uploaded'
+export type AudioOutcome = 'downloaded' | 'skipped' | 'failed' | 'uploaded' | 'listed'
 
 export interface AudioRow {
   outcome: AudioOutcome
@@ -35,6 +39,8 @@ export function rowLine(row: AudioRow): string {
       return `kihagyva: ${row.label}`
     case 'uploaded':
       return `feltöltve (korábbi letöltés): ${row.label}`
+    case 'listed':
+      return ''
     case 'failed':
       return `hiba: ${row.label}: ${row.reason ?? 'ismeretlen hiba'}`
   }
@@ -54,6 +60,10 @@ export interface AudioRunDeps {
   overwrite: boolean
   yesPlaylist: boolean
   playlistItems?: string
+  /** Feed-epizódok kiválasztása; nélküle a feed listázása történik. */
+  pick?: Pick
+  /** A feed-lista üzeneteinek legfeljebb ekkora hossza (a serve 4000-et ad). */
+  listLimit?: number
   stopped: () => boolean
   /** Minden sor (figyelmeztetés is) ezen megy ki; a mag megvárja. */
   emit: (line: string) => void | Promise<void>
@@ -92,7 +102,7 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
   async function row(next: AudioRow, terminal?: Parameters<EventSink>[0]): Promise<void> {
     rows.push(next)
     if (terminal !== undefined) sink(terminal)
-    await deps.emit(rowLine(next))
+    if (next.outcome !== 'listed') await deps.emit(rowLine(next))
   }
 
   const failed = (label: string, reason: string, itemId: string): Promise<void> =>
@@ -181,7 +191,61 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     await commitItem(paths, probe.id, label)
   }
 
+  async function fetchFeed(url: string): Promise<void> {
+    if (inputs.length > 1) {
+      sink({ type: 'item:start', itemId: url, title: url })
+      return failed(url, 'a feedet egyedül add meg', url)
+    }
+    const probeResult = await runCmd(playlistProbeArgs(url))
+    const feed = probeResult.code === 0 ? parseFeedProbe(probeResult.stdout) : null
+    if (feed === null) {
+      sink({ type: 'item:start', itemId: url, title: url })
+      return failed(url, 'a feed nem olvasható', url)
+    }
+    if (deps.pick === undefined) {
+      for (const message of feedMessages(url, feed, deps.listLimit)) await deps.emit(message)
+      await row({ outcome: 'listed', label: url })
+      return
+    }
+    const picked = resolvePick(deps.pick, feed.entries.length)
+    if (!picked.ok) {
+      sink({ type: 'item:start', itemId: url, title: url })
+      return failed(url, picked.reason, url)
+    }
+    total += picked.indexes.length - 1
+    sink({ type: 'scan:found', count: total })
+    const dir = playlistDir('', feed.title, feedHash(url), false)
+    for (const index of picked.indexes) {
+      if (deps.stopped()) return
+      const entry = feed.entries[index]
+      if (entry === undefined) continue
+      const hash = directTarget(entry.url).hash
+      const label = `${entry.title} [${hash}]`
+      sink({ type: 'item:start', itemId: hash, title: label })
+      if (ids.has(hash) && !deps.overwrite) {
+        await skipped(label, hash)
+        continue
+      }
+      sink({ type: 'item:step', itemId: hash, step: 'letöltés' })
+      const result = await downloadDirect(entry.url, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) })
+      if (!result.ok) {
+        await failed(entry.url, 'reason' in result ? result.reason : 'nem hangfájl (feed)', hash)
+        continue
+      }
+      const info = result.path.replace(/\.[A-Za-z0-9]+$/, '.info.json')
+      await writeFile(join(store.staging, info), JSON.stringify(entry.raw, null, 2))
+      ids.add(hash)
+      await commitItem([result.path, info], hash, label)
+    }
+  }
+
   async function fetchDirect(url: string): Promise<void> {
+    // A feedet előre felismerjük (csak kiterjesztés nélküli URL-nél kér le), így listázáskor nincs item:* esemény.
+    if (await detectFeed(url, deps.fetchImpl)) return fetchFeed(url)
+    if (deps.pick !== undefined) {
+      sink({ type: 'item:start', itemId: url, title: url })
+      return failed(url, 'a --pick csak feedhez adható meg', url)
+    }
     const target = directTarget(url)
     const label = `${target.name} [${target.hash}]`
     sink({ type: 'item:start', itemId: target.hash, title: label })
@@ -192,7 +256,7 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     sink({ type: 'item:step', itemId: target.hash, step: 'letöltés' })
     const result = await downloadDirect(url, store.staging, deps.fetchImpl)
     if (!result.ok) {
-      await failed(url, 'reason' in result ? result.reason : 'podcast-feed (nem támogatott)', target.hash)
+      await failed(url, 'reason' in result ? result.reason : 'podcast-feed', target.hash)
       return
     }
     ids.add(target.hash)
@@ -226,7 +290,10 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
   for (const raw of inputs) {
     if (deps.stopped()) break
     const classified = classifyAudioInput(raw, deps.yesPlaylist)
-    if (classified.kind === 'rejected') {
+    if (deps.pick !== undefined && classified.kind !== 'direct') {
+      sink({ type: 'item:start', itemId: classified.kind === 'rejected' ? classified.raw : classified.url, title: raw })
+      await failed(raw, 'a --pick csak feedhez adható meg', raw)
+    } else if (classified.kind === 'rejected') {
       sink({ type: 'item:start', itemId: classified.raw, title: classified.raw })
       await failed(classified.raw, 'nem URL', classified.raw)
     } else if (classified.kind === 'direct') {

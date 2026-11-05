@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -6,6 +6,8 @@ import { collectEvents, type RunEvent } from '../../events.js'
 import { readRuns } from '../../view/runs.js'
 import { audioDownloadArgs, type ProcessRunner } from '../subtitle/ytdlp.js'
 import { localAudioStore, s3AudioStore, type AudioStore } from './store.js'
+import { feedHash } from './feed.js'
+import { directTarget } from './direct.js'
 import { audioSummary, openAudioRunLog, rowLine, runAudioFetch, type AudioRunDeps } from './run.js'
 
 const yt = (id: string): string => `https://www.youtube.com/watch?v=${id}`
@@ -225,5 +227,75 @@ describe('sorok', () => {
   it('audioSummary', () => {
     expect(audioSummary([{ outcome: 'downloaded', label: 'a' }, { outcome: 'skipped', label: 'b' }, { outcome: 'failed', label: 'c', reason: 'x' }])).toBe('Kész: letöltve 1 db fájl, 1 kihagyva, 1 hibás.')
     expect(audioSummary([{ outcome: 'uploaded', label: 'a' }])).toBe('Kész: letöltve 0 db fájl, 0 kihagyva, 0 hibás. Korábbi letöltésből feltöltve: 1.')
+  })
+})
+
+describe('podcast-feed', () => {
+  const FEED = 'https://f.hu/rss'
+  const E1 = 'https://f.hu/e1.mp3'
+  const E2 = 'https://f.hu/e2.mp3'
+  const raw1 = { _type: 'url', url: `${E1}#__youtubedl_smuggle=x`, title: 'Első', timestamp: 1552480285, duration: 6024 }
+  const raw2 = { _type: 'url', url: `${E2}#__youtubedl_smuggle=x`, title: 'Második' }
+  const feedJson = JSON.stringify({ _type: 'playlist', title: 'Podcast', entries: [raw1, raw2] })
+  const feedRunner: ProcessRunner = (args) =>
+    Promise.resolve(args[0] === '--version' ? ok('1') : args.includes('--flat-playlist') ? ok(feedJson) : { code: 1, stdout: '', stderr: 'váratlan hívás' })
+  const fetchImpl: typeof fetch = (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    return Promise.resolve(new Response(url === FEED ? '<rss/>' : 'abc', { headers: { 'content-type': url === FEED ? 'application/rss+xml' : 'audio/mpeg' } }))
+  }
+  const hash = (url: string): string => directTarget(url).hash
+  const feedRun = async (inputs: string[], extra: Partial<AudioRunDeps> = {}) => {
+    const root = await tmp()
+    const events = collectEvents()
+    const run = deps(localAudioStore(root), { runner: feedRunner, calls: [], downloads: () => [] }, { fetchImpl, sink: events.sink, ...extra })
+    const rows = await runAudioFetch(inputs, run.deps)
+    return { root, lines: run.lines, rows, events: events.events }
+  }
+
+  it('feed pick nélkül: a lista kimegy, listed sor, a tároló üres, nincs item:* esemény', async () => {
+    const { root, lines, rows, events } = await feedRun([FEED])
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toBe(`Podcast\nFeed: ${FEED}\n1. Első — 2019-03-13, 1:40:24\n2. Második`)
+    expect(rows).toEqual([{ outcome: 'listed', label: FEED }])
+    expect(await listing(root)).toEqual([])
+    expect(events.some((event) => event.type.startsWith('item:'))).toBe(false)
+  })
+
+  it('feed --pick 2: csak a 2. epizód, <Feed> [hash]/<Ep> [hash].mp3 + info.json', async () => {
+    const { root, lines } = await feedRun([FEED], { pick: [2] })
+    const dir = `Podcast [${feedHash(FEED)}]`
+    expect(lines).toEqual([`letöltve: Második [${hash(E2)}]`])
+    expect(await listing(root)).toEqual([dir, `${dir}/Második [${hash(E2)}].info.json`, `${dir}/Második [${hash(E2)}].mp3`])
+    expect(JSON.parse(await readFile(join(root, dir, `Második [${hash(E2)}].info.json`), 'utf8'))).toEqual(raw2)
+  })
+
+  it('feed --pick 0: mind; --pick 9 két epizódra: hiba, nincs letöltés', async () => {
+    const all = await feedRun([FEED], { pick: 'all' })
+    expect(all.lines).toEqual([`letöltve: Első [${hash(E1)}]`, `letöltve: Második [${hash(E2)}]`])
+    const bad = await feedRun([FEED], { pick: [9] })
+    expect(bad.lines).toEqual([`hiba: ${FEED}: érvénytelen sorszám: 9 (a feedben 2 epizód van)`])
+    expect(await listing(bad.root)).toEqual([])
+  })
+
+  it('feed más linkkel együtt: hiba, a másik link letöltődik', async () => {
+    const { lines } = await feedRun([FEED, 'https://f.hu/x.mp3'])
+    expect(lines[0]).toBe(`hiba: ${FEED}: a feedet egyedül add meg`)
+    expect(lines[1]).toMatch(/^letöltve: x \[/)
+  })
+
+  it('--pick nem feedre: hiba, nincs letöltés', async () => {
+    const { root, lines } = await feedRun(['https://f.hu/x.mp3'], { pick: [1] })
+    expect(lines).toEqual(['hiba: https://f.hu/x.mp3: a --pick csak feedhez adható meg'])
+    expect(await listing(root)).toEqual([])
+  })
+
+  it('előbb közvetlen mp3-linkként, majd a feedből → kihagyva', async () => {
+    const root = await tmp()
+    const store = localAudioStore(root)
+    const fake = { runner: feedRunner, calls: [], downloads: () => [] }
+    await runAudioFetch([E1], deps(store, fake, { fetchImpl }).deps)
+    const second = deps(store, fake, { fetchImpl, pick: [1] })
+    await runAudioFetch([FEED], second.deps)
+    expect(second.lines).toEqual([`kihagyva: Első [${hash(E1)}]`])
   })
 })
