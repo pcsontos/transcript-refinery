@@ -81,6 +81,11 @@ A `refinery fetch subtitle` YouTube-feliratot és `.info.json` metaadatot tölt 
 mappába a `yt-dlp` segítségével. Ami már ott van, azt átugorja. A `run` és a
 `watch` ettől még csak a helyi fájlt olvassa, hálózat nélkül.
 
+A `refinery fetch audio` YouTube-, podcast- vagy közvetlen hangot tölt le az eredeti
+formátumban (konverzió nélkül), `.info.json`-nal, S3-ba (pl. Garage) vagy helyi mappába.
+Podcast-feednél előbb a számozott epizódlistát adja, és a `--pick` választja ki a letöltendőket.
+Részletek: `docs/usage.md` 9. szakasz.
+
 A `refinery serve` egy videó feliratát és `info.json` fájlját az R2-be tölti. A
 Telegram-ajtó a `worker/` csomag.
 

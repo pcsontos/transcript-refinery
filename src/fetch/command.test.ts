@@ -43,14 +43,14 @@ describe('commandFetch mód ellenőrzése', () => {
     const streams = io()
     const code = await commandFetch(['--out', '/tmp/felirat'], streams)
     expect(code).toBe(1)
-    expect(streams.err[0]).toBe('Hiányzó fetch-mód. Ismert: subtitle')
+    expect(streams.err[0]).toBe('Hiányzó fetch-mód. Ismert: subtitle, audio')
   })
 
   it('ismeretlen mód esetén indulási hiba', async () => {
     const streams = io()
-    const code = await commandFetch(['audio', URL], streams)
+    const code = await commandFetch(['mp3', URL], streams)
     expect(code).toBe(1)
-    expect(streams.err[0]).toBe('Ismeretlen fetch-mód: audio. Ismert: subtitle')
+    expect(streams.err[0]).toBe('Ismeretlen fetch-mód: mp3. Ismert: subtitle, audio')
   })
 
   it('--help mód nélkül is kiírja a súgót és 0-val tér vissza', async () => {

@@ -172,6 +172,35 @@ export const COMMANDS: readonly CommandHelp[] = [
     ],
   },
   {
+    name: 'fetch audio',
+    summary: 'YouTube-, podcast- vagy közvetlen hangot tölt S3-ba vagy helyi mappába.',
+    usage:
+      'refinery fetch audio <url…> [kapcsolók]\n' +
+      '           refinery fetch audio --list <fájl> [kapcsolók]\n' +
+      '           refinery fetch audio <feed-url> --pick <lista> [kapcsolók]',
+    description:
+      'Hangot tölt le az eredeti formátumban (nincs konverzió) .info.json metaadattal, a yt-dlp segítségével:\n' +
+      'YouTube-videót, -playlistet, közvetlen hangfájl-URL-t vagy podcast-RSS feedet. A tároló az S3 (config audio.s3)\n' +
+      'vagy egy helyi mappa (audio.dir, illetve --out). Elrendezés: <Csatorna>/<Cím> [<id>].<ext>; a már tárolt\n' +
+      'elemet globálisan átugorja.\n' +
+      'Feednél két lépés: előbb a számozott epizódlistát kapod, majd a --pick-kel a kiválasztottakat tölti le.',
+    options: [
+      ['--out <út>', 'helyi célmappa, abszolút; config nélkül is használható'],
+      ['--list <fájl>', 'soronkénti címek; a # sor és az üres sor kimarad'],
+      ['--overwrite', 'a már letöltött hang újraírása'],
+      ['--playlist-items <elemek>', 'lista szűrése, a yt-dlp -I értékeként'],
+      ['--yes-playlist', 'a watch?v=&list= cím a teljes listát jelenti'],
+      ['--pick <lista>', 'feed epizódjai: 0 = mind, vagy vesszős sorszámok (pl. 1,3)'],
+      CONFIG,
+      HELP,
+    ],
+    examples: [
+      'refinery fetch audio https://www.youtube.com/watch?v=<id> --out /abs/mappa',
+      'refinery fetch audio https://példa.hu/feed.xml',
+      'refinery fetch audio https://példa.hu/feed.xml --pick 1,3',
+    ],
+  },
+  {
     name: 'serve',
     summary: 'A Worker munkáit fogadó démon: felirat az R2-be, receptek a vaultba.',
     usage: 'refinery serve [kapcsolók]',

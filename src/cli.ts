@@ -1048,11 +1048,12 @@ export async function commandRun(
   }
 }
 
-/** A súgó tárgya: az első szó, ha nem kapcsoló. A `fetch` egyetlen módja a `subtitle`. */
+/** A súgó tárgya: az első szó, ha nem kapcsoló. A `fetch audio` a sajátja, minden más `fetch` a `subtitle`-é. */
 function helpTopic(words: readonly string[]): string | undefined {
   const first = words[0]
   if (first === undefined || first.startsWith('-')) return undefined
-  return first === 'fetch' ? 'fetch subtitle' : first
+  if (first !== 'fetch') return first
+  return words[1] === 'audio' ? 'fetch audio' : 'fetch subtitle'
 }
 
 function printHelp(topic: string | undefined): number {
