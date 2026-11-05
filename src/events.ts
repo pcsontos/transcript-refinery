@@ -16,6 +16,7 @@ export type RunEvent =
       wordsNormalized: number
       captionSource: CaptionSource
     }
+  | { type: 'item:step'; itemId: string; step: string }
   | { type: 'item:published'; itemId: string; path: string }
   | { type: 'item:skipped'; itemId: string; reason: string }
   | {

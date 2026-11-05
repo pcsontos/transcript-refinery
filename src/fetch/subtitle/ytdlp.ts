@@ -65,6 +65,25 @@ export function downloadArgs(input: {
   ]
 }
 
+/** Hang letöltése az eredeti formátumban (konvertálás és ffmpeg nélkül), `.info.json`-nal. */
+export function audioDownloadArgs(input: { url: string; dest: string; overwrite: boolean }): string[] {
+  return [
+    '-f',
+    'bestaudio[ext=m4a]/bestaudio',
+    '--write-info-json',
+    '--no-playlist',
+    '--no-progress',
+    input.overwrite ? '--force-overwrites' : '--no-overwrites',
+    ...JS_RUNTIME,
+    '--paths',
+    `home:${input.dest}`,
+    '-o',
+    '%(title)s [%(id)s].%(ext)s',
+    '--',
+    input.url,
+  ]
+}
+
 export interface VideoProbe {
   id: string
   title?: string
