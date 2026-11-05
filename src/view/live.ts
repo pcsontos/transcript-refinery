@@ -1,6 +1,15 @@
 import { summarize } from '../events.js'
 import type { RunLogLine } from '../run/logfile.js'
 
+/** Egy elem a futás elemtáblázatában; az utolsó esemény dönt az eredményéről. */
+export interface LiveRunItem {
+  itemId: string
+  title: string
+  outcome: 'running' | 'done' | 'skipped' | 'failed'
+  /** Kész elemnél az út, kihagyottnál az ok, hibásnál a hiba; futónál `null`. */
+  detail: string | null
+}
+
 /** Egy futás állapota, ahogy a felület mutatja. Mindig a napló elejétől számol. */
 export interface LiveRunState {
   /** A feldolgozandó egységek száma (`scan:found`). */
@@ -24,6 +33,8 @@ export interface LiveRunState {
   ended: { interrupted: boolean } | null
   /** Az utolsó időbélyeges sor ideje. */
   lastEventAt: string | null
+  /** Az elemek az első `item:start` sorrendjében. */
+  items: LiveRunItem[]
 }
 
 /**
@@ -50,6 +61,20 @@ export function liveRunState(lines: readonly RunLogLine[]): LiveRunState {
   let aborted: string | null = null
   let ended: LiveRunState['ended'] = null
   let lastEventAt: string | null = null
+  const items = new Map<string, LiveRunItem>()
+  const itemOf = (itemId: string): LiveRunItem => {
+    let item = items.get(itemId)
+    if (item === undefined) {
+      item = { itemId, title: titles.get(itemId) ?? itemId, outcome: 'running', detail: null }
+      items.set(itemId, item)
+    }
+    return item
+  }
+  const settle = (itemId: string, outcome: LiveRunItem['outcome'], detail: string | null): void => {
+    const item = itemOf(itemId)
+    item.outcome = outcome
+    item.detail = detail
+  }
 
   for (const line of lines) {
     if (line.at !== undefined) lastEventAt = line.at
@@ -64,6 +89,17 @@ export function liveRunState(lines: readonly RunLogLine[]): LiveRunState {
         started++
         titles.set(line.itemId, line.title)
         current = stepOf(line.itemId, 'feldolgozás')
+        itemOf(line.itemId).title = line.title
+        settle(line.itemId, 'running', null)
+        break
+      case 'item:step':
+        current = stepOf(line.itemId, line.step)
+        break
+      case 'item:published':
+        settle(line.itemId, 'done', line.path)
+        break
+      case 'item:skipped':
+        settle(line.itemId, 'skipped', line.reason)
         break
       case 'item:generating':
         current = stepOf(line.itemId, `${line.recipe}: generálás (${String(line.generation)}.)`)
@@ -81,6 +117,7 @@ export function liveRunState(lines: readonly RunLogLine[]): LiveRunState {
         break
       case 'item:failed':
         failures.unshift({ itemId: line.itemId, kind: line.kind, error: line.error })
+        settle(line.itemId, 'failed', line.error)
         break
       case 'run:aborted':
         aborted = line.reason
@@ -112,5 +149,6 @@ export function liveRunState(lines: readonly RunLogLine[]): LiveRunState {
     aborted,
     ended,
     lastEventAt,
+    items: [...items.values()],
   }
 }

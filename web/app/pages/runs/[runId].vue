@@ -18,6 +18,7 @@ const state = computed(() => liveState.value ?? data.value?.state ?? null)
 const lines = computed(() => (liveLines.value.length > 0 ? liveLines.value : (data.value?.lines ?? [])))
 const aborted = computed(() => state.value?.aborted ?? null)
 const failures = computed(() => state.value?.recentFailures ?? [])
+const items = computed(() => state.value?.items ?? [])
 </script>
 
 <template>
@@ -54,6 +55,30 @@ const failures = computed(() => state.value?.recentFailures ?? [])
           </ul>
         </template>
       </UAlert>
+
+      <section v-if="items.length > 0" class="space-y-2">
+        <h2 class="text-lg font-semibold">Elemek</h2>
+        <table class="w-full text-sm">
+          <thead class="text-left text-muted">
+            <tr>
+              <th class="py-1 pr-4 font-normal">Cím</th>
+              <th class="py-1 pr-4 font-normal">Eredmény</th>
+              <th class="py-1 font-normal">Út / ok</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in items" :key="item.itemId" class="border-t border-default align-top">
+              <td class="py-1 pr-4">{{ item.title }}</td>
+              <td class="py-1 pr-4">
+                <UBadge :color="itemOutcomeColor(item.outcome)" variant="subtle">
+                  {{ itemOutcomeLabel(item.outcome) }}
+                </UBadge>
+              </td>
+              <td class="py-1 font-mono text-xs break-all">{{ item.detail ?? '' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
 
       <section class="space-y-2">
         <h2 class="text-lg font-semibold">Idővonal</h2>

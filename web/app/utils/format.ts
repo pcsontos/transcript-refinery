@@ -9,6 +9,7 @@ const KIND_LABELS: Record<string, string> = {
   'clean-deep': 'tisztított leirat — erős',
   bloom: 'Bloom-kártya',
   notes: 'strukturált jegyzet',
+  audio: 'hang',
 }
 
 /**
@@ -102,4 +103,29 @@ export function escapeHtml(text: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
+}
+
+const ITEM_OUTCOME_LABELS: Record<string, string> = {
+  running: 'fut',
+  done: 'kész',
+  skipped: 'kihagyva',
+  failed: 'hibás',
+}
+
+/** Az elemtáblázat eredmény-címkéje; ismeretlen értéknél maga az érték. */
+export function itemOutcomeLabel(outcome: string): string {
+  return ITEM_OUTCOME_LABELS[outcome] ?? outcome
+}
+
+export function itemOutcomeColor(outcome: string): 'info' | 'success' | 'neutral' | 'error' {
+  switch (outcome) {
+    case 'running':
+      return 'info'
+    case 'done':
+      return 'success'
+    case 'failed':
+      return 'error'
+    default:
+      return 'neutral'
+  }
 }

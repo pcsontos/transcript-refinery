@@ -6,6 +6,10 @@ describe('kindLabel', () => {
     expect(kindLabel('clean')).toBe('tisztított leirat')
   })
 
+  it('az audio típus címkéje hang', () => {
+    expect(kindLabel('audio')).toBe('hang')
+  })
+
   it('a fordítás a forrás címkéjét kapja a célnyelvvel', () => {
     expect(kindLabel('clean-hu')).toBe('tisztított leirat (hu)')
   })

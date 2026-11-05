@@ -21,6 +21,7 @@ describe('liveRunState', () => {
       aborted: null,
       ended: null,
       lastEventAt: null,
+      items: [],
     })
   })
 
@@ -108,5 +109,38 @@ describe('liveRunState', () => {
     expect(state.current).toBeNull()
     expect(state.aborted).toBe('a tényleges költés meghaladta a plafont')
     expect(state.ended).toEqual({ interrupted: false })
+  })
+})
+
+describe('liveRunState: hangletöltés', () => {
+  it('item:step a Most lépését állítja', () => {
+    const state = liveRunState([
+      { type: 'item:start', itemId: 'a', title: 'A' },
+      { type: 'item:step', itemId: 'a', step: 'feltöltés S3-ba' },
+    ])
+    expect(state.current).toEqual({ itemId: 'a', title: 'A', step: 'feltöltés S3-ba' })
+  })
+
+  it('items: sorrend, eredmény és részlet', () => {
+    const state = liveRunState([
+      { type: 'item:start', itemId: 'a', title: 'A' },
+      { type: 'item:published', itemId: 'a', path: 'Cs/A [a].m4a' },
+      { type: 'item:start', itemId: 'b', title: 'B' },
+      { type: 'item:skipped', itemId: 'b', reason: 'már a tárolóban' },
+      { type: 'item:start', itemId: 'c', title: 'C' },
+      { type: 'item:failed', itemId: 'c', source: 'audio', kind: 'audio', error: 'a feltöltés nem sikerült; a fájl a munkamappában maradt' },
+      { type: 'item:start', itemId: 'd', title: 'D' },
+    ])
+    expect(state.items.map((item) => [item.itemId, item.outcome, item.detail])).toEqual([
+      ['a', 'done', 'Cs/A [a].m4a'],
+      ['b', 'skipped', 'már a tárolóban'],
+      ['c', 'failed', 'a feltöltés nem sikerült; a fájl a munkamappában maradt'],
+      ['d', 'running', null],
+    ])
+  })
+
+  it('item:start nélküli elemnél a cím az itemId', () => {
+    const state = liveRunState([{ type: 'item:published', itemId: 'x', path: 'p' }])
+    expect(state.items).toEqual([{ itemId: 'x', title: 'x', outcome: 'done', detail: 'p' }])
   })
 })
