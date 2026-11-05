@@ -186,9 +186,17 @@ export function cancelKeyboard(jobs: readonly { jobId: string; videoId: string; 
 
 export type Probe = { ok: true; ms: number; version: string; busy: string | null } | { ok: false; reason: 'secret' | 'down' }
 
+export const FETCH_USAGE = 'Használat: /fetch <link…> – YouTube-videó, playlist vagy hangfájl; több link vesszővel vagy szóközzel.'
+export const PICK_USAGE = 'Válaszként a sorszámokat írd: 0 = mind, vagy pl. 1,3.'
+
+export function fetchTitle(n: number): string {
+  return `hangletöltés (${n} link)`
+}
+
 /** A bot parancsai: ebből épül a `/help` és a Telegram `/` menüje (`pnpm telegram:commands`). */
 export const BOT_COMMANDS: readonly { command: string; args?: string; description: string }[] = [
   { command: 'scan', args: '<szöveg>', description: 'beillesztett átirat feldolgozása (egy üzenetnyi)' },
+  { command: 'fetch', args: '<link…>', description: 'hang letöltése és archiválása (videó, playlist, hangfájl)' },
   { command: 'start', description: 'a bot összekötése a Google-fiókoddal' },
   { command: 'cancel', description: 'nyitott munka megszakítása' },
   { command: 'model', description: 'a receptek modelljének megtekintése és váltása' },

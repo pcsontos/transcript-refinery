@@ -168,6 +168,25 @@ describe('worker belépés', () => {
     expect((await worker.fetch(request, env, { waitUntil: () => undefined })).status).toBe(400)
   })
 
+  it('a rossz alakú reply_to_message 400', async () => {
+    const env = {
+      DB: memoryDb(),
+      TELEGRAM_BOT_TOKEN: 'token',
+      TELEGRAM_ALLOWED_EMAILS: 'en@example.com',
+      TELEGRAM_BOT_USERNAME: 'refinery_bot',
+      TELEGRAM_WEBHOOK_SECRET: 'hook',
+      REFINERY_SERVE_SECRET: 'titok',
+      SERVE_URL: 'http://127.0.0.1:8787',
+    }
+    const bad = { update_id: 5, message: { message_id: 1, chat: { id: 42 }, from: { id: 42 }, text: 'x', reply_to_message: 5 } }
+    const request = new Request('https://worker.test/telegram', {
+      method: 'POST',
+      headers: { 'x-telegram-bot-api-secret-token': 'hook' },
+      body: JSON.stringify(bad),
+    })
+    expect((await worker.fetch(request, env, { waitUntil: () => undefined })).status).toBe(400)
+  })
+
   it('a gombkoppintás üres answerCallbackQuery választ kér, idegen chatnél kopogtatás nélkül', async () => {
     const calls: { url: string; body: string }[] = []
     globalThis.fetch = (input, init) => {
