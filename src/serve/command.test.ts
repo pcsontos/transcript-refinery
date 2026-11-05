@@ -1,9 +1,10 @@
 import { EventEmitter } from 'node:events'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { commandServe, installIdleExit, serveEffects } from './command.js'
+import type { ProcessRunner } from '../fetch/subtitle/ytdlp.js'
+import { commandServe, installIdleExit, serveEffects, serveFetchAudio } from './command.js'
 import type { ObjectStore } from './r2.js'
 
 function memoryStore(initial: Record<string, Uint8Array> = {}): ObjectStore & { objects: Record<string, Uint8Array> } {
@@ -157,5 +158,65 @@ describe('installIdleExit', () => {
     target.emit('SIGTERM')
 
     expect(codes).toEqual([])
+  })
+})
+
+describe('serveFetchAudio', () => {
+  const ID = 'abcdefghijk'
+  const runner: ProcessRunner = async (args) => {
+    if (args[0] === '--version') return { code: 0, stdout: '1', stderr: '' }
+    if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }), stderr: '' }
+    const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
+    await mkdir(dest, { recursive: true })
+    await writeFile(join(dest, `Cím [${ID}].m4a`), 'a')
+    return { code: 0, stdout: '', stderr: '' }
+  }
+
+  async function config(audio: boolean): Promise<{ dir: string; path: string }> {
+    const dir = await mkdtemp(join(tmpdir(), 'serve-audio-'))
+    const path = join(dir, 'refinery.config.yaml')
+    await writeFile(path, `vault:\n  path: ${dir}/vault\nsources:\n  - ${dir}/src\nlogs:\n  dir: ${dir}/logs\n${audio ? `audio:\n  dir: ${dir}/audio\n` : ''}`)
+    return { dir, path }
+  }
+
+  it('audio blokk nélkül dob', async () => {
+    const { path } = await config(false)
+    await expect(serveFetchAudio(path, { runner })({ inputs: [`https://www.youtube.com/watch?v=${ID}`] }, undefined, () => Promise.resolve())).rejects.toThrow('Nincs audio blokk a configban.')
+  })
+
+  it('letölt, soronként emitál, összesítőt ad, és futásnaplót ír', async () => {
+    const { dir, path } = await config(true)
+    const lines: string[] = []
+    const summary = await serveFetchAudio(path, { runner })({ inputs: [`https://www.youtube.com/watch?v=${ID}`] }, undefined, (line) => {
+      lines.push(line)
+      return Promise.resolve()
+    })
+    expect(lines).toEqual([`letöltve: Cím [${ID}]`])
+    expect(summary).toBe('Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás.')
+    expect(await readdir(join(dir, 'logs'))).toHaveLength(1)
+  })
+
+  it('megszakított jelre a napló interrupted-ként zárul', async () => {
+    const { dir, path } = await config(true)
+    const controller = new AbortController()
+    controller.abort()
+    await serveFetchAudio(path, { runner })({ inputs: [`https://www.youtube.com/watch?v=${ID}`] }, controller.signal, () => Promise.resolve())
+    const { readFile } = await import('node:fs/promises')
+    const [file] = await readdir(join(dir, 'logs'))
+    const last = (await readFile(join(dir, 'logs', file as string), 'utf8')).trim().split('\n').at(-1)
+    expect(JSON.parse(last as string)).toMatchObject({ type: 'run:ended', interrupted: true })
+  })
+
+  it('a serveEffects továbbadja a fetchAudio-t', () => {
+    const fetchAudio = () => Promise.resolve('k')
+    const effects = serveEffects({
+      outDir: '/o',
+      languages: ['hu'],
+      store: fakeStore,
+      fetchSubtitle: () => Promise.resolve({ code: 0, stdout: '', stderr: '' }),
+      callback: () => Promise.resolve(),
+      fetchAudio,
+    })
+    expect(effects.fetchAudio).toBe(fetchAudio)
   })
 })

@@ -52,7 +52,7 @@ function readBody(request: IncomingMessage): Promise<string> {
 
 function isJob(value: unknown): value is ServeJob {
   if (typeof value !== 'object' || value === null) return false
-  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown; text?: unknown; title?: unknown; textLang?: unknown; models?: unknown }
+  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown; text?: unknown; title?: unknown; textLang?: unknown; models?: unknown; fetch?: unknown }
   if (typeof job.jobId !== 'string' || typeof job.videoId !== 'string' || typeof job.url !== 'string') return false
   // A régi, egyreceptes alakot a felirat-munka helyett hibaként kell látni.
   if (job.recipe !== undefined) return false
@@ -67,6 +67,7 @@ function isJob(value: unknown): value is ServeJob {
     if (typeof job.models !== 'object' || job.models === null || Array.isArray(job.models)) return false
     if (!Object.values(job.models).every((model) => typeof model === 'string' && model !== '')) return false
   }
+  if (job.fetch !== undefined && typeof job.fetch !== 'boolean') return false
   // A nyelvkód a SERVE_OUT fájlnevébe kerül: más érték útvonal-bejárás lenne.
   if (typeof job.textLang === 'string' && !isLanguageTag(job.textLang)) return false
   return job.lang === undefined || typeof job.lang === 'string'

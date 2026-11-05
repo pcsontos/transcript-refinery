@@ -2,7 +2,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
+import { pickHint } from '../fetch/audio/feed.js'
+import { audioSummary, openAudioRunLog, runAudioFetch } from '../fetch/audio/run.js'
+import { createAudioStore } from '../fetch/audio/store.js'
 import { commandFetch } from '../fetch/command.js'
+import { createYtdlpRunner, type ProcessRunner } from '../fetch/subtitle/ytdlp.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { VERSION } from '../meta.js'
 import { modelsView } from '../model/recipe-model.js'
@@ -36,6 +40,7 @@ export function serveEffects(input: {
   deletePair?: JobEffects['deletePair']
   readFile?: JobEffects['readFile']
   runRecipes?: RecipesRun
+  fetchAudio?: JobEffects['fetchAudio']
   configArg?: string
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
@@ -57,6 +62,7 @@ export function serveEffects(input: {
     deletePair: input.deletePair ?? ((videoId) => deleteLocalPair(input.outDir, videoId)),
     readFile: input.readFile ?? (async (path) => new Uint8Array(await readFile(path))),
     fetchSubtitle: input.fetchSubtitle,
+    fetchAudio: input.fetchAudio,
     callback: input.callback,
     writeFile: async (path, body) => {
       await mkdir(dirname(path), { recursive: true })
@@ -73,6 +79,44 @@ export function serveEffects(input: {
         models,
         load: () => loadCliConfig(input.configArg),
       }),
+  }
+}
+
+/**
+ * A Telegram `/fetch` hangletöltése: munkánként tölti a configot, így a `audio` blokk
+ * szerkesztése újraindítás nélkül hat. A futás a `logs.dir` alá naplózódik.
+ */
+export function serveFetchAudio(
+  configArg: string | undefined,
+  deps: { runner?: ProcessRunner; fetchImpl?: typeof fetch } = {},
+): NonNullable<JobEffects['fetchAudio']> {
+  return async (request, signal, emit) => {
+    const { cfg } = await loadCliConfig(configArg)
+    if (cfg.audio === null) throw new Error('Nincs audio blokk a configban.')
+    const store = createAudioStore(cfg.audio, process.env)
+    const pick = request.pick === undefined ? [] : ['--pick', request.pick === 'all' ? '0' : request.pick.join(',')]
+    const log = openAudioRunLog(cfg.logsDir, `/fetch ${[...request.inputs, ...pick].join(' ')}`)
+    try {
+      const rows = await runAudioFetch(request.inputs, {
+        store,
+        runner: deps.runner ?? createYtdlpRunner(),
+        fetchImpl: deps.fetchImpl,
+        overwrite: false,
+        // A watch?v=…&list=… a spec szerint egy videó.
+        yesPlaylist: false,
+        pick: request.pick,
+        listLimit: 4000,
+        stopped: () => signal?.aborted ?? false,
+        emit,
+        sink: log.sink,
+      })
+      return rows.length === 1 && rows[0]?.outcome === 'listed'
+        ? pickHint(request.inputs[0] ?? rows[0].label, 'telegram')
+        : audioSummary(rows)
+    } finally {
+      log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
+      log.close()
+    }
   }
 }
 
@@ -156,6 +200,7 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     configArg,
     languages,
     store: createR2Store(r2),
+    fetchAudio: serveFetchAudio(configArg),
     fetchSubtitle: async (url) => {
       console.log(`[serve] Letöltés indítása yt-dlp-vel: ${url}`)
       const stdout: string[] = []
@@ -205,7 +250,7 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
       try {
         await runJob(job, effects, signal)
         // A felirat-ág nem figyeli a signalt: az végigfut, akkor is, ha a kérés megérkezett.
-        console.log(`[serve] Munka ${signal.aborted && job.recipes !== undefined ? 'megszakítva' : 'kész'}: ${job.jobId}`)
+        console.log(`[serve] Munka ${signal.aborted && (job.recipes !== undefined || job.fetch === true) ? 'megszakítva' : 'kész'}: ${job.jobId}`)
       } catch (err) {
         console.error(`[serve] Munka sikertelen: ${job.jobId}:`, err)
       }
