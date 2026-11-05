@@ -1,5 +1,8 @@
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createR2Store, signR2, type R2Config } from './r2.js'
+import { createR2Store, createS3Store, signR2, signS3, type R2Config } from './r2.js'
 
 const config: R2Config = {
   accountId: 'account',
@@ -54,5 +57,93 @@ describe('createR2Store', () => {
     expect(calls[1]?.url).toContain('/refinery/videos/abcdefghijk/hu.vtt')
     const got = await store.get('videos/abcdefghijk/info.json')
     expect(new TextDecoder().decode(got ?? new Uint8Array())).toBe('felirat')
+  })
+})
+
+describe('signS3', () => {
+  it('AWS SigV4 referencia: GET Bucket (List Objects), virtual-hosted, us-east-1', () => {
+    const signed = signS3({
+      method: 'GET',
+      key: '',
+      payloadHash: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      now: new Date('2013-05-24T00:00:00Z'),
+      query: { 'max-keys': '2', prefix: 'J' },
+      config: {
+        endpoint: 'https://s3.amazonaws.com',
+        region: 'us-east-1',
+        bucket: 'examplebucket',
+        pathStyle: false,
+        accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+        secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      },
+    })
+    // Az AWS-dokumentáció értéke; független számolással egyezik. Ha bukik, a kód a hibás, nem a várt érték.
+    expect(signed.headers.authorization).toContain('Signature=34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7')
+    expect(signed.url).toBe('https://examplebucket.s3.amazonaws.com/?max-keys=2&prefix=J')
+  })
+
+  it('path-style http endpoint porttal és saját régióval (Garage-alak)', () => {
+    const signed = signS3({
+      method: 'PUT',
+      key: "Csatorna/Cím (élő) – it's! [abcdefghijk].m4a",
+      payloadHash: 'x'.repeat(64),
+      now: new Date('2026-11-05T00:00:00Z'),
+      config: { endpoint: 'http://garage:3900', region: 'garage', bucket: 'audio', pathStyle: true, accessKeyId: 'GK1', secretAccessKey: 's' },
+    })
+    expect(signed.headers.host).toBe('garage:3900')
+    expect(signed.url).toBe('http://garage:3900/audio/Csatorna/C%C3%ADm%20%28%C3%A9l%C5%91%29%20%E2%80%93%20it%27s%21%20%5Babcdefghijk%5D.m4a')
+    expect(signed.headers.authorization).toContain('Credential=GK1/20261105/garage/s3/aws4_request')
+  })
+})
+
+describe('createS3Store', () => {
+  const s3: Parameters<typeof createS3Store>[0] = {
+    endpoint: 'http://garage:3900',
+    region: 'garage',
+    bucket: 'audio',
+    pathStyle: true,
+    accessKeyId: 'GK1',
+    secretAccessKey: 's',
+  }
+  const urlOf = (input: Parameters<typeof fetch>[0]): string => (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+
+  it('a list lapoz, és dekódolja az XML-entitásokat', async () => {
+    const urls: string[] = []
+    const pages = [
+      '<ListBucketResult><Contents><Key>A &amp; B [abcdefghijk].m4a</Key></Contents><IsTruncated>true</IsTruncated><NextContinuationToken>t&amp;1</NextContinuationToken></ListBucketResult>',
+      '<ListBucketResult><Contents><Key>C [bcdefghijkl].m4a</Key></Contents><IsTruncated>false</IsTruncated></ListBucketResult>',
+    ]
+    const fetchImpl: typeof fetch = (input) => {
+      urls.push(urlOf(input))
+      return Promise.resolve(new Response(pages[urls.length - 1] ?? '', { status: 200 }))
+    }
+    const keys = await createS3Store(s3, fetchImpl).list('')
+    expect(keys).toEqual(['A & B [abcdefghijk].m4a', 'C [bcdefghijkl].m4a'])
+    expect(urls[1]).toContain('continuation-token=t%261')
+  })
+
+  it('a putFile fájlból streamel, content-lengthtel és a tartalom hash-ével', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 's3-'))
+    const file = join(dir, 'f.txt')
+    writeFileSync(file, 'felirat')
+    let seen: RequestInit | undefined
+    const fetchImpl: typeof fetch = (_input, init) => {
+      seen = init
+      return Promise.resolve(new Response('', { status: 200 }))
+    }
+    await createS3Store(s3, fetchImpl).putFile('k/f.txt', file)
+    const headers = seen?.headers as Record<string, string>
+    expect(headers['content-length']).toBe('7')
+    expect(headers['x-amz-content-sha256']).toBe('596a51f53168cadf8af76759ff459b3b921a2ca55ec12a46a93a5ed8b9671aa6')
+    expect(await new Response(seen?.body).text()).toBe('felirat')
+    expect((seen as RequestInit & { duplex?: string }).duplex).toBe('half')
+  })
+
+  it('a putFile nem 2xx válaszra dob', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 's3-'))
+    const file = join(dir, 'f.txt')
+    writeFileSync(file, 'x')
+    const fetchImpl: typeof fetch = () => Promise.resolve(new Response('', { status: 500 }))
+    await expect(createS3Store(s3, fetchImpl).putFile('k', file)).rejects.toThrow()
   })
 })
