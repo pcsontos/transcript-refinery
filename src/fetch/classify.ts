@@ -70,3 +70,21 @@ export function classifyInput(raw: string, yesPlaylist: boolean): ClassifiedInpu
   if (id !== null) return video(id)
   return rejected(text)
 }
+
+export interface DirectInput {
+  kind: 'direct'
+  url: string
+}
+
+/** Mint a classifyInput, de a nem YouTube-os http(s) URL közvetlen hangfájl. */
+export function classifyAudioInput(raw: string, yesPlaylist: boolean): ClassifiedInput | DirectInput {
+  const classified = classifyInput(raw, yesPlaylist)
+  if (classified.kind !== 'rejected') return classified
+  try {
+    const parsed = new URL(classified.raw)
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return { kind: 'direct', url: classified.raw }
+  } catch {
+    // nem URL: marad az elutasítás
+  }
+  return classified
+}
