@@ -213,6 +213,7 @@ function isUpdate(value: unknown): value is {
     text?: string
     document?: { file_id: string; file_name?: string; file_size?: number }
     caption?: string
+    reply_to_message?: { text?: string; from?: { is_bot?: boolean } }
   }
 } {
   if (typeof value !== 'object' || value === null) return false
@@ -223,6 +224,8 @@ function isUpdate(value: unknown): value is {
   const message = update.message as { message_id?: unknown; chat?: unknown; from?: unknown }
   if (typeof message.message_id !== 'number') return false
   if (message.from !== undefined && !hasNumericId(message.from)) return false
+  const replied = (update.message as { reply_to_message?: unknown }).reply_to_message
+  if (replied !== undefined && (typeof replied !== 'object' || replied === null)) return false
   const document = (update.message as { document?: unknown }).document
   if (document !== undefined) {
     if (typeof document !== 'object' || document === null) return false

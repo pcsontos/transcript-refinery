@@ -656,3 +656,68 @@ describe('runJob — leállt recept és életjel', () => {
     expect(callbacks.map((body) => body.status)).toEqual(['progress', 'ready'])
   })
 })
+
+describe('runJob fetch ág', () => {
+  const fetchJob = { jobId: 'fetch-1', videoId: 'fetch-1', url: 'u1 u2', fetch: true }
+
+  function withFetch(
+    fetchAudio: NonNullable<JobEffects['fetchAudio']> | undefined,
+    callbacks: CallbackBody[],
+  ): JobEffects {
+    return {
+      ...emptyEffects(memoryStore()),
+      fetchAudio,
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    }
+  }
+
+  it('a sorok progressként sorrendben, a végén az összesítő readyként', async () => {
+    const callbacks: CallbackBody[] = []
+    const requests: unknown[] = []
+    await runJob(
+      fetchJob,
+      withFetch(async (request, _signal, emit) => {
+        requests.push(request)
+        await emit('letöltve: A')
+        await emit('kihagyva: B')
+        return 'Kész: x'
+      }, callbacks),
+    )
+    expect(callbacks).toEqual([
+      { status: 'progress', text: 'letöltve: A' },
+      { status: 'progress', text: 'kihagyva: B' },
+      { status: 'ready', title: 'Kész: x' },
+    ])
+    expect(requests).toEqual([{ inputs: ['u1', 'u2'] }])
+  })
+
+  it('--pick-kel a request pick-et kap; a hibás --pick failed, a fetchAudio nem hívódik', async () => {
+    const requests: unknown[] = []
+    const ok: CallbackBody[] = []
+    await runJob({ ...fetchJob, url: 'https://f/rss --pick 1,3' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), ok))
+    expect(requests).toEqual([{ inputs: ['https://f/rss'], pick: [1, 3] }])
+    const bad: CallbackBody[] = []
+    await runJob({ ...fetchJob, url: 'https://f/rss --pick x' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), bad))
+    expect(bad).toEqual([{ status: 'failed', error: 'A --pick értéke 0, vagy vesszővel elválasztott sorszámok (pl. 1,3).' }])
+    expect(requests).toHaveLength(1)
+  })
+
+  it('a signal továbbmegy a fetchAudio-nak', async () => {
+    const controller = new AbortController()
+    let seen: AbortSignal | undefined
+    await runJob(fetchJob, withFetch((_request, signal) => ((seen = signal), Promise.resolve('k')), []), controller.signal)
+    expect(seen).toBe(controller.signal)
+  })
+
+  it('kivétel → failed az üzenet első sorával; fetchAudio nélkül is failed', async () => {
+    const thrown: CallbackBody[] = []
+    await runJob(fetchJob, withFetch(() => Promise.reject(new Error('elsö sor\nmásik')), thrown))
+    expect(thrown).toEqual([{ status: 'failed', error: 'elsö sor' }])
+    const none: CallbackBody[] = []
+    await runJob(fetchJob, withFetch(undefined, none))
+    expect(none).toEqual([{ status: 'failed', error: 'A hangletöltés nincs beállítva.' }])
+  })
+})

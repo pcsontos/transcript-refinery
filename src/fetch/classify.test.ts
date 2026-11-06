@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyInput } from './classify.js'
+import { classifyAudioInput, classifyInput } from './classify.js'
 
 const video = (id: string) => ({
   kind: 'video' as const,
@@ -60,5 +60,23 @@ describe('classifyInput', () => {
     })
     expect(classifyInput('https://vimeo.com/123456789', false).kind).toBe('rejected')
     expect(classifyInput('   ', false)).toEqual({ kind: 'rejected', raw: '' })
+  })
+})
+
+describe('classifyAudioInput', () => {
+  it('audio módban a nem YouTube-os http(s) URL közvetlen hangfájl', () => {
+    expect(classifyAudioInput('https://valami.hu/fajl.mp3', false)).toEqual({ kind: 'direct', url: 'https://valami.hu/fajl.mp3' })
+    expect(classifyAudioInput('  http://x.hu/a  ', false)).toEqual({ kind: 'direct', url: 'http://x.hu/a' })
+  })
+
+  it('audio módban a YouTube-ág változatlan, a nem http séma elutasított', () => {
+    expect(classifyAudioInput('https://www.youtube.com/watch?v=abcdefghijk&list=PLx', false)).toMatchObject({ kind: 'video', id: 'abcdefghijk' })
+    expect(classifyAudioInput('https://www.youtube.com/playlist?list=PLx', false)).toMatchObject({ kind: 'playlist', id: 'PLx' })
+    expect(classifyAudioInput('ftp://x.hu/a.mp3', false)).toEqual({ kind: 'rejected', raw: 'ftp://x.hu/a.mp3' })
+    expect(classifyAudioInput('szia', false).kind).toBe('rejected')
+  })
+
+  it('a felirat-osztályozó továbbra is elutasítja a közvetlen URL-t', () => {
+    expect(classifyInput('https://valami.hu/x.mp3', false).kind).toBe('rejected')
   })
 })

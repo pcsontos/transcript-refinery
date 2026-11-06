@@ -458,3 +458,58 @@ nem fut. A deploy hibája nem buktatja a futást: a CLI egy `deploy sikertelen:`
 sort ír, a `serve` a naplóba (`[deploy]`), a jelentés ugyanúgy megy. A `watch`
 nem kap `auto` bekötést (csak átiratot ír, az nem megy ki).
 
+
+---
+
+## 9. Hang letöltése (`fetch audio`)
+
+```bash
+node dist/cli.js fetch audio https://www.youtube.com/watch?v=<id> --out /abs/mappa
+node dist/cli.js fetch audio --list cimek.txt
+```
+
+A `fetch audio` YouTube-videó, -playlist, közvetlen hangfájl-URL vagy podcast-RSS feed hangját tölti le
+a `yt-dlp`-vel, a `.info.json` metaadattal együtt. **A hang eredeti formátumban marad, nincs konverzió**
+(nincs mp3, az image-be nem kerül ffmpeg). Átiratot nem készít; az a whisper-szelet dolga.
+
+- **Elrendezés:** `<Csatorna>/<Cím> [<id>].<ext>`; playlistnél `<Playlist címe> [<playlist-id>]/…`;
+  közvetlen URL-nél `<domain>/<név> [<url-hash>].<ext>` (nincs `.info.json`).
+- **Duplikátum:** az `[id]` vagy `[url-hash]` alapján a teljes tárolóban; ami már megvan, azt kihagyja.
+  Az `--overwrite` felülírja.
+- **Tároló:** `--out` esetén helyi mappa, config nélkül is. Különben a config `audio` blokkja.
+- **Futásnapló:** ha config töltődik be (nem csak `--out`), a futás a `logs.dir` alá naplózódik,
+  és a webes felület `/runs` oldala élőben mutatja.
+
+### Podcast-feed (két lépésben)
+
+Feed-URL-nél a parancs előbb csak a számozott epizódlistát írja ki (a feed sorrendjében), semmit nem
+tölt le. A választás a második lépés:
+
+```bash
+node dist/cli.js fetch audio https://példa.hu/feed.xml            # lista
+node dist/cli.js fetch audio https://példa.hu/feed.xml --pick 1,3 # a 1. és a 3. epizód
+node dist/cli.js fetch audio https://példa.hu/feed.xml --pick 0   # mind
+```
+
+A `--pick` csak egyetlen feed-címmel adható meg; a lista hossza fölötti sorszámnál semmi nem töltődik le.
+Epizódok helye: `<Feed címe> [<feed-hash>]/<Epizód címe> [<url-hash>].<ext>` + `.info.json`.
+
+### Config (`audio` blokk)
+
+```yaml
+# refinery.config.yaml; a dir és az s3 közül legalább az egyik kell
+audio:
+  dir: /abszolút/út/hang            # helyi archívum (elhagyható, ha van s3)
+  work_dir: /abszolút/út/munka      # s3-nál ide tölt a feltöltés előtt (alap: <tmp>/refinery-audio)
+  s3:
+    endpoint: http://garage:3900    # http(s) URL; Garage, R2, AWS stb.
+    region: garage
+    bucket: audio
+    prefix: hang/                   # elhagyható
+    path_style: true                # alap: true
+    access_key_id: GK...
+```
+
+A titkos kulcs nem a configba kerül, hanem a környezetbe (`.env`): `AUDIO_S3_SECRET_ACCESS_KEY`.
+Ha az S3 a futás elején nem érhető el, a futás figyelmeztetéssel folytatódik, és a duplikátum-szűrés
+csak a munkamappát nézi. Ami a feltöltésnél elakad, a munkamappában marad, és a következő futás feltölti.

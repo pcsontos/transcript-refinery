@@ -8,13 +8,14 @@ import {
   handleCron,
   handleLink,
   handleTap,
+  FETCH,
   handleUpdate,
   SCAN,
   START,
   type PlannedKnock,
   type WorkerDeps,
 } from './handle.js'
-import { BOT_COMMANDS } from './messages.js'
+import { BOT_COMMANDS, FETCH_USAGE, PICK_USAGE } from './messages.js'
 import {
   BIND_FIRST,
   DROPPED_LINE,
@@ -1090,6 +1091,7 @@ describe('tájékoztató parancsok', () => {
     'Csatolt .txt vagy .md átiratot is feldolgozok.',
     '',
     '/scan <szöveg> – beillesztett átirat feldolgozása (egy üzenetnyi)',
+    '/fetch <link…> – hang letöltése és archiválása (videó, playlist, hangfájl)',
     '/start – a bot összekötése a Google-fiókoddal',
     '/cancel – nyitott munka megszakítása',
     '/model – a receptek modelljének megtekintése és váltása',
@@ -1100,10 +1102,10 @@ describe('tájékoztató parancsok', () => {
   ].join('\n')
 
   it('a menü parancsai és a felismert parancsok ugyanazok', () => {
-    const recognized = [...(/\(([a-z|]+)\)/.exec(COMMAND.source)?.[1] ?? '').split('|'), 'scan', 'start']
+    const recognized = [...(/\(([a-z|]+)\)/.exec(COMMAND.source)?.[1] ?? '').split('|'), 'scan', 'fetch', 'start']
     expect(BOT_COMMANDS.map((item) => item.command).sort()).toEqual(recognized.sort())
     for (const { command } of BOT_COMMANDS) {
-      expect(COMMAND.test(`/${command}`) || SCAN.test(`/${command}`) || START.test(`/${command}`)).toBe(true)
+      expect(COMMAND.test(`/${command}`) || SCAN.test(`/${command}`) || FETCH.test(`/${command}`) || START.test(`/${command}`)).toBe(true)
     }
   })
 
@@ -1614,5 +1616,114 @@ describe('/model parancs és gombok (#292)', () => {
     const knocks = await handleTap(tap(21, `r:notes:5:${ID}`), d)
     expect(knocks[0]?.models).toEqual({ notes: 'sonnet' })
     expect(d.sent.at(-1)).toBe(`Sorba került [${ID}] Cím: notes (sonnet)`)
+  })
+})
+
+describe('/fetch', () => {
+  const reply = (updateId: number, text: string, replyText: string, isBot = true) => ({
+    update_id: updateId,
+    message: {
+      message_id: updateId,
+      chat: { id: 42 },
+      from: { id: 42 },
+      text,
+      reply_to_message: { text: replyText, from: { is_bot: isBot } },
+    },
+  })
+
+  it('vesszővel és szóközzel: egy sor, egy fetch-kopogtatás', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    const planned = await handleUpdate(command(7, '/fetch https://a, https://b https://c'), d)
+    expect(planned.knocks).toEqual([{ jobId: '7:fetch-7', videoId: 'fetch-7', url: 'https://a https://b https://c', fetch: true }])
+    expect(d.sent).toEqual(['Sorba került: hangletöltés (3 link)'])
+    expect((await store.listByUpdate(7))[0]).toMatchObject({ videoId: 'fetch-7', title: 'hangletöltés (3 link)', status: 'queued' })
+  })
+
+  it('link nélkül vagy kapcsolóval: használati sor, nincs sor', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    expect((await handleUpdate(command(7, '/fetch'), d)).knocks).toEqual([])
+    expect((await handleUpdate(command(8, '/fetch https://a --overwrite'), d)).knocks).toEqual([])
+    expect(d.sent).toEqual([FETCH_USAGE, FETCH_USAGE])
+    expect(await store.listByUpdate(7)).toEqual([])
+    expect(await store.listByUpdate(8)).toEqual([])
+  })
+
+  it('a watch?v=&list= link változatlanul megy a serve-nek', async () => {
+    const d = deps(await boundStore())
+    const url = `https://www.youtube.com/watch?v=${ID}&list=PLx`
+    expect((await handleUpdate(command(7, `/fetch ${url}`), d)).knocks[0]?.url).toBe(url)
+  })
+
+  it('válasz a bot listaüzenetére: fetch-munka --pick-kel; a 0 mind', async () => {
+    const d = deps(await boundStore())
+    const list = 'Cím\nFeed: https://f/rss\n1. A'
+    const planned = await handleUpdate(reply(9, '3, 1', list), d)
+    expect(planned.knocks).toEqual([{ jobId: '9:fetch-9', videoId: 'fetch-9', url: 'https://f/rss --pick 3,1', fetch: true }])
+    expect(d.sent).toEqual(['Sorba került: hangletöltés (feed, 2 epizód)'])
+    const all = await handleUpdate(reply(10, '0', list), d)
+    expect(all.knocks[0]?.url).toBe('https://f/rss --pick 0')
+    expect(d.sent[1]).toBe('Sorba került: hangletöltés (feed, mind)')
+  })
+
+  it('nem sorszámos válasz a listára: PICK_USAGE, nincs sor', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    const planned = await handleUpdate(reply(9, 'szia', 'Cím\nFeed: https://f/rss\n1. A'), d)
+    expect(planned.knocks).toEqual([])
+    expect(d.sent).toEqual([PICK_USAGE])
+    expect(await store.listByUpdate(9)).toEqual([])
+  })
+
+  it('nem-bot üzenetre vagy Feed: sor nélküli bot-üzenetre adott válasz a megszokott utat járja', async () => {
+    const d = deps(await boundStore())
+    const human = await handleUpdate(reply(9, ID, 'Cím\nFeed: https://f/rss', false), d)
+    expect(human.knocks).toEqual([{ jobId: `9:${ID}`, videoId: ID, url: VIDEO_URL }])
+    const plain = await handleUpdate(reply(10, ID2, 'Sorba került: valami'), d)
+    expect(plain.knocks[0]?.videoId).toBe(ID2)
+  })
+
+  it('fetch-sor visszahívása: progress továbbítva, ready gomb nélkül, állapot ready', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(7, '/fetch https://a'), d)
+    d.sent.length = 0
+    await handleCallback('7:fetch-7', { status: 'progress', text: 'letöltve: A' }, d)
+    await handleCallback('7:fetch-7', { status: 'ready', title: 'Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás.' }, d)
+    expect(d.sent).toEqual(['letöltve: A', 'Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás.'])
+    expect(d.keyboards).toEqual([])
+    expect((await store.listByUpdate(7))[0]).toMatchObject({ status: 'ready', notifiedReady: true })
+    await handleCallback('7:fetch-7', { status: 'ready', title: 'Kész: újra' }, d)
+    expect(d.sent).toHaveLength(2)
+  })
+
+  it('failed: a hiba kimegy, az állapot failed', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(7, '/fetch https://a'), d)
+    await handleCallback('7:fetch-7', { status: 'failed', error: 'A yt-dlp nem található' }, d)
+    expect(d.sent.at(-1)).toBe('A yt-dlp nem található')
+    expect((await store.listByUpdate(7))[0]?.status).toBe('failed')
+  })
+
+  it('megszakított fetch-sor: a progress és az összesítő is kimegy, az állapot cancelled marad', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    await handleUpdate(command(7, '/fetch https://a'), d)
+    await store.claimJob('7:fetch-7', 'queued', 'cancelled')
+    d.sent.length = 0
+    await handleCallback('7:fetch-7', { status: 'progress', text: 'letöltve: A' }, d)
+    await handleCallback('7:fetch-7', { status: 'ready', title: 'Kész: x' }, d)
+    expect(d.sent).toEqual(['letöltve: A', 'Kész: x'])
+    expect((await store.listByUpdate(7))[0]?.status).toBe('cancelled')
+  })
+
+  it('cron: a fetch-sor kopogtatása fetch: true', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ jobId: '7:fetch-7', updateId: 7, videoId: 'fetch-7', url: 'https://a https://b', status: 'queued', title: 'hangletöltés (2 link)' }))
+    const d = deps(store)
+    await handleCron(d)
+    expect(d.knocks).toEqual([{ jobId: '7:fetch-7', videoId: 'fetch-7', url: 'https://a https://b', fetch: true }])
   })
 })

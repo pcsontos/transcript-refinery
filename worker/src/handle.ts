@@ -22,6 +22,9 @@ import {
   boundLine,
   cancelKeyboard,
   cancelledLine,
+  FETCH_USAGE,
+  PICK_USAGE,
+  fetchTitle,
   decideRun,
   decideStart,
   hashToken,
@@ -88,6 +91,8 @@ export interface PlannedKnock {
   textLang?: string
   /** Receptazonosító → modell; a `run.model`-ből, a futás minden fajtájára. */
   models?: Record<string, string>
+  /** Hangletöltés (`/fetch`): az `url` szóközzel elválasztott argumentumlista. */
+  fetch?: boolean
 }
 
 export interface WorkerDeps {
@@ -119,6 +124,11 @@ export const START = /^\/start(?:\s+(\S+))?\s*$/
 export const COMMAND = /^\/(help|cancel|ping|version|status|model)(?:@\w+)?\s*$/
 
 export const SCAN = /^\/scan(?:@\w+)?(?:\s+([\s\S]*))?$/
+export const FETCH = /^\/fetch(?:@\w+)?(?:\s+([\s\S]*))?$/
+export const FETCH_ID = /^fetch-\d+$/
+/** A bot feed-listaüzenetének `Feed:` sora; a válasz sorszámai ehhez a feedhez tartoznak. */
+const FEED_LINE = /^Feed: (https?:\/\/\S+)$/m
+const PICK_TEXT = /^\s*\d+(?:\s*,\s*\d+)*\s*$/
 /** A Telegram 4096 karakternél bont, mondathatáron, így az első darab rövidebb is lehet. */
 const SCAN_WARN_AT = 3900
 const TITLE_MAX = 80
@@ -133,7 +143,7 @@ function sentence(message: string): string {
 
 /** Szöveges tételnél a cím, videónál az azonosító, ahogy ma. */
 function label(row: JobRow): string {
-  return isTextItemId(row.videoId) ? (row.title ?? row.videoId) : row.videoId
+  return isTextItemId(row.videoId) || FETCH_ID.test(row.videoId) ? (row.title ?? row.videoId) : row.videoId
 }
 
 /** Csatolmányból vagy `/scan`-ből a szöveges tétel; `string` a visszaküldendő mondat, `null`, ha nem szöveges bemenet. */
@@ -186,6 +196,7 @@ function textKnock(row: JobRow, text: string): PlannedKnock {
  * újraletöltéséből; `null`, ha a letöltés nem sikerült (a hívó `down`-nak veszi).
  */
 async function jobKnock(row: JobRow, deps: WorkerDeps): Promise<PlannedKnock | null> {
+  if (FETCH_ID.test(row.videoId)) return { jobId: row.jobId, videoId: row.videoId, url: row.url, fetch: true }
   if (row.text) return textKnock(row, row.text)
   if (row.fileId && row.fileName) {
     const bytes = await deps.download(row.fileId)
@@ -477,6 +488,60 @@ export async function handleLink(
   return { status: 302, location: `https://t.me/${deps.botUsername}?start=${back}` }
 }
 
+/**
+ * A `/fetch` vagy a bot feed-listájára adott sorszámos válasz. `string`: a visszaküldendő használati sor;
+ * `null`, ha nem hangletöltés. A Worker csak az alakot nézi, a sorszámok érvényességét a serve dönti el.
+ */
+function fetchRequest(message: {
+  text?: string
+  reply_to_message?: { text?: string; from?: { is_bot?: boolean } }
+}): { url: string; title: string } | string | null {
+  const text = message.text ?? ''
+  const reply = message.reply_to_message
+  const feed = reply?.from?.is_bot === true ? FEED_LINE.exec(reply.text ?? '')?.[1] : undefined
+  // A válaszban írt parancs (pl. /fetch) a megszokott úton megy.
+  if (feed !== undefined && !text.startsWith('/')) {
+    if (!PICK_TEXT.test(text)) return PICK_USAGE
+    const numbers = text.replace(/\s+/g, '')
+    return {
+      url: `${feed} --pick ${numbers}`,
+      title: numbers === '0' ? 'hangletöltés (feed, mind)' : `hangletöltés (feed, ${numbers.split(',').length} epizód)`,
+    }
+  }
+  const fetchCommand = FETCH.exec(text)
+  if (fetchCommand === null) return null
+  const links = (fetchCommand[1] ?? '').split(/[\s,]+/).filter(Boolean)
+  if (links.length === 0 || links.some((link) => link.startsWith('-'))) return FETCH_USAGE
+  return { url: links.join(' '), title: fetchTitle(links.length) }
+}
+
+async function fetchRow(
+  updateId: number,
+  messageId: number,
+  chatId: string,
+  sub: string,
+  plan: { url: string; title: string },
+  deps: WorkerDeps,
+): Promise<{ status: number; knocks: PlannedKnock[] }> {
+  const row: JobRow = {
+    jobId: `${updateId}:fetch-${updateId}`,
+    updateId,
+    chatId,
+    messageId,
+    videoId: `fetch-${updateId}`,
+    url: plan.url,
+    status: 'queued',
+    error: null,
+    title: plan.title,
+    notifiedReady: false,
+    acceptedAt: null,
+    sub,
+  }
+  await deps.store.insert(row)
+  await deps.send(chatId, queuedLine(plan.title))
+  return { status: 200, knocks: [{ jobId: row.jobId, videoId: row.videoId, url: row.url, fetch: true }] }
+}
+
 export async function handleUpdate(
   update: {
     update_id: number
@@ -487,6 +552,7 @@ export async function handleUpdate(
       text?: string
       document?: TelegramDocument
       caption?: string
+      reply_to_message?: { text?: string; from?: { is_bot?: boolean } }
     }
   },
   deps: WorkerDeps,
@@ -513,6 +579,14 @@ export async function handleUpdate(
     return { status: 200, knocks: [] }
   }
   if ((await deps.store.listByUpdate(update.update_id)).length > 0) return { status: 200, knocks: [] }
+  const fetchPlan = fetchRequest(message)
+  if (fetchPlan !== null) {
+    if (typeof fetchPlan === 'string') {
+      await deps.send(chatId, fetchPlan)
+      return { status: 200, knocks: [] }
+    }
+    return fetchRow(update.update_id, message.message_id, chatId, binding.sub, fetchPlan, deps)
+  }
   const input = await textInput(message, deps)
   if (typeof input === 'string') {
     await deps.send(chatId, input)
@@ -641,6 +715,33 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
   await deps.store.saveRun(run)
 }
 
+/**
+ * A hangletöltés visszahívása. A megszakított sor késői sorai és összesítője is kimegy
+ * (a serve az aktuális elemet befejezi), az állapota közben `cancelled` marad.
+ */
+async function fetchCallback(row: JobRow, body: CallbackBody, deps: WorkerDeps): Promise<void> {
+  if (body.status === 'stalled') return
+  if (body.status === 'progress') {
+    await deps.send(row.chatId, body.text)
+    return
+  }
+  if (body.status === 'failed') {
+    const sent = await deps.send(row.chatId, body.error)
+    if (!sent || row.status === 'cancelled') return
+    row.status = 'failed'
+    row.error = body.error
+    await deps.store.save(row)
+    return
+  }
+  if (row.notifiedReady) return
+  const sent = await deps.send(row.chatId, body.title)
+  if (sent && row.status !== 'cancelled') {
+    row.status = 'ready'
+    row.notifiedReady = true
+  }
+  await deps.store.save(row)
+}
+
 export async function handleCallback(id: string, body: CallbackBody, deps: WorkerDeps): Promise<number> {
   const run = await deps.store.run(id)
   if (run !== null) {
@@ -648,6 +749,10 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
     return 200
   }
   const row = await findRow(deps.store, id)
+  if (row && FETCH_ID.test(row.videoId)) {
+    await fetchCallback(row, body, deps)
+    return 200
+  }
   // A megszakított felirat-job késői eredményét elnyeljük.
   if (!row || row.status === 'cancelled') return 200
   // A felirat-jobnak nincs életjele és leállása; ha mégis érkezik, nem teszünk vele semmit.

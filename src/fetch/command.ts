@@ -3,6 +3,7 @@ import { loadCliConfig } from '../config.js'
 import { helpText } from '../help.js'
 import { installSigint } from '../run/finish.js'
 import { classifyInput } from './classify.js'
+import { commandFetchAudio } from './audio/command.js'
 import { parseSubtitleArgs, type SubtitleArgs } from './subtitle/args.js'
 import { alreadyFetched, playlistDir, prepareIncomplete, videoDir } from './subtitle/skip.js'
 import {
@@ -72,17 +73,19 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
   const stderr = runtime?.stderr ?? ((line: string) => console.error(line))
 
   if (argv.includes('--help') || argv.includes('-h')) {
-    stdout(helpText('fetch subtitle') ?? '')
+    const topic = argv[0] === 'audio' || argv[0] === 'subtitle' ? [`fetch ${argv[0]}`] : ['fetch subtitle', 'fetch audio']
+    stdout(topic.map((name) => helpText(name) ?? '').join('\n\n'))
     return 0
   }
 
   const mode = argv[0]
   if (!mode || mode.startsWith('-')) {
-    stderr('Hiányzó fetch-mód. Ismert: subtitle')
+    stderr('Hiányzó fetch-mód. Ismert: subtitle, audio')
     return 1
   }
+  if (mode === 'audio') return commandFetchAudio(argv.slice(1), runtime)
   if (mode !== 'subtitle') {
-    stderr(`Ismeretlen fetch-mód: ${mode}. Ismert: subtitle`)
+    stderr(`Ismeretlen fetch-mód: ${mode}. Ismert: subtitle, audio`)
     return 1
   }
 

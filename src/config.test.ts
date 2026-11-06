@@ -519,3 +519,27 @@ describe('loadCliConfig', () => {
     await expect(loadCliConfig(join(dir, 'refinery.config.yaml'), tmpdir())).resolves.toBeDefined()
   })
 })
+
+describe('audio', () => {
+  const S3 = { endpoint: 'http://garage:3900', region: 'garage', bucket: 'audio', prefix: '/hang/', access_key_id: 'GK1' }
+
+  it('az audio blokk: s3 előtaggal, alapértékekkel', () => {
+    const audio = loadConfig({ ...MIN, audio: { s3: S3 } }, '/p/c.yaml').audio
+    expect(audio?.s3?.prefix).toBe('hang/')
+    expect(audio?.s3?.pathStyle).toBe(true)
+    expect(audio?.dir).toBeNull()
+    expect(audio?.workDir).toBe(join(tmpdir(), 'refinery-audio'))
+  })
+
+  it('az audio blokk dir és s3 nélkül hiba', () => {
+    expect(() => loadConfig({ ...MIN, audio: {} }, '/p/c.yaml')).toThrow(/audio/)
+  })
+
+  it('nem http(s) endpoint hiba', () => {
+    expect(() => loadConfig({ ...MIN, audio: { s3: { ...S3, endpoint: 'garage:3900' } } }, '/p/c.yaml')).toThrow(/endpoint/)
+  })
+
+  it('audio blokk nélkül a cfg.audio null', () => {
+    expect(loadConfig(MIN, '/p/c.yaml').audio).toBeNull()
+  })
+})

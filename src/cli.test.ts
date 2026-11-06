@@ -2494,6 +2494,7 @@ describe('main és súgó', () => {
     'check-structured': ['--config'],
     deploy: ['--config', '--retry-failed', '--item', '--kind', '--channel', '--source', '--model', '--dry-run'],
     list: ['--config', '--source', '--channel', '--recipe', '--status', '--channels', '--limit'],
+    'fetch audio': ['--out', '--list', '--overwrite', '--playlist-items', '--yes-playlist', '--pick', '--config'],
     'fetch subtitle': [
       '--out',
       '--list',

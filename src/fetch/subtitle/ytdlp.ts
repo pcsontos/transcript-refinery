@@ -65,6 +65,25 @@ export function downloadArgs(input: {
   ]
 }
 
+/** Hang letöltése az eredeti formátumban (konvertálás és ffmpeg nélkül), `.info.json`-nal. */
+export function audioDownloadArgs(input: { url: string; dest: string; overwrite: boolean }): string[] {
+  return [
+    '-f',
+    'bestaudio[ext=m4a]/bestaudio',
+    '--write-info-json',
+    '--no-playlist',
+    '--no-progress',
+    input.overwrite ? '--force-overwrites' : '--no-overwrites',
+    ...JS_RUNTIME,
+    '--paths',
+    `home:${input.dest}`,
+    '-o',
+    '%(title)s [%(id)s].%(ext)s',
+    '--',
+    input.url,
+  ]
+}
+
 export interface VideoProbe {
   id: string
   title?: string
@@ -186,4 +205,50 @@ export function createYtdlpRunner(): ProcessRunner {
       child.on('error', reject)
       child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }))
     })
+}
+
+export interface FeedEntry {
+  /** Az epizód URL-je a `#` utáni rész nélkül. */
+  url: string
+  title: string
+  duration: number | null
+  timestamp: number | null
+  /** A yt-dlp epizód-objektuma változatlanul; ez lesz az `.info.json`. */
+  raw: Record<string, unknown>
+}
+
+export interface FeedProbe {
+  title: string
+  entries: FeedEntry[]
+}
+
+function num(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/** A `yt-dlp -J --flat-playlist` kimenete egy podcast-feedre; hibás JSON vagy nem lista → `null`. */
+export function parseFeedProbe(stdout: string): FeedProbe | null {
+  try {
+    const raw = JSON.parse(stdout) as { _type?: unknown; title?: unknown; entries?: unknown }
+    if (raw._type !== 'playlist') return null
+    const entries = Array.isArray(raw.entries) ? (raw.entries as Record<string, unknown>[]) : []
+    return {
+      title: text(raw.title) ?? 'névtelen',
+      entries: entries.flatMap((entry) => {
+        const url = entry.url
+        if (typeof url !== 'string' || url === '') return []
+        return [
+          {
+            url: url.split('#')[0] ?? url,
+            title: text(entry.title) ?? 'névtelen',
+            duration: num(entry.duration),
+            timestamp: num(entry.timestamp),
+            raw: entry,
+          },
+        ]
+      }),
+    }
+  } catch {
+    return null
+  }
 }

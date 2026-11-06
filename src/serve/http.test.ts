@@ -116,6 +116,26 @@ describe('createServeServer', () => {
     await vi.waitFor(() => expect(seen).toEqual([{ ...job, text: 'Szöveg.', title: 'Cím', textLang: 'en' }]))
   })
 
+  it('a fetch mező boolean kell legyen', async () => {
+    const seen: unknown[] = []
+    server = createServeServer({
+      secret: 'titok',
+      gate,
+      version: '9.9.9',
+      onJob: (job) => {
+        seen.push(job)
+        return Promise.resolve()
+      },
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const port = (server.address() as { port: number }).port
+    const job = { jobId: 'fetch-1', videoId: 'fetch-1', url: 'https://a' }
+    expect(await post(port, 'titok', { ...job, fetch: 'x' })).toBe(400)
+    expect(await post(port, 'titok', { ...job, fetch: true })).toBe(202)
+    await vi.waitFor(() => expect(seen).toEqual([{ ...job, fetch: true }]))
+  })
+
   it('a /ping és a /version titok nélkül válaszol, a /status csak titokkal, a busy a futó job', async () => {
     let release: () => void = () => {}
     const held = new Promise<void>((resolve) => {
