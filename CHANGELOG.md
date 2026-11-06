@@ -3,6 +3,32 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.31.0] — 2026-11-06
+
+A refinery mostantól hangot is archivál: YouTube-videó, podcast-epizód vagy
+közvetlen hangfájl hangját tölti le az eredeti formátumban, konverzió nélkül,
+S3-tárolóba (pl. Garage) vagy helyi mappába, parancssorból és Telegramból is.
+
+### ✨ Újdonságok
+
+- **`refinery fetch audio`:** egy vagy több link hangját tölti le, mellé
+  `.info.json`-t ment a metaadatokkal. A már archivált elemet a teljes
+  tárolóban felismeri, és `kihagyva` jelzéssel átugorja
+  (pcsontos/issue-tracker#2).
+- **Podcast-feedek:** RSS-feednél előbb a számozott epizódlistát kapod, a
+  `--pick 1,3` a kiválasztottakat tölti le, a `--pick 0` mindet. Érvénytelen
+  sorszámnál semmi nem töltődik le.
+- **Telegram `/fetch`:** a bot vesszővel vagy szóközzel elválasztott
+  linkeket fogad, és sorról sorra jelzi a haladást. Feednél a bot listájára
+  adott számozott válasz indítja a letöltést.
+- **S3- vagy helyi tároló:** a config új `audio` blokkja helyi mappát
+  (`dir`) és/vagy S3-tárolót (`s3`) ad meg, a titok az
+  `AUDIO_S3_SECRET_ACCESS_KEY` env-ből jön. Ha az S3 nem érhető el, a
+  letöltés a munkamappában (`work_dir`) vár, és a következő futás feltölti.
+- **Futásoldal:** a webes felület futásoldalán elemenkénti táblázat
+  mutatja az eredményt és az utat vagy az okot, a „Most” kártya az aktuális
+  lépést.
+
 ## [1.30.1] — 2026-11-04
 
 A `qa` jegyzet oldala többé nem marad ki a `refinery deploy`-ból, ha a modell a
@@ -1299,6 +1325,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.31.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.31.0
 [1.30.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.30.1
 [1.30.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.30.0
 [1.29.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.29.0
