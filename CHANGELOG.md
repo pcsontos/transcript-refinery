@@ -3,6 +3,44 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.32.0] — 2026-11-08
+
+Ahol a YouTube-videónak nincs felirata, a hangot most a gazdagép helyi
+whispere írja át `.srt`-be, és a receptek úgy futnak rajta, mint egy
+letöltött feliraton. Bármely archivált hang kézzel is átírásra adható.
+
+### ✨ Újdonságok
+
+- **Átírás felirat nélküli videóra:** a `refinery fetch audio` és a Telegram
+  `/fetch_audio` a felirat nélküli YouTube-videó hangját rögtön átírásra adja
+  le (`letöltve, átírásra leadva`). Podcastnál és közvetlen hangfájlnál nincs
+  automatikus leadás (pcsontos/issue-tracker#3).
+- **`refinery transcribe <azonosító…>`:** bármely archivált hangot átírásra ad
+  le, és azonnal visszatér; a kész `.srt` a
+  `<forrás>/whisper/<csatorna>/<azonosító>.<nyelv>.srt` helyre kerül.
+- **`--lang <kód>`:** a hang nyelvét egyetlen kóddal adhatod meg a
+  `fetch audio`-n, a `transcribe`-on és Telegramon is; nélküle az archív
+  metaadat, majd a config első nyelve dönt.
+- **Telegram `/transcribe`:** számozott lista az átírásra váró hangokról; a
+  `1,3` vagy a `0` (az üzenet összes tétele) válasz, opcionálisan
+  `--lang en`-nel, leadja a kijelölteket.
+- **`refinery list --audios`:** az archívum hangjai az átirat állapotával
+  (archivált, vár, átírás alatt, kész, hibás az okkal), szűrhető csatornára.
+- **Figyelmeztetés, ha a figyelő nem fut:** a `transcribe`, a `list --audios`,
+  a Telegram-válasz és a webes Futások oldal sávja jelzi; a tétel ilyenkor
+  sorban marad.
+- **Futásoldal:** az átírás fázisai (vár, konvertálás, átírás) és a hibák a
+  Futások oldalon látszanak.
+- **Garage-másolat:** a `scan` és a `run` a kész `.srt` fájlokat a Garage
+  `audio` bucketjébe is átmásolja.
+
+### 🔄 Változások
+
+- **A Telegram `/fetch` új neve `/fetch_audio`.** A régi név csak annyit
+  válaszol, hogy `Átnevezve: /fetch_audio`.
+- **Új config-kulcs:** `whisper.dir` (alapértéke `/data/whisper`); ha a mappa
+  nem létezik, az átírás ki van kapcsolva, és a refinery nem hozza létre.
+
 ## [1.31.0] — 2026-11-06
 
 A refinery mostantól hangot is archivál: YouTube-videó, podcast-epizód vagy
@@ -1325,6 +1363,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.32.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.32.0
 [1.31.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.31.0
 [1.30.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.30.1
 [1.30.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.30.0
