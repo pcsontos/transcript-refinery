@@ -71,9 +71,26 @@ export interface TranscribeArgs {
 export function parseTranscribeArgs(argv: readonly string[]): { ok: true; args: TranscribeArgs } | { ok: false; error: string } {
   let values: { lang?: string; config?: string }
   let positionals: string[]
+  // A YouTube-azonosító `-`-lel is kezdődhet: az egy `-` kezdetű szó azonosító, nem (rövid) kapcsoló. A kapcsolók
+  // `--` előtagúak; a `--`-ot a parseArgs-nak adott lista elején állítjuk elő, az azonosítókat utána.
+  const flagArgs: string[] = []
+  const idArgs: string[] = []
+  for (let i = 0; i < argv.length; i += 1) {
+    const word = argv[i] as string
+    if (word === '--lang' || word === '--config') {
+      flagArgs.push(word)
+      const value = argv[i + 1]
+      if (value !== undefined) flagArgs.push(value)
+      i += 1
+    } else if (word.startsWith('--')) {
+      flagArgs.push(word)
+    } else {
+      idArgs.push(word)
+    }
+  }
   try {
     const parsed = parseArgs({
-      args: [...argv],
+      args: [...flagArgs, '--', ...idArgs],
       options: { lang: { type: 'string' }, config: { type: 'string' } },
       allowPositionals: true,
       strict: true,

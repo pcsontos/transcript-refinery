@@ -176,6 +176,16 @@ describe('parseTranscribeArgs', () => {
     expect(parseTranscribeArgs(['a', '--bogus'])).toEqual({ ok: false, error: 'Ismeretlen kapcsoló: --bogus' })
     expect(parseTranscribeArgs(['a', '--config', '/c.yaml'])).toMatchObject({ ok: true, args: { config: '/c.yaml' } })
   })
+
+  it('a --jellel kezdődő azonosító (YouTube-id) azonosító, nem kapcsoló', () => {
+    expect(parseTranscribeArgs(['-abc123def4', 'b', '--lang', 'en'])).toMatchObject({
+      ok: true,
+      args: { ids: ['-abc123def4', 'b'], lang: 'en' },
+    })
+    expect(parseTranscribeArgs(['--lang', 'hu', '-Xyz_123456'])).toMatchObject({ ok: true, args: { ids: ['-Xyz_123456'], lang: 'hu' } })
+    expect(parseTranscribeArgs(['a', '--lang=en', '-a-b'])).toMatchObject({ ok: true, args: { ids: ['a', '-a-b'], lang: 'en' } })
+    expect(parseTranscribeArgs(['a', '--bogus'])).toEqual({ ok: false, error: 'Ismeretlen kapcsoló: --bogus' })
+  })
 })
 
 describe('createHandoff', () => {
