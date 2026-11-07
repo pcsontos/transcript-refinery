@@ -15,7 +15,7 @@ Siker: <out>/<refinery_target>/<id>.<nyelv>.srt (+ <id>.info.json), az inbox-bel
 Hiba: a bemenet a <root>/failed mappába kerül, mellé <id>.log. Minden tételhez JSONL futásnapló készül a refinery
 formátumában, a heartbeat fájl pedig jelzi, hogy a figyelő él.
 
-Python 3.9 (a peter-mba /usr/bin/python3-ja): csak standard könyvtár, nincs `match`, nincs `X | None`.
+Python 3.9 (a gazdagép /usr/bin/python3-ja): csak standard könyvtár, nincs `match`, nincs `X | None`.
 """
 
 import argparse
