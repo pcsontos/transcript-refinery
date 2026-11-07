@@ -86,6 +86,7 @@ import {
 } from './view/list.js'
 import { artifactKinds } from './view/overview.js'
 import { commandFetch } from './fetch/command.js'
+import { commandListAudios, commandTranscribe } from './whisper/command.js'
 import { commandServe } from './serve/command.js'
 import { commandWatch } from './watch/command.js'
 
@@ -1124,6 +1125,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (command === 'fetch') return commandFetch(argv.slice(1))
+  if (command === 'transcribe') return commandTranscribe(argv.slice(1))
   if (command === 'serve') return commandServe(argv.slice(1), process.env)
 
   const { values } = parseArgs({
@@ -1151,10 +1153,23 @@ export async function main(argv: readonly string[]): Promise<number> {
       fix: { type: 'boolean', default: false },
       status: { type: 'string' },
       channels: { type: 'boolean', default: false },
+      audios: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: false,
   })
+
+  if (values.audios && command !== 'list') {
+    console.error('Az --audios csak a list kapcsolója.')
+    return 1
+  }
+  if (values.audios) {
+    const clash = (['source', 'recipe', 'channels'] as const).find((name) => (name === 'recipe' ? values.recipe !== undefined : values[name]))
+    if (clash !== undefined) {
+      console.error(`Az --audios mellett a --${clash} nem használható; támogatott: --channel, --status pending, --limit, --config.`)
+      return 1
+    }
+  }
 
   // A kapcsolóütközés a konfiguráció és az állapottár érintése előtt áll meg.
   let adHoc: AdHoc | undefined
@@ -1265,6 +1280,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       filter: Object.keys(filter).length > 0 ? filter : undefined,
       model: values.model,
     })
+  }
+  if (command === 'list' && values.audios) {
+    return commandListAudios(cfg, { channel: values.channel, limit, status: values.status })
   }
   if (command === 'list') {
     return commandList(cfg, {

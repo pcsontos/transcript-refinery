@@ -10,7 +10,9 @@ export function feedHash(url: string): string {
   return createHash('sha256').update(url.trim()).digest('hex').slice(0, 8)
 }
 
-function duration(seconds: number): string {
+/** `ó:pp:mm`; `—`, ha nincs hossz. */
+export function audioDuration(seconds: number | null): string {
+  if (seconds === null) return '—'
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
@@ -22,7 +24,7 @@ export function feedListLines(feed: FeedProbe): string[] {
   return feed.entries.map((entry, index) => {
     const parts = [
       entry.timestamp === null ? null : new Date(entry.timestamp * 1000).toISOString().slice(0, 10),
-      entry.duration === null ? null : duration(entry.duration),
+      entry.duration === null ? null : audioDuration(entry.duration),
     ].filter((part): part is string => part !== null)
     return `${index + 1}. ${entry.title}${parts.length === 0 ? '' : ` — ${parts.join(', ')}`}`
   })

@@ -2493,7 +2493,8 @@ describe('main és súgó', () => {
     'check-pricing': ['--config', '--fix'],
     'check-structured': ['--config'],
     deploy: ['--config', '--retry-failed', '--item', '--kind', '--channel', '--source', '--model', '--dry-run'],
-    list: ['--config', '--source', '--channel', '--recipe', '--status', '--channels', '--limit'],
+    list: ['--config', '--source', '--channel', '--recipe', '--status', '--channels', '--limit', '--audios'],
+    transcribe: ['--lang', '--config'],
     'fetch audio': ['--out', '--list', '--overwrite', '--playlist-items', '--yes-playlist', '--pick', '--config'],
     'fetch subtitle': [
       '--out',
@@ -2978,6 +2979,28 @@ describe('fetch a CLI-ben', () => {
     expect(code).toBe(1)
     expect(errors.join('\n')).not.toContain('vault.path')
     expect(errors.join('\n')).toContain('Adj meg egy címet vagy egy --list fájlt.')
+  })
+
+  it('a transcribe rossz --lang-ra 1-gyel áll meg, configot sem kér', async () => {
+    const errors: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((line: unknown) => {
+      errors.push(String(line))
+    })
+    const code = await main(['transcribe', '--lang', 'xyz1', 'abcdefghijk'])
+    spy.mockRestore()
+    expect(code).toBe(1)
+    expect(errors).toEqual(['A --lang értéke egyetlen nyelvkód, például hu vagy en-US.'])
+  })
+
+  it('az --audios csak a list kapcsolója', async () => {
+    const errors: string[] = []
+    const spy = vi.spyOn(console, 'error').mockImplementation((line: unknown) => {
+      errors.push(String(line))
+    })
+    const code = await main(['scan', '--audios'])
+    spy.mockRestore()
+    expect(code).toBe(1)
+    expect(errors).toEqual(['Az --audios csak a list kapcsolója.'])
   })
 
   it('a run nem fogadja a --out kapcsolót', async () => {
