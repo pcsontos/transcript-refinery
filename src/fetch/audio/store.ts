@@ -1,4 +1,4 @@
-import { readdir, rm } from 'node:fs/promises'
+import { copyFile, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AudioConfig, AudioS3Config } from '../../config.js'
 import { createS3Store, type S3Store } from '../../serve/r2.js'
@@ -24,6 +24,10 @@ export interface AudioStore {
   commit(paths: readonly string[]): Promise<void>
   /** S3: a staging kész hangjai a mellettük lévő .info.json-nal ([hang] vagy [hang, info]); helyben []. */
   pending(): Promise<string[][]>
+  /** A tároló egy fájlja (kicsi: `.info.json`); `null`, ha nincs. */
+  read(path: string): Promise<Buffer | null>
+  /** A tároló egy fájlja a `dest` útra (S3-nál streamelve); ha nincs, dob: `nincs ilyen hang`. */
+  copyTo(path: string, dest: string): Promise<void>
 }
 
 async function walk(dir: string): Promise<string[]> {
@@ -45,13 +49,29 @@ export function localAudioStore(root: string): AudioStore {
     existing: async () => ({ keys: audioFiles(await walk(root)) }),
     commit: () => Promise.resolve(),
     pending: () => Promise.resolve([]),
+    async read(path) {
+      try {
+        return await readFile(join(root, path))
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+        throw error
+      }
+    },
+    async copyTo(path, dest) {
+      try {
+        await copyFile(join(root, path), dest)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error('nincs ilyen hang', { cause: error })
+        throw error
+      }
+    },
   }
 }
 
 export function s3AudioStore(input: {
   s3: AudioS3Config
   workDir: string
-  client: Pick<S3Store, 'list' | 'putFile'>
+  client: Pick<S3Store, 'list' | 'putFile' | 'get' | 'getFile'>
 }): AudioStore {
   const { s3, workDir, client } = input
 
@@ -82,6 +102,13 @@ export function s3AudioStore(input: {
       for (const path of paths) await rm(join(workDir, path), { force: true })
     },
     pending,
+    async read(path) {
+      const body = await client.get(`${s3.prefix}${path}`)
+      return body === null ? null : Buffer.from(body)
+    },
+    async copyTo(path, dest) {
+      if (!(await client.getFile(`${s3.prefix}${path}`, dest))) throw new Error('nincs ilyen hang')
+    },
   }
 }
 

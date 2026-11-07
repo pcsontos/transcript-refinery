@@ -145,6 +145,8 @@ describe('runAudioFetch S3-tárolóval', () => {
       s3: { endpoint: 'http://g', region: 'r', bucket: 'b', prefix: 'hang/', pathStyle: true, accessKeyId: 'k' },
       workDir: work,
       client: {
+        get: () => Promise.resolve(null),
+        getFile: () => Promise.resolve(false),
         list: () => (options.failList === true ? Promise.reject(new Error('down')) : Promise.resolve([...uploaded])),
         putFile: (key) => {
           if (options.failPut === true) return Promise.reject(new Error('boom'))

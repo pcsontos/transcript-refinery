@@ -1,7 +1,8 @@
 import { createHash, createHmac } from 'node:crypto'
-import { createReadStream } from 'node:fs'
+import { createReadStream, createWriteStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 
 export interface ObjectStore {
   list(prefix: string): Promise<string[]>
@@ -35,6 +36,8 @@ export interface S3Config {
 
 export interface S3Store extends ObjectStore {
   putFile(key: string, path: string): Promise<void>
+  /** Fájlba streamel (nem memóriába); `false`, ha nincs ilyen kulcs. */
+  getFile(key: string, dest: string): Promise<boolean>
 }
 
 /** RFC 3986 szerinti kódolás: az encodeURIComponent a !'()* karaktereket nem kódolja. */
@@ -183,6 +186,14 @@ export function createS3Store(config: S3Config, fetchImpl: typeof fetch = fetch,
         { 'content-length': String(size) },
       )
       if (!response.ok) throw new Error(`Az S3 feltöltés nem sikerült: ${response.status}`)
+    },
+    async getFile(key: string, dest: string): Promise<boolean> {
+      const response = await call('GET', key, sha256(''))
+      if (response.status === 404) return false
+      if (!response.ok) throw new Error(`Az S3 olvasás nem sikerült: ${response.status}`)
+      if (response.body === null) throw new Error('Az S3 válaszának nincs törzse.')
+      await pipeline(Readable.fromWeb(response.body), createWriteStream(dest))
+      return true
     },
     async get(key: string): Promise<Uint8Array | null> {
       const response = await call('GET', key, sha256(''))
