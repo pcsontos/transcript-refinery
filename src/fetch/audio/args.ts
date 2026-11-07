@@ -1,5 +1,6 @@
 import { isAbsolute } from 'node:path'
 import { parseArgs } from 'node:util'
+import { parseLang } from '../subtitle/args.js'
 
 export type Pick = 'all' | number[]
 
@@ -12,6 +13,8 @@ export interface AudioArgs {
   yesPlaylist: boolean
   config?: string
   pick?: Pick
+  /** A leadott tételek nyelve (egyetlen kód); csak a fallback-leadásra hat. */
+  lang?: string
 }
 
 export type ParseResult = { ok: true; args: AudioArgs } | { ok: false; error: string }
@@ -39,6 +42,7 @@ export function parseAudioArgs(argv: readonly string[]): ParseResult {
     'yes-playlist': boolean
     config?: string
     pick?: string
+    lang?: string
   }
   let positionals: string[]
   try {
@@ -52,6 +56,7 @@ export function parseAudioArgs(argv: readonly string[]): ParseResult {
         'yes-playlist': { type: 'boolean', default: false },
         config: { type: 'string' },
         pick: { type: 'string' },
+        lang: { type: 'string' },
       },
       allowPositionals: true,
       strict: true,
@@ -79,6 +84,12 @@ export function parseAudioArgs(argv: readonly string[]): ParseResult {
     if (positionals.length !== 1 || values.list !== undefined) return fail('A --pick csak egyetlen címmel adható meg.')
     pick = parsedPick
   }
+  let lang: string | undefined
+  if (values.lang !== undefined) {
+    const tag = parseLang(values.lang)
+    if (tag === null) return fail('A --lang értéke egyetlen nyelvkód, például hu vagy en-US.')
+    lang = tag
+  }
   return {
     ok: true,
     args: {
@@ -90,6 +101,7 @@ export function parseAudioArgs(argv: readonly string[]): ParseResult {
       yesPlaylist: values['yes-playlist'],
       config: values.config,
       pick,
+      lang,
     },
   }
 }

@@ -4,8 +4,9 @@ import { parseArgs } from 'node:util'
 import type { EventSink } from '../events.js'
 import type { AudioStore } from '../fetch/audio/store.js'
 import { parseLang } from '../fetch/subtitle/args.js'
-import { listArchive, statusContext, transcriptStatus, type AudioEntry, type TranscriptStatus } from './archive.js'
-import { channelSlug, watcherWarning, type WhisperDirs } from './paths.js'
+import type { Config } from '../config.js'
+import { findEntry, listArchive, statusContext, transcriptStatus, type AudioEntry, type TranscriptStatus } from './archive.js'
+import { channelSlug, watcherWarning, whisperDirs, type WhisperDirs } from './paths.js'
 
 const LANG_ERROR = 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.'
 
@@ -156,4 +157,35 @@ export async function runTranscribe(
   if (warn !== null) await deps.emit(warn)
   sink({ type: 'run:done', succeeded: submitted, skipped, failed })
   return { submitted, failed }
+}
+
+/**
+ * A `fetch audio` fallback-leadása. `string` = a nem-elérhetőség oka. Mindig az archívumból ad le
+ * (a friss letöltést is: Saját döntés 8), az állapotot hívásonként frissen olvassa.
+ */
+export async function createHandoff(input: {
+  cfg: Config | null
+  store: AudioStore
+  lang?: string
+}): Promise<{ handoff: (id: string) => Promise<string>; warning: () => Promise<string | null> }> {
+  const { cfg, store } = input
+  const dirs = cfg === null ? null : await whisperDirs(cfg)
+  const handedOver = new Set<string>()
+  return {
+    async handoff(id) {
+      if (cfg === null) return 'nincs config'
+      if (dirs === null) return 'nincs whisper-mappa'
+      const entry = await findEntry(store, id)
+      if (entry === null) return 'nincs ilyen hang'
+      const ctx = await statusContext(cfg.sources[0]!.path, dirs)
+      const status = handedOver.has(id) ? 'pending' : transcriptStatus(entry, ctx)
+      const lang = resolveLang({ flag: input.lang, info: entry.info, languages: cfg.languages })
+      const result = await submitEntry(entry, { store, dirs, status, lang })
+      if ('error' in result) return result.error
+      if ('skip' in result) return 'skipped'
+      handedOver.add(id)
+      return 'submitted'
+    },
+    warning: async () => (dirs === null || handedOver.size === 0 ? null : watcherWarning(dirs)),
+  }
 }

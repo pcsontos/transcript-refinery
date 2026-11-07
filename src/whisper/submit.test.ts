@@ -6,7 +6,8 @@ import type { RunEvent } from '../events.js'
 import { localAudioStore, type AudioStore } from '../fetch/audio/store.js'
 import { listArchive } from './archive.js'
 import type { WhisperDirs } from './paths.js'
-import { inboxInfo, parseTranscribeArgs, resolveLang, runTranscribe, submitEntry } from './submit.js'
+import { loadConfig } from '../config.js'
+import { createHandoff, inboxInfo, parseTranscribeArgs, resolveLang, runTranscribe, submitEntry } from './submit.js'
 
 let archive: string
 let sources: string
@@ -174,5 +175,44 @@ describe('parseTranscribeArgs', () => {
     })
     expect(parseTranscribeArgs(['a', '--bogus'])).toEqual({ ok: false, error: 'Ismeretlen kapcsoló: --bogus' })
     expect(parseTranscribeArgs(['a', '--config', '/c.yaml'])).toMatchObject({ ok: true, args: { config: '/c.yaml' } })
+  })
+})
+
+describe('createHandoff', () => {
+  const cfgFor = (whisperDir: string) =>
+    loadConfig(
+      { vault: { path: '/v' }, sources: [sources], languages: ['hu'], whisper: { dir: whisperDir }, audio: { dir: archive } },
+      '/p/c.yaml',
+    )
+
+  it('config nélkül mindig „nincs config”', async () => {
+    const { handoff, warning } = await createHandoff({ cfg: null, store })
+    expect(await handoff('abcdefghijk')).toBe('nincs config')
+    expect(await warning()).toBeNull()
+  })
+
+  it('whisper-mappa nélkül „nincs whisper-mappa”, és nem jön létre', async () => {
+    const missing = join(tmpdir(), 'nincs-ilyen-whisper-mappa')
+    const { handoff } = await createHandoff({ cfg: cfgFor(missing), store })
+    expect(await handoff('abcdefghijk')).toBe('nincs whisper-mappa')
+  })
+
+  it('leadás: submitted, másodszor skipped; a friss letöltés is megtalálható; a figyelmeztetés csak leadás után', async () => {
+    const { handoff, warning } = await createHandoff({ cfg: cfgFor(dirs.root), store })
+    expect(await warning()).toBeNull()
+    expect(await handoff('abcdefghijk')).toBe('submitted')
+    expect(await handoff('abcdefghijk')).toBe('skipped')
+    await put(archive, 'Csat/Új [bbbbbbbbbbb].m4a')
+    expect(await handoff('bbbbbbbbbbb')).toBe('submitted')
+    expect((await readdir(dirs.inbox)).sort()).toEqual(['abcdefghijk.info.json', 'abcdefghijk.m4a', 'bbbbbbbbbbb.info.json', 'bbbbbbbbbbb.m4a'])
+    expect(await warning()).toMatch(/^A whisper-figyelő nem fut/)
+  })
+
+  it('a --lang átmegy; ismeretlen azonosító szöveges ok', async () => {
+    const { handoff } = await createHandoff({ cfg: cfgFor(dirs.root), store, lang: 'en' })
+    await handoff('abcdefghijk')
+    const info = JSON.parse(await readFile(join(dirs.inbox, 'abcdefghijk.info.json'), 'utf8')) as { refinery_lang: string }
+    expect(info.refinery_lang).toBe('en')
+    expect(await handoff('nincsnincsni')).toBe('nincs ilyen hang')
   })
 })

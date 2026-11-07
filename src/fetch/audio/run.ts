@@ -12,6 +12,7 @@ import {
   parseFeedProbe,
   parsePlaylistProbe,
   parseVideoProbe,
+  originalSubtitleLang,
   playlistProbeArgs,
   type ProcessResult,
   type ProcessRunner,
@@ -29,14 +30,24 @@ export interface AudioRow {
   outcome: AudioOutcome
   label: string
   reason?: string
+  /** Csak `downloaded` / `skipped` soron: `submitted` = átírásra leadva, egyéb szöveg = miért nem elérhető. */
+  whisper?: string
+}
+
+/** Egy hang leadása átírásra: `skipped` = nincs teendő (kész/vár/átírás alatt); egyéb szöveg = nem elérhető oka. */
+export type Handoff = (id: string) => Promise<string>
+
+function whisperNote(row: AudioRow): string {
+  if (row.whisper === undefined) return ''
+  return row.whisper === 'submitted' ? ', átírásra leadva' : `, átírás nem elérhető (${row.whisper})`
 }
 
 export function rowLine(row: AudioRow): string {
   switch (row.outcome) {
     case 'downloaded':
-      return `letöltve: ${row.label}`
+      return `letöltve${whisperNote(row)}: ${row.label}`
     case 'skipped':
-      return `kihagyva: ${row.label}`
+      return `kihagyva${whisperNote(row)}: ${row.label}`
     case 'uploaded':
       return `feltöltve (korábbi letöltés): ${row.label}`
     case 'listed':
@@ -49,8 +60,11 @@ export function rowLine(row: AudioRow): string {
 export function audioSummary(rows: readonly AudioRow[]): string {
   const count = (outcome: AudioOutcome) => rows.filter((row) => row.outcome === outcome).length
   const uploaded = count('uploaded')
+  const handed = rows.filter((row) => row.whisper === 'submitted').length
   const base = `Kész: letöltve ${count('downloaded')} db fájl, ${count('skipped')} kihagyva, ${count('failed')} hibás.`
-  return uploaded > 0 ? `${base} Korábbi letöltésből feltöltve: ${uploaded}.` : base
+  return [base, uploaded > 0 ? `Korábbi letöltésből feltöltve: ${uploaded}.` : '', handed > 0 ? `${handed} átírásra leadva.` : '']
+    .filter((part) => part !== '')
+    .join(' ')
 }
 
 export interface AudioRunDeps {
@@ -64,6 +78,8 @@ export interface AudioRunDeps {
   pick?: Pick
   /** A feed-lista üzeneteinek legfeljebb ekkora hossza (a serve 4000-et ad). */
   listLimit?: number
+  /** Felirat nélküli YouTube-videó leadása a whispernek; hiányában nincs fallback. */
+  handoff?: Handoff
   stopped: () => boolean
   /** Minden sor (figyelmeztetés is) ezen megy ki; a mag megvárja. */
   emit: (line: string) => void | Promise<void>
@@ -108,8 +124,22 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
   const failed = (label: string, reason: string, itemId: string): Promise<void> =>
     row({ outcome: 'failed', label, reason }, { type: 'item:failed', itemId, source: 'audio', kind: 'audio', error: reason })
 
-  const skipped = (label: string, itemId: string): Promise<void> =>
-    row({ outcome: 'skipped', label }, { type: 'item:skipped', itemId, reason: 'már a tárolóban' })
+  const skipped = (label: string, itemId: string, whisper?: string): Promise<void> =>
+    row({ outcome: 'skipped', label, whisper }, { type: 'item:skipped', itemId, reason: 'már a tárolóban' })
+
+  /** A fallback-leadás; `undefined`, ha nincs teendő. A hiba nem buktatja a letöltést. */
+  async function handOff(wanted: boolean, id: string): Promise<string | undefined> {
+    if (!wanted || deps.handoff === undefined) return undefined
+    let result: string
+    try {
+      result = await deps.handoff(id)
+    } catch (error) {
+      result = (error as Error).message
+    }
+    if (result === 'skipped') return undefined
+    if (result === 'submitted') sink({ type: 'item:step', itemId: id, step: 'átírásra leadva' })
+    return result
+  }
 
   const version = await runCmd(versionArgs())
   if (version.code !== 0) throw new Error(firstLine(version.stderr) || 'A yt-dlp --version nem sikerült.')
@@ -153,7 +183,7 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     return [join(destRel, audio), ...(hasInfo ? [join(destRel, info)] : [])]
   }
 
-  async function commitItem(paths: readonly string[], id: string, label: string): Promise<void> {
+  async function commitItem(paths: readonly string[], id: string, label: string, wantsWhisper = false): Promise<void> {
     if (store.remote) sink({ type: 'item:step', itemId: id, step: 'feltöltés S3-ba' })
     try {
       await store.commit(paths)
@@ -161,7 +191,8 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
       await failed(label, 'a feltöltés nem sikerült; a fájl a munkamappában maradt', id)
       return
     }
-    await row({ outcome: 'downloaded', label }, { type: 'item:published', itemId: id, path: paths[0] as string })
+    const whisper = await handOff(wantsWhisper, id)
+    await row({ outcome: 'downloaded', label, whisper }, { type: 'item:published', itemId: id, path: paths[0] as string })
   }
 
   async function fetchVideo(url: string, destOf: (channel: string) => string, fallbackTitle?: string): Promise<void> {
@@ -175,8 +206,9 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     const title = FIRST_TITLE_LINE(probe.title) ?? FIRST_TITLE_LINE(fallbackTitle) ?? probe.id
     const label = `${title} [${probe.id}]`
     sink({ type: 'item:start', itemId: probe.id, title: label })
+    const wantsWhisper = originalSubtitleLang(probe) === null
     if (ids.has(probe.id) && !deps.overwrite) {
-      await skipped(label, probe.id)
+      await skipped(label, probe.id, await handOff(wantsWhisper, probe.id))
       return
     }
     const destRel = destOf(probe.channel ?? '')
@@ -188,7 +220,7 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
       return
     }
     ids.add(probe.id)
-    await commitItem(paths, probe.id, label)
+    await commitItem(paths, probe.id, label, wantsWhisper)
   }
 
   async function fetchFeed(url: string): Promise<void> {

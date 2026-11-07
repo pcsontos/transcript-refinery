@@ -26,4 +26,12 @@ describe('parseAudioArgs', () => {
     expect(parseAudioArgs(['a', 'b', '--pick', '1'])).toEqual({ ok: false, error: 'A --pick csak egyetlen címmel adható meg.' })
     expect(parseAudioArgs(['a', '--pick', 'x'])).toEqual({ ok: false, error: 'A --pick értéke 0, vagy vesszővel elválasztott sorszámok (pl. 1,3).' })
   })
+
+  it('--lang: egyetlen kód normalizálva; lista, all, érvénytelen → hiba', () => {
+    expect(parseAudioArgs(['a', '--lang', 'EN'])).toMatchObject({ ok: true, args: { lang: 'en' } })
+    expect(parseAudioArgs(['a'])).toMatchObject({ ok: true, args: { lang: undefined } })
+    for (const bad of ['hu,en', 'all', 'xyz1']) {
+      expect(parseAudioArgs(['a', '--lang', bad])).toEqual({ ok: false, error: 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.' })
+    }
+  })
 })

@@ -90,6 +90,13 @@ export async function listArchive(store: AudioStore): Promise<{ entries: AudioEn
   return warning === undefined ? { entries } : { entries, warning }
 }
 
+/** Egyetlen hang az archívumból azonosító szerint (egy listázás + egy `info.json`, nem az egész katalógus); `null`, ha nincs. */
+export async function findEntry(store: AudioStore, id: string): Promise<AudioEntry | null> {
+  const { keys } = await store.existing()
+  const key = keys.find((candidate) => audioId(candidate) === id)
+  return key === undefined ? null : toEntry(key, id, await readInfo(store, key))
+}
+
 /** done > working > pending (`inbox/<id>.<ext>`, a `.partial` nem) > failed > archived. */
 export function transcriptStatus(entry: AudioEntry, ctx: StatusContext): TranscriptStatus {
   if (ctx.srtIds.has(entry.id)) return 'done'
