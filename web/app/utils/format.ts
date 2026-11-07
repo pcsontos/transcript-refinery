@@ -10,6 +10,7 @@ const KIND_LABELS: Record<string, string> = {
   bloom: 'Bloom-kártya',
   notes: 'strukturált jegyzet',
   audio: 'hang',
+  whisper: 'átírás',
 }
 
 /**

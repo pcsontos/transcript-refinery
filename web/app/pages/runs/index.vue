@@ -1,10 +1,18 @@
 <script setup lang="ts">
 const { data, error } = await useFetch('/api/runs')
+const { data: whisper } = await useFetch('/api/whisper')
 </script>
 
 <template>
   <div class="space-y-6">
     <h1 class="text-2xl font-semibold">Futások</h1>
+    <UAlert
+      v-if="whisper?.warning"
+      color="warning"
+      variant="subtle"
+      icon="i-lucide-triangle-alert"
+      :title="whisper.warning"
+    />
     <ErrorAlert v-if="error" :error="error" />
     <p v-else-if="data && data.length === 0" class="text-muted">Még nincs futásnapló.</p>
     <div v-else-if="data" class="overflow-x-auto">

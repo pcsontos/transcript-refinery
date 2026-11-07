@@ -8,6 +8,7 @@ describe('kindLabel', () => {
 
   it('az audio típus címkéje hang', () => {
     expect(kindLabel('audio')).toBe('hang')
+    expect(kindLabel('whisper')).toBe('átírás')
   })
 
   it('a fordítás a forrás címkéjét kapja a célnyelvvel', () => {
