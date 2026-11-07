@@ -86,6 +86,8 @@ import {
 } from './view/list.js'
 import { artifactKinds } from './view/overview.js'
 import { commandFetch } from './fetch/command.js'
+import { commandListAudios, commandTranscribe } from './whisper/command.js'
+import { syncTranscriptsFor } from './whisper/garage.js'
 import { commandServe } from './serve/command.js'
 import { commandWatch } from './watch/command.js'
 
@@ -246,6 +248,14 @@ async function textDetail(cfg: Config, item: SourceItem): Promise<string> {
   return `${String(words)} szó, szöveg (${ext})${taken ? ' · jegyzet már létezik ezen a néven' : ''}`
 }
 
+/** Az átírt .srt-k másolata a Garage-ba (a scan mellékes lépése); a figyelmeztetés stderr-re megy, a kilépési kódot nem érinti. */
+async function syncTranscriptCopies(cfg: Config): Promise<void> {
+  for (const line of await syncTranscriptsFor(cfg, process.env)) {
+    if (line.startsWith('A Garage-másolat nem sikerült')) console.error(line)
+    else console.log(line)
+  }
+}
+
 export async function commandScan(cfg: Config, adHoc?: AdHoc): Promise<number> {
   const items = await discover(cfg, adHoc)
   const filter = adHoc?.match === undefined ? '' : ` (--match '${adHoc.match}')`
@@ -280,6 +290,7 @@ export async function commandScan(cfg: Config, adHoc?: AdHoc): Promise<number> {
       reader.close()
     }
   }
+  await syncTranscriptCopies(cfg)
   return 0
 }
 
@@ -314,6 +325,7 @@ export async function commandScanQueue(
     ]),
   )
   const { path, current, text, stats, migrated, marked } = await refreshQueue(cfg, registry, items)
+  if (!flags.dryRun) await syncTranscriptCopies(cfg)
 
   console.log(
     `${String(items.length)} feldolgozható felirat · ${String(stats.addedVideos)} új videó, ` +
@@ -519,6 +531,7 @@ export async function commandRun(
   const registry = recipesFor(cfg)
   const recipe = flags.recipe ? recipeFrom(registry, flags.recipe) : null
   const listed = (flags.recipes ?? []).map((id) => recipeFrom(registry, id))
+  if (!flags.dryRun) await syncTranscriptCopies(cfg)
 
   // Egy költségőr az egész indításra: a plafon így nem receptenként, hanem
   // együtt vonatkozik minden egységre. A kliens a receptre szabott nézetből
@@ -1124,6 +1137,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (command === 'fetch') return commandFetch(argv.slice(1))
+  if (command === 'transcribe') return commandTranscribe(argv.slice(1))
   if (command === 'serve') return commandServe(argv.slice(1), process.env)
 
   const { values } = parseArgs({
@@ -1151,10 +1165,23 @@ export async function main(argv: readonly string[]): Promise<number> {
       fix: { type: 'boolean', default: false },
       status: { type: 'string' },
       channels: { type: 'boolean', default: false },
+      audios: { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: false,
   })
+
+  if (values.audios && command !== 'list') {
+    console.error('Az --audios csak a list kapcsolója.')
+    return 1
+  }
+  if (values.audios) {
+    const clash = (['source', 'recipe', 'channels'] as const).find((name) => (name === 'recipe' ? values.recipe !== undefined : values[name]))
+    if (clash !== undefined) {
+      console.error(`Az --audios mellett a --${clash} nem használható; támogatott: --channel, --status pending, --limit, --config.`)
+      return 1
+    }
+  }
 
   // A kapcsolóütközés a konfiguráció és az állapottár érintése előtt áll meg.
   let adHoc: AdHoc | undefined
@@ -1265,6 +1292,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       filter: Object.keys(filter).length > 0 ? filter : undefined,
       model: values.model,
     })
+  }
+  if (command === 'list' && values.audios) {
+    return commandListAudios(cfg, { channel: values.channel, limit, status: values.status })
   }
   if (command === 'list') {
     return commandList(cfg, {

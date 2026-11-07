@@ -10,7 +10,9 @@ export function feedHash(url: string): string {
   return createHash('sha256').update(url.trim()).digest('hex').slice(0, 8)
 }
 
-function duration(seconds: number): string {
+/** `ó:pp:mm`; `—`, ha nincs hossz. */
+export function audioDuration(seconds: number | null): string {
+  if (seconds === null) return '—'
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
@@ -22,16 +24,14 @@ export function feedListLines(feed: FeedProbe): string[] {
   return feed.entries.map((entry, index) => {
     const parts = [
       entry.timestamp === null ? null : new Date(entry.timestamp * 1000).toISOString().slice(0, 10),
-      entry.duration === null ? null : duration(entry.duration),
+      entry.duration === null ? null : audioDuration(entry.duration),
     ].filter((part): part is string => part !== null)
     return `${index + 1}. ${entry.title}${parts.length === 0 ? '' : ` — ${parts.join(', ')}`}`
   })
 }
 
-/** A lista üzenetekre bontva; mindegyik a feed címével és a `Feed:` sorral kezdődik. */
-export function feedMessages(feedUrl: string, feed: FeedProbe, limit?: number): string[] {
-  const header = `${feed.title.slice(0, 200)}\nFeed: ${feedUrl}\n`
-  const lines = feedListLines(feed)
+/** A sorok üzenetekre bontva, mindegyik a `header`-rel kezdődik; `limit` nélkül egyetlen üzenet. A túl hosszú sort levágja. */
+export function chunkMessages(header: string, lines: readonly string[], limit?: number): string[] {
   if (limit === undefined) return [header + lines.join('\n')]
   const room = Math.max(limit - header.length, 2)
   const messages: string[] = []
@@ -47,6 +47,11 @@ export function feedMessages(feedUrl: string, feed: FeedProbe, limit?: number): 
   }
   messages.push(header + current)
   return messages
+}
+
+/** A lista üzenetekre bontva; mindegyik a feed címével és a `Feed:` sorral kezdődik. */
+export function feedMessages(feedUrl: string, feed: FeedProbe, limit?: number): string[] {
+  return chunkMessages(`${feed.title.slice(0, 200)}\nFeed: ${feedUrl}\n`, feedListLines(feed), limit)
 }
 
 export function pickHint(feedUrl: string, surface: 'cli' | 'telegram'): string {

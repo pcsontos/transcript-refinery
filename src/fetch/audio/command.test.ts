@@ -22,7 +22,7 @@ const runner: ProcessRunner = async (args) => {
   if (args.includes('--flat-playlist')) {
     return ok(JSON.stringify({ _type: 'playlist', title: 'Podcast', entries: [{ url: 'https://f.hu/e1.mp3#x', title: 'Első' }, { url: 'https://f.hu/e2.mp3#x', title: 'Második' }] }))
   }
-  if (args.includes('-J')) return ok(JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }))
+  if (args.includes('-J')) return ok(JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna', language: 'hu', automatic_captions: { hu: [] } }))
   const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
   await mkdir(dest, { recursive: true })
   await writeFile(join(dest, `Cím [${ID}].m4a`), 'a')
@@ -128,5 +128,43 @@ describe('commandFetch és a hang', () => {
     const out = await tmp()
     const streams = io()
     expect(await commandFetch(['audio', URL, '--out', out], { ...streams, runner })).toBe(0)
+  })
+})
+
+describe('commandFetchAudio --lang és átírás', () => {
+  const noSubRunner: ProcessRunner = (args) =>
+    args.includes('-J') ? Promise.resolve(ok(JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna', language: 'hu' }))) : runner(args)
+
+  it('rossz --lang: 1, a runner nem hívódik', async () => {
+    const streams = io()
+    let called = false
+    const spy: ProcessRunner = (args) => {
+      called = true
+      return runner(args)
+    }
+    expect(await commandFetchAudio([URL, '--out', await tmp(), '--lang', 'xyz1'], { ...streams, runner: spy })).toBe(1)
+    expect(streams.err).toEqual(['A --lang értéke egyetlen nyelvkód, például hu vagy en-US.'])
+    expect(called).toBe(false)
+  })
+
+  it('--out, config nélkül, felirat nélküli videó: nincs config, kód 0', async () => {
+    const streams = io()
+    expect(await commandFetchAudio([URL, '--out', await tmp()], { ...streams, runner: noSubRunner })).toBe(0)
+    expect(streams.out[0]).toBe(`letöltve, átírás nem elérhető (nincs config): Cím [${ID}]`)
+  })
+
+  it('config + whisper-mappa: a felirat nélküli videó leadódik, --lang-gal', async () => {
+    const dir = await tmp()
+    const whisper = join(dir, 'whisper')
+    await mkdir(join(whisper, 'inbox'), { recursive: true })
+    const out = join(dir, 'audio')
+    const config = await configIn(dir, `audio:\n  dir: ${out}\nwhisper:\n  dir: ${whisper}\n`)
+    const streams = io()
+    expect(await commandFetchAudio([URL, '--config', config, '--lang', 'en'], { ...streams, runner: noSubRunner })).toBe(0)
+    expect(streams.out[0]).toBe(`letöltve, átírásra leadva: Cím [${ID}]`)
+    expect(streams.out.at(-1)).toMatch(/^A whisper-figyelő nem fut/)
+    expect(streams.out).toContain('Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás. 1 átírásra leadva.')
+    const info = JSON.parse(await readFile(join(whisper, 'inbox', `${ID}.info.json`), 'utf8')) as { refinery_lang: string }
+    expect(info.refinery_lang).toBe('en')
   })
 })

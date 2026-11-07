@@ -705,6 +705,17 @@ describe('runJob fetch ág', () => {
     expect(requests).toHaveLength(1)
   })
 
+  it('--lang eljut a fetchAudio-hoz; rossz --lang failed, nincs hívás', async () => {
+    const requests: unknown[] = []
+    const ok: CallbackBody[] = []
+    await runJob({ ...fetchJob, url: 'https://y/v --lang en' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), ok))
+    expect(requests).toEqual([{ inputs: ['https://y/v'], lang: 'en' }])
+    const bad: CallbackBody[] = []
+    await runJob({ ...fetchJob, url: 'https://y/v --lang xyz1' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), bad))
+    expect(bad).toEqual([{ status: 'failed', error: 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.' }])
+    expect(requests).toHaveLength(1)
+  })
+
   it('a signal továbbmegy a fetchAudio-nak', async () => {
     const controller = new AbortController()
     let seen: AbortSignal | undefined
@@ -719,5 +730,55 @@ describe('runJob fetch ág', () => {
     const none: CallbackBody[] = []
     await runJob(fetchJob, withFetch(undefined, none))
     expect(none).toEqual([{ status: 'failed', error: 'A hangletöltés nincs beállítva.' }])
+  })
+})
+
+describe('runJob transcribe ág', () => {
+  const job = (url: string) => ({ jobId: 'fetch-2', videoId: 'fetch-2', url, fetch: true })
+
+  function withTranscribe(
+    transcribe: NonNullable<JobEffects['transcribe']> | undefined,
+    callbacks: CallbackBody[],
+  ): JobEffects {
+    return {
+      ...emptyEffects(memoryStore()),
+      transcribe,
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    }
+  }
+
+  it('"transcribe" lista-mód, azonosítókkal leadás, a sorok progressként, az összesítő readyként', async () => {
+    const requests: unknown[] = []
+    const callbacks: CallbackBody[] = []
+    const effects = withTranscribe(async (request, _signal, emit) => {
+      requests.push(request)
+      await emit('sor')
+      return 'zárás'
+    }, callbacks)
+    await runJob(job('transcribe'), effects)
+    await runJob(job('transcribe a b --lang en'), effects)
+    expect(requests).toEqual([{ ids: [] }, { ids: ['a', 'b'], lang: 'en' }])
+    expect(callbacks.map((body) => body.status)).toEqual(['progress', 'ready', 'progress', 'ready'])
+  })
+
+  it('rossz --lang vagy csak kapcsoló: failed, a transcribe nem hívódik', async () => {
+    const calls: unknown[] = []
+    const spy = (request: unknown) => (calls.push(request), Promise.resolve('k'))
+    const bad: CallbackBody[] = []
+    await runJob(job('transcribe a --lang hu,en'), withTranscribe(spy, bad))
+    expect(bad).toEqual([{ status: 'failed', error: 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.' }])
+    expect(calls).toEqual([])
+  })
+
+  it('kivétel → failed az első sorral; beállítás nélkül is failed', async () => {
+    const thrown: CallbackBody[] = []
+    await runJob(job('transcribe a'), withTranscribe(() => Promise.reject(new Error('nincs whisper-mappa: /x\nrészlet')), thrown))
+    expect(thrown).toEqual([{ status: 'failed', error: 'nincs whisper-mappa: /x' }])
+    const none: CallbackBody[] = []
+    await runJob(job('transcribe'), withTranscribe(undefined, none))
+    expect(none).toEqual([{ status: 'failed', error: 'Az átírás nincs beállítva.' }])
   })
 })

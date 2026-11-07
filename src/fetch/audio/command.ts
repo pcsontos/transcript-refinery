@@ -1,6 +1,7 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { loadCliConfig, type Config } from '../../config.js'
 import { installSigint } from '../../run/finish.js'
+import { createHandoff } from '../../whisper/submit.js'
 import type { RunLog } from '../../run/log.js'
 import { listEntries, type FetchRuntime } from '../command.js'
 import { createYtdlpRunner } from '../subtitle/ytdlp.js'
@@ -67,6 +68,7 @@ export async function commandFetchAudio(argv: readonly string[], runtime?: Audio
     stopped = true
   }, runtime?.signals)
   const log: RunLog | null = cfg === null ? null : openAudioRunLog(cfg.logsDir, `fetch audio ${argv.join(' ')}`)
+  const { handoff, warning } = await createHandoff({ cfg, store, lang: args.lang })
 
   try {
     const rows = await runAudioFetch(inputs, {
@@ -77,6 +79,7 @@ export async function commandFetchAudio(argv: readonly string[], runtime?: Audio
       yesPlaylist: args.yesPlaylist,
       playlistItems: args.playlistItems,
       pick: args.pick,
+      handoff,
       stopped: () => stopped,
       emit: (line) => stdout(line),
       sink: log?.sink,
@@ -84,6 +87,8 @@ export async function commandFetchAudio(argv: readonly string[], runtime?: Audio
     const listed = rows.length === 1 && rows[0]?.outcome === 'listed' ? rows[0] : null
     if (listed !== null) stdout(pickHint(listed.label, 'cli'))
     else if (!stopped || rows.length > 0) stdout(audioSummary(rows))
+    const notice = await warning()
+    if (notice !== null) stdout(notice)
     if (stopped) return 130
     return rows.some((row) => row.outcome === 'failed') ? 1 : 0
   } catch (error) {

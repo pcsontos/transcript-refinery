@@ -109,3 +109,4 @@ export {
   type ReportsInput,
   type RunCostPoint,
 } from './view/reports.js'
+export { watcherWarning, whisperDirs, type WhisperDirs } from './whisper/paths.js'

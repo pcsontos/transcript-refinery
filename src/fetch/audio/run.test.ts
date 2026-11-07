@@ -8,7 +8,7 @@ import { audioDownloadArgs, type ProcessRunner } from '../subtitle/ytdlp.js'
 import { localAudioStore, s3AudioStore, type AudioStore } from './store.js'
 import { feedHash } from './feed.js'
 import { directTarget } from './direct.js'
-import { audioSummary, openAudioRunLog, rowLine, runAudioFetch, type AudioRunDeps } from './run.js'
+import { audioSummary, openAudioRunLog, rowLine, runAudioFetch, type AudioRunDeps, type Handoff } from './run.js'
 
 const yt = (id: string): string => `https://www.youtube.com/watch?v=${id}`
 const tmp = (): Promise<string> => mkdtemp(join(tmpdir(), 'audio-run-'))
@@ -22,7 +22,7 @@ interface Fake {
 
 /** videos: id → { title, channel, private? }; playlists: id → { title, entries }. */
 function fakeYt(input: {
-  videos?: Record<string, { title?: string; channel?: string; private?: boolean }>
+  videos?: Record<string, { title?: string; channel?: string; private?: boolean; probe?: Record<string, unknown> }>
   playlists?: Record<string, { title: string; entries: { id: string; title: string }[] }>
 }): Fake {
   const calls: string[][] = []
@@ -39,7 +39,7 @@ function fakeYt(input: {
     const id = /v=([^&]+)/.exec(url)?.[1] ?? ''
     const video = input.videos?.[id]
     if (video === undefined || video.private === true) return { code: 1, stdout: '', stderr: 'ERROR: Private video\nmore' }
-    if (args.includes('-J')) return ok(JSON.stringify({ id, title: video.title ?? 'Cím', channel: video.channel ?? 'Csatorna' }))
+    if (args.includes('-J')) return ok(JSON.stringify({ id, title: video.title ?? 'Cím', channel: video.channel ?? 'Csatorna', ...video.probe }))
     const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
     await mkdir(dest, { recursive: true })
     await writeFile(join(dest, `${video.title ?? 'Cím'} [${id}].m4a`), 'audio')
@@ -145,6 +145,8 @@ describe('runAudioFetch S3-tárolóval', () => {
       s3: { endpoint: 'http://g', region: 'r', bucket: 'b', prefix: 'hang/', pathStyle: true, accessKeyId: 'k' },
       workDir: work,
       client: {
+        get: () => Promise.resolve(null),
+        getFile: () => Promise.resolve(false),
         list: () => (options.failList === true ? Promise.reject(new Error('down')) : Promise.resolve([...uploaded])),
         putFile: (key) => {
           if (options.failPut === true) return Promise.reject(new Error('boom'))
@@ -307,5 +309,68 @@ describe('podcast-feed', () => {
     const second = deps(store, fake, { fetchImpl, pick: [1] })
     await runAudioFetch([FEED], second.deps)
     expect(second.lines).toEqual([`kihagyva: Első [${hash(E1)}]`])
+  })
+})
+
+describe('whisper-fallback', () => {
+  const NO_SUB = { language: 'hu', subtitles: {}, automatic_captions: {} }
+  const WITH_SUB = { language: 'hu', subtitles: {}, automatic_captions: { hu: [] } }
+
+  function run(videos: Record<string, { probe: Record<string, unknown> }>, handoff: Handoff | undefined, inputs: string[], root?: Promise<string>) {
+    return (async () => {
+      const dir = await (root ?? tmp())
+      const calls: string[] = []
+      const events = collectEvents()
+      const wrapped: Handoff | undefined = handoff === undefined ? undefined : (id) => { calls.push(id); return handoff(id) }
+      const r = deps(localAudioStore(dir), fakeYt({ videos }), { handoff: wrapped, sink: events.sink })
+      const rows = await runAudioFetch(inputs, r.deps)
+      return { lines: r.lines, rows, calls, events: events.events, dir }
+    })()
+  }
+
+  it('felirat nélküli videó: letöltve, átírásra leadva; felirattal: letöltve', async () => {
+    const out = await run({ abcdefghijk: { probe: NO_SUB }, bcdefghijkl: { probe: WITH_SUB } }, () => Promise.resolve('submitted'), [yt('abcdefghijk'), yt('bcdefghijkl')])
+    expect(out.lines).toEqual(['letöltve, átírásra leadva: Cím [abcdefghijk]', 'letöltve: Cím [bcdefghijkl]'])
+    expect(out.calls).toEqual(['abcdefghijk'])
+    expect(audioSummary(out.rows)).toBe('Kész: letöltve 2 db fájl, 0 kihagyva, 0 hibás. 1 átírásra leadva.')
+    const steps = out.events.filter((e): e is Extract<RunEvent, { type: 'item:step' }> => e.type === 'item:step').map((e) => e.step)
+    expect(steps).toEqual(['letöltés', 'átírásra leadva', 'letöltés'])
+  })
+
+  it('már archivált, felirat nélküli: kihagyva, átírásra leadva; ha a handoff skipped: kihagyva', async () => {
+    const root = tmp()
+    await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.resolve('skipped'), [yt('abcdefghijk')], root)
+    const again = await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.resolve('submitted'), [yt('abcdefghijk')], root)
+    expect(again.lines).toEqual(['kihagyva, átírásra leadva: Cím [abcdefghijk]'])
+    const quiet = await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.resolve('skipped'), [yt('abcdefghijk')], root)
+    expect(quiet.lines).toEqual(['kihagyva: Cím [abcdefghijk]'])
+    expect(audioSummary(again.rows)).toBe('Kész: letöltve 0 db fájl, 1 kihagyva, 0 hibás. 1 átírásra leadva.')
+  })
+
+  it('podcast-epizód és közvetlen URL: a handoff soha nem hívódik', async () => {
+    const fetchImpl: typeof fetch = () => Promise.resolve(new Response('abc', { headers: { 'content-type': 'audio/mpeg' } }))
+    const calls: string[] = []
+    const r = deps(localAudioStore(await tmp()), fakeYt({}), { handoff: (id) => { calls.push(id); return Promise.resolve('submitted') }, fetchImpl })
+    await runAudioFetch(['https://f.hu/e1.mp3'], r.deps)
+    expect(r.lines[0]).toMatch(/^letöltve: /)
+    expect(calls).toEqual([])
+  })
+
+  it('handoff ok-szöveggel: letöltve, átírás nem elérhető, nem hiba', async () => {
+    const out = await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.resolve('nincs whisper-mappa'), [yt('abcdefghijk')])
+    expect(out.lines).toEqual(['letöltve, átírás nem elérhető (nincs whisper-mappa): Cím [abcdefghijk]'])
+    expect(out.rows.map((row) => row.outcome)).toEqual(['downloaded'])
+    expect(audioSummary(out.rows)).toBe('Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás.')
+  })
+
+  it('handoff nélkül semmi nem változik; dobó handoff nem buktatja a letöltést', async () => {
+    const plain = await run({ abcdefghijk: { probe: NO_SUB } }, undefined, [yt('abcdefghijk')])
+    expect(plain.lines).toEqual(['letöltve: Cím [abcdefghijk]'])
+    const boom = await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.reject(new Error('szétesett')), [yt('abcdefghijk')])
+    expect(boom.lines).toEqual(['letöltve, átírás nem elérhető (szétesett): Cím [abcdefghijk]'])
+  })
+
+  it('rowLine', () => {
+    expect(rowLine({ outcome: 'skipped', label: 'x', whisper: 'nincs config' })).toBe('kihagyva, átírás nem elérhető (nincs config): x')
   })
 })

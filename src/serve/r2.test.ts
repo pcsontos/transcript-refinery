@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -145,5 +145,17 @@ describe('createS3Store', () => {
     writeFileSync(file, 'x')
     const fetchImpl: typeof fetch = () => Promise.resolve(new Response('', { status: 500 }))
     await expect(createS3Store(s3, fetchImpl).putFile('k', file)).rejects.toThrow()
+  })
+
+  it('a getFile streamel fájlba, 404 → false, más hiba dob', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 's3-'))
+    const dest = join(dir, 'hang.m4a')
+    const ok: typeof fetch = () => Promise.resolve(new Response('hang', { status: 200 }))
+    expect(await createS3Store(s3, ok).getFile('k/hang.m4a', dest)).toBe(true)
+    expect(readFileSync(dest, 'utf8')).toBe('hang')
+    const missing: typeof fetch = () => Promise.resolve(new Response('', { status: 404 }))
+    expect(await createS3Store(s3, missing).getFile('k/nincs.m4a', join(dir, 'nincs'))).toBe(false)
+    const broken: typeof fetch = () => Promise.resolve(new Response('', { status: 500 }))
+    await expect(createS3Store(s3, broken).getFile('k', join(dir, 'x'))).rejects.toThrow()
   })
 })

@@ -543,3 +543,17 @@ describe('audio', () => {
     expect(loadConfig(MIN, '/p/c.yaml').audio).toBeNull()
   })
 })
+
+describe('whisper.dir', () => {
+  it('blokk nélkül /data/whisper', () => {
+    expect(loadConfig(MIN, '/p/c.yaml').whisperDir).toBe('/data/whisper')
+  })
+
+  it('abszolút út átvéve', () => {
+    expect(loadConfig({ ...MIN, whisper: { dir: '/x/whisper' } }, '/p/c.yaml').whisperDir).toBe('/x/whisper')
+  })
+
+  it('relatív út hiba', () => {
+    expect(() => loadConfig({ ...MIN, whisper: { dir: 'whisper' } }, '/p/c.yaml')).toThrow(/whisper\.dir/)
+  })
+})

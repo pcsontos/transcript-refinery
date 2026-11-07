@@ -186,7 +186,14 @@ export function cancelKeyboard(jobs: readonly { jobId: string; videoId: string; 
 
 export type Probe = { ok: true; ms: number; version: string; busy: string | null } | { ok: false; reason: 'secret' | 'down' }
 
-export const FETCH_USAGE = 'Használat: /fetch <link…> – YouTube-videó, playlist vagy hangfájl; több link vesszővel vagy szóközzel.'
+export const FETCH_USAGE =
+  'Használat: /fetch_audio [--lang <kód>] <link…> – YouTube-videó, playlist vagy hangfájl; több link vesszővel vagy szóközzel. Felirat nélküli videónál a hang átírásra megy.'
+/** A régi `/fetch` válasza: nem indul munka. Egy későbbi kiadásban törölhető. */
+export const FETCH_RENAMED = 'Átnevezve: /fetch_audio'
+export const TRANSCRIBE_USAGE = 'Használat: /transcribe – listát kapsz az átírásra váró hangokról; válaszolj a sorszámokkal.'
+export const TRANSCRIBE_PICK_USAGE = 'Válaszként a sorszámokat írd: 0 = az üzenet összes tétele, vagy pl. 1,3; nyelv: 1,3 --lang en.'
+/** A serve `/transcribe` listaüzeneteinek első sora (a `src/whisper/archive.ts` `TRANSCRIBE_HEADER`-je); a Worker ebből ismeri fel a választ. */
+export const TRANSCRIBE_LIST_HEADER = 'Átírásra váró hangok:'
 export const PICK_USAGE = 'Válaszként a sorszámokat írd: 0 = mind, vagy pl. 1,3.'
 
 export function fetchTitle(n: number): string {
@@ -196,7 +203,8 @@ export function fetchTitle(n: number): string {
 /** A bot parancsai: ebből épül a `/help` és a Telegram `/` menüje (`pnpm telegram:commands`). */
 export const BOT_COMMANDS: readonly { command: string; args?: string; description: string }[] = [
   { command: 'scan', args: '<szöveg>', description: 'beillesztett átirat feldolgozása (egy üzenetnyi)' },
-  { command: 'fetch', args: '<link…>', description: 'hang letöltése és archiválása (videó, playlist, hangfájl)' },
+  { command: 'fetch_audio', args: '[--lang <kód>] <link…>', description: 'hang letöltése és archiválása; felirat nélkül átírásra' },
+  { command: 'transcribe', description: 'archivált hang átírása (lista, válasz sorszámokkal)' },
   { command: 'start', description: 'a bot összekötése a Google-fiókoddal' },
   { command: 'cancel', description: 'nyitott munka megszakítása' },
   { command: 'model', description: 'a receptek modelljének megtekintése és váltása' },

@@ -128,3 +128,9 @@ pricing:
 # 5,00-s alapértelmezés megállít egy teljes korpuszfutást, és kikényszeríti a
 # szándékos felülbírálást.
 cost_limit_usd: 5.00
+
+# Az átírás (whisper) mappája: ide kerül a leadott hang, innen veszi fel a
+# gazdagépi figyelő. Abszolút út; ha nem adod meg, /data/whisper. Ha a mappa
+# nem létezik, az átírás ki van kapcsolva, és a refinery nem hozza létre.
+# whisper:
+#   dir: /data/whisper

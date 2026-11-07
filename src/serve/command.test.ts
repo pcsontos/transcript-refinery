@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ProcessRunner } from '../fetch/subtitle/ytdlp.js'
-import { commandServe, installIdleExit, serveEffects, serveFetchAudio } from './command.js'
+import { commandServe, installIdleExit, serveEffects, serveFetchAudio, serveTranscribe } from './command.js'
 import type { ObjectStore } from './r2.js'
 
 function memoryStore(initial: Record<string, Uint8Array> = {}): ObjectStore & { objects: Record<string, Uint8Array> } {
@@ -165,7 +165,7 @@ describe('serveFetchAudio', () => {
   const ID = 'abcdefghijk'
   const runner: ProcessRunner = async (args) => {
     if (args[0] === '--version') return { code: 0, stdout: '1', stderr: '' }
-    if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna' }), stderr: '' }
+    if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csatorna', language: 'hu', automatic_captions: { hu: [] } }), stderr: '' }
     const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
     await mkdir(dest, { recursive: true })
     await writeFile(join(dest, `Cím [${ID}].m4a`), 'a')
@@ -218,5 +218,95 @@ describe('serveFetchAudio', () => {
       fetchAudio,
     })
     expect(effects.fetchAudio).toBe(fetchAudio)
+  })
+
+  it('a serveEffects továbbadja a transcribe-ot', () => {
+    const transcribe = () => Promise.resolve('k')
+    const effects = serveEffects({
+      outDir: '/o',
+      languages: ['hu'],
+      store: fakeStore,
+      fetchSubtitle: () => Promise.resolve({ code: 0, stdout: '', stderr: '' }),
+      callback: () => Promise.resolve(),
+      transcribe,
+    })
+    expect(effects.transcribe).toBe(transcribe)
+  })
+})
+
+describe('serveFetchAudio átírás és serveTranscribe', () => {
+  const ID = 'abcdefghijk'
+  const noSubRunner: ProcessRunner = async (args) => {
+    if (args[0] === '--version') return { code: 0, stdout: '1', stderr: '' }
+    if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id: ID, title: 'Cím', channel: 'Csat', language: 'hu' }), stderr: '' }
+    const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
+    await mkdir(dest, { recursive: true })
+    await writeFile(join(dest, `Cím [${ID}].m4a`), 'hang')
+    await writeFile(join(dest, `Cím [${ID}].info.json`), JSON.stringify({ title: 'Cím', channel: 'Csat' }))
+    return { code: 0, stdout: '', stderr: '' }
+  }
+
+  async function config(withWhisper: boolean): Promise<{ dir: string; path: string; whisper: string }> {
+    const dir = await mkdtemp(join(tmpdir(), 'serve-whisper-'))
+    const whisper = join(dir, 'whisper')
+    if (withWhisper) await mkdir(join(whisper, 'inbox'), { recursive: true })
+    const path = join(dir, 'refinery.config.yaml')
+    await writeFile(
+      path,
+      `vault:\n  path: ${dir}/vault\nsources:\n  - ${dir}/src\nlanguages: [hu]\nlogs:\n  dir: ${dir}/logs\naudio:\n  dir: ${dir}/audio\nwhisper:\n  dir: ${whisper}\n`,
+    )
+    return { dir, path, whisper }
+  }
+
+  const collect = () => {
+    const lines: string[] = []
+    return { lines, emit: (line: string) => { lines.push(line); return Promise.resolve() } }
+  }
+
+  it('/fetch_audio: felirat nélküli videó leadódik a --lang nyelvén, a figyelmeztetés kimegy, a napló neve /fetch_audio', async () => {
+    const { dir, path, whisper } = await config(true)
+    const out = collect()
+    const summary = await serveFetchAudio(path, { runner: noSubRunner })(
+      { inputs: [`https://www.youtube.com/watch?v=${ID}`], lang: 'en' },
+      undefined,
+      out.emit,
+    )
+    expect(out.lines[0]).toBe(`letöltve, átírásra leadva: Cím [${ID}]`)
+    expect(out.lines.at(-1)).toMatch(/^A whisper-figyelő nem fut/)
+    expect(summary).toContain('1 átírásra leadva.')
+    const info = JSON.parse(await (await import('node:fs/promises')).readFile(join(whisper, 'inbox', `${ID}.info.json`), 'utf8')) as { refinery_lang: string }
+    expect(info.refinery_lang).toBe('en')
+    const [file] = await readdir(join(dir, 'logs'))
+    const first = (await (await import('node:fs/promises')).readFile(join(dir, 'logs', file as string), 'utf8')).split('\n')[0]
+    expect((JSON.parse(first as string) as { command: string }).command).toMatch(/^\/fetch_audio --lang en /)
+  })
+
+  it('serveTranscribe whisper-mappa nélkül dob', async () => {
+    const { path, whisper } = await config(false)
+    await expect(serveTranscribe(path)({ ids: ['a'] }, undefined, () => Promise.resolve())).rejects.toThrow(`nincs whisper-mappa: ${whisper}`)
+  })
+
+  it('serveTranscribe lista-mód: üzenetek emit-tel, a vég a használati sor; nincs váró hang → szöveg', async () => {
+    const { dir, path } = await config(true)
+    const empty = collect()
+    expect(await serveTranscribe(path)({ ids: [] }, undefined, empty.emit)).toBe('Nincs átírásra váró hang.')
+    await mkdir(join(dir, 'audio', 'Csat'), { recursive: true })
+    await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
+    const out = collect()
+    const result = await serveTranscribe(path)({ ids: [] }, undefined, out.emit)
+    expect(out.lines[0]).toBe(`Átírásra váró hangok:\n1. Cím [${ID}]`)
+    expect(result).toBe('Válaszolj a lista egyik üzenetére a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.')
+  })
+
+  it('serveTranscribe leadás: az inboxba kerül, az összesítő a „tétel leadva” sor, futásnapló készül', async () => {
+    const { dir, path, whisper } = await config(true)
+    await mkdir(join(dir, 'audio', 'Csat'), { recursive: true })
+    await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
+    const out = collect()
+    const result = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, out.emit)
+    expect(result.split('\n')[0]).toBe('1 tétel leadva.')
+    expect(out.lines[0]).toBe(`leadva: Cím [${ID}]`)
+    expect(await readdir(join(whisper, 'inbox'))).toContain(`${ID}.m4a`)
+    expect(await readdir(join(dir, 'logs'))).toHaveLength(1)
   })
 })

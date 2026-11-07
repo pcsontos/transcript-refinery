@@ -70,3 +70,10 @@ nélkül.
 testvérparancs: `yt-dlp`-vel `.vtt`/`.srt` és `.info.json` fájlt ír egy
 mappába. A csővezeték nem hívja, és a felderítés szerződése nem változik.
 A transzkribálás továbbra is kívül van.
+
+**Kiegészítés (2026-11-07).** A whisper-út megépült, és a döntés szerint külön
+eszközként, forrásmappaként jön vissza: a `tools/whisper/` figyelő egy
+`whisper.dir` mappából (inbox) dolgozik, és a kész `.srt` fájlt a
+`sources[0]/whisper/<csatorna>/<id>.<nyelv>.srt` helyre írja, ahol a felderítés
+a többi felirattal együtt felveszi. A szerződés a `tools/whisper/README.md`-ben
+van.

@@ -22,8 +22,12 @@ import {
   boundLine,
   cancelKeyboard,
   cancelledLine,
+  FETCH_RENAMED,
   FETCH_USAGE,
   PICK_USAGE,
+  TRANSCRIBE_LIST_HEADER,
+  TRANSCRIBE_PICK_USAGE,
+  TRANSCRIBE_USAGE,
   fetchTitle,
   decideRun,
   decideStart,
@@ -124,7 +128,25 @@ export const START = /^\/start(?:\s+(\S+))?\s*$/
 export const COMMAND = /^\/(help|cancel|ping|version|status|model)(?:@\w+)?\s*$/
 
 export const SCAN = /^\/scan(?:@\w+)?(?:\s+([\s\S]*))?$/
-export const FETCH = /^\/fetch(?:@\w+)?(?:\s+([\s\S]*))?$/
+export const FETCH = /^\/fetch_audio(?:@\w+)?(?:\s+([\s\S]*))?$/
+/** A v1.31.0 `/fetch` régi neve: nem indul munka, csak az átnevezést közli. */
+const OLD_FETCH = /^\/fetch(?:@\w+)?(?:\s[\s\S]*)?$/
+export const TRANSCRIBE = /^\/transcribe(?:@\w+)?\s*$/
+const TRANSCRIBE_WITH_ARGS = /^\/transcribe(?:@\w+)?\s+\S/
+/** A `/transcribe` listájára adott válasz: sorszámok, opcionálisan `--lang <kód>`. */
+const TRANSCRIBE_PICK = /^\s*(\d+(?:\s*,\s*\d+)*)(?:\s+--lang\s+(\S+))?\s*$/
+/** Egy listasor: a mohó `.*` a sor utolsó `[…]`-ját fogja, így a címben lévő `[ ]` és `—` sem zavar. */
+const TRANSCRIBE_ITEM = /^(\d+)\. .*\[([A-Za-z0-9_-]+)\](?: — [^\]]*)?$/
+
+const LANG_TAG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
+
+/** A CLI `parseLang`-jának másolata (a Worker nem importálhat a `src/`-ből); közös tesztesetekkel. */
+export function workerLang(raw: string): string | null {
+  const [head, ...rest] = raw.trim().split('-')
+  if (head === undefined || head === '' || head.toLowerCase() === 'all') return null
+  const tag = rest.length === 0 ? head.toLowerCase() : `${head.toLowerCase()}-${rest.join('-')}`
+  return LANG_TAG.test(tag) ? tag : null
+}
 export const FETCH_ID = /^fetch-\d+$/
 /** A bot feed-listaüzenetének `Feed:` sora; a válasz sorszámai ehhez a feedhez tartoznak. */
 const FEED_LINE = /^Feed: (https?:\/\/\S+)$/m
@@ -488,9 +510,64 @@ export async function handleLink(
   return { status: 302, location: `https://t.me/${deps.botUsername}?start=${back}` }
 }
 
+/** A `/transcribe` listaüzenetére adott válasz: az üzenet saját soraiból oldja fel a sorszámokat. */
+function transcribePick(text: string, listText: string): { url: string; title: string } | string {
+  const match = TRANSCRIBE_PICK.exec(text)
+  if (match === null) return TRANSCRIBE_PICK_USAGE
+  let lang: string | null = null
+  if (match[2] !== undefined) {
+    lang = workerLang(match[2])
+    if (lang === null) return TRANSCRIBE_PICK_USAGE
+  }
+  const byNumber = new Map<number, string>()
+  for (const line of listText.split('\n')) {
+    const item = TRANSCRIBE_ITEM.exec(line)
+    if (item?.[1] !== undefined && item[2] !== undefined) byNumber.set(Number(item[1]), item[2])
+  }
+  const numbers = [...new Set((match[1] ?? '').split(',').map((part) => Number(part.trim())))]
+  let ids: string[]
+  if (numbers.includes(0)) {
+    if (numbers.length > 1) return TRANSCRIBE_PICK_USAGE
+    ids = [...byNumber.values()]
+  } else {
+    ids = []
+    for (const number of numbers) {
+      const id = byNumber.get(number)
+      if (id === undefined) return TRANSCRIBE_PICK_USAGE
+      ids.push(id)
+    }
+  }
+  if (ids.length === 0) return TRANSCRIBE_PICK_USAGE
+  return { url: `transcribe ${ids.join(' ')}${lang === null ? '' : ` --lang ${lang}`}`, title: `átírás (${ids.length} tétel)` }
+}
+
+/** A `/fetch_audio` szavai: linkek és legfeljebb egy `--lang <kód>`; minden más kapcsoló használati sort ad. */
+function fetchAudioWords(raw: string): { url: string; title: string } | string {
+  const words = raw.split(/\s+/).filter(Boolean)
+  const links: string[] = []
+  let lang: string | null = null
+  for (let i = 0; i < words.length; i += 1) {
+    const word = words[i] as string
+    if (word === '--lang') {
+      const value = words[i + 1]
+      if (lang !== null || value === undefined) return FETCH_USAGE
+      lang = workerLang(value)
+      if (lang === null) return FETCH_USAGE
+      i += 1
+    } else if (word.startsWith('-')) {
+      return FETCH_USAGE
+    } else {
+      links.push(...word.split(',').filter(Boolean))
+    }
+  }
+  if (links.length === 0) return FETCH_USAGE
+  return { url: `${links.join(' ')}${lang === null ? '' : ` --lang ${lang}`}`, title: fetchTitle(links.length) }
+}
+
 /**
- * A `/fetch` vagy a bot feed-listájára adott sorszámos válasz. `string`: a visszaküldendő használati sor;
- * `null`, ha nem hangletöltés. A Worker csak az alakot nézi, a sorszámok érvényességét a serve dönti el.
+ * A `/fetch_audio`, a `/transcribe`, vagy a bot listájára adott sorszámos válasz (feed vagy átírás). `string`: a
+ * visszaküldendő sor; `null`, ha nem hangmunka. A Worker csak az alakot nézi, a sorszámok érvényességét (feed) a
+ * serve dönti el.
  */
 function fetchRequest(message: {
   text?: string
@@ -498,21 +575,26 @@ function fetchRequest(message: {
 }): { url: string; title: string } | string | null {
   const text = message.text ?? ''
   const reply = message.reply_to_message
-  const feed = reply?.from?.is_bot === true ? FEED_LINE.exec(reply.text ?? '')?.[1] : undefined
-  // A válaszban írt parancs (pl. /fetch) a megszokott úton megy.
-  if (feed !== undefined && !text.startsWith('/')) {
-    if (!PICK_TEXT.test(text)) return PICK_USAGE
-    const numbers = text.replace(/\s+/g, '')
-    return {
-      url: `${feed} --pick ${numbers}`,
-      title: numbers === '0' ? 'hangletöltés (feed, mind)' : `hangletöltés (feed, ${numbers.split(',').length} epizód)`,
+  // A válaszban írt parancs (pl. /fetch_audio) a megszokott úton megy.
+  if (reply?.from?.is_bot === true && !text.startsWith('/')) {
+    const replyText = reply.text ?? ''
+    if (replyText.split('\n')[0] === TRANSCRIBE_LIST_HEADER) return transcribePick(text, replyText)
+    const feed = FEED_LINE.exec(replyText)?.[1]
+    if (feed !== undefined) {
+      if (!PICK_TEXT.test(text)) return PICK_USAGE
+      const numbers = text.replace(/\s+/g, '')
+      return {
+        url: `${feed} --pick ${numbers}`,
+        title: numbers === '0' ? 'hangletöltés (feed, mind)' : `hangletöltés (feed, ${numbers.split(',').length} epizód)`,
+      }
     }
   }
+  if (TRANSCRIBE.test(text)) return { url: 'transcribe', title: 'átírás (lista)' }
+  if (TRANSCRIBE_WITH_ARGS.test(text)) return TRANSCRIBE_USAGE
+  if (OLD_FETCH.test(text)) return FETCH_RENAMED
   const fetchCommand = FETCH.exec(text)
   if (fetchCommand === null) return null
-  const links = (fetchCommand[1] ?? '').split(/[\s,]+/).filter(Boolean)
-  if (links.length === 0 || links.some((link) => link.startsWith('-'))) return FETCH_USAGE
-  return { url: links.join(' '), title: fetchTitle(links.length) }
+  return fetchAudioWords(fetchCommand[1] ?? '')
 }
 
 async function fetchRow(
