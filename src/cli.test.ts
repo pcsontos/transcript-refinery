@@ -2097,6 +2097,28 @@ describe('commandScanQueue', () => {
     expect(existsSync(queuePath(cfg.notesRoot))).toBe(false)
   })
 
+  it('a scan a Garage-másolat hibáját figyelmeztetésként jelzi, és 0-val végez; --dry-run mellett a sor-scan nem másol', async () => {
+    await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
+    await mkdir(join(downloads, 'whisper', 'csat'), { recursive: true })
+    await writeFile(join(downloads, 'whisper', 'csat', 'a1.hu.srt'), '1\n00:00:00,000 --> 00:00:01,000\nszia\n')
+    const s3 = { endpoint: 'http://garage:3900', region: 'garage', bucket: 'audio', prefix: 'audio/', access_key_id: 'GK1' }
+    const cfg = loadConfig({ ...rawWithVault(5), audio: { s3 } }, '/p/refinery.config.yaml')
+    vi.stubEnv('AUDIO_S3_SECRET_ACCESS_KEY', '')
+    const out = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      expect(await commandScan(cfg)).toBe(0)
+      expect(err.mock.calls.flat().join('\n')).toContain('A Garage-másolat nem sikerült (hiányzó AUDIO_S3_SECRET_ACCESS_KEY)')
+      err.mockClear()
+      expect(await commandScanQueue(cfg, { dryRun: true, commit: false })).toBe(0)
+      expect(err).not.toHaveBeenCalled()
+    } finally {
+      out.mockRestore()
+      err.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('translate kulccsal videónként felveszi a fordítások pipáit; másodszorra bájtra azonos', async () => {
     await makeVideo(downloads, 'a1', 'Első videó', 'Csatorna A')
     const cfg = loadConfig(
