@@ -30,10 +30,8 @@ export function feedListLines(feed: FeedProbe): string[] {
   })
 }
 
-/** A lista üzenetekre bontva; mindegyik a feed címével és a `Feed:` sorral kezdődik. */
-export function feedMessages(feedUrl: string, feed: FeedProbe, limit?: number): string[] {
-  const header = `${feed.title.slice(0, 200)}\nFeed: ${feedUrl}\n`
-  const lines = feedListLines(feed)
+/** A sorok üzenetekre bontva, mindegyik a `header`-rel kezdődik; `limit` nélkül egyetlen üzenet. A túl hosszú sort levágja. */
+export function chunkMessages(header: string, lines: readonly string[], limit?: number): string[] {
   if (limit === undefined) return [header + lines.join('\n')]
   const room = Math.max(limit - header.length, 2)
   const messages: string[] = []
@@ -49,6 +47,11 @@ export function feedMessages(feedUrl: string, feed: FeedProbe, limit?: number): 
   }
   messages.push(header + current)
   return messages
+}
+
+/** A lista üzenetekre bontva; mindegyik a feed címével és a `Feed:` sorral kezdődik. */
+export function feedMessages(feedUrl: string, feed: FeedProbe, limit?: number): string[] {
+  return chunkMessages(`${feed.title.slice(0, 200)}\nFeed: ${feedUrl}\n`, feedListLines(feed), limit)
 }
 
 export function pickHint(feedUrl: string, surface: 'cli' | 'telegram'): string {

@@ -8,6 +8,8 @@ import {
   listArchive,
   STATUS_LABEL,
   statusContext,
+  TRANSCRIBE_HEADER,
+  transcribeMessages,
   transcriptStatus,
   type AudioEntry,
   type StatusContext,
@@ -105,5 +107,36 @@ describe('statusContext és failedReason', () => {
     expect(await failedReason(dirs, 'y')).toBe('ffmpeg: invalid data')
     expect(await failedReason(dirs, 'nincs')).toBeNull()
     expect((await statusContext(sources, null)).dirFiles).toEqual({ inbox: [], work: [], failed: [] })
+  })
+})
+
+describe('transcribeMessages', () => {
+  const entries = (count: number, title: (i: number) => string, duration: number | null = 1062): AudioEntry[] =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `id${String(i).padStart(4, '0')}abc`.slice(0, 11), key: `C/t [x].m4a`, ext: 'm4a', title: title(i), channel: 'C', duration, date: null, info: {},
+    }))
+
+  it('a hosszú cím vágódik, az azonosító megmarad, a számozás folytatólagos', () => {
+    const messages = transcribeMessages(entries(60, () => 'Á'.repeat(300)), 4000)
+    expect(messages.length).toBeGreaterThan(1)
+    for (const message of messages) {
+      expect(message.length).toBeLessThanOrEqual(4000)
+      expect(message.split('\n')[0]).toBe(TRANSCRIBE_HEADER)
+      for (const line of message.split('\n').slice(1)) expect(line).toMatch(/\[[A-Za-z0-9_-]+\]( — \d+:\d{2}:\d{2})?$/)
+    }
+    const second = messages[1]!.split('\n')[1]!
+    expect(second).not.toMatch(/^1\. /)
+    const numbers = messages.flatMap((message) => message.split('\n').slice(1).map((line) => Number(line.split('.')[0])))
+    expect(numbers).toEqual(Array.from({ length: 60 }, (_, i) => i + 1))
+  })
+
+  it('cím [ ] és — jellel, hossz nélkül is', () => {
+    const [message] = transcribeMessages(entries(1, () => 'Előadás [2. rész] — élő', null))
+    expect(message).toBe(`${TRANSCRIBE_HEADER}\n1. Előadás [2. rész] — élő [id0000abc]`)
+  })
+
+  it('a sor a hosszal; több soros cím egy sorba kerül', () => {
+    const [message] = transcribeMessages(entries(1, () => 'Egy\nKettő'))
+    expect(message).toBe(`${TRANSCRIBE_HEADER}\n1. Egy Kettő [id0000abc] — 0:17:42`)
   })
 })

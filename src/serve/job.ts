@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { parseAudioArgs, type Pick } from '../fetch/audio/args.js'
+import { parseTranscribeArgs } from '../whisper/submit.js'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
 import { RECIPES } from '../recipe/registry.js'
@@ -21,7 +22,10 @@ export interface ServeJob {
   textLang?: string
   /** Receptazonosító → modell, a futás tényleges azonosítóival (`notes`, `notes-hu`); a Worker felülírása (#292). */
   models?: Record<string, string>
-  /** Hangletöltés (`/fetch`): az `url` szóközzel elválasztott argumentumlista (linkek, vagy `<feed-url> --pick <lista>`). */
+  /**
+   * Hangletöltés (`/fetch_audio`): az `url` szóközzel elválasztott argumentumlista (linkek, `--lang <kód>`, vagy
+   * `<feed-url> --pick <lista>`). Első szava `transcribe`: átírás-munka (`transcribe [<id>…] [--lang <kód>]`).
+   */
   fetch?: boolean
 }
 
@@ -45,7 +49,13 @@ export type RecipesOutcome = ({ ok: true; noteUrl: string } | { ok: false; error
 export interface JobEffects {
   /** A hangletöltés; az összesítőt adja vissza (feed-listázásnál a választási felszólítást). */
   fetchAudio?: (
-    request: { inputs: readonly string[]; pick?: Pick },
+    request: { inputs: readonly string[]; pick?: Pick; lang?: string },
+    signal: AbortSignal | undefined,
+    emit: (line: string) => Promise<void>,
+  ) => Promise<string>
+  /** Az átírás: üres `ids` = a váró hangok listája (`emit`-tel), különben leadás. Az összesítőt adja vissza. */
+  transcribe?: (
+    request: { ids: readonly string[]; lang?: string },
     signal: AbortSignal | undefined,
     emit: (line: string) => Promise<void>,
   ) => Promise<string>
@@ -326,8 +336,35 @@ async function runRecipeJob(
 }
 
 /** A hangletöltés: a sorok progressként, az összesítő readyként megy a Workernek. */
+async function runTranscribeJob(job: ServeJob, words: readonly string[], effects: JobEffects, signal?: AbortSignal): Promise<void> {
+  // Üres maradék = lista-mód, nem hiba.
+  const parsed = words.length === 0 ? ({ ok: true, args: { ids: [] } } as const) : parseTranscribeArgs(words)
+  if (!parsed.ok) {
+    await report(effects, job.jobId, { status: 'failed', error: parsed.error })
+    return
+  }
+  if (effects.transcribe === undefined) {
+    await report(effects, job.jobId, { status: 'failed', error: 'Az átírás nincs beállítva.' })
+    return
+  }
+  const { ids, lang } = parsed.args as { ids: string[]; lang?: string }
+  try {
+    const title = await effects.transcribe(
+      { ids, ...(lang === undefined ? {} : { lang }) },
+      signal,
+      (text) => report(effects, job.jobId, { status: 'progress', text }),
+    )
+    await report(effects, job.jobId, { status: 'ready', title })
+  } catch (error) {
+    const message = error instanceof Error ? firstLine(error.message) : ''
+    await report(effects, job.jobId, { status: 'failed', error: message === '' ? 'Az átírás nem sikerült.' : message })
+  }
+}
+
 async function runFetchJob(job: ServeJob, effects: JobEffects, signal?: AbortSignal): Promise<void> {
-  const parsed = parseAudioArgs(job.url.split(' ').filter(Boolean))
+  const words = job.url.split(' ').filter(Boolean)
+  if (words[0] === 'transcribe') return runTranscribeJob(job, words.slice(1), effects, signal)
+  const parsed = parseAudioArgs(words)
   if (!parsed.ok) {
     await report(effects, job.jobId, { status: 'failed', error: parsed.error })
     return
@@ -336,10 +373,10 @@ async function runFetchJob(job: ServeJob, effects: JobEffects, signal?: AbortSig
     await report(effects, job.jobId, { status: 'failed', error: 'A hangletöltés nincs beállítva.' })
     return
   }
-  const { inputs, pick } = parsed.args
+  const { inputs, pick, lang } = parsed.args
   try {
     const title = await effects.fetchAudio(
-      { inputs, ...(pick === undefined ? {} : { pick }) },
+      { inputs, ...(pick === undefined ? {} : { pick }), ...(lang === undefined ? {} : { lang }) },
       signal,
       (text) => report(effects, job.jobId, { status: 'progress', text }),
     )

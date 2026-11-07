@@ -5,6 +5,9 @@ import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { pickHint } from '../fetch/audio/feed.js'
 import { audioSummary, openAudioRunLog, runAudioFetch } from '../fetch/audio/run.js'
 import { createAudioStore } from '../fetch/audio/store.js'
+import { createHandoff, runTranscribe } from '../whisper/submit.js'
+import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
+import { watcherWarning, whisperDirs } from '../whisper/paths.js'
 import { commandFetch } from '../fetch/command.js'
 import { createYtdlpRunner, type ProcessRunner } from '../fetch/subtitle/ytdlp.js'
 import type { LanguageTag } from '../lang/identify.js'
@@ -41,6 +44,7 @@ export function serveEffects(input: {
   readFile?: JobEffects['readFile']
   runRecipes?: RecipesRun
   fetchAudio?: JobEffects['fetchAudio']
+  transcribe?: JobEffects['transcribe']
   configArg?: string
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
@@ -63,6 +67,7 @@ export function serveEffects(input: {
     readFile: input.readFile ?? (async (path) => new Uint8Array(await readFile(path))),
     fetchSubtitle: input.fetchSubtitle,
     fetchAudio: input.fetchAudio,
+    transcribe: input.transcribe,
     callback: input.callback,
     writeFile: async (path, body) => {
       await mkdir(dirname(path), { recursive: true })
@@ -95,7 +100,9 @@ export function serveFetchAudio(
     if (cfg.audio === null) throw new Error('Nincs audio blokk a configban.')
     const store = createAudioStore(cfg.audio, process.env)
     const pick = request.pick === undefined ? [] : ['--pick', request.pick === 'all' ? '0' : request.pick.join(',')]
-    const log = openAudioRunLog(cfg.logsDir, `/fetch ${[...request.inputs, ...pick].join(' ')}`)
+    const lang = request.lang === undefined ? [] : ['--lang', request.lang]
+    const log = openAudioRunLog(cfg.logsDir, `/fetch_audio ${[...lang, ...request.inputs, ...pick].join(' ')}`)
+    const { handoff, warning } = await createHandoff({ cfg, store, lang: request.lang })
     try {
       const rows = await runAudioFetch(request.inputs, {
         store,
@@ -105,14 +112,74 @@ export function serveFetchAudio(
         // A watch?v=…&list=… a spec szerint egy videó.
         yesPlaylist: false,
         pick: request.pick,
+        handoff,
         listLimit: 4000,
         stopped: () => signal?.aborted ?? false,
         emit,
         sink: log.sink,
       })
+      const notice = await warning()
+      if (notice !== null) await emit(notice)
       return rows.length === 1 && rows[0]?.outcome === 'listed'
         ? pickHint(request.inputs[0] ?? rows[0].label, 'telegram')
         : audioSummary(rows)
+    } finally {
+      log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
+      log.close()
+    }
+  }
+}
+
+/** A leadható (archivált vagy hibás) hangok listája üzenetekben; a vég a használati sor. */
+export const TRANSCRIBE_HINT =
+  'Válaszolj a lista egyik üzenetére a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.'
+
+/**
+ * A Telegram `/transcribe`: munkánként tölti a configot. Üres `ids`: a leadható hangok listája; különben leadás
+ * (a `refinery transcribe` menete), a futás a `logs.dir` alá naplózódik.
+ */
+export function serveTranscribe(configArg: string | undefined): NonNullable<JobEffects['transcribe']> {
+  return async (request, signal, emit) => {
+    const { cfg } = await loadCliConfig(configArg)
+    if (cfg.audio === null) throw new Error('Nincs audio blokk a configban.')
+    const dirs = await whisperDirs(cfg)
+    if (dirs === null) throw new Error(`nincs whisper-mappa: ${cfg.whisperDir}`)
+    const store = createAudioStore(cfg.audio, process.env)
+    const sourcesRoot = cfg.sources[0]!.path
+
+    if (request.ids.length === 0) {
+      const { entries } = await listArchive(store)
+      const ctx = await statusContext(sourcesRoot, dirs)
+      const pending = entries.filter((entry) => {
+        const status = transcriptStatus(entry, ctx)
+        return status === 'archived' || status === 'failed'
+      })
+      if (pending.length === 0) return 'Nincs átírásra váró hang.'
+      for (const message of transcribeMessages(pending, 4000)) await emit(message)
+      const warning = await watcherWarning(dirs)
+      if (warning !== null) await emit(warning)
+      return TRANSCRIBE_HINT
+    }
+
+    const lang = request.lang === undefined ? [] : ['--lang', request.lang]
+    const log = openAudioRunLog(cfg.logsDir, `/transcribe ${[...request.ids, ...lang].join(' ')}`)
+    const lines: string[] = []
+    try {
+      await runTranscribe(request, {
+        store,
+        dirs,
+        sourcesRoot,
+        languages: cfg.languages,
+        emit: async (line) => {
+          lines.push(line)
+          await emit(line)
+        },
+        sink: log.sink,
+        stopped: () => signal?.aborted ?? false,
+      })
+      // Az összesítő sor és ami utána jön (figyelmeztetés).
+      const from = lines.findIndex((line) => / tétel leadva\.$/.test(line))
+      return (from === -1 ? lines.slice(-1) : lines.slice(from)).join('\n')
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()
@@ -201,6 +268,7 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     languages,
     store: createR2Store(r2),
     fetchAudio: serveFetchAudio(configArg),
+    transcribe: serveTranscribe(configArg),
     fetchSubtitle: async (url) => {
       console.log(`[serve] Letöltés indítása yt-dlp-vel: ${url}`)
       const stdout: string[] = []

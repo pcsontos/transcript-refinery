@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FeedProbe } from '../subtitle/ytdlp.js'
-import { feedListLines, feedMessages, feedHash, pickHint, resolvePick } from './feed.js'
+import { chunkMessages, feedListLines, feedMessages, feedHash, pickHint, resolvePick } from './feed.js'
 
 const entry = (title: string, timestamp: number | null = null, duration: number | null = null) => ({ url: `https://f.hu/${title}.mp3`, title, duration, timestamp, raw: {} })
 
@@ -48,5 +48,19 @@ describe('resolvePick és pickHint', () => {
     expect(pickHint('U', 'telegram')).toContain('Feed: U')
     expect(feedHash(' https://x ')).toBe(feedHash('https://x'))
     expect(feedHash('a')).toMatch(/^[0-9a-f]{8}$/)
+  })
+})
+
+describe('chunkMessages', () => {
+  it('limit nélkül egy üzenet; limittel darabol, mindegyik a fejléccel, a sorok sorrendben', () => {
+    const lines = Array.from({ length: 40 }, (_, i) => `${i + 1}. tétel`)
+    expect(chunkMessages('Fej\n', lines)).toEqual([`Fej\n${lines.join('\n')}`])
+    const parts = chunkMessages('Fej\n', lines, 60)
+    expect(parts.length).toBeGreaterThan(1)
+    for (const part of parts) {
+      expect(part.length).toBeLessThanOrEqual(60)
+      expect(part.startsWith('Fej\n')).toBe(true)
+    }
+    expect(parts.flatMap((part) => part.split('\n').slice(1))).toEqual(lines)
   })
 })
