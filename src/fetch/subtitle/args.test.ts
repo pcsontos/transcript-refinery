@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSubtitleArgs } from './args.js'
+import { parseLang, parseSubtitleArgs } from './args.js'
 
 describe('parseSubtitleArgs', () => {
   it('egy cím és célmappa, a formátum alapból vtt,srt', () => {
@@ -72,5 +72,13 @@ describe('parseSubtitleArgs', () => {
   it('a --sub-format sorrendje megmarad', () => {
     const parsed = parseSubtitleArgs(['abcdefghijk', '--sub-format', 'srt,vtt'])
     expect(parsed.ok && parsed.args.subFormat).toEqual(['srt', 'vtt'])
+  })
+})
+
+describe('parseLang', () => {
+  it('egyetlen nyelvkód', () => {
+    expect(parseLang('hu')).toBe('hu')
+    expect(parseLang('EN-US')).toBe('en-US')
+    for (const bad of ['hu,en', 'all', 'xyz1', '']) expect(parseLang(bad)).toBeNull()
   })
 })

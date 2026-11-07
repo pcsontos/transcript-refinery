@@ -109,6 +109,11 @@ const AudioSchema = z
   })
   .refine((audio) => audio.dir !== undefined || audio.s3 !== undefined, 'Az audio blokkban a dir és az s3 közül legalább egy kell.')
 
+/** A whisper-mappa alapértéke a konténerben; a mappát a gazdagép-oldali telepítő hozza létre. */
+export const DEFAULT_WHISPER_DIR = '/data/whisper'
+
+const WhisperSchema = z.object({ dir: absolutePath('whisper.dir').optional() })
+
 const CoreSchema = z.object({
   vault: z.object({
     path: absolutePath('vault.path'),
@@ -137,6 +142,7 @@ const CoreSchema = z.object({
   translate: TranslateSchema.optional(),
   showroom: ShowroomSchema.optional(),
   audio: AudioSchema.optional(),
+  whisper: WhisperSchema.optional(),
 })
 
 /** Egy feliratforrás: a YAML-beli útvonal és a belőle képzett név. */
@@ -206,6 +212,8 @@ export interface Config {
   showroom: ShowroomConfig | null
   /** A hangletöltés beállítása; `null`, ha a kulcs hiányzik. */
   audio: AudioConfig | null
+  /** Az átírás-mappa (`whisper.dir`); ha nem létezik, a whisper ki van kapcsolva. */
+  whisperDir: string
 }
 
 function normalizePrefix(raw: string): string {
@@ -299,6 +307,7 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
             : null,
         }
       : null,
+    whisperDir: c.whisper?.dir ?? DEFAULT_WHISPER_DIR,
   }
 }
 

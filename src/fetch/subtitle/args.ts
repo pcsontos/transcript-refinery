@@ -22,7 +22,8 @@ function fail(error: string): ParseResult {
   return { ok: false, error }
 }
 
-function normalizeLang(raw: string): string | null {
+/** Egyetlen nyelvkód normalizálva, vagy `null` (lista, `all`, érvénytelen). */
+export function parseLang(raw: string): string | null {
   const [head, ...rest] = raw.trim().split('-')
   if (head === undefined || head === '' || head.toLowerCase() === 'all') return null
   const tag = rest.length === 0 ? head.toLowerCase() : `${head.toLowerCase()}-${rest.join('-')}`
@@ -35,7 +36,7 @@ function languages(raw: string | undefined): string[] | undefined | ParseResult 
   if (items.length === 0) return fail('A --sub-lang eleme nyelvkód, például hu vagy en-US.')
   const tags: string[] = []
   for (const item of items) {
-    const tag = normalizeLang(item)
+    const tag = parseLang(item)
     if (tag === null) return fail('A --sub-lang eleme nyelvkód, például hu vagy en-US.')
     tags.push(tag)
   }
