@@ -163,7 +163,9 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
 
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
     const log = openAudioRunLog(cfg.logsDir, `/transcribe ${[...request.ids, ...lang].join(' ')}`)
-    const lines: string[] = []
+    // Az összesítő sor és ami utána jön (figyelmeztetés) a végső válasz: menet közben nem küldjük ki, hogy ne legyen kétszer.
+    const tail: string[] = []
+    let inTail = false
     try {
       await runTranscribe(request, {
         store,
@@ -171,15 +173,14 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         sourcesRoot,
         languages: cfg.languages,
         emit: async (line) => {
-          lines.push(line)
-          await emit(line)
+          if (/ tétel leadva\.$/.test(line)) inTail = true
+          if (inTail) tail.push(line)
+          else await emit(line)
         },
         sink: log.sink,
         stopped: () => signal?.aborted ?? false,
       })
-      // Az összesítő sor és ami utána jön (figyelmeztetés).
-      const from = lines.findIndex((line) => / tétel leadva\.$/.test(line))
-      return (from === -1 ? lines.slice(-1) : lines.slice(from)).join('\n')
+      return tail.join('\n')
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()

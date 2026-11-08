@@ -306,6 +306,9 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     const result = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, out.emit)
     expect(result.split('\n')[0]).toBe('1 tétel leadva.')
     expect(out.lines[0]).toBe(`leadva: Cím [${ID}]`)
+    // Az összesítő és a figyelmeztetés csak a végső válaszban szerepel, a menet közbeni sorokban nem: nem megy ki kétszer.
+    expect(out.lines.filter((line) => / tétel leadva\.$/.test(line) || /^A whisper-figyelő nem fut/.test(line))).toEqual([])
+    expect(result).toMatch(/\nA whisper-figyelő nem fut/)
     expect(await readdir(join(whisper, 'inbox'))).toContain(`${ID}.m4a`)
     expect(await readdir(join(dir, 'logs'))).toHaveLength(1)
   })

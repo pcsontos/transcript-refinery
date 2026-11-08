@@ -111,6 +111,13 @@ class Process(Root):
         self.assertEqual(self.work(), [])
         self.assertEqual(self.failed(), [])
 
+    def test_siker_utan_a_korabbi_failed_maradekok_torlodnek(self):
+        for name in ("a.m4a", "a.info.json", "a.log", "b.m4a"):
+            write(os.path.join(self.root, "failed", name), "régi")
+        self.put_item()
+        self.assertTrue(self.run_process())
+        self.assertEqual(self.failed(), ["b.m4a"])
+
     def test_hiba_failed_be_loggal(self):
         self.put_item()
         self.assertFalse(self.run_process(fake_fail))
@@ -132,6 +139,25 @@ class Process(Root):
         self.assertIn("a.m4a", self.failed())
         with open(os.path.join(self.root, "failed", "a.log")) as fh:
             self.assertIn("létezik", fh.read())
+
+    def test_osszeomlas_utan_kesz_par_nem_megy_failed_be(self):
+        # Az .srt és az info.json már kint van, de a bemenet az inboxban maradt (összeomlás a takarítás előtt).
+        self.put_item()
+        target = os.path.join(self.out, "whisper", "csat")
+        write(os.path.join(target, "a.hu.srt"), "KÉSZ")
+        write(os.path.join(target, "a.info.json"), "{}")
+        calls = []
+
+        def spy(*args, **kwargs):
+            calls.append(args)
+            return fake_ok(*args, **kwargs)
+
+        self.assertTrue(self.run_process(spy))
+        self.assertEqual(calls, [])
+        self.assertEqual(self.inbox(), [])
+        self.assertEqual(self.failed(), [])
+        with open(os.path.join(target, "a.hu.srt")) as fh:
+            self.assertEqual(fh.read(), "KÉSZ")
 
     def test_hianyzo_nyelv_vagy_cel_hiba(self):
         self.put_item(info={"refinery_lang": ""})

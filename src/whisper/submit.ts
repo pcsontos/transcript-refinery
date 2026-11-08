@@ -1,4 +1,5 @@
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
+import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import type { EventSink } from '../events.js'
@@ -49,16 +50,36 @@ export async function submitEntry(
   if (deps.lang === null) return { ok: false, error: 'nincs nyelv: adj meg --lang kapcsolót' }
   const info = join(deps.dirs.inbox, `${entry.id}.info.json`)
   const audio = join(deps.dirs.inbox, `${entry.id}.${entry.ext}`)
+  // Leadónként külön átmeneti név: két egyidejű leadó nem ír közös fájlba, és nem takarítja egymás félkészét.
+  const token = randomBytes(4).toString('hex')
+  const infoPartial = `${info}.${token}.partial`
+  const audioPartial = `${audio}.${token}.partial`
   try {
     await mkdir(deps.dirs.inbox, { recursive: true })
-    await writeFile(`${info}.partial`, JSON.stringify(inboxInfo(entry, deps.lang), null, 2))
-    await rename(`${info}.partial`, info)
-    await deps.store.copyTo(entry.key, `${audio}.partial`)
-    await rename(`${audio}.partial`, audio)
+    await sweepStalePartials(deps.dirs.inbox, entry.id)
+    await writeFile(infoPartial, JSON.stringify(inboxInfo(entry, deps.lang), null, 2))
+    await rename(infoPartial, info)
+    await deps.store.copyTo(entry.key, audioPartial)
+    await rename(audioPartial, audio)
     return { ok: true }
   } catch (error) {
-    await Promise.all([info, `${info}.partial`, `${audio}.partial`].map((path) => rm(path, { force: true })))
+    await Promise.all([info, infoPartial, audioPartial].map((path) => rm(path, { force: true })))
     return { ok: false, error: (error as Error).message }
+  }
+}
+
+const STALE_PARTIAL_MS = 3600_000
+
+/** Összeomlott leadó `.partial` maradékai: az egy óránál régebbieket törli, a frisset (másik leadóét) nem. */
+async function sweepStalePartials(inbox: string, id: string): Promise<void> {
+  for (const name of await readdir(inbox)) {
+    if (!name.startsWith(`${id}.`) || !name.endsWith('.partial')) continue
+    const path = join(inbox, name)
+    try {
+      if (Date.now() - (await stat(path)).mtimeMs > STALE_PARTIAL_MS) await rm(path, { force: true })
+    } catch {
+      // időközben eltűnt: nincs teendő
+    }
   }
 }
 

@@ -46,10 +46,9 @@ export async function whisperDirs(cfg: Pick<Config, 'whisperDir'>): Promise<Whis
   }
 }
 
-function localMinute(ms: number): string {
-  const d = new Date(ms)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+/** UTC-ben, jelölve: a folyamat időzónája (konténerben UTC) nem változtathatja meg az értelmét. */
+function utcMinute(ms: number): string {
+  return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`
 }
 
 /** Figyelmeztetés, ha az életjel hiányzik vagy régi; különben `null`. */
@@ -61,6 +60,6 @@ export async function watcherWarning(dirs: WhisperDirs, now: number = Date.now()
     last = null
   }
   if (last !== null && now - last <= WATCHER_STALE_MS) return null
-  const when = last === null ? 'nincs' : localMinute(last)
+  const when = last === null ? 'nincs' : utcMinute(last)
   return `A whisper-figyelő nem fut (utolsó életjel: ${when}); a tétel sorban marad, és bejelentkezés után feldolgozódik.`
 }

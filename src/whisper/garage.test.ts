@@ -39,6 +39,23 @@ describe('syncTranscripts', () => {
     expect(result).toEqual({ uploaded: ['audio/csat/b.hu.srt'] })
   })
 
+  it('csak az érintett csatorna-mappák prefixét listázza, nem a teljes hang-archívumot', async () => {
+    await put('whisper/csat/a.hu.srt')
+    await put('whisper/csat/b.hu.srt')
+    await put('whisper/masik/c.en.srt')
+    const listed: string[] = []
+    const result = await syncTranscripts({
+      sourcesRoot: sources,
+      s3: S3,
+      client: {
+        list: (prefix) => { listed.push(prefix); return Promise.resolve(prefix === 'audio/csat/' ? ['audio/csat/a.hu.srt'] : []) },
+        putFile: () => Promise.resolve(),
+      },
+    })
+    expect(listed).toEqual(['audio/csat/', 'audio/masik/'])
+    expect(result.uploaded).toEqual(['audio/csat/b.hu.srt', 'audio/masik/c.en.srt'])
+  })
+
   it('elérhetetlen Garage: figyelmeztetés, nem dob', async () => {
     await put('whisper/csat/a.hu.srt')
     const result = await syncTranscripts({

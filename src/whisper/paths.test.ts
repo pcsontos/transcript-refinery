@@ -59,10 +59,11 @@ describe('watcherWarning', () => {
     expect(await watcherWarning(await dirsWithHeartbeat(WATCHER_STALE_MS - 1_000), NOW)).toBeNull()
   })
 
-  it('5 percnél régebbi életjel → figyelmeztetés a helyi idővel', async () => {
+  it('5 percnél régebbi életjel → figyelmeztetés UTC-ben, a folyamat időzónájától függetlenül', async () => {
     const warning = await watcherWarning(await dirsWithHeartbeat(WATCHER_STALE_MS + 1_000), NOW)
-    expect(warning).toMatch(
-      /^A whisper-figyelő nem fut \(utolsó életjel: \d{4}-\d{2}-\d{2} \d{2}:\d{2}\); a tétel sorban marad, és bejelentkezés után feldolgozódik\.$/,
+    const when = new Date(NOW - WATCHER_STALE_MS - 1_000).toISOString().slice(0, 16).replace('T', ' ')
+    expect(warning).toBe(
+      `A whisper-figyelő nem fut (utolsó életjel: ${when} UTC); a tétel sorban marad, és bejelentkezés után feldolgozódik.`,
     )
   })
 
