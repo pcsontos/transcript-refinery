@@ -343,18 +343,22 @@ def process(
             target_dir = os.path.join(out, target)
             srt_name = "%s.%s.srt" % (id_, lang)
             final_srt = os.path.join(target_dir, srt_name)
-            if os.path.exists(final_srt):
+            final_info = os.path.join(target_dir, id_ + ".info.json")
+            if os.path.exists(final_srt) and os.path.exists(final_info):
+                # Összeomlás a közzététel és a takarítás között: a pár kint van, csak az inbox maradt.
+                published = "%s/%s" % (target.rstrip("/"), srt_name)
+            elif os.path.exists(final_srt):
                 raise TranscribeError("a cél .srt már létezik: %s" % os.path.join(target, srt_name))
+            else:
+                def on_phase(name: str) -> None:
+                    log.event(type="item:step", itemId=id_, step=name)
 
-            def on_phase(name: str) -> None:
-                log.event(type="item:step", itemId=id_, step=name)
-
-            made = transcribe_fn(audio, lang, work, ["srt"], on_phase=on_phase)
-            if os.path.exists(final_srt):
-                raise TranscribeError("a cél .srt már létezik: %s" % os.path.join(target, srt_name))
-            _atomic_copy(info_path, os.path.join(target_dir, id_ + ".info.json"))
-            _atomic_copy(made, final_srt)
-            published = "%s/%s" % (target.rstrip("/"), srt_name)
+                made = transcribe_fn(audio, lang, work, ["srt"], on_phase=on_phase)
+                if os.path.exists(final_srt):
+                    raise TranscribeError("a cél .srt már létezik: %s" % os.path.join(target, srt_name))
+                _atomic_copy(info_path, final_info)
+                _atomic_copy(made, final_srt)
+                published = "%s/%s" % (target.rstrip("/"), srt_name)
         except TranscribeError as error:
             detail = str(error)
             lines = [line for line in detail.split("\n") if line.strip()]
@@ -370,6 +374,7 @@ def process(
                 except OSError:
                     pass
             _clean_work(work, id_)
+            _clean_work(os.path.join(root, "failed"), id_)  # egy korábbi hibás kísérlet maradékai
             log.event(type="item:published", itemId=id_, path=published)
             log.event(type="run:done", succeeded=1, skipped=0, failed=0)
             ok = True
