@@ -47,6 +47,25 @@ logs:
   # te dolgod.
   dir: logs
 
+# Hangletöltés (elhagyható): a `refinery fetch audio`, a Telegram `/fetch_audio`,
+# a `refinery list --audios` és az átírás (`transcribe`) ehhez kell; enélkül
+# ezek a "Nincs audio blokk a configban." üzenettel állnak meg. A `dir` (helyi
+# archív mappa) és az `s3` közül legalább az egyik kötelező, mindkettő is lehet.
+# audio:
+#   # Helyi archív mappa, abszolút út.
+#   dir: /Users/valaki/hangok
+#   # S3-nál ide tölt le a hang feltöltés előtt. Elhagyható; alapértelmezés:
+#   # <tmp>/refinery-audio.
+#   work_dir: /Users/valaki/.refinery-audio-work
+#   s3:
+#     endpoint: http://localhost:3900   # http(s) URL
+#     region: garage
+#     bucket: audio
+#     prefix: ""                        # elhagyható, pl. "hangok/"
+#     path_style: true                  # elhagyható; alapértelmezés true
+#     access_key_id: GK...              # a Key ID nem titok; a titkos kulcs az
+#                                       # AUDIO_S3_SECRET_ACCESS_KEY env-ből jön
+
 # Fordítás (elhagyható). Bármelyik recept kész jegyzetéből célnyelvű változat
 # készül, forrásreceptenként egy saját recepttel: `clean-moderate` →
 # `clean-moderate-hu`. A fordítás a vaultban lévő forrásjegyzetből dolgozik,
