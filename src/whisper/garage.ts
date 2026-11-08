@@ -32,7 +32,11 @@ export async function syncTranscripts(input: {
     const root = join(input.sourcesRoot, 'whisper')
     const files = await srtFiles(root)
     if (files.length === 0) return { uploaded }
-    const present = new Set(await input.client.list(input.s3.prefix))
+    // Csak az érintett csatorna-mappák prefixét listázzuk: a költség nem nő a teljes hang-archívummal.
+    const present = new Set<string>()
+    for (const dir of new Set(files.map((rel) => rel.slice(0, rel.lastIndexOf('/') + 1)))) {
+      for (const key of await input.client.list(`${input.s3.prefix}${dir}`)) present.add(key)
+    }
     for (const rel of files) {
       const key = `${input.s3.prefix}${rel}`
       if (present.has(key)) continue
