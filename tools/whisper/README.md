@@ -41,6 +41,30 @@ Az ügynök csak **bejelentkezett grafikus munkamenetben** fut. Reboot után a g
 a refinery `transcribe`, `list --audios` és a `/runs` oldala figyelmeztet, hogy a figyelő nem fut, a leadott tétel pedig
 sorban marad. Ha nincs grafikus munkamenet, a `deploy.sh` érthető üzenettel áll le.
 
+### A `deploy.sh` lépései
+
+Az 1–3. lépés a fejlesztő gépen, a 4–8. a gazdagépen fut (ssh-n át). Minden lépés újrafuttatható.
+
+1. **Build.** `cmake` fordítja a `whisper-cli`-t a `$WHISPER_CPP_DIR/build-portable` mappába, statikusan és nem
+   gép-specifikusan (`-DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF`).
+2. **Hordozhatósági kapu.** Leáll, ha a bináris `@rpath/` vagy nem rendszerkönyvtár-függőséget tartalmaz, vagy ha a
+   `flags.make`-ben `native`/`i8mm` szerepel. A `whisper_transcribe.py` szintaxisát a gazdagép Python 3.9-ére is ellenőrzi.
+3. **Csomag.** Egy tar-ba kerül a `whisper-cli`, a `whisper_transcribe.py`, a `jfk.wav` minta és a launchd-plist.
+4. **Szállítás.** `scp` átviszi, a gazdagépen a `~/.local/share/whisper-transcribe/` mappába csomagol ki. A `bin/` és a
+   `samples/` cserélődik, a `models/` soha. A `~/.local/bin/whisper-transcribe` symlink az új scriptre áll (felülírja a
+   régit). Létrejönnek az `<DATA_ROOT>/refinery/whisper/{inbox,work,failed}`, a `refinery/sources/whisper` és a
+   `refinery/logs` mappák.
+5. **Modell.** Az `ggml-large-v3-turbo.bin` letöltése csak akkor történik, ha a gazdagépen nincs meg, vagy a sha256-ja
+   eltér a fejlesztő gépen lévőétől; a letöltést (Hugging Face) a gazdagép végzi, `.partial` fájlba, sha256-ellenőrzéssel.
+6. **CLI-smoke.** A `jfk.wav` angol átírása; a kimenetnek tartalmaznia kell: "ask not what your country".
+7. **Watch-smoke.** Ellenőrzi, hogy a Metal-eszköz látszik a naplóban, majd egy ideiglenes mappában `watch --once`-szal
+   átír egy tételt. A valódi `sources` és `logs` mappához nem nyúl.
+8. **launchd.** A plistet a `~/Library/LaunchAgents` alá írja (`__HOME__`, `__DATA_ROOT__` helyettesítéssel), `plutil
+   -lint`, `launchctl bootout` (a régi figyelő rövid időre leáll), majd `bootstrap`, végül kiírja az ügynök állapotát.
+
+A 8. lépésnél leállított figyelő alól átírás közben kikerülő tétel az `inbox/`-ban marad, és újraindításkor újra sorra
+kerül. Grafikus munkamenet nélkül a 8. lépés érthető hibával áll meg, de a 4–5. lépés addigra már lefutott.
+
 ## Használat
 
 ```bash
