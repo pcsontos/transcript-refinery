@@ -3,6 +3,27 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.32.1] — 2026-11-08
+
+Az átírás hat apró hibája javult: a kész tétel nem kerül tévesen a hibásak közé,
+és a Telegram-válasz sem ismétel.
+
+### 🔧 Javítások
+
+- **Összeomlás utáni újraindítás:** ha a figyelő a kész `.srt` közzététele után,
+  a takarítás előtt állt le, a tétel újraindításkor nem megy a `failed/`
+  mappába, hanem késznek számít (pcsontos/issue-tracker#3).
+- **Sikeres újraleadás:** a korábbi hibás kísérlet `failed/<azonosító>.*`
+  maradékai törlődnek.
+- **Egyidejű leadás:** két leadó külön átmeneti fájlba másol, és az egy óránál
+  régebbi félbemaradt maradékot a következő leadás kitakarítja.
+- **Telegram `/transcribe`:** az összesítő és a „figyelő nem fut” figyelmeztetés
+  egyszer jelenik meg, a válasz végén.
+- **Életjel ideje:** a figyelmeztetésben UTC-ben, jelölve látszik, nem a
+  folyamat időzónájában.
+- **Garage-másolat:** csak az érintett csatorna-mappákat listázza, így nem lassul
+  a hang-archívummal.
+
 ## [1.32.0] — 2026-11-08
 
 Ahol a YouTube-videónak nincs felirata, a hangot most a gazdagép helyi
@@ -1363,6 +1384,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.32.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.32.1
 [1.32.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.32.0
 [1.31.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.31.0
 [1.30.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.30.1
