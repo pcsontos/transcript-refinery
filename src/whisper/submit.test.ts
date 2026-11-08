@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -46,7 +46,9 @@ describe('submitEntry', () => {
     }
     const result = await submitEntry(await firstEntry(), { store: spy, dirs, status: 'archived', lang: 'hu' })
     expect(result).toEqual({ ok: true })
-    expect(atCopy).toEqual(['abcdefghijk.info.json', 'abcdefghijk.m4a.partial'])
+    expect(atCopy).toHaveLength(2)
+    expect(atCopy[0]).toBe('abcdefghijk.info.json')
+    expect(atCopy[1]).toMatch(/^abcdefghijk\.m4a\..+\.partial$/)
     expect((await readdir(dirs.inbox)).sort()).toEqual(['abcdefghijk.info.json', 'abcdefghijk.m4a'])
     expect(JSON.parse(await readFile(join(dirs.inbox, 'abcdefghijk.info.json'), 'utf8'))).toMatchObject({
       id: 'abcdefghijk', channel: 'Csat', refinery_lang: 'hu', refinery_target: 'whisper/csat',
@@ -67,12 +69,35 @@ describe('submitEntry', () => {
     expect(await readdir(dirs.inbox)).toEqual([])
   })
 
-  it('a korábbi félbemaradt .partial-t felülírja', async () => {
-    await put(dirs.inbox, 'abcdefghijk.m4a.partial', 'maradék, hosszabb mint a hang')
+  it('két egyidejű leadó külön .partial fájlba másol', async () => {
+    const targets: string[] = []
+    const slow: AudioStore = {
+      ...store,
+      copyTo: async (path, dest) => {
+        targets.push(dest)
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        await store.copyTo(path, dest)
+      },
+    }
+    const entry = await firstEntry()
+    const both = await Promise.all([
+      submitEntry(entry, { store: slow, dirs, status: 'archived', lang: 'hu' }),
+      submitEntry(entry, { store: slow, dirs, status: 'archived', lang: 'hu' }),
+    ])
+    expect(both).toEqual([{ ok: true }, { ok: true }])
+    expect(new Set(targets).size).toBe(2)
+    expect(await readFile(join(dirs.inbox, 'abcdefghijk.m4a'), 'utf8')).toBe('hang')
+    expect((await readdir(dirs.inbox)).sort()).toEqual(['abcdefghijk.info.json', 'abcdefghijk.m4a'])
+  })
+
+  it('az egy óránál régebbi, félbemaradt .partial-t kitakarítja, a frisset békén hagyja', async () => {
+    await put(dirs.inbox, 'abcdefghijk.m4a.regi.partial', 'maradék')
+    await put(dirs.inbox, 'abcdefghijk.m4a.friss.partial', 'másik leadó')
+    const old = new Date(Date.now() - 2 * 3600_000)
+    await utimes(join(dirs.inbox, 'abcdefghijk.m4a.regi.partial'), old, old)
     const result = await submitEntry(await firstEntry(), { store, dirs, status: 'archived', lang: 'hu' })
     expect(result).toEqual({ ok: true })
-    expect(await readFile(join(dirs.inbox, 'abcdefghijk.m4a'), 'utf8')).toBe('hang')
-    expect(await readdir(dirs.inbox)).not.toContain('abcdefghijk.m4a.partial')
+    expect((await readdir(dirs.inbox)).sort()).toEqual(['abcdefghijk.info.json', 'abcdefghijk.m4a', 'abcdefghijk.m4a.friss.partial'])
   })
 
   it('kész / vár / átírás alatt → kihagyva, az inbox érintetlen', async () => {
