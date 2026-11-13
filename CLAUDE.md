@@ -8,3 +8,9 @@
 - Hivatkozás mindig teljes alakban: `pcsontos/issue-tracker#N` (commitban, PR-ben, kódkommentben). A puszta `#N` ennek a repónak a számát jelenti.
 - Infrastruktúra-részlet (gépnevek, útvonalak, hálózat, tároló-hozzáférés) nem kerül ebbe a publikus repóba: az issue-ba vagy a specbe megy.
 - Pocock-skillek (pl. `code-review`): lásd `docs/agents/issue-tracker.md`.
+
+## Ügynök-memória
+
+A tartós munkaszabályok és a privát referenciák a privát issue-tracker klónjában élnek. Ahol a klón nincs meg, az import kimarad.
+
+@~/github/pcsontos/issue-tracker/transcript-refinery/agent-memory.md
