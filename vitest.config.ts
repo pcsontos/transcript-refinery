@@ -9,7 +9,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/**/*.test.ts', 'evals/**/*.test.ts', 'worker/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'evals/**/*.test.ts', 'worker/**/*.test.ts', 'scripts/**/*.test.ts'],
     environment: 'node',
     // A riport fejléce helyi időt ír (`src/run/report.ts`), tehát a szövege
     // időzónafüggő. Rögzített zóna nélkül a tesztje a futtató gépen múlna.

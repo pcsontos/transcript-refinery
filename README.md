@@ -289,7 +289,14 @@ pnpm web
 # 7. A vault jegyzeteinek kiküldése a showroom-site klónjába (showroom: blokk a configban);
 #    a summary/notes/clean oldalakat LLM tagolja (a költségplafonig), az elbukottat --retry-failed újrapróbálja
 pnpm exec refinery deploy
+
+# 8. Az állapot-adatbázis böngészése: csak olvasható pillanatkép a Harlequinben
+pnpm db
 ```
+
+A `pnpm db` a `REFINERY_DB` (`.env`) adatbázisáról csak olvasható pillanatképet készít a `tmp/refinery.db`-be, a `-wal` friss írásaival együtt, és ugyanebben a terminálban megnyitja a [Harlequinben](https://harlequin.sh). Kell hozzá a `harlequin` a `PATH`-on és egy valódi terminál (Raycastból vagy launchd alól nem indul). Lekérdezés futtatása: `Ctrl+Enter` (egyes terminálokban `Ctrl+J`), kilépés: `Ctrl+Q`. A pillanatkép az indításkori állapotot mutatja; frissítéshez indítsd újra.
+
+A mentett lekérdezések a `scripts/sql/state/` alatt vannak. Megnyitás: `Ctrl+N` (új lap), `Ctrl+O`, az út (pl. `scripts/sql/state/recent-failures.sql`), Enter. Mentés: `Ctrl+S`, az út (pl. `scripts/sql/state/uj.sql`), Enter; Tabot ne nyomj, az a félig beírt utat menti. A relatív utak a repó gyökeréhez képest értendők. Ha a séma (`src/state/db.ts`) változik, ugyanabban a PR-ben javítsd a lekérdezéseket; konkrét ID-s lekérdezés nem ide, hanem az issue-ba kerül.
 
 > [!TIP]
 > A teljes parancssori referencia, az összes kapcsoló (`--limit`, `--force`, `--dry-run`, `--no-judge`), a globális terminálos bekötés (`npm link`), a receptek modelljeinek finomhangolása és a webes felület részletes bemutatása a [**Futtatási útmutatóban (docs/usage.md)**](docs/usage.md) található.
