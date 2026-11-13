@@ -1,13 +1,17 @@
 // A refinery.db csak olvasható pillanatképe a tmp/-ben, megnyitva a Harlequinben.
 // Használat: pnpm db. A forrás a REFINERY_DB; a pnpm-parancs a .env-ből tölti, a környezet erősebb.
 // Az élő fájlt csak olvassa. A pillanatkép a -wal friss írásait is tartalmazza (VACUUM INTO).
+import { spawnSync } from 'node:child_process'
 import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, renameSync, rmSync, statSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { pathToFileURL } from 'node:url'
 
 const ATTEMPTS = 3
 const RETRY_MS = 1000
+/** Ezeknél a forrás nem érhető el: rossz út, vagy nincs felcsatolva / alszik a megosztás. */
+const UNREACHABLE: Record<string, true> = { ENOENT: true, EIO: true, ETIMEDOUT: true, EHOSTDOWN: true }
 /** SQLITE_CORRUPT és SQLITE_NOTADB: írás közben másolt, széttört fájl. */
 const TORN = new Set([11, 26])
 
@@ -103,3 +107,29 @@ function fingerprint(src: string): { db: string; wal: string | null } {
 function errorCode(error: unknown): string | undefined {
   return error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined
 }
+
+async function main(): Promise<void> {
+  const src = process.env.REFINERY_DB
+  if (!src) fail('REFINERY_DB nincs beállítva (.env).')
+  const root = resolve(import.meta.dirname, '..')
+  try {
+    await snapshot(src, join(root, 'tmp', 'refinery.db'))
+  } catch (error) {
+    if (error instanceof SnapshotBusy) fail(error.message)
+    if (UNREACHABLE[errorCode(error) ?? '']) fail(`Nem olvasható: ${src}\nFel van csatolva a hálózati megosztás?`)
+    throw error
+  }
+  const result = spawnSync('harlequin', ['-a', 'sqlite', '-r', '-f', 'scripts/sql/state', 'tmp/refinery.db'], {
+    cwd: root,
+    stdio: 'inherit',
+  })
+  if (result.error) fail(`A harlequin nem indult: ${result.error.message}`)
+  process.exit(result.status ?? 1)
+}
+
+function fail(message: string): never {
+  console.error(message)
+  process.exit(1)
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main()
