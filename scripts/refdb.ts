@@ -119,7 +119,8 @@ async function main(): Promise<void> {
     if (UNREACHABLE[errorCode(error) ?? '']) fail(`Nem olvasható: ${src}\nFel van csatolva a hálózati megosztás?`)
     throw error
   }
-  const result = spawnSync('harlequin', ['-a', 'sqlite', '-r', '-f', 'scripts/sql/state', 'tmp/refinery.db'], {
+  // A fájlfa a scripts/sql/ egészét mutatja; a Ctrl+S / Ctrl+O útjai a repó gyökeréhez (cwd) relatívak.
+  const result = spawnSync('harlequin', ['-a', 'sqlite', '-r', '-f', 'scripts/sql', 'tmp/refinery.db'], {
     cwd: root,
     stdio: 'inherit',
   })

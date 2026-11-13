@@ -294,7 +294,9 @@ pnpm exec refinery deploy
 pnpm db
 ```
 
-A `pnpm db` a `REFINERY_DB` (`.env`) adatbázisáról csak olvasható pillanatképet készít a `tmp/refinery.db`-be, a `-wal` friss írásaival együtt, és ugyanebben a terminálban megnyitja a [Harlequinben](https://harlequin.sh). Kell hozzá a `harlequin` a `PATH`-on és egy valódi terminál (Raycastból vagy launchd alól nem indul). Lekérdezés futtatása: `Ctrl+Enter` (egyes terminálokban `Ctrl+J`), kilépés: `Ctrl+Q`. A pillanatkép az indításkori állapotot mutatja; frissítéshez indítsd újra. A mentett lekérdezések a `scripts/sql/state/` alatt vannak, a bal oldali fájlfa *Files* fülén nyílnak. Ha a séma (`src/state/db.ts`) változik, ugyanabban a PR-ben javítsd őket; konkrét ID-s lekérdezés nem ide, hanem az issue-ba kerül.
+A `pnpm db` a `REFINERY_DB` (`.env`) adatbázisáról csak olvasható pillanatképet készít a `tmp/refinery.db`-be, a `-wal` friss írásaival együtt, és ugyanebben a terminálban megnyitja a [Harlequinben](https://harlequin.sh). Kell hozzá a `harlequin` a `PATH`-on és egy valódi terminál (Raycastból vagy launchd alól nem indul). Lekérdezés futtatása: `Ctrl+Enter` (egyes terminálokban `Ctrl+J`), kilépés: `Ctrl+Q`. A pillanatkép az indításkori állapotot mutatja; frissítéshez indítsd újra.
+
+A mentett lekérdezések a `scripts/sql/state/` alatt vannak; a bal oldali *Files* fül a `scripts/sql/` mappát mutatja. A fájlfában az Enter a fájl útját szúrja be a szerkesztőbe, nem nyitja meg. Megnyitás: új lap (`Ctrl+N`), majd `Ctrl+O` és az út (pl. `scripts/sql/state/recent-failures.sql`; a Tab kiegészít). Mentés: `Ctrl+S` és az út (pl. `scripts/sql/state/uj.sql`); a fájlfa `Ctrl+R`-re frissül. Az utak a repó gyökeréhez relatívak. Ha a séma (`src/state/db.ts`) változik, ugyanabban a PR-ben javítsd a lekérdezéseket; konkrét ID-s lekérdezés nem ide, hanem az issue-ba kerül.
 
 > [!TIP]
 > A teljes parancssori referencia, az összes kapcsoló (`--limit`, `--force`, `--dry-run`, `--no-judge`), a globális terminálos bekötés (`npm link`), a receptek modelljeinek finomhangolása és a webes felület részletes bemutatása a [**Futtatási útmutatóban (docs/usage.md)**](docs/usage.md) található.
