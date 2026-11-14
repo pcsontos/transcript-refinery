@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { parseAudioArgs, type Pick } from '../fetch/audio/args.js'
 import { parseTranscribeArgs } from '../whisper/submit.js'
+import { AFTER_WHISPER, MISSING_TRANSCRIPT } from '../whisper/after.js'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
 import { RECIPES } from '../recipe/registry.js'
@@ -30,32 +31,38 @@ export interface ServeJob {
 }
 
 export type CallbackBody =
-  | { status: 'ready'; title: string; noteUrl?: string }
+  /**
+   * `deployError` csak átírás utáni futásnál (pcsontos/issue-tracker#45): hiányzik = a deploy kint van (showroom-link),
+   * `null` = nem volt deploy (Worker-link), szöveg = a deploy hibája (Worker-link + hibasor).
+   */
+  | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null }
   /** `done`: a futás elkészült jegyzetei, ha a futás recept-leállás miatt bukott; a záró üzenet csak ezeket linkeli. */
   | { status: 'failed'; error: string; done?: string[] }
   /** Életjel: a futás még dolgozik; a Worker változatlan állapot mellett továbbítja. */
   | { status: 'progress'; text: string }
   /** Egy recept a futásidő-korlát miatt leállt; a Worker rákérdez az újrapróbálásra. */
   | { status: 'stalled'; text: string }
+  /** Kész a jelölős átirat (#45): a leadó munkának szól, a Worker új tételt és receptfutást ír. */
+  | { status: 'transcribed'; videoId: string; title: string; recipes: string[] }
 
 /**
  * `followUp`: a jelentés (`ready`/`failed`) után futó munka, pl. a hosszan tartó showroom-deploy.
- * Nem dobhat: a hibáját maga naplózza.
+ * Nem dobhat: a hibáját maga naplózza, és szövegként visszaadja (az átírás utáni üzenet ebből tudja).
  */
 export type RecipesOutcome = ({ ok: true; noteUrl: string } | { ok: false; error: string; done?: string[] }) & {
-  followUp?: () => Promise<void>
+  followUp?: () => Promise<string | void>
 }
 
 export interface JobEffects {
   /** A hangletöltés; az összesítőt adja vissza (feed-listázásnál a választási felszólítást). */
   fetchAudio?: (
-    request: { inputs: readonly string[]; pick?: Pick; lang?: string },
+    request: { inputs: readonly string[]; pick?: Pick; lang?: string; jobId?: string },
     signal: AbortSignal | undefined,
     emit: (line: string) => Promise<void>,
   ) => Promise<string>
   /** Az átírás: üres `ids` = a váró hangok listája (`emit`-tel), különben leadás. Az összesítőt adja vissza. */
   transcribe?: (
-    request: { ids: readonly string[]; lang?: string },
+    request: { ids: readonly string[]; lang?: string; jobId?: string },
     signal: AbortSignal | undefined,
     emit: (line: string) => Promise<void>,
   ) => Promise<string>
@@ -68,6 +75,8 @@ export interface JobEffects {
   callback: (jobId: string, body: CallbackBody) => Promise<void>
   outDir?: string
   writeFile?: (path: string, body: Uint8Array) => Promise<void>
+  /** Átírás utáni futás bemenete: a helyi whisper-pár (`readWhisperPair`). */
+  whisperPair?: (videoId: string) => Promise<SummaryPair>
   refine?: (
     videoId: string,
     recipes: readonly string[],
@@ -75,6 +84,7 @@ export interface JobEffects {
     signal?: AbortSignal,
     notify?: (body: CallbackBody) => void,
     models?: Readonly<Record<string, string>>,
+    command?: string,
   ) => Promise<RecipesOutcome>
 }
 
@@ -178,13 +188,11 @@ async function forgetWork(effects: JobEffects, videoId: string): Promise<void> {
   }
 }
 
-async function loadSummaryPair(
-  effects: JobEffects,
-  videoId: string,
-): Promise<
+export type SummaryPair =
   | { ok: true; title: string; language: string | null; extension: string; subtitle: Uint8Array; info: Uint8Array }
   | { ok: false; error: string }
-> {
+
+async function loadSummaryPair(effects: JobEffects, videoId: string): Promise<SummaryPair> {
   const prefix = itemPrefix(videoId)
   let keys: string[]
   try {
@@ -274,6 +282,21 @@ async function runTextJob(job: ServeJob & { text: string }, effects: JobEffects)
   }
 }
 
+async function localPair(effects: JobEffects, videoId: string): Promise<SummaryPair> {
+  try {
+    return (await effects.whisperPair?.(videoId)) ?? { ok: false, error: MISSING_TRANSCRIPT }
+  } catch {
+    return { ok: false, error: MISSING_TRANSCRIPT }
+  }
+}
+
+/** Átírás utáni futás: a deploy az üzenet előtt fut. `undefined` = kint van, `null` = nem volt deploy, szöveg = a hibája. */
+async function deployFirst(outcome: RecipesOutcome): Promise<string | null | undefined> {
+  if (outcome.followUp === undefined) return null
+  const error = await outcome.followUp()
+  return typeof error === 'string' ? error : undefined
+}
+
 async function runRecipeJob(
   job: ServeJob & { recipes: string[] },
   effects: JobEffects,
@@ -289,7 +312,9 @@ async function runRecipeJob(
     return
   }
   const lang = job.lang as LanguageTag | undefined
-  const loaded = await loadSummaryPair(effects, job.videoId)
+  // Átírás utáni futás (#45): a bemenet a helyi .srt (nem az R2), a deploy az üzenet előtt fut.
+  const afterWhisper = job.url === AFTER_WHISPER
+  const loaded = afterWhisper ? await localPair(effects, job.videoId) : await loadSummaryPair(effects, job.videoId)
   if (!loaded.ok) {
     await forgetWork(effects, job.videoId)
     await report(effects, job.jobId, { status: 'failed', error: loaded.error })
@@ -315,7 +340,7 @@ async function runRecipeJob(
   try {
     outcome = await effects.refine(job.videoId, job.recipes, lang, signal, (body) => {
       void report(effects, job.jobId, body)
-    }, job.models)
+    }, job.models, afterWhisper ? `after-whisper ${job.videoId}` : undefined)
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await forgetWork(effects, job.videoId)
@@ -324,7 +349,13 @@ async function runRecipeJob(
   }
   await forgetWork(effects, job.videoId)
   if (outcome.ok) {
-    await report(effects, job.jobId, { status: 'ready', title: loaded.title, noteUrl: outcome.noteUrl })
+    const deployError = afterWhisper ? await deployFirst(outcome) : undefined
+    await report(effects, job.jobId, {
+      status: 'ready',
+      title: loaded.title,
+      noteUrl: outcome.noteUrl,
+      ...(deployError === undefined ? {} : { deployError }),
+    })
   } else {
     await report(effects, job.jobId, {
       status: 'failed',
@@ -332,7 +363,7 @@ async function runRecipeJob(
       ...(outcome.done === undefined ? {} : { done: outcome.done }),
     })
   }
-  await outcome.followUp?.()
+  if (!(afterWhisper && outcome.ok)) await outcome.followUp?.()
 }
 
 /** A hangletöltés: a sorok progressként, az összesítő readyként megy a Workernek. */
@@ -350,7 +381,7 @@ async function runTranscribeJob(job: ServeJob, words: readonly string[], effects
   const { ids, lang } = parsed.args as { ids: string[]; lang?: string }
   try {
     const title = await effects.transcribe(
-      { ids, ...(lang === undefined ? {} : { lang }) },
+      { ids, ...(lang === undefined ? {} : { lang }), jobId: job.jobId },
       signal,
       (text) => report(effects, job.jobId, { status: 'progress', text }),
     )
@@ -376,7 +407,7 @@ async function runFetchJob(job: ServeJob, effects: JobEffects, signal?: AbortSig
   const { inputs, pick, lang } = parsed.args
   try {
     const title = await effects.fetchAudio(
-      { inputs, ...(pick === undefined ? {} : { pick }), ...(lang === undefined ? {} : { lang }) },
+      { inputs, ...(pick === undefined ? {} : { pick }), ...(lang === undefined ? {} : { lang }), jobId: job.jobId },
       signal,
       (text) => report(effects, job.jobId, { status: 'progress', text }),
     )

@@ -5,6 +5,7 @@ import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { pickHint } from '../fetch/audio/feed.js'
 import { audioSummary, openAudioRunLog, runAudioFetch } from '../fetch/audio/run.js'
 import { createAudioStore } from '../fetch/audio/store.js'
+import { afterMarker, readWhisperPair, startAfterWhisper } from '../whisper/after.js'
 import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
@@ -30,6 +31,7 @@ type RecipesRun = (input: {
   notify?: (body: CallbackBody) => void
   /** A Worker felülírása; a YAML `model.recipes` fölé kerül. */
   models?: Readonly<Record<string, string>>
+  command?: string
   load?: () => Promise<{ cfg: Config; raw: unknown }>
 }) => Promise<RecipesOutcome>
 
@@ -45,6 +47,7 @@ export function serveEffects(input: {
   runRecipes?: RecipesRun
   fetchAudio?: JobEffects['fetchAudio']
   transcribe?: JobEffects['transcribe']
+  whisperPair?: JobEffects['whisperPair']
   configArg?: string
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
@@ -55,6 +58,7 @@ export function serveEffects(input: {
     signal?: AbortSignal,
     notify?: (body: CallbackBody) => void,
     models?: Readonly<Record<string, string>>,
+    command?: string,
   ) => Promise<RecipesOutcome>
 } {
   const refineWith = input.runRecipes ?? defaultRunRecipes
@@ -73,7 +77,10 @@ export function serveEffects(input: {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, body)
     },
-    refine: (videoId, recipes, lang, signal, notify, models) =>
+    whisperPair:
+      input.whisperPair ??
+      (async (videoId) => readWhisperPair((await loadCliConfig(input.configArg)).cfg.sources[0]!.path, videoId)),
+    refine: (videoId, recipes, lang, signal, notify, models, command) =>
       refineWith({
         videoId,
         outDir: input.outDir,
@@ -82,6 +89,7 @@ export function serveEffects(input: {
         signal,
         notify,
         models,
+        command,
         load: () => loadCliConfig(input.configArg),
       }),
   }
@@ -102,7 +110,8 @@ export function serveFetchAudio(
     const pick = request.pick === undefined ? [] : ['--pick', request.pick === 'all' ? '0' : request.pick.join(',')]
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
     const log = openAudioRunLog(cfg.logsDir, `/fetch_audio ${[...lang, ...request.inputs, ...pick].join(' ')}`)
-    const { handoff, warning } = await createHandoff({ cfg, store, lang: request.lang })
+    const after = request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId)
+    const { handoff, warning } = await createHandoff({ cfg, store, lang: request.lang, after })
     try {
       const rows = await runAudioFetch(request.inputs, {
         store,
@@ -172,6 +181,7 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         dirs,
         sourcesRoot,
         languages: cfg.languages,
+        after: request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId),
         emit: async (line) => {
           if (/ tétel leadva\.$/.test(line)) inTail = true
           if (inTail) tail.push(line)
@@ -296,8 +306,11 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
           body: JSON.stringify(body),
         })
         console.log(`[serve] Visszahívás válaszkód: ${response.status}`)
+        // Dob: az átírás-utólépés jelölője így megmarad (#45); a job.ts `report`-ja elkapja és naplózza.
+        if (!response.ok) throw new Error(`a visszahívás ${response.status}`)
       } catch (err) {
         console.error(`[serve] Visszahívás hiba:`, err instanceof Error ? err.message : err)
+        throw err
       }
     },
   })
@@ -337,6 +350,20 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     console.error(cause instanceof Error ? cause.message : 'A serve port nem nyílt meg.')
     return 1
   }
+  // Átírás utáni utólépés (pcsontos/issue-tracker#45): a jelölős kész átiratokat a serve veszi fel.
+  startAfterWhisper({
+    load: () => loadCliConfig(configArg),
+    claim: (label) => claimGate(gate, label),
+    callback: effects.callback,
+    runLocal: (job) =>
+      runJob(job, {
+        ...effects,
+        callback: (id, body) => {
+          console.log(`[after-whisper] ${id}: ${JSON.stringify(body)}`)
+          return Promise.resolve()
+        },
+      }),
+  })
   await new Promise<void>((resolve) => {
     server.on('close', () => resolve())
   })

@@ -251,3 +251,31 @@ describe('createHandoff', () => {
     expect(await handoff('nincsnincsni')).toBe('nincs ilyen hang')
   })
 })
+
+describe('jelölő (pcsontos/issue-tracker#45)', () => {
+  const infoOf = async () => JSON.parse(await readFile(join(dirs.inbox, 'abcdefghijk.info.json'), 'utf8')) as Record<string, unknown>
+
+  it('jelölő nélkül nincs refinery_after', async () => {
+    expect(inboxInfo(await firstEntry(), 'hu')).not.toHaveProperty('refinery_after')
+  })
+
+  it('submitEntry a jelölőt az inbox-info.json-ba írja', async () => {
+    await submitEntry(await firstEntry(), { store, dirs, status: 'archived', lang: 'hu', after: '7:fetch-7' })
+    expect(await infoOf()).toMatchObject({ refinery_after: '7:fetch-7' })
+  })
+
+  it('runTranscribe továbbadja', async () => {
+    await runTranscribe({ ids: ['abcdefghijk'] }, { store, dirs, sourcesRoot: sources, languages: ['hu'], emit: () => undefined, after: 'cli' })
+    expect(await infoOf()).toMatchObject({ refinery_after: 'cli' })
+  })
+
+  it('createHandoff továbbadja', async () => {
+    const cfg = loadConfig(
+      { vault: { path: '/v' }, sources: [sources], languages: ['hu'], whisper: { dir: dirs.root }, audio: { dir: archive } },
+      '/p/c.yaml',
+    )
+    const { handoff } = await createHandoff({ cfg, store, after: '9:fetch-9' })
+    expect(await handoff('abcdefghijk')).toBe('submitted')
+    expect(await infoOf()).toMatchObject({ refinery_after: '9:fetch-9' })
+  })
+})

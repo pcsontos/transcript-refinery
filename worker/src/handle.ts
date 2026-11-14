@@ -51,6 +51,7 @@ import {
   runId,
   runFailedLine,
   runQueuedLine,
+  deployFailedLine,
   runReadyMessage,
   runStartedLine,
   statusText,
@@ -729,23 +730,66 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
 }
 
 export type CallbackBody =
-  | { status: 'ready'; title: string; noteUrl?: string }
+  | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null }
   | { status: 'failed'; error: string; done?: string[] }
   | { status: 'progress'; text: string }
   | { status: 'stalled'; text: string }
+  | { status: 'transcribed'; videoId: string; title: string; recipes: string[] }
 
-async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): Promise<void> {
+/** A futás vagy a sor saját jelentései; a `transcribed` a leadó munkának szól, és a `handleCallback` elején ágazik el. */
+type ServeReport = Exclude<CallbackBody, { status: 'transcribed' }>
+
+/** A whisper-utólépés jele a serve-ben (`ServeJob.url`); a `src/whisper/after.ts` `AFTER_WHISPER`-ének másolata. */
+export const AFTER_WHISPER = 'after-whisper'
+
+/** A kész üzenet. Átírás utáni futásnál (#45) a deploy kimenete szerint: hiba vagy deploy nélkül a Worker-link. */
+function readyText(body: Extract<CallbackBody, { status: 'ready' }>, run: RunRow, deps: WorkerDeps): string {
+  const text = runReadyMessage(body.title, run, deps.linkBase, body.deployError === undefined ? deps.siteUrl : '')
+  return typeof body.deployError === 'string' ? `${text}\n${deployFailedLine(body.deployError)}` : text
+}
+
+/**
+ * Kész a jelölős átirat (#45): új tétel a leadó munka csetjéhez, rajta egy sorban álló receptfutás; a cron kopogtatja.
+ * Így a sor, a `/cancel`, a leállás-rákérdezés és a kész-üzenet a meglévő receptfutásé. Az ismételt jelzés nem ír semmit.
+ */
+async function afterWhisper(row: JobRow, body: Extract<CallbackBody, { status: 'transcribed' }>, deps: WorkerDeps): Promise<void> {
+  const item: JobRow = {
+    jobId: `${row.updateId}:${body.videoId}`,
+    updateId: row.updateId,
+    chatId: row.chatId,
+    messageId: row.messageId,
+    videoId: body.videoId,
+    url: AFTER_WHISPER,
+    status: 'ready',
+    error: null,
+    title: body.title,
+    notifiedReady: true,
+    acceptedAt: null,
+    sub: row.sub,
+  }
+  if ((await findRow(deps.store, item.jobId)) === null) await deps.store.insert(item)
+  // ponytail: a /model felülírás itt nem hat, a config modellje fut; a requestRun pickOverride-ja kell, ha hiányzik.
+  await deps.store.insertRun({
+    runId: runId(item.jobId, body.recipes, null),
+    jobId: item.jobId,
+    recipes: body.recipes,
+    lang: null,
+    status: 'queued',
+    error: null,
+    noteUrl: null,
+    notified: false,
+    acceptedAt: null,
+    model: null,
+  })
+}
+
+async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Promise<void> {
   const row = await findRow(deps.store, run.jobId)
   if (row === null) return
   // A megszakított futás késői eredménye csak üzenet: az állapot marad, a cron nem kopogtatja.
   if (run.status === 'cancelled') {
     if (body.status === 'progress' || body.status === 'stalled') return
-    await deps.send(
-      row.chatId,
-      body.status === 'failed'
-        ? runFailedLine(row, run, body.error)
-        : runReadyMessage(body.title, run, deps.linkBase, deps.siteUrl),
-    )
+    await deps.send(row.chatId, body.status === 'failed' ? runFailedLine(row, run, body.error) : readyText(body, run, deps))
     return
   }
   // Az életjel és a leállás nem változtat állapotot: a záró üzenet (ready/failed) dönt.
@@ -786,7 +830,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
     return
   }
   run.noteUrl = body.noteUrl
-  const sent = await deps.send(row.chatId, runReadyMessage(body.title, run, deps.linkBase, deps.siteUrl))
+  const sent = await deps.send(row.chatId, readyText(body, run, deps))
   if (!sent) {
     run.status = 'accepted'
     await deps.store.saveRun(run)
@@ -801,7 +845,7 @@ async function runCallback(run: RunRow, body: CallbackBody, deps: WorkerDeps): P
  * A hangletöltés visszahívása. A megszakított sor késői sorai és összesítője is kimegy
  * (a serve az aktuális elemet befejezi), az állapota közben `cancelled` marad.
  */
-async function fetchCallback(row: JobRow, body: CallbackBody, deps: WorkerDeps): Promise<void> {
+async function fetchCallback(row: JobRow, body: ServeReport, deps: WorkerDeps): Promise<void> {
   if (body.status === 'stalled') return
   if (body.status === 'progress') {
     await deps.send(row.chatId, body.text)
@@ -825,6 +869,11 @@ async function fetchCallback(row: JobRow, body: CallbackBody, deps: WorkerDeps):
 }
 
 export async function handleCallback(id: string, body: CallbackBody, deps: WorkerDeps): Promise<number> {
+  if (body.status === 'transcribed') {
+    const row = await findRow(deps.store, id)
+    if (row !== null) await afterWhisper(row, body, deps)
+    return 200
+  }
   const run = await deps.store.run(id)
   if (run !== null) {
     await runCallback(run, body, deps)

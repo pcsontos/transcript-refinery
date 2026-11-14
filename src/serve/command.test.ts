@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events'
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -279,6 +279,19 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     const [file] = await readdir(join(dir, 'logs'))
     const first = (await (await import('node:fs/promises')).readFile(join(dir, 'logs', file as string), 'utf8')).split('\n')[0]
     expect((JSON.parse(first as string) as { command: string }).command).toMatch(/^\/fetch_audio --lang en /)
+  })
+
+  it('/fetch_audio whisper.after mellett a leadó jobId-je a jelölő; after nélkül nincs jelölő', async () => {
+    const readInfo = async (whisper: string) =>
+      JSON.parse(await readFile(join(whisper, 'inbox', `${ID}.info.json`), 'utf8')) as Record<string, unknown>
+    const request = { inputs: [`https://www.youtube.com/watch?v=${ID}`], jobId: '7:fetch-7' }
+    const plain = await config(true)
+    await serveFetchAudio(plain.path, { runner: noSubRunner })(request, undefined, () => Promise.resolve())
+    expect(await readInfo(plain.whisper)).not.toHaveProperty('refinery_after')
+    const marked = await config(true)
+    await appendFile(marked.path, '  after:\n    recipes: [summary]\n')
+    await serveFetchAudio(marked.path, { runner: noSubRunner })(request, undefined, () => Promise.resolve())
+    expect((await readInfo(marked.whisper)).refinery_after).toBe('7:fetch-7')
   })
 
   it('serveTranscribe whisper-mappa nélkül dob', async () => {

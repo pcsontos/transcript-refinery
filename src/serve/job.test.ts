@@ -691,14 +691,14 @@ describe('runJob fetch ág', () => {
       { status: 'progress', text: 'kihagyva: B' },
       { status: 'ready', title: 'Kész: x' },
     ])
-    expect(requests).toEqual([{ inputs: ['u1', 'u2'] }])
+    expect(requests).toEqual([{ inputs: ['u1', 'u2'], jobId: 'fetch-1' }])
   })
 
   it('--pick-kel a request pick-et kap; a hibás --pick failed, a fetchAudio nem hívódik', async () => {
     const requests: unknown[] = []
     const ok: CallbackBody[] = []
     await runJob({ ...fetchJob, url: 'https://f/rss --pick 1,3' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), ok))
-    expect(requests).toEqual([{ inputs: ['https://f/rss'], pick: [1, 3] }])
+    expect(requests).toEqual([{ inputs: ['https://f/rss'], pick: [1, 3], jobId: 'fetch-1' }])
     const bad: CallbackBody[] = []
     await runJob({ ...fetchJob, url: 'https://f/rss --pick x' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), bad))
     expect(bad).toEqual([{ status: 'failed', error: 'A --pick értéke 0, vagy vesszővel elválasztott sorszámok (pl. 1,3).' }])
@@ -709,7 +709,7 @@ describe('runJob fetch ág', () => {
     const requests: unknown[] = []
     const ok: CallbackBody[] = []
     await runJob({ ...fetchJob, url: 'https://y/v --lang en' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), ok))
-    expect(requests).toEqual([{ inputs: ['https://y/v'], lang: 'en' }])
+    expect(requests).toEqual([{ inputs: ['https://y/v'], lang: 'en', jobId: 'fetch-1' }])
     const bad: CallbackBody[] = []
     await runJob({ ...fetchJob, url: 'https://y/v --lang xyz1' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), bad))
     expect(bad).toEqual([{ status: 'failed', error: 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.' }])
@@ -760,7 +760,7 @@ describe('runJob transcribe ág', () => {
     }, callbacks)
     await runJob(job('transcribe'), effects)
     await runJob(job('transcribe a b --lang en'), effects)
-    expect(requests).toEqual([{ ids: [] }, { ids: ['a', 'b'], lang: 'en' }])
+    expect(requests).toEqual([{ ids: [], jobId: 'fetch-2' }, { ids: ['a', 'b'], lang: 'en', jobId: 'fetch-2' }])
     expect(callbacks.map((body) => body.status)).toEqual(['progress', 'ready', 'progress', 'ready'])
   })
 
@@ -780,5 +780,122 @@ describe('runJob transcribe ág', () => {
     const none: CallbackBody[] = []
     await runJob(job('transcribe'), withTranscribe(undefined, none))
     expect(none).toEqual([{ status: 'failed', error: 'Az átírás nincs beállítva.' }])
+  })
+})
+
+describe('runJob — átírás utáni futás (pcsontos/issue-tracker#45)', () => {
+  const HASH = 'a1b2c3d4'
+  const afterJob = { jobId: `7:${HASH}:summary`, videoId: HASH, url: 'after-whisper', recipes: ['summary'] }
+  const pairOk = { ok: true as const, title: 'Epizod', language: 'en', extension: 'srt', subtitle: new Uint8Array([1]), info: new Uint8Array([2]) }
+
+  function afterEffects(callbacks: CallbackBody[], over: Partial<JobEffects> = {}): JobEffects {
+    return {
+      ...emptyEffects(memoryStore()),
+      whisperPair: () => Promise.resolve(pairOk),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+      ...over,
+    }
+  }
+
+  it('a bemenet a helyi pár (nem az R2), a futás outDir-jébe másolva; a parancs after-whisper <id>; deploy nélkül deployError: null', async () => {
+    const callbacks: CallbackBody[] = []
+    const paths: string[] = []
+    const commands: (string | undefined)[] = []
+    await runJob(
+      afterJob,
+      afterEffects(callbacks, {
+        writeFile: (path) => {
+          paths.push(path)
+          return Promise.resolve()
+        },
+        refine: (_v, _r, _l, _s, _n, _m, command) => {
+          commands.push(command)
+          return Promise.resolve({ ok: true, noteUrl: 'a.md' })
+        },
+      }),
+    )
+    expect(paths).toEqual([`/data/telegram/Epizod [${HASH}].en.srt`, `/data/telegram/Epizod [${HASH}].info.json`])
+    expect(commands).toEqual([`after-whisper ${HASH}`])
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Epizod', noteUrl: 'a.md', deployError: null }])
+  })
+
+  it('auto deploy: előbb a deploy, utána a kész üzenet; sikeres deploynál nincs deployError', async () => {
+    const order: string[] = []
+    const callbacks: CallbackBody[] = []
+    await runJob(
+      afterJob,
+      afterEffects(callbacks, {
+        callback: (_id, body) => {
+          order.push(body.status)
+          callbacks.push(body)
+          return Promise.resolve()
+        },
+        refine: () =>
+          Promise.resolve({
+            ok: true,
+            noteUrl: 'a.md',
+            followUp: () => {
+              order.push('deploy')
+              return Promise.resolve()
+            },
+          }),
+      }),
+    )
+    expect(order).toEqual(['deploy', 'ready'])
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Epizod', noteUrl: 'a.md' }])
+  })
+
+  it('deploy-hiba: a kész üzenet viszi az okát', async () => {
+    const callbacks: CallbackBody[] = []
+    await runJob(
+      afterJob,
+      afterEffects(callbacks, {
+        refine: () => Promise.resolve({ ok: true, noteUrl: 'a.md', followUp: () => Promise.resolve('a klón nem a main ágon áll') }),
+      }),
+    )
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Epizod', noteUrl: 'a.md', deployError: 'a klón nem a main ágon áll' }])
+  })
+
+  it('hiányzó helyi pár: failed, a refine nem fut', async () => {
+    const callbacks: CallbackBody[] = []
+    let refined = false
+    await runJob(
+      afterJob,
+      afterEffects(callbacks, {
+        whisperPair: () => Promise.resolve({ ok: false, error: 'Az átirat nincs meg a sources/whisper alatt.' }),
+        refine: () => {
+          refined = true
+          return Promise.resolve({ ok: true, noteUrl: 'a.md' })
+        },
+      }),
+    )
+    expect(refined).toBe(false)
+    expect(callbacks).toEqual([{ status: 'failed', error: 'Az átirat nincs meg a sources/whisper alatt.' }])
+  })
+
+  it('recepthiba: failed, a followUp utána fut (mint ma)', async () => {
+    const order: string[] = []
+    await runJob(
+      afterJob,
+      afterEffects([], {
+        callback: (_id, body) => {
+          order.push(body.status)
+          return Promise.resolve()
+        },
+        refine: () =>
+          Promise.resolve({
+            ok: false,
+            error: 'elérhetetlen modell',
+            followUp: () => {
+              order.push('deploy')
+              return Promise.resolve()
+            },
+          }),
+      }),
+    )
+    expect(order).toEqual(['failed', 'deploy'])
   })
 })
