@@ -3,6 +3,37 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.33.0] — 2026-11-14
+
+A kész whisper-átirat után a configban megadott receptek maguktól
+lefutnak, a jegyzet kikerül a showroomra, és a Telegramról leadott
+tételnél üzenet jön a linkkel. `after` blokk nélkül minden a régi
+módon működik.
+
+### ✨ Újdonságok
+
+- **Recept az átírás után (`whisper.after`):** a config `whisper:`
+  blokkjában megadott `recipes` a kész átiraton maguktól lefutnak; a
+  `showroom.deploy: auto` mellett az MDX is kikerül. Csak a blokk megléte
+  után leadott átiratokra hat, a régi átiratokra nem; ismeretlen
+  receptnév a futáskor hibával áll meg (pcsontos/issue-tracker#45).
+- **Üzenet a Telegramról leadott tételnél (`notify: true`):** a
+  `/transcribe` és a `/fetch_audio` leadója a végén megkapja a
+  showroom-linket; a recept a szokott sorban és a `/cancel` alatt fut.
+  CLI-ből leadott tételnél, vagy `notify: false` mellett a futás
+  üzenet nélkül megy.
+- **Elbukott átírás:** a Telegramról leadott tételnél üzenet jön az
+  okkal (`az átírás nem sikerült: …`).
+- **Showroom-deploy hibája:** ha a jegyzet elkészült, de a deploy nem
+  sikerült, a kész-üzenet a Worker-linket adja, és jelzi, hogy a
+  `refinery deploy` pótolja.
+
+### 🔧 Javítások
+
+- **Podcast-epizód takarítása:** a Telegram-futás ideiglenes mappájából
+  a 8 hexás `[url-hash]` azonosítójú pár is törlődik, nem csak a
+  11 karakteres YouTube-azonosítóé.
+
 ## [1.32.1] — 2026-11-08
 
 Az átírás hat apró hibája javult: a kész tétel nem kerül tévesen a hibásak közé,
@@ -1384,6 +1415,7 @@ Hét jegyzettípus, mindegyik saját kiértékelő rubrikával:
 - A CLI szimlinkelt `bin`-ből indítva is működik.
 - A frontmatter címkéiben aláhúzás áll a szóköz helyett.
 
+[1.33.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.33.0
 [1.32.1]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.32.1
 [1.32.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.32.0
 [1.31.0]: https://github.com/pcsontos/transcript-refinery/releases/tag/v1.31.0
