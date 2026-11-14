@@ -112,7 +112,16 @@ const AudioSchema = z
 /** A whisper-mappa alapértéke a konténerben; a mappát a gazdagép-oldali telepítő hozza létre. */
 export const DEFAULT_WHISPER_DIR = '/data/whisper'
 
-const WhisperSchema = z.object({ dir: absolutePath('whisper.dir').optional() })
+const WhisperSchema = z.object({
+  dir: absolutePath('whisper.dir').optional(),
+  // pcsontos/issue-tracker#45: a kész átiraton automatikusan futó receptek; a receptnevet a futás ellenőrzi.
+  after: z
+    .object({
+      recipes: z.array(z.string().min(1)).default([]),
+      notify: z.boolean().default(false),
+    })
+    .optional(),
+})
 
 const CoreSchema = z.object({
   vault: z.object({
@@ -214,6 +223,8 @@ export interface Config {
   audio: AudioConfig | null
   /** Az átírás-mappa (`whisper.dir`); ha nem létezik, a whisper ki van kapcsolva. */
   whisperDir: string
+  /** Az átírás utólépése (`whisper.after`); `null`, ha nincs blokk, vagy üres a receptlista. */
+  whisperAfter: { recipes: string[]; notify: boolean } | null
 }
 
 function normalizePrefix(raw: string): string {
@@ -308,6 +319,10 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
         }
       : null,
     whisperDir: c.whisper?.dir ?? DEFAULT_WHISPER_DIR,
+    whisperAfter:
+      c.whisper?.after !== undefined && c.whisper.after.recipes.length > 0
+        ? { recipes: c.whisper.after.recipes, notify: c.whisper.after.notify }
+        : null,
   }
 }
 

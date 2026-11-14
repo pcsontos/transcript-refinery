@@ -153,3 +153,11 @@ cost_limit_usd: 5.00
 # nem létezik, az átírás ki van kapcsolva, és a refinery nem hozza létre.
 # whisper:
 #   dir: /data/whisper
+#   # Utólépés: a kész átiraton ezek a receptek maguktól lefutnak, a jegyzet
+#   # showroom.deploy: auto mellett kikerül, és notify: true esetén a Telegramról
+#   # leadott tétel csetjébe üzenet jön (showroom-link, vagy a hiba oka).
+#   # Csak a blokk megléte után leadott átiratokra hat; üres lista = nincs
+#   # utólépés. Ismeretlen receptnév a futáskor bukik el, hibaüzenettel.
+#   after:
+#     recipes: [summary]
+#     notify: true

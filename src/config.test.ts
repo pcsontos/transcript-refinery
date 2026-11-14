@@ -557,3 +557,31 @@ describe('whisper.dir', () => {
     expect(() => loadConfig({ ...MIN, whisper: { dir: 'whisper' } }, '/p/c.yaml')).toThrow(/whisper\.dir/)
   })
 })
+
+describe('whisper.after', () => {
+  it('blokk nélkül null', () => {
+    expect(loadConfig(MIN, '/p/c.yaml').whisperAfter).toBeNull()
+  })
+
+  it('üres receptlista: null', () => {
+    expect(loadConfig({ ...MIN, whisper: { after: { recipes: [], notify: true } } }, '/p/c.yaml').whisperAfter).toBeNull()
+  })
+
+  it('receptek, a notify alapból false', () => {
+    expect(loadConfig({ ...MIN, whisper: { after: { recipes: ['summary'] } } }, '/p/c.yaml').whisperAfter).toEqual({
+      recipes: ['summary'],
+      notify: false,
+    })
+  })
+
+  it('ismeretlen receptnév betöltéskor nem hiba (a futáskor bukik el)', () => {
+    expect(loadConfig({ ...MIN, whisper: { after: { recipes: ['nincs'], notify: true } } }, '/p/c.yaml').whisperAfter).toEqual({
+      recipes: ['nincs'],
+      notify: true,
+    })
+  })
+
+  it('a notify csak logikai érték', () => {
+    expect(() => loadConfig({ ...MIN, whisper: { after: { recipes: ['summary'], notify: 'igen' } } }, '/p/c.yaml')).toThrow(/notify/)
+  })
+})
