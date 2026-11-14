@@ -5,7 +5,7 @@ import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { pickHint } from '../fetch/audio/feed.js'
 import { audioSummary, openAudioRunLog, runAudioFetch } from '../fetch/audio/run.js'
 import { createAudioStore } from '../fetch/audio/store.js'
-import { afterMarker, readWhisperPair } from '../whisper/after.js'
+import { afterMarker, readWhisperPair, startAfterWhisper } from '../whisper/after.js'
 import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
@@ -306,8 +306,11 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
           body: JSON.stringify(body),
         })
         console.log(`[serve] Visszahívás válaszkód: ${response.status}`)
+        // Dob: az átírás-utólépés jelölője így megmarad (#45); a job.ts `report`-ja elkapja és naplózza.
+        if (!response.ok) throw new Error(`a visszahívás ${response.status}`)
       } catch (err) {
         console.error(`[serve] Visszahívás hiba:`, err instanceof Error ? err.message : err)
+        throw err
       }
     },
   })
@@ -347,6 +350,20 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     console.error(cause instanceof Error ? cause.message : 'A serve port nem nyílt meg.')
     return 1
   }
+  // Átírás utáni utólépés (pcsontos/issue-tracker#45): a jelölős kész átiratokat a serve veszi fel.
+  startAfterWhisper({
+    load: () => loadCliConfig(configArg),
+    claim: (label) => claimGate(gate, label),
+    callback: effects.callback,
+    runLocal: (job) =>
+      runJob(job, {
+        ...effects,
+        callback: (id, body) => {
+          console.log(`[after-whisper] ${id}: ${JSON.stringify(body)}`)
+          return Promise.resolve()
+        },
+      }),
+  })
   await new Promise<void>((resolve) => {
     server.on('close', () => resolve())
   })
