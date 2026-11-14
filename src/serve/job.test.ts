@@ -691,14 +691,14 @@ describe('runJob fetch ág', () => {
       { status: 'progress', text: 'kihagyva: B' },
       { status: 'ready', title: 'Kész: x' },
     ])
-    expect(requests).toEqual([{ inputs: ['u1', 'u2'] }])
+    expect(requests).toEqual([{ inputs: ['u1', 'u2'], jobId: 'fetch-1' }])
   })
 
   it('--pick-kel a request pick-et kap; a hibás --pick failed, a fetchAudio nem hívódik', async () => {
     const requests: unknown[] = []
     const ok: CallbackBody[] = []
     await runJob({ ...fetchJob, url: 'https://f/rss --pick 1,3' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), ok))
-    expect(requests).toEqual([{ inputs: ['https://f/rss'], pick: [1, 3] }])
+    expect(requests).toEqual([{ inputs: ['https://f/rss'], pick: [1, 3], jobId: 'fetch-1' }])
     const bad: CallbackBody[] = []
     await runJob({ ...fetchJob, url: 'https://f/rss --pick x' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), bad))
     expect(bad).toEqual([{ status: 'failed', error: 'A --pick értéke 0, vagy vesszővel elválasztott sorszámok (pl. 1,3).' }])
@@ -709,7 +709,7 @@ describe('runJob fetch ág', () => {
     const requests: unknown[] = []
     const ok: CallbackBody[] = []
     await runJob({ ...fetchJob, url: 'https://y/v --lang en' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), ok))
-    expect(requests).toEqual([{ inputs: ['https://y/v'], lang: 'en' }])
+    expect(requests).toEqual([{ inputs: ['https://y/v'], lang: 'en', jobId: 'fetch-1' }])
     const bad: CallbackBody[] = []
     await runJob({ ...fetchJob, url: 'https://y/v --lang xyz1' }, withFetch((request) => (requests.push(request), Promise.resolve('k')), bad))
     expect(bad).toEqual([{ status: 'failed', error: 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.' }])
@@ -760,7 +760,7 @@ describe('runJob transcribe ág', () => {
     }, callbacks)
     await runJob(job('transcribe'), effects)
     await runJob(job('transcribe a b --lang en'), effects)
-    expect(requests).toEqual([{ ids: [] }, { ids: ['a', 'b'], lang: 'en' }])
+    expect(requests).toEqual([{ ids: [], jobId: 'fetch-2' }, { ids: ['a', 'b'], lang: 'en', jobId: 'fetch-2' }])
     expect(callbacks.map((body) => body.status)).toEqual(['progress', 'ready', 'progress', 'ready'])
   })
 

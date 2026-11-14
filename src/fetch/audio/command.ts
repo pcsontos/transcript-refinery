@@ -1,6 +1,7 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { loadCliConfig, type Config } from '../../config.js'
 import { installSigint } from '../../run/finish.js'
+import { afterMarker, CLI_AFTER } from '../../whisper/after.js'
 import { createHandoff } from '../../whisper/submit.js'
 import type { RunLog } from '../../run/log.js'
 import { listEntries, type FetchRuntime } from '../command.js'
@@ -68,7 +69,12 @@ export async function commandFetchAudio(argv: readonly string[], runtime?: Audio
     stopped = true
   }, runtime?.signals)
   const log: RunLog | null = cfg === null ? null : openAudioRunLog(cfg.logsDir, `fetch audio ${argv.join(' ')}`)
-  const { handoff, warning } = await createHandoff({ cfg, store, lang: args.lang })
+  const { handoff, warning } = await createHandoff({
+    cfg,
+    store,
+    lang: args.lang,
+    after: cfg === null ? undefined : afterMarker(cfg, CLI_AFTER),
+  })
 
   try {
     const rows = await runAudioFetch(inputs, {

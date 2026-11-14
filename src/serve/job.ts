@@ -49,13 +49,13 @@ export type RecipesOutcome = ({ ok: true; noteUrl: string } | { ok: false; error
 export interface JobEffects {
   /** A hangletöltés; az összesítőt adja vissza (feed-listázásnál a választási felszólítást). */
   fetchAudio?: (
-    request: { inputs: readonly string[]; pick?: Pick; lang?: string },
+    request: { inputs: readonly string[]; pick?: Pick; lang?: string; jobId?: string },
     signal: AbortSignal | undefined,
     emit: (line: string) => Promise<void>,
   ) => Promise<string>
   /** Az átírás: üres `ids` = a váró hangok listája (`emit`-tel), különben leadás. Az összesítőt adja vissza. */
   transcribe?: (
-    request: { ids: readonly string[]; lang?: string },
+    request: { ids: readonly string[]; lang?: string; jobId?: string },
     signal: AbortSignal | undefined,
     emit: (line: string) => Promise<void>,
   ) => Promise<string>
@@ -350,7 +350,7 @@ async function runTranscribeJob(job: ServeJob, words: readonly string[], effects
   const { ids, lang } = parsed.args as { ids: string[]; lang?: string }
   try {
     const title = await effects.transcribe(
-      { ids, ...(lang === undefined ? {} : { lang }) },
+      { ids, ...(lang === undefined ? {} : { lang }), jobId: job.jobId },
       signal,
       (text) => report(effects, job.jobId, { status: 'progress', text }),
     )
@@ -376,7 +376,7 @@ async function runFetchJob(job: ServeJob, effects: JobEffects, signal?: AbortSig
   const { inputs, pick, lang } = parsed.args
   try {
     const title = await effects.fetchAudio(
-      { inputs, ...(pick === undefined ? {} : { pick }), ...(lang === undefined ? {} : { lang }) },
+      { inputs, ...(pick === undefined ? {} : { pick }), ...(lang === undefined ? {} : { lang }), jobId: job.jobId },
       signal,
       (text) => report(effects, job.jobId, { status: 'progress', text }),
     )

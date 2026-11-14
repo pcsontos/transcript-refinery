@@ -6,6 +6,7 @@ import type { EventSink } from '../events.js'
 import type { AudioStore } from '../fetch/audio/store.js'
 import { parseLang } from '../fetch/subtitle/args.js'
 import type { Config } from '../config.js'
+import { AFTER_FIELD } from './after.js'
 import { findEntry, listArchive, statusContext, transcriptStatus, type AudioEntry, type TranscriptStatus } from './archive.js'
 import { channelSlug, watcherWarning, whisperDirs, type WhisperDirs } from './paths.js'
 
@@ -21,14 +22,15 @@ export function resolveLang(input: { flag?: string; info: Record<string, unknown
   return first === undefined ? null : parseLang(first)
 }
 
-/** Az inboxba kerülő `info.json`: az archív tartalom, felülírt `id` és `channel`, plusz a refinery mezői. */
-export function inboxInfo(entry: AudioEntry, lang: string): Record<string, unknown> {
+/** Az inboxba kerülő `info.json`: az archív tartalom, felülírt `id` és `channel`, plusz a refinery mezői; `after`: az utólépés jelölője (#45). */
+export function inboxInfo(entry: AudioEntry, lang: string, after?: string): Record<string, unknown> {
   return {
     ...entry.info,
     id: entry.id,
     channel: entry.channel,
     refinery_lang: lang,
     refinery_target: `whisper/${channelSlug(entry.channel)}`,
+    ...(after === undefined ? {} : { [AFTER_FIELD]: after }),
   }
 }
 
@@ -43,7 +45,7 @@ const SKIP: Partial<Record<TranscriptStatus, 'kész' | 'vár' | 'átírás alatt
 /** Az `info.json` előbb, a hang utoljára, mindkettő `.partial` + átnevezéssel; hibánál nem marad semmi az inboxban. */
 export async function submitEntry(
   entry: AudioEntry,
-  deps: { store: AudioStore; dirs: WhisperDirs; status: TranscriptStatus; lang: string | null },
+  deps: { store: AudioStore; dirs: WhisperDirs; status: TranscriptStatus; lang: string | null; after?: string },
 ): Promise<SubmitResult> {
   const skip = SKIP[deps.status]
   if (skip !== undefined) return { ok: false, skip }
@@ -57,7 +59,7 @@ export async function submitEntry(
   try {
     await mkdir(deps.dirs.inbox, { recursive: true })
     await sweepStalePartials(deps.dirs.inbox, entry.id)
-    await writeFile(infoPartial, JSON.stringify(inboxInfo(entry, deps.lang), null, 2))
+    await writeFile(infoPartial, JSON.stringify(inboxInfo(entry, deps.lang, deps.after), null, 2))
     await rename(infoPartial, info)
     await deps.store.copyTo(entry.key, audioPartial)
     await rename(audioPartial, audio)
@@ -141,6 +143,8 @@ export interface TranscribeDeps {
   emit: (line: string) => void | Promise<void>
   sink?: EventSink
   stopped?: () => boolean
+  /** Az utólépés jelölője (`afterMarker`); hiányában nincs jelölő. */
+  after?: string
 }
 
 export async function runTranscribe(
@@ -172,7 +176,7 @@ export async function runTranscribe(
     sink({ type: 'item:start', itemId: id, title: entry.title })
     const status = handedOver.has(id) ? 'pending' : transcriptStatus(entry, ctx)
     const lang = resolveLang({ flag: args.lang, info: entry.info, languages: deps.languages })
-    const result = await submitEntry(entry, { store: deps.store, dirs: deps.dirs, status, lang })
+    const result = await submitEntry(entry, { store: deps.store, dirs: deps.dirs, status, lang, after: deps.after })
     if ('error' in result) {
       failed += 1
       sink({ type: 'item:failed', itemId: id, source: 'whisper', kind: 'whisper', error: result.error })
@@ -205,6 +209,7 @@ export async function createHandoff(input: {
   cfg: Config | null
   store: AudioStore
   lang?: string
+  after?: string
 }): Promise<{ handoff: (id: string) => Promise<string>; warning: () => Promise<string | null> }> {
   const { cfg, store } = input
   const dirs = cfg === null ? null : await whisperDirs(cfg)
@@ -218,7 +223,7 @@ export async function createHandoff(input: {
       const ctx = await statusContext(cfg.sources[0]!.path, dirs)
       const status = handedOver.has(id) ? 'pending' : transcriptStatus(entry, ctx)
       const lang = resolveLang({ flag: input.lang, info: entry.info, languages: cfg.languages })
-      const result = await submitEntry(entry, { store, dirs, status, lang })
+      const result = await submitEntry(entry, { store, dirs, status, lang, after: input.after })
       if ('error' in result) return result.error
       if ('skip' in result) return 'skipped'
       handedOver.add(id)

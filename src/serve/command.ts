@@ -5,6 +5,7 @@ import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { pickHint } from '../fetch/audio/feed.js'
 import { audioSummary, openAudioRunLog, runAudioFetch } from '../fetch/audio/run.js'
 import { createAudioStore } from '../fetch/audio/store.js'
+import { afterMarker } from '../whisper/after.js'
 import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
@@ -102,7 +103,8 @@ export function serveFetchAudio(
     const pick = request.pick === undefined ? [] : ['--pick', request.pick === 'all' ? '0' : request.pick.join(',')]
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
     const log = openAudioRunLog(cfg.logsDir, `/fetch_audio ${[...lang, ...request.inputs, ...pick].join(' ')}`)
-    const { handoff, warning } = await createHandoff({ cfg, store, lang: request.lang })
+    const after = request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId)
+    const { handoff, warning } = await createHandoff({ cfg, store, lang: request.lang, after })
     try {
       const rows = await runAudioFetch(request.inputs, {
         store,
@@ -172,6 +174,7 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         dirs,
         sourcesRoot,
         languages: cfg.languages,
+        after: request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId),
         emit: async (line) => {
           if (/ tétel leadva\.$/.test(line)) inTail = true
           if (inTail) tail.push(line)

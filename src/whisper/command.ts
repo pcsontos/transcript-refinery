@@ -4,6 +4,7 @@ import { audioDuration } from '../fetch/audio/feed.js'
 import { openAudioRunLog } from '../fetch/audio/run.js'
 import { createAudioStore, type AudioStore } from '../fetch/audio/store.js'
 import { installSigint } from '../run/finish.js'
+import { afterMarker, CLI_AFTER } from './after.js'
 import { failedReason, listArchive, STATUS_LABEL, statusContext, transcriptStatus } from './archive.js'
 import { watcherWarning, whisperDirs } from './paths.js'
 import { parseTranscribeArgs, runTranscribe } from './submit.js'
@@ -62,6 +63,7 @@ export async function commandTranscribe(argv: readonly string[], runtime?: Audio
         emit: (line) => stdout(line),
         sink: log.sink,
         stopped: () => stopped,
+        after: afterMarker(cfg, CLI_AFTER),
       },
     )
     if (stopped) return 130
