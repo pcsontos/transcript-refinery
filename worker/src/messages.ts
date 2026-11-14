@@ -318,3 +318,8 @@ export function modelSetLine(key: string, model: string, mode: 'once' | 'always'
 export function modelResetLine(key: string): string {
   return `${keyLabel(key)}: visszaállítva, a config szerinti modell fut.`
 }
+
+/** Átírás utáni futás (#45): a jegyzet a vaultban megvan, a showroom-oldal nem került ki. */
+export function deployFailedLine(reason: string): string {
+  return `A showroom-deploy nem sikerült: ${reason}. A refinery deploy pótolja.`
+}

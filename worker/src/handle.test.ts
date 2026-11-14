@@ -1845,3 +1845,76 @@ describe('workerLang', () => {
     for (const bad of ['hu,en', 'all', 'xyz1', '']) expect(workerLang(bad)).toBeNull()
   })
 })
+
+describe('átírás utáni utólépés (pcsontos/issue-tracker#45)', () => {
+  const HASH = 'a1b2c3d4'
+  const transcribed = { status: 'transcribed' as const, videoId: HASH, title: 'Epizód', recipes: ['summary'] }
+
+  async function fetchStore() {
+    const store = await boundStore()
+    await store.insert(
+      acceptedRow({ jobId: '7:fetch-7', updateId: 7, videoId: 'fetch-7', url: `transcribe ${HASH}`, status: 'ready', notifiedReady: true, title: 'átírás (1 tétel)' }),
+    )
+    return store
+  }
+
+  it('új tétel a leadó csetjéhez, rajta sorban álló futás; üzenet nincs; az ismételt jelzés nem duplikál', async () => {
+    const store = await fetchStore()
+    const d = deps(store)
+    expect(await handleCallback('7:fetch-7', transcribed, d)).toBe(200)
+    expect(await handleCallback('7:fetch-7', transcribed, d)).toBe(200)
+    expect(await store.listByUpdate(7)).toHaveLength(2)
+    expect(await findRow(store, `7:${HASH}`)).toMatchObject({
+      videoId: HASH,
+      url: 'after-whisper',
+      status: 'ready',
+      chatId: '42',
+      sub: 'sub-42',
+      title: 'Epizód',
+    })
+    expect(await store.run(`7:${HASH}:summary`)).toMatchObject({ status: 'queued', recipes: ['summary'], lang: null })
+    expect(d.sent).toEqual([])
+  })
+
+  it('a cron a futást a hang azonosítójával és az after-whisper url-lel kopogtatja', async () => {
+    const store = await fetchStore()
+    const d = deps(store)
+    await handleCallback('7:fetch-7', transcribed, d)
+    await handleCron(d)
+    expect(d.knocks).toContainEqual({ jobId: `7:${HASH}:summary`, videoId: HASH, url: 'after-whisper', recipes: ['summary'] })
+  })
+
+  it('kész: a link a hang azonosítójára mutat (site-tal a showroomra)', async () => {
+    const store = await fetchStore()
+    const d = deps(store, { siteUrl: 'https://site.test' })
+    await handleCallback('7:fetch-7', transcribed, d)
+    await handleCallback(`7:${HASH}:summary`, { status: 'ready', title: 'Epizód', noteUrl: 'a.md' }, d)
+    expect(d.sent).toEqual([`Epizód · summary. A jegyzet megvan.\nhttps://site.test/notes/${HASH}/summary`])
+  })
+
+  it('deploy-hiba: Worker-link és a hiba sora', async () => {
+    const store = await fetchStore()
+    const d = deps(store, { siteUrl: 'https://site.test' })
+    await handleCallback('7:fetch-7', transcribed, d)
+    await handleCallback(`7:${HASH}:summary`, { status: 'ready', title: 'Epizód', noteUrl: 'a.md', deployError: 'a showroom-push nem sikerült' }, d)
+    expect(d.sent).toEqual([
+      `Epizód · summary. A jegyzet megvan.\nhttps://worker.test/notes/${HASH}/summary\nA showroom-deploy nem sikerült: a showroom-push nem sikerült. A refinery deploy pótolja.`,
+    ])
+  })
+
+  it('deploy nélkül (null): Worker-link, hibasor nélkül', async () => {
+    const store = await fetchStore()
+    const d = deps(store, { siteUrl: 'https://site.test' })
+    await handleCallback('7:fetch-7', transcribed, d)
+    await handleCallback(`7:${HASH}:summary`, { status: 'ready', title: 'Epizód', noteUrl: 'a.md', deployError: null }, d)
+    expect(d.sent).toEqual([`Epizód · summary. A jegyzet megvan.\nhttps://worker.test/notes/${HASH}/summary`])
+  })
+
+  it('elbukott átírás: a progress szövege a leadó csetbe megy, a sor állapota nem változik (regressziós horgony)', async () => {
+    const store = await fetchStore()
+    const d = deps(store)
+    await handleCallback('7:fetch-7', { status: 'progress', text: 'Epizód: az átírás nem sikerült: rossz fájl' }, d)
+    expect(d.sent).toEqual(['Epizód: az átírás nem sikerült: rossz fájl'])
+    expect(await findRow(store, '7:fetch-7')).toMatchObject({ status: 'ready' })
+  })
+})

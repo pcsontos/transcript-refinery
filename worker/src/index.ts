@@ -239,10 +239,26 @@ function isUpdate(value: unknown): value is {
 
 function isCallback(value: unknown): value is CallbackBody {
   if (typeof value !== 'object' || value === null) return false
-  const body = value as { status?: unknown; title?: unknown; error?: unknown; noteUrl?: unknown; text?: unknown; done?: unknown }
+  const body = value as {
+    status?: unknown
+    title?: unknown
+    error?: unknown
+    noteUrl?: unknown
+    text?: unknown
+    done?: unknown
+    deployError?: unknown
+    videoId?: unknown
+    recipes?: unknown
+  }
   if (body.status === 'ready') {
     if (typeof body.title !== 'string') return false
+    if (body.deployError !== undefined && body.deployError !== null && typeof body.deployError !== 'string') return false
     return body.noteUrl === undefined || typeof body.noteUrl === 'string'
+  }
+  if (body.status === 'transcribed') {
+    // Az azonosító a `jobId`-be kerül: `:` vagy `/` nem lehet benne.
+    if (typeof body.videoId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(body.videoId) || typeof body.title !== 'string') return false
+    return Array.isArray(body.recipes) && body.recipes.length > 0 && body.recipes.every((id) => typeof id === 'string' && id !== '')
   }
   if (body.status === 'failed') {
     if (typeof body.error !== 'string') return false

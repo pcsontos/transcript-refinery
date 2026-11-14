@@ -365,6 +365,9 @@ describe('worker belépés', () => {
     expect((await post({ status: 'progress' })).status).toBe(400)
     expect((await post({ status: 'stalled', text: 5 })).status).toBe(400)
     expect((await post({ status: 'failed', error: 'x', done: 'nem lista' })).status).toBe(400)
+    expect((await post({ status: 'ready', title: 'Cím', deployError: 5 })).status).toBe(400)
+    expect((await post({ status: 'transcribed', videoId: 'a:b', title: 'x', recipes: ['summary'] })).status).toBe(400)
+    expect((await post({ status: 'transcribed', videoId: 'a1b2c3d4', title: 'x', recipes: [] })).status).toBe(400)
   })
 
   it('a felirat kész üzenete gombsort küld, a kapcsoló editMessageText-et', async () => {
