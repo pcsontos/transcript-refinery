@@ -112,6 +112,8 @@ export async function runRecipes(input: {
   models?: Readonly<Record<string, string>>
   /** A showroom-deploy; a teszt hamisat ad. */
   deploy?: typeof deployNotes
+  /** A futásnapló parancsa; alapból `serve recipes`, átírás utáni futásnál `after-whisper <id>`. */
+  command?: string
 }): Promise<RecipesOutcome> {
   const git = input.git ?? defaultGit
   let loaded: { cfg: Config; raw: unknown }
@@ -179,7 +181,7 @@ export async function runRecipes(input: {
       dryRun: false,
       force: false,
       commit: false,
-      command: ['serve recipes', ...Object.entries(models).map(([id, model]) => `${id}=${model}`)].join(' '),
+      command: [input.command ?? 'serve recipes', ...Object.entries(models).map(([id, model]) => `${id}=${model}`)].join(' '),
       origin: 'telegram',
       ...(textName === undefined ? {} : { adHoc: { file: join(input.outDir, textName) } }),
     },
@@ -222,10 +224,11 @@ export async function runRecipes(input: {
   if (!pushed.pushed) return { ok: false, error: 'A push nem sikerült, a commit lokálisan maradt.' }
   // Az `auto` deploy a jelentés (`ready`/`failed`) után fut, a `followUp`-ban: az LLM-es átalakítás percekig
   // tarthat, a válasz nem vár rá. A hibája nem buktatja a jobot: a jegyzet a vaultban megvan, a
-  // `refinery deploy` pótolja. A site-link addig 404-et adhat.
+  // `refinery deploy` pótolja. A site-link addig 404-et adhat. Átírás utáni futásnál (#45) a `runRecipeJob`
+  // a jelentés előtt hívja.
   const followUp =
     cfg.showroom?.deploy === 'auto'
-      ? async (): Promise<void> => {
+      ? async (): Promise<string | void> => {
           try {
             const transform = mdxTransformFor(loaded.raw, cfg, input.createClient)
             if (typeof transform === 'string') console.log(`[deploy] LLM-átalakítás nélkül: ${transform}`)
@@ -236,8 +239,12 @@ export async function runRecipes(input: {
               ...(typeof transform === 'string' ? {} : { transform }),
             })
             for (const line of deployLines(report)) console.log(`[deploy] ${line.replace(/^deploy: /, '')}`)
+            // A push hibája a jelentésben van, nem dob; az átírás utáni üzenet a visszatérési értékből tudja (#45).
+            if (report.push !== null && !report.push.pushed) return 'a showroom-push nem sikerült'
           } catch (error) {
-            console.warn(`[deploy] sikertelen: ${firstLine(error instanceof Error ? error.message : String(error))}`)
+            const message = firstLine(error instanceof Error ? error.message : String(error))
+            console.warn(`[deploy] sikertelen: ${message}`)
+            return message
           }
         }
       : undefined

@@ -5,7 +5,7 @@ import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { pickHint } from '../fetch/audio/feed.js'
 import { audioSummary, openAudioRunLog, runAudioFetch } from '../fetch/audio/run.js'
 import { createAudioStore } from '../fetch/audio/store.js'
-import { afterMarker } from '../whisper/after.js'
+import { afterMarker, readWhisperPair } from '../whisper/after.js'
 import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
@@ -31,6 +31,7 @@ type RecipesRun = (input: {
   notify?: (body: CallbackBody) => void
   /** A Worker felülírása; a YAML `model.recipes` fölé kerül. */
   models?: Readonly<Record<string, string>>
+  command?: string
   load?: () => Promise<{ cfg: Config; raw: unknown }>
 }) => Promise<RecipesOutcome>
 
@@ -46,6 +47,7 @@ export function serveEffects(input: {
   runRecipes?: RecipesRun
   fetchAudio?: JobEffects['fetchAudio']
   transcribe?: JobEffects['transcribe']
+  whisperPair?: JobEffects['whisperPair']
   configArg?: string
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
@@ -56,6 +58,7 @@ export function serveEffects(input: {
     signal?: AbortSignal,
     notify?: (body: CallbackBody) => void,
     models?: Readonly<Record<string, string>>,
+    command?: string,
   ) => Promise<RecipesOutcome>
 } {
   const refineWith = input.runRecipes ?? defaultRunRecipes
@@ -74,7 +77,10 @@ export function serveEffects(input: {
       await mkdir(dirname(path), { recursive: true })
       await writeFile(path, body)
     },
-    refine: (videoId, recipes, lang, signal, notify, models) =>
+    whisperPair:
+      input.whisperPair ??
+      (async (videoId) => readWhisperPair((await loadCliConfig(input.configArg)).cfg.sources[0]!.path, videoId)),
+    refine: (videoId, recipes, lang, signal, notify, models, command) =>
       refineWith({
         videoId,
         outDir: input.outDir,
@@ -83,6 +89,7 @@ export function serveEffects(input: {
         signal,
         notify,
         models,
+        command,
         load: () => loadCliConfig(input.configArg),
       }),
   }

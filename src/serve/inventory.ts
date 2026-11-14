@@ -126,6 +126,7 @@ export async function deleteLocalPair(dir: string, videoId: string): Promise<voi
   for (const name of names) {
     const sub = SUB.exec(name)
     const meta = INFO.exec(name)
-    if (sub?.[2] === videoId || meta?.[2] === videoId) await rm(join(dir, name))
+    // A podcast [url-hash] azonosítója nem illik a 11 karakteres mintára (#45); a ` [<id>].` utótag minden alakot fog.
+    if (sub?.[2] === videoId || meta?.[2] === videoId || name.includes(` [${videoId}].`)) await rm(join(dir, name))
   }
 }

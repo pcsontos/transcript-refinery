@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -104,5 +104,16 @@ describe('readLocalPair', () => {
     const kept = await readLocalPair(dir, other, ['hu'])
     expect(gone.files).toEqual([])
     expect(kept.files).toHaveLength(1)
+  })
+})
+
+describe('deleteLocalPair — nem YouTube-azonosító (pcsontos/issue-tracker#45)', () => {
+  it('a podcast [url-hash] párját is törli', async () => {
+    await setup()
+    await writeFile(join(dir, 'Epizod [a1b2c3d4].en.srt'), 'x')
+    await writeFile(join(dir, 'Epizod [a1b2c3d4].info.json'), '{}')
+    await writeFile(join(dir, 'Masik [b2c3d4e5].en.srt'), 'x')
+    await deleteLocalPair(dir, 'a1b2c3d4')
+    expect(await readdir(dir)).toEqual(['Masik [b2c3d4e5].en.srt'])
   })
 })

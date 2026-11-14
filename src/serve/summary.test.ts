@@ -726,7 +726,7 @@ describe('runRecipes — deploy', () => {
     const { result, log, fake } = await futas('auto')
     expect(result.ok).toBe(true)
     expect(log).toEqual(['push', 'visszatért'])
-    await result.followUp!()
+    expect(await result.followUp!()).toBeUndefined()
     expect(log).toEqual(['push', 'visszatért', 'deploy', 'deploy kész'])
     expect(fake).toHaveBeenCalledWith(expect.objectContaining({ itemIds: new Set([ID]) }))
     expect(naplo).toHaveBeenCalledWith('[deploy] 1 írva, 0 kihagyva, 1 commit')
@@ -749,7 +749,15 @@ describe('runRecipes — deploy', () => {
     const figyelmeztetes = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { result } = await futas('auto', { deployImpl: () => Promise.reject(new Error('a klón nem a main ágon áll (masik)\nrészlet')) })
     expect(result.ok).toBe(true)
-    await result.followUp!()
+    expect(await result.followUp!()).toBe('a klón nem a main ágon áll (masik)')
     expect(figyelmeztetes).toHaveBeenCalledWith('[deploy] sikertelen: a klón nem a main ágon áll (masik)')
+  })
+
+  it('a showroom-push hibája a followUp visszatérési értéke', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { result } = await futas('auto', {
+      deployImpl: () => Promise.resolve({ ...REPORT, push: { pushed: false, reason: 'Command failed: git push\nrejected' } }),
+    })
+    expect(await result.followUp!()).toBe('a showroom-push nem sikerült')
   })
 })
