@@ -109,7 +109,7 @@ export function transcriptStatus(entry: AudioEntry, ctx: StatusContext): Transcr
   return 'archived'
 }
 
-const SRT_NAME = /^(.+)\.[a-z]{2,3}(?:-[A-Za-z]{2,4})?\.srt$/
+export const SRT_NAME = /^(.+)\.[a-z]{2,3}(?:-[A-Za-z]{2,4})?\.srt$/
 
 async function names(dir: string, recursive = false): Promise<string[]> {
   try {

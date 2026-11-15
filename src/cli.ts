@@ -265,10 +265,10 @@ async function textDetail(cfg: Config, item: SourceItem): Promise<string> {
   return `${String(words)} szó, szöveg (${ext})${taken ? ' · jegyzet már létezik ezen a néven' : ''}`
 }
 
-/** Az átírt .srt-k másolata a Garage-ba (a scan mellékes lépése); a figyelmeztetés stderr-re megy, a kilépési kódot nem érinti. */
+/** Az átírt .srt-k másolata a Garage-ba (a scan mellékes lépése); a figyelmeztetés és a kimaradás stderr-re megy, a kilépési kódot nem érinti. */
 async function syncTranscriptCopies(cfg: Config): Promise<void> {
   for (const line of await syncTranscriptsFor(cfg, process.env)) {
-    if (line.startsWith('A Garage-másolat nem sikerült')) console.error(line)
+    if (line.startsWith('A Garage-másolat ')) console.error(line)
     else console.log(line)
   }
 }
