@@ -77,6 +77,8 @@ refinery scan --dir ~/atiratok --match '*.md'
 refinery scan --dir ~/atiratok --match 'eloadasok/*.md'
 # egyetlen fájl feldolgozása recepttel
 refinery run --file ~/atiratok/átirat.txt --recipe summary
+# puszta fájlnévvel: a sources mappáiban keresi (például egy whisper-átirat)
+refinery run --file abcdefghijk.en.srt --recipe summary
 # a sorba vétel, majd a kipipált párok feldolgozása
 refinery scan --dir ~/atiratok --queue
 refinery run --queue
@@ -98,6 +100,12 @@ refinery run --queue
 - Legfeljebb 2 MB, UTF-8 szöveg. A sorban a tétel horgonya rejtve az
   útvonalat is viszi; ha a fájl közben eltűnik vagy megváltozik, a
   `run --queue` „nem található”-nak jelöli.
+- A `--file` értéke út vagy puszta fájlnév. Út (abszolút, vagy `/` van
+  benne), illetve a munkakönyvtárban létező név esetén azt a fájlt veszi.
+  Különben a config összes `sources` mappájában keresi, rekurzívan, pontos
+  névvel (a kis- és nagybetű számít). Találat nélkül, vagy ha több helyen is
+  megvan, hibával áll meg (utóbbinál kiírja az utakat): ilyenkor add meg az
+  utat.
 - Nem használható együtt: `--dir` és `--file`; `--source` ezek mellett;
   `--match` `--dir` nélkül.
 

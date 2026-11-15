@@ -230,6 +230,14 @@ describe('sorok', () => {
     expect(audioSummary([{ outcome: 'downloaded', label: 'a' }, { outcome: 'skipped', label: 'b' }, { outcome: 'failed', label: 'c', reason: 'x' }])).toBe('Kész: letöltve 1 db fájl, 1 kihagyva, 1 hibás.')
     expect(audioSummary([{ outcome: 'uploaded', label: 'a' }])).toBe('Kész: letöltve 0 db fájl, 0 kihagyva, 0 hibás. Korábbi letöltésből feltöltve: 1.')
   })
+
+  it('audioSummary megszakításnál (pcsontos/issue-tracker#43)', () => {
+    const three = [{ outcome: 'downloaded', label: 'a' }, { outcome: 'downloaded', label: 'b' }, { outcome: 'downloaded', label: 'c' }] as const
+    expect(audioSummary(three, { stopped: true, total: 19 })).toBe('Megszakítva: letöltve 3 db fájl, 0 kihagyva, 0 hibás (16 elem nem indult el).')
+    expect(audioSummary(three, { stopped: true, total: 3 })).toBe('Kész: letöltve 3 db fájl, 0 kihagyva, 0 hibás.')
+    expect(audioSummary(three, { stopped: false, total: 19 })).toBe('Kész: letöltve 3 db fájl, 0 kihagyva, 0 hibás.')
+    expect(audioSummary([{ outcome: 'uploaded', label: 'a' }], { stopped: true, total: 2 })).toBe('Megszakítva: letöltve 0 db fájl, 0 kihagyva, 0 hibás (1 elem nem indult el). Korábbi letöltésből feltöltve: 1.')
+  })
 })
 
 describe('podcast-feed', () => {

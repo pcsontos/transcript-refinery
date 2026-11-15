@@ -130,6 +130,25 @@ export function originalSubtitleLang(probe: {
   return bestTag(language, probe.manualLangs) ?? bestTag(language, probe.automaticLangs)
 }
 
+/**
+ * A letöltendő sáv: a videó saját nyelve (`originalSubtitleLang`), különben a `fallback` (`--sub-lang`) első
+ * nyelve, amelyhez kézi vagy eredeti (`-orig`) automatikus sáv van. A sima automatikus kulcs YouTube-on gépi
+ * fordítás, a tartalék azt nem választja (pcsontos/issue-tracker#20).
+ */
+export function subtitleLang(
+  probe: { language?: string; manualLangs: readonly string[]; automaticLangs: readonly string[] },
+  fallback: readonly string[] = [],
+): string | null {
+  const own = originalSubtitleLang(probe)
+  if (own !== null) return own
+  const originals = probe.automaticLangs.filter((tag) => tag.toLowerCase().endsWith('-orig'))
+  for (const language of fallback) {
+    const tag = bestTag(language, probe.manualLangs) ?? bestTag(language, originals)
+    if (tag !== null) return tag
+  }
+  return null
+}
+
 export function parseVideoProbe(stdout: string): VideoProbe | null {
   try {
     const raw = JSON.parse(stdout) as {

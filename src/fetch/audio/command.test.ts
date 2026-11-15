@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -166,5 +167,28 @@ describe('commandFetchAudio --lang és átírás', () => {
     expect(streams.out).toContain('Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás. 1 átírásra leadva.')
     const info = JSON.parse(await readFile(join(whisper, 'inbox', `${ID}.info.json`), 'utf8')) as { refinery_lang: string }
     expect(info.refinery_lang).toBe('en')
+  })
+})
+
+describe('commandFetchAudio megszakítva (pcsontos/issue-tracker#43)', () => {
+  it('az 1. elem után Ctrl-C: Megszakítva-összesítő a nem indult elemekkel, kód 130', async () => {
+    const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']
+    const signals = new EventEmitter()
+    const stopping: ProcessRunner = async (args) => {
+      if (args[0] === '--version') return ok('1')
+      const id = /v=([\w-]{11})/.exec(args.join(' '))?.[1] ?? ''
+      if (args.includes('-J')) return ok(JSON.stringify({ id, title: id, channel: 'Csatorna', language: 'hu', automatic_captions: { hu: [] } }))
+      const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
+      await mkdir(dest, { recursive: true })
+      await writeFile(join(dest, `${id} [${id}].m4a`), 'a')
+      await writeFile(join(dest, `${id} [${id}].info.json`), '{}')
+      signals.emit('SIGINT')
+      return ok()
+    }
+    const out = await tmp()
+    const streams = io()
+    const code = await commandFetchAudio([...ids.map((id) => `https://www.youtube.com/watch?v=${id}`), '--out', out], { ...streams, runner: stopping, signals })
+    expect(code).toBe(130)
+    expect(streams.out.at(-1)).toBe('Megszakítva: letöltve 1 db fájl, 0 kihagyva, 0 hibás (2 elem nem indult el).')
   })
 })

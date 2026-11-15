@@ -18,7 +18,8 @@ function toPosix(path: string): string {
   return path.split(sep).join('/')
 }
 
-async function walk(dir: string, skipHidden = false): Promise<string[]> {
+/** A mappa fájljai rekurzívan (a symlinkelt fájl is); a nem létező vagy olvashatatlan mappa kimarad. */
+export async function walk(dir: string, skipHidden = false): Promise<string[]> {
   let entries
   try {
     entries = await readdir(dir, { withFileTypes: true })

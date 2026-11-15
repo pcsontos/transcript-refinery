@@ -105,6 +105,8 @@ export function parseTranscribeArgs(argv: readonly string[]): { ok: true; args: 
       const value = argv[i + 1]
       if (value !== undefined) flagArgs.push(value)
       i += 1
+    } else if (word === '--') {
+      continue // a felhasználó saját `--`-a: a sajátunkat lent tesszük be (pcsontos/issue-tracker#39)
     } else if (word.startsWith('--')) {
       flagArgs.push(word)
     } else {

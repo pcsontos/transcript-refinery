@@ -9,12 +9,12 @@ import { alreadyFetched, playlistDir, prepareIncomplete, videoDir } from './subt
 import {
   createYtdlpRunner,
   downloadArgs,
-  originalSubtitleLang,
   parsePlaylistProbe,
   parseVideoProbe,
   playlistProbeArgs,
   type ProcessResult,
   type ProcessRunner,
+  subtitleLang,
   versionArgs,
   videoProbeArgs,
   YTDLP_MISSING,
@@ -185,9 +185,8 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
     }
 
     const title = probe.title?.split(/\r?\n/)[0]?.trim() || fallbackTitle?.split(/\r?\n/)[0]?.trim() || probe.id
-    const lang = originalSubtitleLang(probe)
-    const language = probe.language
-    if (!language || !lang) {
+    const lang = subtitleLang(probe, args.subLang)
+    if (!lang) {
       stdout(`[SKIP] Nincs felirat: ${title} [${probe.id}]`)
       rows.push('no-subtitle')
       return 'next'
