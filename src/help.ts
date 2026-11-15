@@ -22,7 +22,7 @@ const MATCH = [
   "--match '<glob>'",
   "--dir mellett: csak a mintára illő fájlok; / nélkül a fájlnévre illik. Idézőjelben, különben a shell bontja ki",
 ] as const
-const FILE = ['--file <út>', 'egyetlen .srt, .vtt, .txt vagy .md fájl a sources helyett'] as const
+const FILE = ['--file <út|név>', 'egyetlen .srt, .vtt, .txt vagy .md fájl a sources helyett; puszta fájlnévnél a sources mappáiban keresi'] as const
 const AD_HOC_NOTE =
   'A --dir vagy a --file erre a futásra a sources helyére lép; .txt és .md átirat csak így jön be.'
 const NO_COMMIT = ['--no-commit', 'nem commitol és nem pushol a vault repójába'] as const

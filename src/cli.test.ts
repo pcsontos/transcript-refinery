@@ -12,6 +12,7 @@ import {
   commandRun,
   commandScan,
   commandScanQueue,
+  findInSources,
   main,
   parseLimit,
   runRecipeFlags,
@@ -3654,5 +3655,90 @@ describe('deploy', () => {
     const { code, sorok } = await futas(showroom('auto'))
     expect(code).toBe(0)
     expect(sorok).toContain('deploy sikertelen: a klón nem a main ágon áll (masik)')
+  })
+})
+
+describe('--file puszta fájlnévvel (pcsontos/issue-tracker#37)', () => {
+  const SRT = '1\n00:00:01,000 --> 00:00:02,000\negy kettő három\n'
+
+  describe('findInSources', () => {
+    it('rekurzívan, pontos névvel, rendezve; nem létező gyökér üres', async () => {
+      const a = join(work, 'a')
+      const b = join(work, 'b')
+      await mkdir(join(a, 'al', 'mely'), { recursive: true })
+      await mkdir(b, { recursive: true })
+      await writeFile(join(a, 'al', 'mely', 'x.hu.srt'), SRT)
+      await writeFile(join(b, 'ABC.hu.srt'), SRT)
+      expect(await findInSources('x.hu.srt', [a, b])).toEqual([join(a, 'al', 'mely', 'x.hu.srt')])
+      await writeFile(join(b, 'x.hu.srt'), SRT)
+      expect(await findInSources('x.hu.srt', [b, a])).toEqual([join(a, 'al', 'mely', 'x.hu.srt'), join(b, 'x.hu.srt')])
+      expect(await findInSources('abc.hu.srt', [a, b])).toEqual([])
+      expect(await findInSources('x.hu.srt', [join(work, 'nincs')])).toEqual([])
+    })
+  })
+
+  describe('a main()-en át', () => {
+    let configPath: string
+    let errors: string[]
+    let logs: string[]
+    const cwd = process.cwd()
+
+    beforeEach(async () => {
+      errors = []
+      logs = []
+      vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+        errors.push(args.join(' '))
+      })
+      vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+        logs.push(args.join(' '))
+      })
+      configPath = join(work, 'refinery.config.yaml')
+      await writeFile(configPath, JSON.stringify(rawWithVault(5)))
+      await mkdir(join(vault, '.git'))
+    })
+
+    afterEach(() => {
+      process.chdir(cwd)
+      vi.restoreAllMocks()
+    })
+
+    it('egy találat a sources alatt: azzal a fájllal fut', async () => {
+      await mkdir(join(downloads, 'csat'), { recursive: true })
+      await writeFile(join(downloads, 'csat', 'qpCbGow8MP8.en.srt'), SRT)
+      expect(await main(['scan', '--config', configPath, '--file', 'qpCbGow8MP8.en.srt'])).toBe(0)
+      expect(errors).toEqual([])
+      expect(logs[0]).toBe('1 feldolgozható fájl\n')
+    })
+
+    it('nincs találat: hiba, 1-es kód', async () => {
+      expect(await main(['scan', '--config', configPath, '--file', 'nincs.hu.srt'])).toBe(1)
+      expect(errors).toEqual(['A --file nem található a sources mappákban: nincs.hu.srt'])
+    })
+
+    it('két találat: kilistázza az utakat, 1-es kód, nem dolgoz fel', async () => {
+      for (const dir of ['egy', 'ketto']) {
+        await mkdir(join(downloads, dir), { recursive: true })
+        await writeFile(join(downloads, dir, 'x.hu.srt'), SRT)
+      }
+      expect(await main(['run', '--config', configPath, '--file', 'x.hu.srt', '--recipe', 'summary', '--dry-run'])).toBe(1)
+      expect(errors).toEqual([
+        'A --file több helyen is megvan, add meg az utat:',
+        `  ${join(downloads, 'egy', 'x.hu.srt')}`,
+        `  ${join(downloads, 'ketto', 'x.hu.srt')}`,
+      ])
+      expect(logs).toEqual([])
+    })
+
+    it('a munkakönyvtárban létező puszta név a mai út: nincs sources-keresés', async () => {
+      for (const dir of ['egy', 'ketto']) {
+        await mkdir(join(downloads, dir), { recursive: true })
+        await writeFile(join(downloads, dir, 'x.hu.srt'), SRT)
+      }
+      await writeFile(join(work, 'x.hu.srt'), SRT)
+      process.chdir(work)
+      expect(await main(['scan', '--config', configPath, '--file', 'x.hu.srt'])).toBe(0)
+      expect(errors).toEqual([])
+      expect(logs[0]).toBe('1 feldolgozható fájl\n')
+    })
   })
 })

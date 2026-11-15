@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, realpathSync } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
-import { extname, join } from 'node:path'
+import { readdir, readFile, stat } from 'node:fs/promises'
+import { extname, isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
@@ -222,11 +222,28 @@ export async function adHocOptions(values: {
       return `A --file csak .srt, .vtt, .txt vagy .md fájl lehet: ${file}`
     }
     const isFile = await stat(file).then((s) => s.isFile(), () => false)
-    return isFile ? { file } : `A --file nem létező fájl: ${file}`
+    // A puszta fájlnevet a `main` a config betöltése után a sources mappáiban keresi (pcsontos/issue-tracker#37).
+    return isFile || isBareName(file) ? { file } : `A --file nem létező fájl: ${file}`
   }
   const isDir = await stat(dir!).then((s) => s.isDirectory(), () => false)
   if (!isDir) return `A --dir nem létező mappa: ${dir!}`
   return match === undefined ? { dir: dir! } : { dir: dir!, match }
+}
+
+const isBareName = (file: string): boolean => !isAbsolute(file) && !file.includes('/')
+
+/** A `roots` alatt rekurzívan minden `name` nevű fájl teljes útja (pontos, kis- és nagybetű-érzékeny egyezés), rendezve. */
+export async function findInSources(name: string, roots: readonly string[]): Promise<string[]> {
+  const found: string[] = []
+  for (const root of roots) {
+    try {
+      const entries = await readdir(root, { recursive: true, withFileTypes: true })
+      for (const entry of entries) if (entry.isFile() && entry.name === name) found.push(join(entry.parentPath, entry.name))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+  }
+  return found.sort()
 }
 
 /** Az ad hoc forrás erre a futásra a `sources` helyére lép. */
@@ -1264,6 +1281,22 @@ export async function main(argv: readonly string[]): Promise<number> {
 
   const { raw, cfg } = await loadCliConfig(values.config)
   await validateConfig(cfg)
+
+  // Puszta `--file` név, ami a munkakönyvtárban nincs: a sources mappáiban keressük (pcsontos/issue-tracker#37).
+  const bare = adHoc?.file
+  if (bare !== undefined && isBareName(bare) && !(await stat(bare).then((s) => s.isFile(), () => false))) {
+    const found = await findInSources(bare, cfg.sources.map((source) => source.path))
+    if (found.length === 0) {
+      console.error(`A --file nem található a sources mappákban: ${bare}`)
+      return 1
+    }
+    if (found.length > 1) {
+      console.error('A --file több helyen is megvan, add meg az utat:')
+      for (const path of found) console.error(`  ${path}`)
+      return 1
+    }
+    adHoc = { file: found[0]! }
+  }
 
   if (command === 'scan') {
     return values.queue
