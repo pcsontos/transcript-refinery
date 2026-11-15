@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, realpathSync } from 'node:fs'
-import { readdir, readFile, stat } from 'node:fs/promises'
-import { extname, isAbsolute, join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { basename, extname, isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
@@ -64,6 +64,7 @@ import {
   firstById,
   queuedTextItem,
   type AdHoc,
+  walk,
 } from './source/folder.js'
 import { openState } from './state/db.js'
 import { openStateReader } from './state/reader.js'
@@ -232,17 +233,13 @@ export async function adHocOptions(values: {
 
 const isBareName = (file: string): boolean => !isAbsolute(file) && !file.includes('/')
 
-/** A `roots` alatt rekurzívan minden `name` nevű fájl teljes útja (pontos, kis- és nagybetű-érzékeny egyezés), rendezve. */
+/**
+ * A `roots` alatt rekurzívan minden `name` nevű fájl teljes útja (pontos, kis- és nagybetű-érzékeny egyezés), rendezve.
+ * A bejárás a sources-é (`walk`): ugyanazt látja, amit a scan.
+ */
 export async function findInSources(name: string, roots: readonly string[]): Promise<string[]> {
   const found: string[] = []
-  for (const root of roots) {
-    try {
-      const entries = await readdir(root, { recursive: true, withFileTypes: true })
-      for (const entry of entries) if (entry.isFile() && entry.name === name) found.push(join(entry.parentPath, entry.name))
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-    }
-  }
+  for (const root of roots) found.push(...(await walk(root)).filter((path) => basename(path) === name))
   return found.sort()
 }
 

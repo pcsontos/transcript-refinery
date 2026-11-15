@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -3674,6 +3674,20 @@ describe('--file puszta fájlnévvel (pcsontos/issue-tracker#37)', () => {
       expect(await findInSources('x.hu.srt', [b, a])).toEqual([join(a, 'al', 'mely', 'x.hu.srt'), join(b, 'x.hu.srt')])
       expect(await findInSources('abc.hu.srt', [a, b])).toEqual([])
       expect(await findInSources('x.hu.srt', [join(work, 'nincs')])).toEqual([])
+    })
+
+    it('a symlinkelt fájlt is megtalálja, az olvashatatlan almappát kihagyja (mint a sources bejárója)', async () => {
+      const root = join(work, 'r')
+      await mkdir(join(root, 'zart'), { recursive: true })
+      await writeFile(join(work, 'valodi.hu.srt'), SRT)
+      await symlink(join(work, 'valodi.hu.srt'), join(root, 'y.hu.srt'))
+      await writeFile(join(root, 'zart', 'y.hu.srt'), SRT)
+      await chmod(join(root, 'zart'), 0o000)
+      try {
+        expect(await findInSources('y.hu.srt', [root])).toEqual([join(root, 'y.hu.srt')])
+      } finally {
+        await chmod(join(root, 'zart'), 0o755)
+      }
     })
   })
 
