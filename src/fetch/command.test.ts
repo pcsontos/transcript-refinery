@@ -546,3 +546,54 @@ describe('megszakítás és védelem', () => {
     expect(streams.out).toEqual([])
   })
 })
+
+describe('commandFetch: --sub-lang tartalékként (pcsontos/issue-tracker#20)', () => {
+  function langRunner(probe: string) {
+    return runnerOf(async (args, seen) => {
+      seen.push([...args])
+      if (args[0] === '--version') return { code: 0, stdout: 'yt-dlp\n', stderr: '' }
+      if (args.includes('-J')) return { code: 0, stdout: probe, stderr: '' }
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      const lang = args[args.indexOf('--sub-langs') + 1] ?? ''
+      await mkdir(dest, { recursive: true })
+      await writeFile(join(dest, `Cím [${ID}].${lang}.vtt`), 'WEBVTT\n')
+      await writeFile(join(dest, `Cím [${ID}].info.json`), JSON.stringify({ id: ID }))
+      return { code: 0, stdout: '', stderr: '' }
+    })
+  }
+  const noLanguage = (over: Record<string, unknown>) => {
+    const probe = JSON.parse(probeJson(over)) as Record<string, unknown>
+    delete probe.language
+    return JSON.stringify(probe)
+  }
+
+  it('language nélkül a --sub-lang kézi sávja töltődik le', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-sublang-'))
+    const { calls, runner } = langRunner(noLanguage({ subtitles: { en: [{}] } }))
+    const streams = io()
+    expect(await commandFetch(['subtitle', URL, '--out', out, '--sub-lang', 'en'], { ...streams, runner })).toBe(0)
+    const download = calls.find((args) => args.includes('--write-subs'))
+    expect(download?.[download.indexOf('--sub-langs') + 1]).toBe('en')
+    expect(streams.out[0]).toBe(`[OK]   Cím [${ID}]`)
+  })
+
+  it('language és --sub-lang nélkül [SKIP] Nincs felirat', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'fetch-sublang-'))
+    const config = join(root, 'refinery.config.yaml')
+    await writeFile(config, `vault:\n  path: /tmp/nem-letezo-vault\nsources:\n  - ${join(root, 'forras')}\nlanguages: []\n`)
+    const { calls, runner } = langRunner(noLanguage({ subtitles: { en: [{}] } }))
+    const streams = io()
+    expect(await commandFetch(['subtitle', URL, '--config', config], { ...streams, runner })).toBe(1)
+    expect(streams.out[0]).toBe(`[SKIP] Nincs felirat: Cím [${ID}]`)
+    expect(calls.some((args) => args.includes('--write-subs'))).toBe(false)
+  })
+
+  it('csak gépi fordítású sávnál --sub-lang mellett is [SKIP]', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-sublang-'))
+    const { calls, runner } = langRunner(noLanguage({ subtitles: {}, automatic_captions: { hu: [{}] } }))
+    const streams = io()
+    expect(await commandFetch(['subtitle', URL, '--out', out, '--sub-lang', 'hu'], { ...streams, runner })).toBe(1)
+    expect(streams.out[0]).toBe(`[SKIP] Nincs felirat: Cím [${ID}]`)
+    expect(calls.some((args) => args.includes('--write-subs'))).toBe(false)
+  })
+})

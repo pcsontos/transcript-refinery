@@ -12,6 +12,7 @@ import {
   parsePlaylistProbe,
   parseVideoProbe,
   playlistProbeArgs,
+  subtitleLang,
   videoProbeArgs,
   YTDLP_MISSING,
 } from './ytdlp.js'
@@ -224,5 +225,30 @@ describe('parseFeedProbe', () => {
     })
     expect(parseFeedProbe('nem json')).toBeNull()
     expect(parseFeedProbe(JSON.stringify({ _type: 'video' }))).toBeNull()
+  })
+})
+
+describe('subtitleLang', () => {
+  const base = { manualLangs: [] as string[], automaticLangs: [] as string[] }
+  it('a saját nyelv nyer, a tartalék nem számít', () => {
+    expect(subtitleLang({ ...base, language: 'en', automaticLangs: ['en-orig', 'hu'] }, ['hu'])).toBe('en-orig')
+  })
+  it('language nélkül a tartalék kézi sávja', () => {
+    expect(subtitleLang({ ...base, manualLangs: ['en'] }, ['en'])).toBe('en')
+  })
+  it('régiós egyezés a tartalékban', () => {
+    expect(subtitleLang({ ...base, manualLangs: ['en-US'] }, ['en'])).toBe('en-US')
+  })
+  it('a lista sorrendje dönt', () => {
+    expect(subtitleLang({ ...base, manualLangs: ['de', 'en'] }, ['fr', 'en', 'de'])).toBe('en')
+  })
+  it('a tartalék elfogadja a -orig automatikus sávot', () => {
+    expect(subtitleLang({ ...base, language: 'xx', automaticLangs: ['de-orig'] }, ['de'])).toBe('de-orig')
+  })
+  it('a tartalék gépi fordítást (sima automatikus kulcs) nem választ', () => {
+    expect(subtitleLang({ ...base, automaticLangs: ['hu', 'en'] }, ['hu', 'en'])).toBeNull()
+  })
+  it('tartalék nélkül a mai szabály', () => {
+    expect(subtitleLang({ ...base, manualLangs: ['en'] })).toBeNull()
   })
 })

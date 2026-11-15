@@ -171,7 +171,7 @@ export const COMMANDS: readonly CommandHelp[] = [
     options: [
       ['--out <út>', 'célmappa, abszolút; hiányában a config első sources eleme'],
       ['--list <fájl>', 'soronkénti címek; a # sor és az üres sor kimarad'],
-      ['--sub-lang <kód>', 'vesszős nyelvkódok; alap a config languages, vagy hu,en'],
+      ['--sub-lang <kód>', 'vesszős nyelvkódok; tartalék, ha a videó saját nyelvén nincs felirat: a lista első nyelve, amelyhez kézi vagy eredeti felirat van'],
       ['--sub-format <f>', 'vtt és srt, vesszővel; alap: vtt,srt'],
       ['--overwrite', 'meglévő felirat és .info.json újraírása'],
       ['--flat', 'minden fájl az --out gyökerébe'],
