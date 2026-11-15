@@ -57,11 +57,17 @@ export function rowLine(row: AudioRow): string {
   }
 }
 
-export function audioSummary(rows: readonly AudioRow[]): string {
+/**
+ * A futás összesítője. `run`: megszakításnál `stopped`, a `total` a futás által ismert elemek száma (az utolsó
+ * `scan:found`); ha maradt el nem indult elem, `Megszakítva: …` (pcsontos/issue-tracker#43).
+ */
+export function audioSummary(rows: readonly AudioRow[], run?: { stopped: boolean; total: number }): string {
   const count = (outcome: AudioOutcome) => rows.filter((row) => row.outcome === outcome).length
   const uploaded = count('uploaded')
   const handed = rows.filter((row) => row.whisper === 'submitted').length
-  const base = `Kész: letöltve ${count('downloaded')} db fájl, ${count('skipped')} kihagyva, ${count('failed')} hibás.`
+  const left = run?.stopped ? Math.max(0, run.total - rows.length) : 0
+  const counts = `letöltve ${count('downloaded')} db fájl, ${count('skipped')} kihagyva, ${count('failed')} hibás`
+  const base = left > 0 ? `Megszakítva: ${counts} (${left} elem nem indult el).` : `Kész: ${counts}.`
   return [base, uploaded > 0 ? `Korábbi letöltésből feltöltve: ${uploaded}.` : '', handed > 0 ? `${handed} átírásra leadva.` : '']
     .filter((part) => part !== '')
     .join(' ')

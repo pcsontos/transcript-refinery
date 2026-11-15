@@ -112,6 +112,7 @@ export function serveFetchAudio(
     const log = openAudioRunLog(cfg.logsDir, `/fetch_audio ${[...lang, ...request.inputs, ...pick].join(' ')}`)
     const after = request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId)
     const { handoff, warning } = await createHandoff({ cfg, store, lang: request.lang, after })
+    let total = 0
     try {
       const rows = await runAudioFetch(request.inputs, {
         store,
@@ -125,13 +126,16 @@ export function serveFetchAudio(
         listLimit: 4000,
         stopped: () => signal?.aborted ?? false,
         emit,
-        sink: log.sink,
+        sink: (event) => {
+          if (event.type === 'scan:found') total = event.count
+          log.sink(event)
+        },
       })
       const notice = await warning()
       if (notice !== null) await emit(notice)
       return rows.length === 1 && rows[0]?.outcome === 'listed'
         ? pickHint(request.inputs[0] ?? rows[0].label, 'telegram')
-        : audioSummary(rows)
+        : audioSummary(rows, { stopped: signal?.aborted ?? false, total })
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()

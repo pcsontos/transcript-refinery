@@ -76,6 +76,7 @@ export async function commandFetchAudio(argv: readonly string[], runtime?: Audio
     after: cfg === null ? undefined : afterMarker(cfg, CLI_AFTER),
   })
 
+  let total = 0
   try {
     const rows = await runAudioFetch(inputs, {
       store,
@@ -88,11 +89,14 @@ export async function commandFetchAudio(argv: readonly string[], runtime?: Audio
       handoff,
       stopped: () => stopped,
       emit: (line) => stdout(line),
-      sink: log?.sink,
+      sink: (event) => {
+        if (event.type === 'scan:found') total = event.count
+        log?.sink(event)
+      },
     })
     const listed = rows.length === 1 && rows[0]?.outcome === 'listed' ? rows[0] : null
     if (listed !== null) stdout(pickHint(listed.label, 'cli'))
-    else if (!stopped || rows.length > 0) stdout(audioSummary(rows))
+    else if (!stopped || rows.length > 0) stdout(audioSummary(rows, { stopped, total }))
     const notice = await warning()
     if (notice !== null) stdout(notice)
     if (stopped) return 130

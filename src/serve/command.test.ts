@@ -196,6 +196,28 @@ describe('serveFetchAudio', () => {
     expect(await readdir(join(dir, 'logs'))).toHaveLength(1)
   })
 
+  it('az 1. elem után /cancel: Megszakítva-összesítő a nem indult elemekkel (pcsontos/issue-tracker#43)', async () => {
+    const { path } = await config(true)
+    const controller = new AbortController()
+    const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']
+    const stopping: ProcessRunner = async (args) => {
+      if (args[0] === '--version') return { code: 0, stdout: '1', stderr: '' }
+      const id = /v=([\w-]{11})/.exec(args.join(' '))?.[1] ?? ''
+      if (args.includes('-J')) return { code: 0, stdout: JSON.stringify({ id, title: id, channel: 'Csatorna', language: 'hu', automatic_captions: { hu: [] } }), stderr: '' }
+      const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
+      await mkdir(dest, { recursive: true })
+      await writeFile(join(dest, `${id} [${id}].m4a`), 'a')
+      controller.abort()
+      return { code: 0, stdout: '', stderr: '' }
+    }
+    const summary = await serveFetchAudio(path, { runner: stopping })(
+      { inputs: ids.map((id) => `https://www.youtube.com/watch?v=${id}`) },
+      controller.signal,
+      () => Promise.resolve(),
+    )
+    expect(summary).toBe('Megszakítva: letöltve 1 db fájl, 0 kihagyva, 0 hibás (2 elem nem indult el).')
+  })
+
   it('megszakított jelre a napló interrupted-ként zárul', async () => {
     const { dir, path } = await config(true)
     const controller = new AbortController()
