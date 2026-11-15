@@ -191,6 +191,14 @@ describe('runTranscribe', () => {
 })
 
 describe('parseTranscribeArgs', () => {
+  it.each([
+    [['--', '-QFHIoCo-Ko']],
+    [['--lang', 'en', '--', '-QFHIoCo-Ko']],
+    [['-QFHIoCo-Ko', '--lang', 'en']],
+  ])('a felhasználó saját -- szava nem azonosító: %j', (argv) => {
+    const parsed = parseTranscribeArgs(argv)
+    expect(parsed.ok && parsed.args.ids).toEqual(['-QFHIoCo-Ko'])
+  })
   it('hibák és normalizálás', () => {
     expect(parseTranscribeArgs(['a', '--lang', 'hu,en'])).toEqual({ ok: false, error: 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.' })
     expect(parseTranscribeArgs(['a', 'b', 'a', '--lang', 'EN'])).toMatchObject({ ok: true, args: { ids: ['a', 'b'], lang: 'en' } })
