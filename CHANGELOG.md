@@ -3,6 +3,38 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.34.0] — 2026-11-15
+
+Öt kisebb javítás a parancssorban és a Garage-másolatban: a `--file`
+fájlnévvel is működik, a `--sub-lang` végre hat, és a megszakított
+hangletöltés összesítője kimondja, hogy nem ért végig.
+
+### ✨ Újdonságok
+
+- **`--file` fájlnévvel:** a `run` és a `scan` `--file` kapcsolójának
+  elég a fájlnév (például `qpCbGow8MP8.en.srt`); a config `sources`
+  mappáiban keresi meg. Ha nincs találat, vagy több helyen is megvan,
+  hibával áll meg, és kiírja az utakat. A teljes út és a munkakönyvtárban
+  lévő fájl a régi módon működik (pcsontos/issue-tracker#37).
+
+### 🔧 Javítások
+
+- **`transcribe --`:** a `refinery transcribe -- -<id>` a `--`-ot már nem
+  veszi azonosítónak, így nem ír hamis hibasort, és sikeres leadásnál
+  0-val lép ki (pcsontos/issue-tracker#39).
+- **`fetch subtitle --sub-lang`:** a kapcsoló eddig hatástalan volt, most
+  tartalékként hat: ha a videó saját nyelvén nincs felirat, a lista első
+  nyelve nyer, amelyhez kézi vagy eredeti felirat van. Gépi fordítást
+  nem tölt le; a saját nyelvű felirat választása nem változik. A súgó is
+  ezt írja (pcsontos/issue-tracker#20).
+- **Megszakított hangletöltés:** a Ctrl-C-vel vagy `/cancel`-lel leállított
+  `fetch audio` és `/fetch_audio` összesítője `Megszakítva: …`-val kezdődik,
+  és megmondja, hány elem nem indult el (pcsontos/issue-tracker#43).
+- **Garage-másolat a hang mellé:** az új whisper-átirat `.srt`-je a hangja
+  mappájába kerül a bucketben (playlist-mappába is), nem külön csatorna-
+  mappába. Hang nélküli átirat nem kerül fel; ezt a `scan` jelzi
+  (pcsontos/issue-tracker#70).
+
 ## [1.33.0] — 2026-11-14
 
 A kész whisper-átirat után a configban megadott receptek maguktól
