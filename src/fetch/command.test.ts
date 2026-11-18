@@ -188,7 +188,7 @@ describe('commandFetch egy videóra', () => {
     expect(streams.err[0]).toBe('dyld: hiányzik')
   })
 
-  it('az idegen cím [FAIL] és 1-es kód, probe nélkül', async () => {
+  it('a nem URL [FAIL] és 1-es kód, probe nélkül', async () => {
     const out = await mkdtemp(join(tmpdir(), 'fetch-cmd-'))
     let calls = 0
     const runner: ProcessRunner = () => {
@@ -196,8 +196,8 @@ describe('commandFetch egy videóra', () => {
       return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
     }
     const streams = io()
-    expect(await commandFetch(['subtitle', 'https://vimeo.com/1', '--out', out, '--sub-lang', 'hu'], { ...streams, runner })).toBe(1)
-    expect(streams.out[0]).toBe('[FAIL] https://vimeo.com/1: nem YouTube-cím')
+    expect(await commandFetch(['subtitle', 'szia', '--out', out, '--sub-lang', 'hu'], { ...streams, runner })).toBe(1)
+    expect(streams.out[0]).toBe('[FAIL] szia: nem URL')
     expect(calls).toBe(1)
   })
 
@@ -376,7 +376,7 @@ describe('listafájl és köteg', () => {
     const root = await mkdtemp(join(tmpdir(), 'fetch-list-'))
     const list = join(root, 'lista.txt')
     const out = join(root, 'out')
-    await writeFile(list, '# megjegyzés\n\nhttps://vimeo.com/1\nabcdefghijk\n')
+    await writeFile(list, '# megjegyzés\n\nszia\nabcdefghijk\n')
     const seen: string[][] = []
     const runner: ProcessRunner = (args) => {
       seen.push([...args])
@@ -399,7 +399,7 @@ describe('listafájl és köteg', () => {
     const streams = io()
     const code = await commandFetch(['subtitle', '--list', list, '--out', out, '--sub-lang', 'hu'], { ...streams, runner })
     expect(code).toBe(1)
-    expect(streams.out[0]).toBe('[FAIL] https://vimeo.com/1: nem YouTube-cím')
+    expect(streams.out[0]).toBe('[FAIL] szia: nem URL')
     expect(streams.out[1]).toBe(`[OK]   Cím [${ID}]`)
     expect(streams.out.at(-1)).toBe('Kész: 1 letöltve, 0 átugorva, 0 felirat nélkül, 1 hibás.')
     expect(seen.filter((args) => args.includes('--write-subs'))).toHaveLength(1)
@@ -595,5 +595,67 @@ describe('commandFetch: --sub-lang tartalékként (pcsontos/issue-tracker#20)', 
     expect(await commandFetch(['subtitle', URL, '--out', out, '--sub-lang', 'hu'], { ...streams, runner })).toBe(1)
     expect(streams.out[0]).toBe(`[SKIP] Nincs felirat: Cím [${ID}]`)
     expect(calls.some((args) => args.includes('--write-subs'))).toBe(false)
+  })
+})
+
+describe('nem YouTube-os link', () => {
+  const PEER = 'd4VvgzW5m4jaGr9JFVBUCg'
+  const LINK = `https://makertube.net/w/${PEER}`
+  const peerProbe = (over: Record<string, unknown> = {}): string =>
+    JSON.stringify({ extractor_key: 'PeerTube', id: PEER, title: 'Cím', channel: 'Csatorna', webpage_url: LINK, ...over })
+
+  function fixture(probe: string, download?: (dest: string) => Promise<ProcessResult>) {
+    return runnerOf((args, calls) => {
+      calls.push([...args])
+      if (args[0] === '--version') return Promise.resolve({ code: 0, stdout: 'yt-dlp\n', stderr: '' })
+      if (args.includes('-J')) return Promise.resolve({ code: 0, stdout: probe, stderr: '' })
+      const dest = args[args.indexOf('--paths') + 1]?.replace(/^home:/, '') ?? ''
+      return download ? download(dest) : Promise.resolve({ code: 0, stdout: '', stderr: '' })
+    })
+  }
+
+  it('felirat nélkül [SKIP] Nincs felirat a peertube- azonosítóval', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-cmd-'))
+    const { runner } = fixture(peerProbe())
+    const streams = io()
+    expect(await commandFetch(['subtitle', LINK, '--out', out, '--sub-lang', 'en'], { ...streams, runner })).toBe(1)
+    expect(streams.out[0]).toBe(`[SKIP] Nincs felirat: Cím [peertube-${PEER}]`)
+  })
+
+  it('felirattal a fájlnév a peertube- azonosítót viseli, a sor [OK]', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-cmd-'))
+    const { runner, calls } = fixture(peerProbe({ language: 'en', subtitles: { en: [{}] } }), async (dest) => {
+      await mkdir(dest, { recursive: true })
+      await writeFile(join(dest, `Cím [peertube-${PEER}].en.vtt`), 'WEBVTT\n')
+      await writeFile(join(dest, `Cím [peertube-${PEER}].info.json`), peerProbe())
+      return { code: 0, stdout: '', stderr: '' }
+    })
+    const streams = io()
+    expect(await commandFetch(['subtitle', LINK, '--out', out, '--sub-lang', 'en'], { ...streams, runner })).toBe(0)
+    const download = calls.find((args) => args.includes('--write-subs'))
+    expect(download?.[download.indexOf('-o') + 1]).toBe(`%(title)s [peertube-${PEER}].%(ext)s`)
+    expect(streams.out[0]).toBe(`[OK]   Cím [peertube-${PEER}]`)
+  })
+
+  it('a lista-próba [FAIL], letöltés nélkül', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-cmd-'))
+    const { runner, calls } = fixture(JSON.stringify({ _type: 'playlist', id: 'x', title: 'Lista' }))
+    const streams = io()
+    expect(await commandFetch(['subtitle', LINK, '--out', out, '--sub-lang', 'en'], { ...streams, runner })).toBe(1)
+    expect(streams.out[0]).toBe(`[FAIL] ${LINK}: nem YouTube-lista: egyenként add meg a videókat`)
+    expect(calls.some((args) => args.includes('--write-subs'))).toBe(false)
+  })
+
+  it('a yt-dlp hibája a [FAIL] sorba kerül', async () => {
+    const out = await mkdtemp(join(tmpdir(), 'fetch-cmd-'))
+    const runner: ProcessRunner = (args) =>
+      Promise.resolve(
+        args[0] === '--version'
+          ? { code: 0, stdout: 'yt-dlp\n', stderr: '' }
+          : { code: 1, stdout: '', stderr: 'ERROR: Unsupported URL: https://x.hu/a\n' },
+      )
+    const streams = io()
+    expect(await commandFetch(['subtitle', 'https://x.hu/a', '--out', out, '--sub-lang', 'en'], { ...streams, runner })).toBe(1)
+    expect(streams.out[0]).toBe('[FAIL] https://x.hu/a: ERROR: Unsupported URL: https://x.hu/a')
   })
 })

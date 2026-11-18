@@ -58,7 +58,9 @@ describe('classifyInput', () => {
       kind: 'rejected',
       raw: 'https://www.youtube.com/watch?v=rovid',
     })
-    expect(classifyInput('https://vimeo.com/123456789', false).kind).toBe('rejected')
+    expect(classifyInput('https://vimeo.com/123456789', false)).toEqual({ kind: 'link', url: 'https://vimeo.com/123456789' })
+    expect(classifyInput('ftp://x.hu/a', false).kind).toBe('rejected')
+    expect(classifyInput('nem url', false).kind).toBe('rejected')
     expect(classifyInput('   ', false)).toEqual({ kind: 'rejected', raw: '' })
   })
 })
@@ -76,7 +78,10 @@ describe('classifyAudioInput', () => {
     expect(classifyAudioInput('szia', false).kind).toBe('rejected')
   })
 
-  it('a felirat-osztályozó továbbra is elutasítja a közvetlen URL-t', () => {
-    expect(classifyInput('https://valami.hu/x.mp3', false).kind).toBe('rejected')
+  it('a felirat-osztályozó a közvetlen URL-t linkként adja', () => {
+    expect(classifyInput('https://makertube.net/w/d4VvgzW5m4jaGr9JFVBUCg', false)).toEqual({
+      kind: 'link',
+      url: 'https://makertube.net/w/d4VvgzW5m4jaGr9JFVBUCg',
+    })
   })
 })

@@ -107,11 +107,11 @@ describe('commandFetchAudio', () => {
 })
 
 describe('commandFetch és a hang', () => {
-  it('fetch subtitle továbbra is elutasítja a közvetlen URL-t', async () => {
+  it('fetch subtitle a közvetlen URL-t is a yt-dlp-nek adja, nem utasítja el', async () => {
     const out = await tmp()
     const streams = io()
     await commandFetch(['subtitle', 'https://valami.hu/x.mp3', '--out', out, '--sub-lang', 'hu'], { ...streams, runner })
-    expect(streams.out.join('\n')).toContain('[FAIL] https://valami.hu/x.mp3: nem YouTube-cím')
+    expect(streams.out.join('\n')).not.toContain('nem YouTube-cím')
   })
 
   it('fetch --help mindkét módot mutatja, fetch audio --help csak a sajátját', async () => {

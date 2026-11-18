@@ -13,12 +13,18 @@ export interface PlaylistInput {
   url: string
 }
 
+/** Nem YouTube-os http(s) link: a yt-dlp dönt, hogy videó-e. */
+export interface LinkInput {
+  kind: 'link'
+  url: string
+}
+
 export interface RejectedInput {
   kind: 'rejected'
   raw: string
 }
 
-export type ClassifiedInput = VideoInput | PlaylistInput | RejectedInput
+export type ClassifiedInput = VideoInput | PlaylistInput | LinkInput | RejectedInput
 
 function rejected(raw: string): RejectedInput {
   return { kind: 'rejected', raw }
@@ -40,7 +46,7 @@ function pathId(pathname: string, marker: string): string | null {
   return id !== undefined && VIDEO_ID.test(id) ? id : null
 }
 
-/** Egy trimelt sorból videó, lista vagy elutasítás. A videó URL-je kanonikus. */
+/** Egy trimelt sorból videó, lista, nem YouTube-os link vagy elutasítás (nem URL, nem http(s)). A videó URL-je kanonikus. */
 export function classifyInput(raw: string, yesPlaylist: boolean): ClassifiedInput {
   const text = raw.trim()
   if (VIDEO_ID.test(text)) return video(text)
@@ -50,7 +56,9 @@ export function classifyInput(raw: string, yesPlaylist: boolean): ClassifiedInpu
   } catch {
     return rejected(text)
   }
-  if (!isYouTubeHost(parsed.hostname)) return rejected(text)
+  if (!isYouTubeHost(parsed.hostname)) {
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? { kind: 'link', url: text } : rejected(text)
+  }
   const list = parsed.searchParams.get('list')
   const watch = parsed.searchParams.get('v')
   const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
@@ -77,14 +85,10 @@ export interface DirectInput {
 }
 
 /** Mint a classifyInput, de a nem YouTube-os http(s) URL közvetlen hangfájl. */
-export function classifyAudioInput(raw: string, yesPlaylist: boolean): ClassifiedInput | DirectInput {
+export function classifyAudioInput(
+  raw: string,
+  yesPlaylist: boolean,
+): Exclude<ClassifiedInput, LinkInput> | DirectInput {
   const classified = classifyInput(raw, yesPlaylist)
-  if (classified.kind !== 'rejected') return classified
-  try {
-    const parsed = new URL(classified.raw)
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return { kind: 'direct', url: classified.raw }
-  } catch {
-    // nem URL: marad az elutasítás
-  }
-  return classified
+  return classified.kind === 'link' ? { kind: 'direct', url: classified.url } : classified
 }
