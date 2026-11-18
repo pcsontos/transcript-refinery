@@ -61,12 +61,28 @@ export interface LinkToken {
   used: boolean
 }
 
+/** A lista megerősítésre váró tételei (`resolves` tábla); a `jobId` a feloldó soré. */
+export interface ResolveRow {
+  jobId: string
+  chatId: string
+  title: string
+  items: { videoId: string; url: string; title: string }[]
+  /** A `watch?v&list` videója a `Csak ezt a videót` gombhoz. */
+  videoId: string | null
+}
+
 export interface JobStore {
   listByUpdate(updateId: number): Promise<JobRow[]>
   activeByVideo(videoId: string): Promise<JobRow | null>
   insert(row: JobRow): Promise<void>
   /** `false`, ha nem hatott: a `cancelled` sort semmi nem írja felül. */
   save(row: JobRow): Promise<boolean>
+  /** Beszúr vagy cserél: a feloldás újrapróbálása nem ütközhet. */
+  insertResolve(row: ResolveRow): Promise<void>
+  /** Atomi: kiveszi és törli a sort; a második hívás `null`. */
+  takeResolve(jobId: string): Promise<ResolveRow | null>
+  /** A nyitott (`queued`/`waiting`/`accepted`) vagy `ready` sorral bíró azonosítók. */
+  knownVideos(videoIds: readonly string[]): Promise<Set<string>>
   /** Feltételes állapotváltás, mint a `claimRun`. */
   claimJob(jobId: string, expect: JobStatus, next: JobStatus): Promise<boolean>
   due(now: number): Promise<JobRow[]>
@@ -107,6 +123,7 @@ export function memoryStore(): JobStore {
   const bindings = new Map<string, Binding>()
   const tokens = new Map<string, LinkToken>()
   const runs: RunRow[] = []
+  const resolves = new Map<string, ResolveRow>()
   let overrides: ModelOverride[] = []
   return {
     listByUpdate: (updateId) => Promise.resolve(rows.filter((row) => row.updateId === updateId)),
@@ -126,6 +143,23 @@ export function memoryStore(): JobStore {
       else rows[index] = stored
       return Promise.resolve(true)
     },
+    insertResolve: (row) => {
+      resolves.set(row.jobId, structuredClone(row))
+      return Promise.resolve()
+    },
+    takeResolve: (jobId) => {
+      const row = resolves.get(jobId) ?? null
+      resolves.delete(jobId)
+      return Promise.resolve(row)
+    },
+    knownVideos: (videoIds) =>
+      Promise.resolve(
+        new Set(
+          rows
+            .filter((row) => videoIds.includes(row.videoId) && (OPEN.includes(row.status) || row.status === 'ready'))
+            .map((row) => row.videoId),
+        ),
+      ),
     claimJob: (jobId, expect, next) => {
       const index = rows.findIndex((item) => item.jobId === jobId)
       const row = rows[index]

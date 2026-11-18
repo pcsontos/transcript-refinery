@@ -39,6 +39,31 @@ export function alreadyLine(videoId: string): string {
   return `Már sorban van: ${videoId}.`
 }
 
+export function transcribeHintLine(url: string): string {
+  return `Átíráshoz: /fetch_audio ${url}`
+}
+
+export const LIST_CANCELLED = 'Mégse.'
+
+export function listLine(title: string, n: number, k: number): string {
+  const head = `Lista: ${flatTitle(title).slice(0, 200)}, ${n} videó`
+  return n - k === 0 ? `${head}, mind kész vagy sorban.` : `${head} (ebből ${k} már kész vagy sorban). Mit tegyek sorba?`
+}
+
+export function listQueuedLine(count: number, title: string): string {
+  return `Sorba került: ${count} videó (${flatTitle(title).slice(0, 200)}).`
+}
+
+/** A lista megerősítő gombjai. Az adat `L:<a|v|x>:<jobId>`; a kisbetűs `l:` a nyelvgomb. */
+export function listKeyboard(jobId: string, hasVideo: boolean, free: number): Key[][] {
+  const keys: Key[] = [
+    ...(hasVideo ? [{ text: 'Csak ezt a videót', data: `L:v:${jobId}` }] : []),
+    ...(free > 0 ? [{ text: `Mind (${free})`, data: `L:a:${jobId}` }] : []),
+    { text: 'Mégse', data: `L:x:${jobId}` },
+  ]
+  return inRows(keys, 2)
+}
+
 export const MISSING_NOTE_URL = 'A jegyzet linkje hiányzik.'
 
 export const BIND_FIRST = 'Előbb kösd össze a Google-fiókoddal: /start'

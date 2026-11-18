@@ -6,6 +6,7 @@ import {
   type JobStore,
   type LinkToken,
   type ModelOverride,
+  type ResolveRow,
   type RunRow,
 } from './store.js'
 
@@ -36,6 +37,14 @@ interface JobRecord {
   file_id: string | null
   file_name: string | null
   text: string | null
+}
+
+interface ResolveRecord {
+  job_id: string
+  chat_id: string
+  title: string
+  items: string
+  video_id: string | null
 }
 
 interface BindingRecord {
@@ -199,6 +208,35 @@ export function createD1Store(db: D1Like): JobStore {
         )
         .run()
       return changed(result)
+    },
+    async insertResolve(row: ResolveRow) {
+      await db
+        .prepare('INSERT OR REPLACE INTO resolves (job_id, chat_id, title, items, video_id) VALUES (?, ?, ?, ?, ?)')
+        .bind(row.jobId, row.chatId, row.title, JSON.stringify(row.items), row.videoId)
+        .run()
+    },
+    async takeResolve(jobId) {
+      const record = await db.prepare('DELETE FROM resolves WHERE job_id = ? RETURNING *').bind(jobId).first<ResolveRecord>()
+      if (record === null) return null
+      return {
+        jobId: record.job_id,
+        chatId: record.chat_id,
+        title: record.title,
+        items: JSON.parse(record.items) as ResolveRow['items'],
+        videoId: record.video_id,
+      }
+    },
+    async knownVideos(videoIds) {
+      if (videoIds.length === 0) return new Set()
+      const result = await db
+        .prepare(
+          `SELECT DISTINCT video_id FROM jobs
+           WHERE status IN ('queued', 'waiting', 'accepted', 'ready')
+             AND video_id IN (SELECT value FROM json_each(?))`,
+        )
+        .bind(JSON.stringify(videoIds))
+        .all<{ video_id: string }>()
+      return new Set(result.results.map((record) => record.video_id))
     },
     async claimJob(jobId, expect, next) {
       // Ma csak a megszakítás hívja; a lezárt sor szövegére nincs több újrapróbálás.

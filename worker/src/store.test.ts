@@ -79,3 +79,23 @@ describe('a modellfelülírások (memoryStore)', () => {
     expect(await store.overridesFor('sub-42')).toEqual([])
   })
 })
+
+describe('a feloldott lista (memoryStore)', () => {
+  const resolve = { jobId: '7:resolve-7-0', chatId: '42', title: 'L', items: [{ videoId: 'a', url: 'u', title: 't' }], videoId: null }
+
+  it('a takeResolve először a sort adja, másodszor null', async () => {
+    const store = memoryStore()
+    await store.insertResolve(resolve)
+    expect(await store.takeResolve(resolve.jobId)).toEqual(resolve)
+    expect(await store.takeResolve(resolve.jobId)).toBeNull()
+  })
+
+  it('a knownVideos a nyitott és ready sorokat adja, a failed és cancelled nem', async () => {
+    const store = memoryStore()
+    const statuses = ['queued', 'accepted', 'ready', 'failed', 'cancelled'] as const
+    for (const [n, status] of statuses.entries()) {
+      await store.insert(row({ jobId: `${n}:v${n}`, updateId: n, videoId: `v${n}`, status }))
+    }
+    expect([...(await store.knownVideos(['v0', 'v1', 'v2', 'v3', 'v4', 'v9']))].sort()).toEqual(['v0', 'v1', 'v2'])
+  })
+})

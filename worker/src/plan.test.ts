@@ -401,3 +401,14 @@ describe('/model gombok', () => {
     expect(text).toContain('fordítás: a config szerint')
   })
 })
+
+describe('parseTap: lista', () => {
+  it('az L: gomb a jobId egészét viszi, a kisbetűs l: a nyelvgomb marad', () => {
+    expect(parseTap('L:a:7:resolve-7-0')).toEqual({ type: 'list', action: 'a', jobId: '7:resolve-7-0' })
+    expect(parseTap('L:v:7:resolve-7-0')).toEqual({ type: 'list', action: 'v', jobId: '7:resolve-7-0' })
+    expect(parseTap('L:x:7:resolve-7-0')).toEqual({ type: 'list', action: 'x', jobId: '7:resolve-7-0' })
+    expect(parseTap('L:z:7:resolve-7-0')).toBeNull()
+    expect(parseTap('L:a:')).toBeNull()
+    expect(parseTap('l:3:de:5:abcdefghijk')).toMatchObject({ type: 'lang' })
+  })
+})

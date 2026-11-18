@@ -66,6 +66,11 @@ export {
   modelResetLine,
   probeFailure,
   deployFailedLine,
+  transcribeHintLine,
+  LIST_CANCELLED,
+  listLine,
+  listQueuedLine,
+  listKeyboard,
 } from './messages.js'
 
 export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
@@ -89,6 +94,7 @@ export type Tap =
   | { type: 'modelPick'; key: string; model: string }
   | { type: 'modelSet'; mode: 'once' | 'always'; key: string; model: string }
   | { type: 'modelReset'; key: string }
+  | { type: 'list'; action: 'a' | 'v' | 'x'; jobId: string }
 
 const MASK = /^[0-9a-f]{1,2}$/
 
@@ -129,6 +135,12 @@ export function parseTap(data: string): Tap | null {
     const mask = maskOf(hex)
     if (mask === null || lang === undefined || !(LANGS as readonly string[]).includes(lang)) return null
     return { type: 'lang', mask, lang, jobId: job.join(':') }
+  }
+  if (head === 'L') {
+    const [action, ...job] = rest
+    const jobId = job.join(':')
+    if ((action !== 'a' && action !== 'v' && action !== 'x') || jobId === '') return null
+    return { type: 'list', action, jobId }
   }
   if (head === 'm' || head === 'x') {
     const [key] = rest
