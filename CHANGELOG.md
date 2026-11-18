@@ -3,6 +3,43 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.35.0] — 2026-11-18
+
+Nem csak YouTube: a felirat- és hangletöltés más oldalak linkjét is elfogadja,
+a podcast-feed `media:content` hangját is megtalálja, Telegramban pedig a link
+és a lista feloldása után dönthetsz, hogy egy videó vagy az egész lista menjen.
+
+### ✨ Újdonságok
+
+- **Nem YouTube-os link a `fetch subtitle`-ben:** bármely http(s) link a
+  yt-dlp-hez kerül (például egy PeerTube-videó). A nem YouTube-os listára
+  `nem YouTube-lista: egyenként add meg a videókat` a válasz
+  (pcsontos/issue-tracker#93).
+- **Hang weboldalról:** a `fetch audio` és a `/fetch_audio` HTML-oldal linkjéről
+  is letölti a hangot a yt-dlp-vel, és felirat nélkül átírásra adja le.
+  A `--pick` továbbra is csak feedhez adható meg (pcsontos/issue-tracker#94).
+- **Feed `media:content`-tel:** ha az epizódnak nincs `<enclosure>`-ja, a hang
+  típusú `media:content` URL-jét tölti le (pcsontos/issue-tracker#95).
+- **Linkek és listák Telegramban:** a puszta YouTube-videón kívül minden
+  http(s) link (lista, YouTube-csatorna, más oldal) `Megnézem: <url>` sorral
+  feloldásra megy. Egy videónál a munka sorba áll; listánál megerősítő üzenet
+  jön **Mind (N−K) / Mégse** gombokkal (a K a már ismert tételek száma), és ha
+  a link egy videóra is mutat, **Csak ezt a videót** gombbal is. A gomb
+  második koppintása nem csinál semmit (pcsontos/issue-tracker#96,
+  pcsontos/issue-tracker#97, pcsontos/issue-tracker#98).
+- **Felirat nélküli videó:** a `Nincs felirat` hiba alatt
+  `Átíráshoz: /fetch_audio <url>` javaslat áll (pcsontos/issue-tracker#98).
+- **Fájlnév nem YouTube-os tételnél:** a letöltött fájl neve
+  `<kinyerő>-<id>` (például `peertube-…`), a felismerhetetlen oldalé
+  `generic-<hash>`, így két oldal azonos azonosítója nem ütközik. A YouTube-os
+  fájlnevek nem változnak (pcsontos/issue-tracker#92).
+
+### ⚙️ Üzemeltetés
+
+- **Telepítési sorrend:** előbb a szerver képe, aztán a `0007` D1-migráció
+  (`resolves` tábla), végül a Worker. A régi szerver nem ismeri a feloldó
+  munkát.
+
 ## [1.34.0] — 2026-11-15
 
 Öt kisebb javítás a parancssorban és a Garage-másolatban: a `--file`
