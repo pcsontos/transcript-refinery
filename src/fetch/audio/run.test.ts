@@ -61,11 +61,11 @@ const listing = async (root: string): Promise<string[]> => (await readdir(root, 
 
 describe('audioDownloadArgs', () => {
   it('pontos', () => {
-    expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: false })).toEqual([
+    expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: false, id: 'ID' })).toEqual([
       '-f', 'bestaudio[ext=m4a]/bestaudio', '--write-info-json', '--no-playlist', '--no-progress', '--no-overwrites',
-      '--js-runtimes', 'node', '--paths', 'home:/d', '-o', '%(title)s [%(id)s].%(ext)s', '--', 'U',
+      '--js-runtimes', 'node', '--paths', 'home:/d', '-o', '%(title)s [ID].%(ext)s', '--', 'U',
     ])
-    expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: true })).toContain('--force-overwrites')
+    expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: true, id: 'ID' })).toContain('--force-overwrites')
   })
 })
 

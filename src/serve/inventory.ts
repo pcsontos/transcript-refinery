@@ -1,9 +1,10 @@
 import { readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
+import { mediaId } from '../fetch/media-id.js'
 import { isTextItemId } from '../source/text.js'
 
-const SUB = /^(.*) \[([A-Za-z0-9_-]{11})\]\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
-const INFO = /^(.*) \[([A-Za-z0-9_-]{11})\]\.info\.json$/i
+const SUB = /^(.*) \[([A-Za-z0-9_-]+)\]\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
+const INFO = /^(.*) \[([A-Za-z0-9_-]+)\]\.info\.json$/i
 
 export interface SubtitleFile {
   language: string
@@ -58,8 +59,8 @@ export function languageMatches(tag: string, languages: readonly string[]): bool
 
 async function readInfo(path: string): Promise<{ id: string | null; title: string; language?: string }> {
   try {
-    const raw = JSON.parse(await readFile(path, 'utf8')) as { id?: unknown; title?: unknown; language?: unknown }
-    const id = typeof raw.id === 'string' ? raw.id : null
+    const raw = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
+    const id = mediaId(raw)
     const title = typeof raw.title === 'string' ? raw.title : ''
     const language = typeof raw.language === 'string' && raw.language.trim() !== '' ? raw.language : undefined
     return { id, title, language }

@@ -203,6 +203,7 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
 
     const dlRes = await runCmd(
       downloadArgs({
+        id: probe.id,
         url,
         dest,
         languages: [lang],

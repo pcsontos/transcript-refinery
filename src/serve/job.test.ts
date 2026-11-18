@@ -122,6 +122,36 @@ describe('runJob', () => {
     expect(callbacks).toEqual([{ status: 'ready', title: 'Német' }])
   })
 
+  it('nem YouTube-os tétel: az R2-beli info.json puszta id-je a mediaId-vel egyezik (felirat és recept)', async () => {
+    const peer = 'peertube-d4VvgzW5m4jaGr9JFVBUCg'
+    const info = new TextEncoder().encode(
+      JSON.stringify({ extractor_key: 'PeerTube', id: 'd4VvgzW5m4jaGr9JFVBUCg', title: 'Cím', language: 'en' }),
+    )
+    const store = memoryStore({
+      [`videos/${peer}/en.vtt`]: new Uint8Array([1]),
+      [`videos/${peer}/info.json`]: info,
+    })
+    const peerJob = { jobId: 'job-p', videoId: peer, url: 'https://makertube.net/w/d4Vv' }
+    const callbacks: CallbackBody[] = []
+    await runJob(peerJob, {
+      ...emptyEffects(store),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Cím' }])
+    const seen: string[] = []
+    await runJob({ ...peerJob, recipes: ['summary'] }, {
+      ...effectsWith(store, []),
+      refine: (videoId) => {
+        seen.push(videoId)
+        return Promise.resolve({ ok: true, noteUrl: 'a_transcript.md' })
+      },
+    })
+    expect(seen).toEqual([peer])
+  })
+
   it('hiányos helyi párt töröl, majd letölt', async () => {
     const store = memoryStore()
     const calls: string[] = []

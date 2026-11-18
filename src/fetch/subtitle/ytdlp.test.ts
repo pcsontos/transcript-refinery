@@ -6,6 +6,7 @@ import { folderSource } from '../../source/folder.js'
 import { commandFetch } from '../command.js'
 import {
   createYtdlpRunner,
+  audioDownloadArgs,
   downloadArgs,
   originalSubtitleLang,
   parseFeedProbe,
@@ -25,6 +26,7 @@ describe('yt-dlp argumentumok', () => {
       languages: ['hu', 'en'],
       formats: ['srt', 'vtt'],
       overwrite: false,
+      id: 'abcdefghijk',
     })
     expect(args).toEqual([
       '--skip-download',
@@ -43,7 +45,7 @@ describe('yt-dlp argumentumok', () => {
       '--paths',
       'home:/out/Csatorna',
       '-o',
-      '%(title)s [%(id)s].%(ext)s',
+      '%(title)s [abcdefghijk].%(ext)s',
       '--',
       'https://www.youtube.com/watch?v=abcdefghijk',
     ])
@@ -58,6 +60,7 @@ describe('yt-dlp argumentumok', () => {
       languages: ['hu'],
       formats: ['vtt'],
       overwrite: true,
+      id: 'abcdefghijk',
     })
     expect(args).toContain('--force-overwrites')
     expect(args).not.toContain('--no-overwrites')
@@ -103,6 +106,21 @@ describe('yt-dlp argumentumok', () => {
       manualLangs: ['en'],
       automaticLangs: ['en-orig', 'hu'],
     })
+  })
+
+  it('a nem YouTube-os próba azonosítója a mediaId, a típus és az oldal URL-je is kijön', () => {
+    expect(
+      parseVideoProbe(
+        '{"extractor_key":"PeerTube","id":"d4VvgzW5m4jaGr9JFVBUCg","webpage_url":"https://makertube.net/w/d4Vv"}',
+      ),
+    ).toMatchObject({ id: 'peertube-d4VvgzW5m4jaGr9JFVBUCg', webpageUrl: 'https://makertube.net/w/d4Vv' })
+    expect(parseVideoProbe('{"_type":"playlist","id":"PLxxx","title":"L"}')).toMatchObject({ type: 'playlist' })
+    expect(parseVideoProbe('{"extractor_key":"Youtube","id":"abcdefghijk"}')?.id).toBe('abcdefghijk')
+  })
+
+  it('az audio-letöltés fájlneve is a kapott azonosítót viszi', () => {
+    const args = audioDownloadArgs({ url: 'U', dest: '/d', overwrite: false, id: 'peertube-x' })
+    expect(args[args.indexOf('-o') + 1]).toBe('%(title)s [peertube-x].%(ext)s')
   })
 
   it('az eredeti nyelv a videó nyelve, a fordított automatikus sáv kimarad', () => {
@@ -156,7 +174,7 @@ describe('yt-dlp argumentumok', () => {
       }),
     ).toBe('en-orig')
     expect(originalSubtitleLang({ manualLangs: ['en'], automaticLangs: ['en'] })).toBeNull()
-    expect(parseVideoProbe('{"id":"rovid"}')).toBeNull()
+    expect(parseVideoProbe('{"title":"nincs id"}')).toBeNull()
     expect(parsePlaylistProbe('{"id":"PLxxx","title":"Kurzus","entries":[{"title":"nincs id"}]}')).toEqual({
       id: 'PLxxx',
       title: 'Kurzus',

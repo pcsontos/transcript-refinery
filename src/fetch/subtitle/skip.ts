@@ -1,9 +1,10 @@
 import { readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { sanitizeSegment } from '../../vault/sanitize.js'
+import { mediaId } from '../media-id.js'
 
-const SUB = /^(.*) \[([A-Za-z0-9_-]{11})\]\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
-const INFO = /^(.*) \[([A-Za-z0-9_-]{11})\]\.info\.json$/i
+const SUB = /^(.*) \[([A-Za-z0-9_-]+)\]\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.(vtt|srt)$/i
+const INFO = /^(.*) \[([A-Za-z0-9_-]+)\]\.info\.json$/i
 
 export function videoDir(out: string, channel: string, flat: boolean): string {
   if (flat) return out
@@ -24,8 +25,7 @@ function languageMatches(tag: string, languages: readonly string[]): boolean {
 
 async function jsonId(path: string): Promise<string | null> {
   try {
-    const raw = JSON.parse(await readFile(path, 'utf8')) as { id?: unknown }
-    return typeof raw.id === 'string' ? raw.id : null
+    return mediaId(JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>)
   } catch {
     return null
   }

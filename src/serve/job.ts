@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { parseAudioArgs, type Pick } from '../fetch/audio/args.js'
 import { parseTranscribeArgs } from '../whisper/submit.js'
 import { AFTER_WHISPER, MISSING_TRANSCRIPT } from '../whisper/after.js'
+import { mediaId } from '../fetch/media-id.js'
 import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
 import { RECIPES } from '../recipe/registry.js'
@@ -136,12 +137,8 @@ async function remoteReady(
     const body = await store.get(key)
     if (body === null || body.byteLength === 0) continue
     try {
-      const raw = JSON.parse(new TextDecoder().decode(body)) as {
-        id?: unknown
-        title?: unknown
-        language?: unknown
-      }
-      if (raw.id !== videoId) continue
+      const raw = JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>
+      if (mediaId(raw) !== videoId) continue
       infoOk = true
       infoLanguage = typeof raw.language === 'string' && raw.language.trim() !== '' ? raw.language : undefined
       const text = typeof raw.title === 'string' ? raw.title : ''
@@ -216,8 +213,8 @@ async function loadSummaryPair(effects: JobEffects, videoId: string): Promise<Su
   let accepted = effects.languages
   let infoLanguage: string | null = null
   try {
-    const raw = JSON.parse(new TextDecoder().decode(infoBody)) as { id?: unknown; title?: unknown; language?: unknown }
-    if (raw.id !== videoId) return { ok: false, error: MISSING_PAIR }
+    const raw = JSON.parse(new TextDecoder().decode(infoBody)) as Record<string, unknown>
+    if (mediaId(raw) !== videoId) return { ok: false, error: MISSING_PAIR }
     const text = typeof raw.title === 'string' ? raw.title : ''
     title = text.trim() === '' ? videoId : text
     if (typeof raw.language === 'string' && raw.language.trim() !== '') {

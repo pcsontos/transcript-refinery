@@ -219,7 +219,7 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     }
     const destRel = destOf(probe.channel ?? '')
     sink({ type: 'item:step', itemId: probe.id, step: 'letöltés' })
-    const download = await runCmd(audioDownloadArgs({ url, dest: join(store.staging, destRel), overwrite: deps.overwrite }))
+    const download = await runCmd(audioDownloadArgs({ id: probe.id, url, dest: join(store.staging, destRel), overwrite: deps.overwrite }))
     const paths = await findDownloaded(destRel, probe.id)
     if (paths === null) {
       await failed(label, (download.code !== 0 ? firstLine(download.stderr) : '') || 'nincs hangfájl', probe.id)

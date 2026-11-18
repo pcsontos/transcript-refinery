@@ -34,6 +34,12 @@ describe('mapInfoJson', () => {
     })
   })
 
+  it('a nem YouTube-os tétel videoId-ja a mediaId, a feed-epizódé (id nélkül) üres marad', () => {
+    expect(mapInfoJson({ extractor_key: 'PeerTube', id: 'd4Vv' }).metadata.videoId).toBe('peertube-d4Vv')
+    expect(mapInfoJson({ extractor_key: 'Youtube', id: 'abcdefghijk' }).metadata.videoId).toBe('abcdefghijk')
+    expect(mapInfoJson({ _type: 'url_transparent', title: 'Ep' }).metadata.videoId).toBeUndefined()
+  })
+
   it('a csatornát az uploader mezőből is elfogadja', () => {
     expect(mapInfoJson({ uploader: 'Valaki' }).metadata.channel).toBe('Valaki')
   })
