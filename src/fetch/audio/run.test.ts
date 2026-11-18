@@ -320,6 +320,66 @@ describe('podcast-feed', () => {
   })
 })
 
+describe('nem YouTube-os oldal (yt-dlp)', () => {
+  const PAGE = 'https://makertube.net/w/d4VvgzW5m4jaGr9JFVBUCg'
+  const PEER = 'peertube-d4VvgzW5m4jaGr9JFVBUCg'
+  const htmlFetch: typeof fetch = () => Promise.resolve(new Response('<html/>', { headers: { 'content-type': 'text/html; charset=utf-8' } }))
+  const probe = (over: Record<string, unknown> = {}): string =>
+    JSON.stringify({ extractor_key: 'PeerTube', id: 'd4VvgzW5m4jaGr9JFVBUCg', title: 'Cím', channel: 'Csatorna', language: 'en', subtitles: {}, automatic_captions: {}, ...over })
+  const pageRunner = (probeJson: string, calls: string[][]): ProcessRunner => async (args) => {
+    calls.push([...args])
+    if (args[0] === '--version') return ok('1')
+    if (args.includes('-J')) return ok(probeJson)
+    const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
+    await mkdir(dest, { recursive: true })
+    await writeFile(join(dest, `Cím [${PEER}].m4a`), 'audio')
+    await writeFile(join(dest, `Cím [${PEER}].info.json`), '{}')
+    return ok()
+  }
+
+  it('kiterjesztés nélküli text/html URL: videoProbe, peertube- nevű letöltés, felirat nélkül átírásra leadva', async () => {
+    const calls: string[][] = []
+    const handed: string[] = []
+    const r = deps(localAudioStore(await tmp()), { runner: pageRunner(probe(), calls), calls, downloads: () => [] }, {
+      fetchImpl: htmlFetch,
+      handoff: (id) => {
+        handed.push(id)
+        return Promise.resolve('submitted')
+      },
+    })
+    await runAudioFetch([PAGE], r.deps)
+    expect(calls.some((args) => args.includes('-J') && args.includes('--no-playlist'))).toBe(true)
+    const download = calls.find((args) => args.includes('-f'))
+    expect(download?.[(download?.indexOf('-o') ?? 0) + 1]).toBe(`%(title)s [${PEER}].%(ext)s`)
+    expect(handed).toEqual([PEER])
+    expect(r.lines).toEqual([`letöltve, átírásra leadva: Cím [${PEER}]`])
+  })
+
+  it('audio/mpeg kiterjesztés nélkül: közvetlen letöltés, a yt-dlp nem kap próbát', async () => {
+    const calls: string[][] = []
+    const mpeg: typeof fetch = () => Promise.resolve(new Response('abc', { headers: { 'content-type': 'audio/mpeg' } }))
+    const r = deps(localAudioStore(await tmp()), { runner: pageRunner(probe(), calls), calls, downloads: () => [] }, { fetchImpl: mpeg })
+    await runAudioFetch(['https://f.hu/stream/1'], r.deps)
+    expect(calls.some((args) => args.includes('-J'))).toBe(false)
+    expect(r.lines[0]).toMatch(/^letöltve: /)
+  })
+
+  it('lista-próba: hibasor, letöltés nélkül', async () => {
+    const calls: string[][] = []
+    const r = deps(localAudioStore(await tmp()), { runner: pageRunner(probe({ _type: 'playlist' }), calls), calls, downloads: () => [] }, { fetchImpl: htmlFetch })
+    await runAudioFetch([PAGE], r.deps)
+    expect(r.lines).toEqual([`hiba: ${PAGE}: nem YouTube-lista: egyenként add meg a videókat`])
+    expect(calls.some((args) => args.includes('-f'))).toBe(false)
+  })
+
+  it('HTML-oldal --pick-kel: a --pick csak feedhez adható meg', async () => {
+    const calls: string[][] = []
+    const r = deps(localAudioStore(await tmp()), { runner: pageRunner(probe(), calls), calls, downloads: () => [] }, { fetchImpl: htmlFetch, pick: [1] })
+    await runAudioFetch([PAGE], r.deps)
+    expect(r.lines).toEqual([`hiba: ${PAGE}: a --pick csak feedhez adható meg`])
+  })
+})
+
 describe('whisper-fallback', () => {
   const NO_SUB = { language: 'hu', subtitles: {}, automatic_captions: {} }
   const WITH_SUB = { language: 'hu', subtitles: {}, automatic_captions: { hu: [] } }

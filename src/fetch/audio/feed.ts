@@ -67,15 +67,22 @@ export function resolvePick(pick: Pick, count: number): { ok: true; indexes: num
   return { ok: true, indexes: pick.map((n) => n - 1) }
 }
 
-/** Feed-e az URL: nincs hangkiterjesztése, és a Content-Type RSS/XML. A törzset eldobja. */
-export async function detectFeed(url: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
-  if (directTarget(url).ext !== null) return false
+const HTML_TYPES = ['text/html', 'application/xhtml+xml']
+
+/**
+ * Az URL fajtája: `feed` (RSS/XML Content-Type), `html` (weboldal, a yt-dlp-nek adjuk), egyébként `other`
+ * (közvetlen fájl). Hangkiterjesztésű URL-re kérés nélkül `other`. Egy GET, a törzset eldobja.
+ */
+export async function feedKind(url: string, fetchImpl: typeof fetch = fetch): Promise<'feed' | 'html' | 'other'> {
+  if (directTarget(url).ext !== null) return 'other'
   try {
     const response = await fetchImpl(url.trim().split('#')[0] ?? url)
     await response.body?.cancel()
     const type = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? ''
-    return response.ok && FEED_TYPES.includes(type)
+    if (!response.ok) return 'other'
+    if (FEED_TYPES.includes(type)) return 'feed'
+    return HTML_TYPES.includes(type) ? 'html' : 'other'
   } catch {
-    return false
+    return 'other'
   }
 }

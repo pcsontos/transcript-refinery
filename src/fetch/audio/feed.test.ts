@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FeedProbe } from '../subtitle/ytdlp.js'
-import { chunkMessages, feedListLines, feedMessages, feedHash, pickHint, resolvePick } from './feed.js'
+import { chunkMessages, feedKind, feedListLines, feedMessages, feedHash, pickHint, resolvePick } from './feed.js'
 
 const entry = (title: string, timestamp: number | null = null, duration: number | null = null) => ({ url: `https://f.hu/${title}.mp3`, title, duration, timestamp, raw: {} })
 
@@ -62,5 +62,28 @@ describe('chunkMessages', () => {
       expect(part.startsWith('Fej\n')).toBe(true)
     }
     expect(parts.flatMap((part) => part.split('\n').slice(1))).toEqual(lines)
+  })
+})
+
+describe('feedKind', () => {
+  const reply = (type: string, status = 200): typeof fetch => () => Promise.resolve(new Response('x', { status, headers: { 'content-type': type } }))
+
+  it('az RSS-típus feed, a HTML-típus html, a többi other', async () => {
+    expect(await feedKind('https://f.hu/rss', reply('application/rss+xml; charset=utf-8'))).toBe('feed')
+    expect(await feedKind('https://f.hu/w/abc', reply('text/html; charset=utf-8'))).toBe('html')
+    expect(await feedKind('https://f.hu/w/abc', reply('application/xhtml+xml'))).toBe('html')
+    expect(await feedKind('https://f.hu/w/abc', reply('audio/mpeg'))).toBe('other')
+    expect(await feedKind('https://f.hu/w/abc', reply('text/html', 404))).toBe('other')
+  })
+
+  it('a hangkiterjesztés kérés nélkül other, a hálózati hiba other', async () => {
+    let calls = 0
+    const counting: typeof fetch = () => {
+      calls += 1
+      return Promise.resolve(new Response('x'))
+    }
+    expect(await feedKind('https://f.hu/a.mp3', counting)).toBe('other')
+    expect(calls).toBe(0)
+    expect(await feedKind('https://f.hu/w/abc', () => Promise.reject(new Error('hálózat')))).toBe('other')
   })
 })

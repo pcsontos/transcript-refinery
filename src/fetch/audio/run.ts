@@ -21,7 +21,7 @@ import {
   YTDLP_MISSING,
 } from '../subtitle/ytdlp.js'
 import { directTarget, downloadDirect } from './direct.js'
-import { detectFeed, feedHash, feedMessages, resolvePick } from './feed.js'
+import { feedHash, feedKind, feedMessages, resolvePick } from './feed.js'
 import { audioId, type AudioStore } from './store.js'
 
 export type AudioOutcome = 'downloaded' | 'skipped' | 'failed' | 'uploaded' | 'listed'
@@ -209,6 +209,11 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
       await failed(url, probeResult.code !== 0 ? firstLine(probeResult.stderr) || 'letöltési hiba' : 'hiányzó videóazonosító', url)
       return
     }
+    if (probe.type === 'playlist') {
+      sink({ type: 'item:start', itemId: url, title: url })
+      await failed(url, 'nem YouTube-lista: egyenként add meg a videókat', url)
+      return
+    }
     const title = FIRST_TITLE_LINE(probe.title) ?? FIRST_TITLE_LINE(fallbackTitle) ?? probe.id
     const label = `${title} [${probe.id}]`
     sink({ type: 'item:start', itemId: probe.id, title: label })
@@ -284,12 +289,14 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
   }
 
   async function fetchDirect(url: string): Promise<void> {
-    // A feedet előre felismerjük (csak kiterjesztés nélküli URL-nél kér le), így listázáskor nincs item:* esemény.
-    if (await detectFeed(url, deps.fetchImpl)) return fetchFeed(url)
+    // A fajtát előre felismerjük (csak kiterjesztés nélküli URL-nél kér le), így listázáskor nincs item:* esemény.
+    const kind = await feedKind(url, deps.fetchImpl)
+    if (kind === 'feed') return fetchFeed(url)
     if (deps.pick !== undefined) {
       sink({ type: 'item:start', itemId: url, title: url })
       return failed(url, 'a --pick csak feedhez adható meg', url)
     }
+    if (kind === 'html') return fetchVideo(url, (channel) => videoDir('', channel, false))
     const target = directTarget(url)
     const label = `${target.name} [${target.hash}]`
     sink({ type: 'item:start', itemId: target.hash, title: label })
