@@ -61,11 +61,11 @@ const listing = async (root: string): Promise<string[]> => (await readdir(root, 
 
 describe('audioDownloadArgs', () => {
   it('pontos', () => {
-    expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: false })).toEqual([
+    expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: false, id: 'ID' })).toEqual([
       '-f', 'bestaudio[ext=m4a]/bestaudio', '--write-info-json', '--no-playlist', '--no-progress', '--no-overwrites',
-      '--js-runtimes', 'node', '--paths', 'home:/d', '-o', '%(title)s [%(id)s].%(ext)s', '--', 'U',
+      '--js-runtimes', 'node', '--paths', 'home:/d', '-o', '%(title)s [ID].%(ext)s', '--', 'U',
     ])
-    expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: true })).toContain('--force-overwrites')
+    expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: true, id: 'ID' })).toContain('--force-overwrites')
   })
 })
 
@@ -309,6 +309,48 @@ describe('podcast-feed', () => {
     expect(await listing(root)).toEqual([])
   })
 
+  describe('<media:content> hang', () => {
+    const PAGE = 'https://omny.fm/shows/x/ep1'
+    const AUDIO = 'https://traffic.omny.fm/ep1/audio.mp3?utm_source=x&t=1'
+    const xml = `<rss><channel><item><link>${PAGE}</link><media:content url="${AUDIO.replace('&', '&amp;')}" type="audio/mpeg"/></item></channel></rss>`
+    const pageFeed = JSON.stringify({ _type: 'playlist', title: 'Podcast', entries: [{ url: `${PAGE}#__youtubedl_smuggle=x`, title: 'Első' }] })
+    const pageRunner: ProcessRunner = (args) => Promise.resolve(args[0] === '--version' ? ok('1') : ok(pageFeed))
+
+    it('a hang a media:content URL-jéről jön, a fájlnév annak hash-ét viseli', async () => {
+      const requested: string[] = []
+      const fetched: typeof fetch = (input) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        requested.push(url)
+        if (url === FEED) return Promise.resolve(new Response(xml, { headers: { 'content-type': 'application/rss+xml' } }))
+        return Promise.resolve(new Response('abc', { headers: { 'content-type': 'audio/mpeg' } }))
+      }
+      const root = await tmp()
+      const run = deps(localAudioStore(root), { runner: pageRunner, calls: [], downloads: () => [] }, { fetchImpl: fetched, pick: [1] })
+      await runAudioFetch([FEED], run.deps)
+      expect(requested).toContain(AUDIO)
+      expect(requested).not.toContain(PAGE)
+      expect(run.lines).toEqual([`letöltve: Első [${hash(AUDIO)}]`])
+    })
+
+    it('ha a feed GET-je hibát ad, a yt-dlp URL-je marad, hibasor nélkül a feed-lekérésről', async () => {
+      let feedCalls = 0
+      const fetched: typeof fetch = (input) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        if (url === FEED) {
+          feedCalls += 1
+          // az első GET (feedKind) feed, a második (<media:content>) hiba
+          return feedCalls === 1
+            ? Promise.resolve(new Response('<rss/>', { headers: { 'content-type': 'application/rss+xml' } }))
+            : Promise.reject(new Error('hálózat'))
+        }
+        return Promise.resolve(new Response('abc', { headers: { 'content-type': 'audio/mpeg' } }))
+      }
+      const run = deps(localAudioStore(await tmp()), { runner: pageRunner, calls: [], downloads: () => [] }, { fetchImpl: fetched, pick: [1] })
+      await runAudioFetch([FEED], run.deps)
+      expect(run.lines).toEqual([`letöltve: Első [${hash(PAGE)}]`])
+    })
+  })
+
   it('előbb közvetlen mp3-linkként, majd a feedből → kihagyva', async () => {
     const root = await tmp()
     const store = localAudioStore(root)
@@ -317,6 +359,66 @@ describe('podcast-feed', () => {
     const second = deps(store, fake, { fetchImpl, pick: [1] })
     await runAudioFetch([FEED], second.deps)
     expect(second.lines).toEqual([`kihagyva: Első [${hash(E1)}]`])
+  })
+})
+
+describe('nem YouTube-os oldal (yt-dlp)', () => {
+  const PAGE = 'https://makertube.net/w/d4VvgzW5m4jaGr9JFVBUCg'
+  const PEER = 'peertube-d4VvgzW5m4jaGr9JFVBUCg'
+  const htmlFetch: typeof fetch = () => Promise.resolve(new Response('<html/>', { headers: { 'content-type': 'text/html; charset=utf-8' } }))
+  const probe = (over: Record<string, unknown> = {}): string =>
+    JSON.stringify({ extractor_key: 'PeerTube', id: 'd4VvgzW5m4jaGr9JFVBUCg', title: 'Cím', channel: 'Csatorna', language: 'en', subtitles: {}, automatic_captions: {}, ...over })
+  const pageRunner = (probeJson: string, calls: string[][]): ProcessRunner => async (args) => {
+    calls.push([...args])
+    if (args[0] === '--version') return ok('1')
+    if (args.includes('-J')) return ok(probeJson)
+    const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
+    await mkdir(dest, { recursive: true })
+    await writeFile(join(dest, `Cím [${PEER}].m4a`), 'audio')
+    await writeFile(join(dest, `Cím [${PEER}].info.json`), '{}')
+    return ok()
+  }
+
+  it('kiterjesztés nélküli text/html URL: videoProbe, peertube- nevű letöltés, felirat nélkül átírásra leadva', async () => {
+    const calls: string[][] = []
+    const handed: string[] = []
+    const r = deps(localAudioStore(await tmp()), { runner: pageRunner(probe(), calls), calls, downloads: () => [] }, {
+      fetchImpl: htmlFetch,
+      handoff: (id) => {
+        handed.push(id)
+        return Promise.resolve('submitted')
+      },
+    })
+    await runAudioFetch([PAGE], r.deps)
+    expect(calls.some((args) => args.includes('-J') && args.includes('--no-playlist'))).toBe(true)
+    const download = calls.find((args) => args.includes('-f'))
+    expect(download?.[(download?.indexOf('-o') ?? 0) + 1]).toBe(`%(title)s [${PEER}].%(ext)s`)
+    expect(handed).toEqual([PEER])
+    expect(r.lines).toEqual([`letöltve, átírásra leadva: Cím [${PEER}]`])
+  })
+
+  it('audio/mpeg kiterjesztés nélkül: közvetlen letöltés, a yt-dlp nem kap próbát', async () => {
+    const calls: string[][] = []
+    const mpeg: typeof fetch = () => Promise.resolve(new Response('abc', { headers: { 'content-type': 'audio/mpeg' } }))
+    const r = deps(localAudioStore(await tmp()), { runner: pageRunner(probe(), calls), calls, downloads: () => [] }, { fetchImpl: mpeg })
+    await runAudioFetch(['https://f.hu/stream/1'], r.deps)
+    expect(calls.some((args) => args.includes('-J'))).toBe(false)
+    expect(r.lines[0]).toMatch(/^letöltve: /)
+  })
+
+  it('lista-próba: hibasor, letöltés nélkül', async () => {
+    const calls: string[][] = []
+    const r = deps(localAudioStore(await tmp()), { runner: pageRunner(probe({ _type: 'playlist' }), calls), calls, downloads: () => [] }, { fetchImpl: htmlFetch })
+    await runAudioFetch([PAGE], r.deps)
+    expect(r.lines).toEqual([`hiba: ${PAGE}: nem YouTube-lista: egyenként add meg a videókat`])
+    expect(calls.some((args) => args.includes('-f'))).toBe(false)
+  })
+
+  it('HTML-oldal --pick-kel: a --pick csak feedhez adható meg', async () => {
+    const calls: string[][] = []
+    const r = deps(localAudioStore(await tmp()), { runner: pageRunner(probe(), calls), calls, downloads: () => [] }, { fetchImpl: htmlFetch, pick: [1] })
+    await runAudioFetch([PAGE], r.deps)
+    expect(r.lines).toEqual([`hiba: ${PAGE}: a --pick csak feedhez adható meg`])
   })
 })
 

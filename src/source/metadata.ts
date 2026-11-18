@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { mediaId } from '../fetch/media-id.js'
 import type { ItemMetadata } from '../types.js'
 
 export interface SidecarData {
@@ -42,7 +43,7 @@ export function mapInfoJson(raw: unknown): SidecarData {
   return {
     title: str(info.title),
     metadata: {
-      videoId: str(info.id),
+      videoId: mediaId(info) ?? undefined,
       channel: str(info.channel) ?? str(info.uploader),
       uploadedAt: isoDate(info.upload_date),
       url: str(info.webpage_url),

@@ -2,14 +2,16 @@ import type { JobRow, ModelOverride, RunRow } from './store.js'
 
 export const REJECTED_SECRET = 'A konténer elutasította a hívást.'
 
-export const PLAYLIST_LINE = 'Lejátszási lista későbbre marad.'
-export const NOT_YOUTUBE_LINE = 'Nem YouTube-cím.'
-export const NO_VIDEO_LINE = 'Nincs YouTube-videó az üzenetben.'
+export const NO_LINK_LINE = 'Nincs link az üzenetben.'
 export const TEXT_ONLY = 'Csak .txt vagy .md fájlt tudok feldolgozni.'
 export const SCAN_EMPTY = 'Írd a /scan után a szöveget, vagy küldd fájlként.'
 export const DOWNLOAD_FAILED = 'A fájlt nem tudtam letölteni, küldd újra.'
 export const SCAN_LONG =
   'A szöveg elérhette a Telegram-üzenet határát, lehet, hogy csonka. Hosszabb átiratot fájlként küldj.'
+
+export function resolvingLine(url: string): string {
+  return `Megnézem: ${url}`
+}
 
 export function queuedLine(videoId: string): string {
   return `Sorba került: ${videoId}`
@@ -35,6 +37,31 @@ export function readyLine(title: string, text = false): string {
 
 export function alreadyLine(videoId: string): string {
   return `Már sorban van: ${videoId}.`
+}
+
+export function transcribeHintLine(url: string): string {
+  return `Átíráshoz: /fetch_audio ${url}`
+}
+
+export const LIST_CANCELLED = 'Mégse.'
+
+export function listLine(title: string, n: number, k: number): string {
+  const head = `Lista: ${flatTitle(title).slice(0, 200)}, ${n} videó`
+  return n - k === 0 ? `${head}, mind kész vagy sorban.` : `${head} (ebből ${k} már kész vagy sorban). Mit tegyek sorba?`
+}
+
+export function listQueuedLine(count: number, title: string): string {
+  return `Sorba került: ${count} videó (${flatTitle(title).slice(0, 200)}).`
+}
+
+/** A lista megerősítő gombjai. Az adat `L:<a|v|x>:<jobId>`; a kisbetűs `l:` a nyelvgomb. */
+export function listKeyboard(jobId: string, hasVideo: boolean, free: number): Key[][] {
+  const keys: Key[] = [
+    ...(hasVideo ? [{ text: 'Csak ezt a videót', data: `L:v:${jobId}` }] : []),
+    ...(free > 0 ? [{ text: `Mind (${free})`, data: `L:a:${jobId}` }] : []),
+    { text: 'Mégse', data: `L:x:${jobId}` },
+  ]
+  return inRows(keys, 2)
 }
 
 export const MISSING_NOTE_URL = 'A jegyzet linkje hiányzik.'

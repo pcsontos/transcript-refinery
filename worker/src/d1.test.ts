@@ -20,6 +20,7 @@ function capture(): D1Like & { calls: { sql: string; values: unknown[] }[] } {
       }
       return statement
     },
+    batch: (statements) => Promise.resolve(statements.map(() => ({ meta: { changes: 1 } }))),
   }
 }
 
@@ -116,5 +117,20 @@ describe('D1: modellfelülírás', () => {
     const db = capture()
     await createD1Store(db).setOverride({ sub: 's', recipe: 'notes', mode: 'once', model: 'm' })
     expect(db.calls[0]?.sql).toContain('ON CONFLICT(sub, recipe, mode)')
+  })
+})
+
+describe('D1: feloldott lista', () => {
+  it('az insertResolve cserél, a takeResolve DELETE … RETURNING, a knownVideos egy json_each lekérdezés', async () => {
+    const db = capture()
+    const store = createD1Store(db)
+    await store.insertResolve({ jobId: '7:resolve-7-0', chatId: '42', title: 'L', items: [], videoId: null })
+    await store.takeResolve('7:resolve-7-0')
+    await store.knownVideos(['a', 'b'])
+    expect(db.calls[0]?.sql).toContain('INSERT OR REPLACE INTO resolves')
+    expect(db.calls[1]?.sql).toContain('DELETE FROM resolves WHERE job_id = ? RETURNING *')
+    expect(db.calls[2]?.sql).toContain('json_each')
+    expect(db.calls[2]?.values).toEqual(['["a","b"]'])
+    expect(db.calls).toHaveLength(3)
   })
 })

@@ -2,7 +2,8 @@ import { join } from 'node:path'
 import { parseAudioArgs, type Pick } from '../fetch/audio/args.js'
 import { parseTranscribeArgs } from '../whisper/submit.js'
 import { AFTER_WHISPER, MISSING_TRANSCRIPT } from '../whisper/after.js'
-import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
+import { mediaId } from '../fetch/media-id.js'
+import { YTDLP_MISSING, type ProcessResult } from '../fetch/subtitle/ytdlp.js'
 import { LANGUAGE_NAMES, type LanguageTag } from '../lang/identify.js'
 import { RECIPES } from '../recipe/registry.js'
 import { isLanguageTag, normalizeText, textItemId } from '../source/text.js'
@@ -28,6 +29,8 @@ export interface ServeJob {
    * `<feed-url> --pick <lista>`). Első szava `transcribe`: átírás-munka (`transcribe [<id>…] [--lang <kód>]`).
    */
   fetch?: boolean
+  /** Link vagy lista feloldása (`url`): a serve visszahívja a `resolved` üzenetet, letöltés nincs. */
+  resolve?: boolean
 }
 
 export type CallbackBody =
@@ -44,6 +47,8 @@ export type CallbackBody =
   | { status: 'stalled'; text: string }
   /** Kész a jelölős átirat (#45): a leadó munkának szól, a Worker új tételt és receptfutást ír. */
   | { status: 'transcribed'; videoId: string; title: string; recipes: string[] }
+  /** A feloldott link: egy videó (`playlist: false`) vagy a lista tételei, sorrendben, azonosító szerint egyedien. */
+  | { status: 'resolved'; title: string; playlist: boolean; items: { videoId: string; url: string; title: string }[] }
 
 /**
  * `followUp`: a jelentés (`ready`/`failed`) után futó munka, pl. a hosszan tartó showroom-deploy.
@@ -72,6 +77,8 @@ export interface JobEffects {
   deletePair: (videoId: string) => Promise<void>
   readFile: (path: string) => Promise<Uint8Array>
   fetchSubtitle: (url: string) => Promise<{ code: number; stdout: string; stderr: string }>
+  /** `yt-dlp -J --flat-playlist <url>` a feloldáshoz. */
+  resolve?: (url: string) => Promise<ProcessResult>
   callback: (jobId: string, body: CallbackBody) => Promise<void>
   outDir?: string
   writeFile?: (path: string, body: Uint8Array) => Promise<void>
@@ -136,12 +143,8 @@ async function remoteReady(
     const body = await store.get(key)
     if (body === null || body.byteLength === 0) continue
     try {
-      const raw = JSON.parse(new TextDecoder().decode(body)) as {
-        id?: unknown
-        title?: unknown
-        language?: unknown
-      }
-      if (raw.id !== videoId) continue
+      const raw = JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>
+      if (mediaId(raw) !== videoId) continue
       infoOk = true
       infoLanguage = typeof raw.language === 'string' && raw.language.trim() !== '' ? raw.language : undefined
       const text = typeof raw.title === 'string' ? raw.title : ''
@@ -216,8 +219,8 @@ async function loadSummaryPair(effects: JobEffects, videoId: string): Promise<Su
   let accepted = effects.languages
   let infoLanguage: string | null = null
   try {
-    const raw = JSON.parse(new TextDecoder().decode(infoBody)) as { id?: unknown; title?: unknown; language?: unknown }
-    if (raw.id !== videoId) return { ok: false, error: MISSING_PAIR }
+    const raw = JSON.parse(new TextDecoder().decode(infoBody)) as Record<string, unknown>
+    if (mediaId(raw) !== videoId) return { ok: false, error: MISSING_PAIR }
     const text = typeof raw.title === 'string' ? raw.title : ''
     title = text.trim() === '' ? videoId : text
     if (typeof raw.language === 'string' && raw.language.trim() !== '') {
@@ -418,8 +421,65 @@ async function runFetchJob(job: ServeJob, effects: JobEffects, signal?: AbortSig
   }
 }
 
+const UNRESOLVABLE = 'A link nem oldható fel.'
+const EMPTY_LIST = 'a lista üres'
+
+function textOf(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() !== '' ? value : undefined
+}
+
+/** A feloldás: egy yt-dlp-hívás, letöltés nélkül; az eredmény a `resolved` visszahívás. */
+async function runResolveJob(job: ServeJob, effects: JobEffects): Promise<void> {
+  const fail = (error: string) => report(effects, job.jobId, { status: 'failed', error })
+  if (effects.resolve === undefined) return fail(UNRESOLVABLE)
+  let result: ProcessResult
+  try {
+    result = await effects.resolve(job.url)
+  } catch (error) {
+    return fail((error as NodeJS.ErrnoException).code === 'ENOENT' ? YTDLP_MISSING : firstLine((error as Error).message) || UNRESOLVABLE)
+  }
+  if (result.code !== 0) return fail(firstLine(result.stderr) || UNRESOLVABLE)
+  let raw: Record<string, unknown>
+  try {
+    raw = JSON.parse(result.stdout) as Record<string, unknown>
+  } catch {
+    return fail(UNRESOLVABLE)
+  }
+  const title = textOf(raw.title) ?? job.url
+  if (raw._type !== 'playlist') {
+    const videoId = mediaId(raw)
+    if (videoId === null) return fail(UNRESOLVABLE)
+    await report(effects, job.jobId, {
+      status: 'resolved',
+      title,
+      playlist: false,
+      items: [{ videoId, url: textOf(raw.webpage_url) ?? job.url, title }],
+    })
+    return
+  }
+  const seen = new Set<string>()
+  const items: { videoId: string; url: string; title: string }[] = []
+  // A csatornacím tételei a fülek (Videók, Élő …) beágyazott listaként: egy szinttel kibontjuk őket (mérve, 2026-11-18).
+  const entries = (Array.isArray(raw.entries) ? (raw.entries as Record<string, unknown>[]) : []).flatMap((entry) =>
+    Array.isArray(entry.entries) ? (entry.entries as Record<string, unknown>[]) : [entry],
+  )
+  for (const entry of entries) {
+    const videoId = mediaId(entry)
+    const url = textOf(entry.url)
+    if (videoId === null || url === undefined || seen.has(videoId)) continue
+    seen.add(videoId)
+    items.push({ videoId, url, title: textOf(entry.title) ?? videoId })
+  }
+  if (items.length === 0) return fail(EMPTY_LIST)
+  await report(effects, job.jobId, { status: 'resolved', title, playlist: true, items })
+}
+
 /** A `signal` csak a receptjobot és a hangletöltést állítja meg; a felirat-job lefut, az eredményét a Worker elnyeli. */
 export async function runJob(job: ServeJob, effects: JobEffects, signal?: AbortSignal): Promise<void> {
+  if (job.resolve === true) {
+    await runResolveJob(job, effects)
+    return
+  }
   if (job.fetch === true) {
     await runFetchJob(job, effects, signal)
     return

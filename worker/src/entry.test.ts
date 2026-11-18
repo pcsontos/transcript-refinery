@@ -45,6 +45,7 @@ function memoryDb(): D1Like & { rows: unknown[] } {
   const rows: unknown[] = []
   return {
     rows,
+    batch: () => Promise.resolve([]),
     prepare(sql: string): D1Statement {
       const state = { sql, values: [] as unknown[] }
       const statement: D1Statement = {
@@ -307,6 +308,7 @@ describe('worker belépés', () => {
     const job = { job_id: '5:abcdefghijk', update_id: 5, chat_id: '42' }
     const run = { run_id: '5:abcdefghijk:summary', job_id: '5:abcdefghijk', recipes: 'summary', lang: null, status: 'accepted', notified: 0 }
     const db: D1Like = {
+      batch: () => Promise.resolve([]),
       prepare(sql: string): D1Statement {
         const statement: D1Statement = {
           bind: () => statement,
@@ -381,6 +383,7 @@ describe('worker belépés', () => {
     const run = { run_id: '5:abcdefghijk:summary', job_id: '5:abcdefghijk', recipes: 'summary', lang: null, status: 'ready', notified: 1 }
     const binding = { telegram_user_id: '42', sub: 'sub-42', email: 'en@example.com', bound_at: 0 }
     const db: D1Like = {
+      batch: () => Promise.resolve([]),
       prepare(sql: string): D1Statement {
         const statement: D1Statement = {
           bind: () => statement,

@@ -184,6 +184,12 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
       return 'next'
     }
 
+    if (probe.type === 'playlist') {
+      stdout(`[FAIL] ${url}: nem YouTube-lista: egyenként add meg a videókat`)
+      rows.push('failed')
+      return 'next'
+    }
+
     const title = probe.title?.split(/\r?\n/)[0]?.trim() || fallbackTitle?.split(/\r?\n/)[0]?.trim() || probe.id
     const lang = subtitleLang(probe, args.subLang)
     if (!lang) {
@@ -203,6 +209,7 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
 
     const dlRes = await runCmd(
       downloadArgs({
+        id: probe.id,
         url,
         dest,
         languages: [lang],
@@ -243,12 +250,12 @@ export async function commandFetch(argv: readonly string[], runtime?: FetchRunti
       if (stopped) break
       const classified = classifyInput(raw, args.yesPlaylist)
       if (classified.kind === 'rejected') {
-        stdout(`[FAIL] ${classified.raw}: nem YouTube-cím`)
+        stdout(`[FAIL] ${classified.raw}: nem URL`)
         rows.push('failed')
         continue
       }
 
-      if (classified.kind === 'video') {
+      if (classified.kind === 'video' || classified.kind === 'link') {
         const step = await fetchSubtitle(classified.url, (channel) => videoDir(out, channel, args.flat))
         if (step === 'halt') {
           if (rows.length > 0) stdout(summary(rows))

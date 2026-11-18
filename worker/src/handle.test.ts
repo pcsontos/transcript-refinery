@@ -17,6 +17,7 @@ import {
   type PlannedKnock,
   type WorkerDeps,
 } from './handle.js'
+import { listKeyboard } from './messages.js'
 import { BOT_COMMANDS, FETCH_RENAMED, FETCH_USAGE, PICK_USAGE, TRANSCRIBE_PICK_USAGE, TRANSCRIBE_USAGE } from './messages.js'
 import {
   BIND_FIRST,
@@ -1155,7 +1156,7 @@ describe('tájékoztató parancsok', () => {
   it('az ismeretlen parancs a mai választ kapja', async () => {
     const d = deps(await boundStore())
     await handleUpdate(command(98, '/foo'), d)
-    expect(d.sent).toEqual(['Nincs YouTube-videó az üzenetben.'])
+    expect(d.sent).toEqual(['Nincs link az üzenetben.'])
   })
 })
 
@@ -1315,7 +1316,7 @@ describe('szöveges bemenet', () => {
     const store = await boundStore()
     const d = deps(store)
     await handleUpdate(command(5, '/scanner'), d)
-    expect(d.sent).toEqual(['Nincs YouTube-videó az üzenetben.'])
+    expect(d.sent).toEqual(['Nincs link az üzenetben.'])
   })
 
   it('down után a cron a D1 szövegéből kopogtat, és a vár sor a címet mondja', async () => {
@@ -1916,5 +1917,205 @@ describe('átírás utáni utólépés (pcsontos/issue-tracker#45)', () => {
     await handleCallback('7:fetch-7', { status: 'progress', text: 'Epizód: az átírás nem sikerült: rossz fájl' }, d)
     expect(d.sent).toEqual(['Epizód: az átírás nem sikerült: rossz fájl'])
     expect(await findRow(store, '7:fetch-7')).toMatchObject({ status: 'ready' })
+  })
+})
+
+describe('feloldó sorok', () => {
+  const PAGE = 'https://makertube.net/w/d4VvgzW5m4jaGr9JFVBUCg'
+  const LIST = 'https://www.youtube.com/playlist?list=PL123'
+
+  it('a nem YouTube-os link és a lista feloldó sort kap, resolve: true kopogtatással', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    const result = await handleUpdate(command(7, `${PAGE} ${LIST}`), d)
+    expect(d.sent).toEqual([`Megnézem: ${PAGE}\nMegnézem: ${LIST}`])
+    expect(result.knocks).toEqual([
+      { jobId: '7:resolve-7-0', videoId: 'resolve-7-0', url: PAGE, resolve: true },
+      { jobId: '7:resolve-7-1', videoId: 'resolve-7-1', url: LIST, resolve: true },
+    ])
+    expect(await store.listByUpdate(7)).toMatchObject([
+      { jobId: '7:resolve-7-0', videoId: 'resolve-7-0', url: PAGE, title: PAGE, status: 'queued' },
+      { jobId: '7:resolve-7-1', videoId: 'resolve-7-1', url: LIST, title: LIST, status: 'queued' },
+    ])
+  })
+
+  it('a cron a feloldó sort resolve: true jelzővel kopogtatja', async () => {
+    const store = await boundStore()
+    await handleUpdate(command(7, PAGE), deps(store))
+    const clock = deps(store)
+    await handleCron(clock)
+    expect(clock.knocks).toEqual([{ jobId: '7:resolve-7-0', videoId: 'resolve-7-0', url: PAGE, resolve: true }])
+  })
+
+  it('a puszta YouTube-videó marad feliratmunka', async () => {
+    const d = deps(await boundStore())
+    const result = await handleUpdate(command(8, `https://youtu.be/${ID}`), d)
+    expect(result.knocks).toEqual([{ jobId: `8:${ID}`, videoId: ID, url: `https://www.youtube.com/watch?v=${ID}` }])
+  })
+})
+
+describe('a feloldott link (resolved) és a lista gombjai', () => {
+  const PAGE = 'https://makertube.net/w/d4Vv'
+  const PEER = 'peertube-d4Vv'
+  const RID = '7:resolve-7-0'
+  const item = (videoId: string, title = videoId) => ({ videoId, url: `https://x.test/${videoId}`, title })
+  const resolveRow = (partial: Partial<JobRow> = {}) =>
+    acceptedRow({ jobId: RID, updateId: 7, messageId: 7, videoId: 'resolve-7-0', url: PAGE, title: PAGE, ...partial })
+
+  async function setup(url = PAGE) {
+    const store = await boundStore()
+    await store.insert(resolveRow({ url }))
+    return store
+  }
+
+  it('egy videó: új queued sor a tétel URL-jével, a feloldó sor csendben ready', async () => {
+    const store = await setup()
+    const d = deps(store)
+    expect(await handleCallback(RID, { status: 'resolved', title: 'Cím', playlist: false, items: [{ videoId: PEER, url: PAGE, title: 'Cím' }] }, d)).toBe(200)
+    expect(d.sent).toEqual([])
+    expect(d.knocks).toEqual([])
+    expect(await findRow(store, RID)).toMatchObject({ status: 'ready', notifiedReady: true })
+    expect(await findRow(store, `7:${PEER}`)).toMatchObject({ status: 'queued', url: PAGE, title: 'Cím', sub: 'sub-42' })
+  })
+
+  it('nyitott sor ugyanarra a videóra: Már sorban van, új sor nincs', async () => {
+    const store = await setup()
+    await store.insert(acceptedRow({ jobId: `3:${PEER}`, updateId: 3, videoId: PEER }))
+    const d = deps(store)
+    await handleCallback(RID, { status: 'resolved', title: 'Cím', playlist: false, items: [item(PEER)] }, d)
+    expect(d.sent).toEqual([`Már sorban van: ${PEER}.`])
+    expect(await findRow(store, `7:${PEER}`)).toBeNull()
+  })
+
+  it('lista, egy kész tétellel: a szöveg a K-t írja, Mind (2) és Mégse gomb; a második visszahívás nem ír újra', async () => {
+    const store = await setup(`https://www.youtube.com/playlist?list=PL1`)
+    await store.insert(readyRow({ jobId: '2:aaaaaaaaaaa', updateId: 2, videoId: 'aaaaaaaaaaa' }))
+    const d = deps(store)
+    const body = { status: 'resolved' as const, title: 'L', playlist: true, items: [item('aaaaaaaaaaa'), item('bbbbbbbbbbb'), item('ccccccccccc')] }
+    await handleCallback(RID, body, d)
+    expect(d.sent).toEqual(['Lista: L, 3 videó (ebből 1 már kész vagy sorban). Mit tegyek sorba?'])
+    expect(d.keyboards[0]?.flat()).toEqual([
+      { text: 'Mind (2)', data: `L:a:${RID}` },
+      { text: 'Mégse', data: `L:x:${RID}` },
+    ])
+    await handleCallback(RID, body, d)
+    expect(d.sent).toHaveLength(1)
+  })
+
+  it('a watch?v&list sorhoz Csak ezt a videót gomb is jár; ha minden kész, csak a Mégse', async () => {
+    const store = await setup(`https://www.youtube.com/watch?v=${ID}&list=PL1`)
+    for (const id of ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']) {
+      await store.insert(readyRow({ jobId: `2:${id}`, updateId: 2, videoId: id }))
+    }
+    const d = deps(store)
+    await handleCallback(RID, { status: 'resolved', title: 'L', playlist: true, items: [item('aaaaaaaaaaa'), item('bbbbbbbbbbb'), item('ccccccccccc')] }, d)
+    expect(d.sent).toEqual(['Lista: L, 3 videó, mind kész vagy sorban.'])
+    expect(d.keyboards[0]?.flat().map((key) => key.text)).toEqual(['Csak ezt a videót', 'Mégse'])
+  })
+
+  it('Mind: a K-n kívüli sorok, egyetlen kopogtatás; a K a koppintáskor újraszámolódik; a második koppintás semmi', async () => {
+    const store = await setup()
+    const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc']
+    await handleCallback(RID, { status: 'resolved', title: 'L', playlist: true, items: ids.map((id) => item(id)) }, deps(store))
+    // a lista megjelenése után, a koppintás előtt valaki beküldi az elsőt
+    await store.insert(acceptedRow({ jobId: `3:${ids[0]}`, updateId: 3, videoId: ids[0] }))
+    const d = deps(store)
+    const knocks = await handleTap(tap(8, `L:a:${RID}`, 42, 9), d)
+    expect(d.sent).toEqual(['Sorba került: 2 videó (L).'])
+    expect(knocks).toEqual([{ jobId: `7:${ids[1]}`, videoId: ids[1], url: `https://x.test/${ids[1]}` }])
+    expect(await findRow(store, `7:${ids[2]}`)).toMatchObject({ status: 'queued' })
+    expect(await findRow(store, `7:${ids[0]}`)).toBeNull()
+    expect(await handleTap(tap(9, `L:a:${RID}`, 42, 9), d)).toEqual([])
+    expect(d.sent).toHaveLength(1)
+  })
+
+  it('Mind, ha a koppintásig minden tétel sorba került: a mind kész sor, 0 videó nincs', async () => {
+    const store = await setup()
+    const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb']
+    await handleCallback(RID, { status: 'resolved', title: 'L', playlist: true, items: ids.map((id) => item(id)) }, deps(store))
+    for (const id of ids) await store.insert(acceptedRow({ jobId: `3:${id}`, updateId: 3, videoId: id }))
+    const d = deps(store)
+    expect(await handleTap(tap(8, `L:a:${RID}`, 42, 9), d)).toEqual([])
+    expect(d.sent).toEqual(['Lista: L, 2 videó, mind kész vagy sorban.'])
+  })
+
+  it('Mind: a már létező, lezárt jobId-t (ugyanabból az üzenetből) nem szúrja be újra', async () => {
+    const store = await setup()
+    await store.insert(acceptedRow({ jobId: '7:aaaaaaaaaaa', updateId: 7, videoId: 'aaaaaaaaaaa', status: 'failed' }))
+    await handleCallback(RID, { status: 'resolved', title: 'L', playlist: true, items: [item('aaaaaaaaaaa'), item('bbbbbbbbbbb')] }, deps(store))
+    const d = deps(store)
+    await handleTap(tap(8, `L:a:${RID}`, 42, 9), d)
+    expect(d.sent).toEqual(['Sorba került: 1 videó (L).'])
+    expect((await store.listByUpdate(7)).filter((row) => row.jobId === '7:aaaaaaaaaaa')).toHaveLength(1)
+  })
+
+  it('Csak ezt a videót és Mégse', async () => {
+    const url = `https://www.youtube.com/watch?v=${ID}&list=PL1`
+    const store = await setup(url)
+    await handleCallback(RID, { status: 'resolved', title: 'L', playlist: true, items: [item(ID), item('bbbbbbbbbbb')] }, deps(store))
+    const d = deps(store)
+    expect(await handleTap(tap(8, `L:v:${RID}`, 42, 9), d)).toEqual([{ jobId: `7:${ID}`, videoId: ID, url: `https://x.test/${ID}` }])
+    expect(await findRow(store, '7:bbbbbbbbbbb')).toBeNull()
+
+    const other = await setup()
+    await handleCallback(RID, { status: 'resolved', title: 'L', playlist: true, items: [item('bbbbbbbbbbb')] }, deps(other))
+    const c = deps(other)
+    expect(await handleTap(tap(8, `L:x:${RID}`, 42, 9), c)).toEqual([])
+    expect(c.sent).toEqual(['Mégse.'])
+    expect(await findRow(other, '7:bbbbbbbbbbb')).toBeNull()
+    expect(await handleTap(tap(9, `L:a:${RID}`, 42, 9), c)).toEqual([])
+  })
+
+  it('a gombadat a leghosszabb valószerű jobId-vel is legfeljebb 64 bájt', () => {
+    const jobId = '9999999999:resolve-9999999999-99'
+    for (const key of listKeyboard(jobId, true, 500).flat()) {
+      expect(new TextEncoder().encode(key.data).length).toBeLessThanOrEqual(64)
+    }
+  })
+
+  it('a feliratmunka Nincs felirat hibájához az átírás-javaslat jön, YouTube-sornál is', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    const d = deps(store)
+    await handleCallback(`5:${ID}`, { status: 'failed', error: 'Nincs felirat' }, d)
+    expect(d.sent).toEqual([`Nincs felirat\nÁtíráshoz: /fetch_audio ${VIDEO_URL}`])
+  })
+})
+
+describe('handleCron megáll az első 409-nél vagy down-nál', () => {
+  async function three() {
+    const store = await boundStore()
+    for (const [n, id] of ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'].entries()) {
+      await store.insert(acceptedRow({ jobId: `${10 + n}:${id}`, updateId: 10 + n, videoId: id, status: 'queued' }))
+    }
+    return store
+  }
+
+  it('409 után a többi sor nem kopogtat', async () => {
+    const d = deps(await three(), { knock: (job) => { void job; return Promise.resolve(409) } })
+    const calls: string[] = []
+    d.knock = (job) => { calls.push(job.jobId); return Promise.resolve(409) }
+    await handleCron(d)
+    expect(calls).toEqual(['10:aaaaaaaaaaa'])
+  })
+
+  it('down esetén is megáll: csak az első sor kap várakozó-üzenetet', async () => {
+    const d = deps(await three())
+    const calls: string[] = []
+    d.knock = (job) => { calls.push(job.jobId); return Promise.resolve('down') }
+    await handleCron(d)
+    expect(calls).toEqual(['10:aaaaaaaaaaa'])
+    expect(d.sent).toEqual(['A gép ébredésére vár: aaaaaaaaaaa.'])
+  })
+
+  it('a le nem tölthető Telegram-fájl sora (nincs kopogtatás) nem állítja meg a többit', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ jobId: '9:t-0123456789abcdef', updateId: 9, videoId: 't-0123456789abcdef', status: 'queued', url: '', fileId: 'F9', fileName: 'a.txt' }))
+    await store.insert(acceptedRow({ jobId: '10:aaaaaaaaaaa', updateId: 10, videoId: 'aaaaaaaaaaa', status: 'queued' }))
+    const d = deps(store)
+    const calls: string[] = []
+    d.knock = (job) => { calls.push(job.jobId); return Promise.resolve(202) }
+    await handleCron(d)
+    expect(calls).toEqual(['10:aaaaaaaaaaa'])
   })
 })

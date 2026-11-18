@@ -21,7 +21,7 @@ import {
   YTDLP_MISSING,
 } from '../subtitle/ytdlp.js'
 import { directTarget, downloadDirect } from './direct.js'
-import { detectFeed, feedHash, feedMessages, resolvePick } from './feed.js'
+import { episodeAudioUrl, feedHash, feedKind, feedMediaUrls, feedMessages, resolvePick, type FeedItemUrls } from './feed.js'
 import { audioId, type AudioStore } from './store.js'
 
 export type AudioOutcome = 'downloaded' | 'skipped' | 'failed' | 'uploaded' | 'listed'
@@ -209,6 +209,11 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
       await failed(url, probeResult.code !== 0 ? firstLine(probeResult.stderr) || 'letöltési hiba' : 'hiányzó videóazonosító', url)
       return
     }
+    if (probe.type === 'playlist') {
+      sink({ type: 'item:start', itemId: url, title: url })
+      await failed(url, 'nem YouTube-lista: egyenként add meg a videókat', url)
+      return
+    }
     const title = FIRST_TITLE_LINE(probe.title) ?? FIRST_TITLE_LINE(fallbackTitle) ?? probe.id
     const label = `${title} [${probe.id}]`
     sink({ type: 'item:start', itemId: probe.id, title: label })
@@ -219,7 +224,7 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     }
     const destRel = destOf(probe.channel ?? '')
     sink({ type: 'item:step', itemId: probe.id, step: 'letöltés' })
-    const download = await runCmd(audioDownloadArgs({ url, dest: join(store.staging, destRel), overwrite: deps.overwrite }))
+    const download = await runCmd(audioDownloadArgs({ id: probe.id, url, dest: join(store.staging, destRel), overwrite: deps.overwrite }))
     const paths = await findDownloaded(destRel, probe.id)
     if (paths === null) {
       await failed(label, (download.code !== 0 ? firstLine(download.stderr) : '') || 'nincs hangfájl', probe.id)
@@ -253,13 +258,22 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     total += picked.indexes.length - 1
     sink({ type: 'scan:found', count: total })
     const dir = playlistDir('', feed.title, feedHash(url), false)
+    // A yt-dlp néha az epizód oldalát adja; a hang a feed <enclosure>/<media:content>-jében van. Hiba esetén a yt-dlp URL-je marad.
+    let items: FeedItemUrls[] = []
+    try {
+      const response = await (deps.fetchImpl ?? fetch)(url.trim().split('#')[0] ?? url)
+      if (response.ok) items = feedMediaUrls(await response.text())
+    } catch {
+      // marad a yt-dlp URL-je
+    }
     for (const index of picked.indexes) {
       if (deps.stopped()) return
       const entry = feed.entries[index]
       if (entry === undefined) continue
       // Egy rossz epizód (pl. értelmezhetetlen URL) hibasor, a többi tovább megy.
       try {
-        const hash = directTarget(entry.url).hash
+        const audioUrl = episodeAudioUrl(entry.url, items)
+        const hash = directTarget(audioUrl).hash
         const label = `${entry.title} [${hash}]`
         sink({ type: 'item:start', itemId: hash, title: label })
         if (ids.has(hash) && !deps.overwrite) {
@@ -267,7 +281,7 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
           continue
         }
         sink({ type: 'item:step', itemId: hash, step: 'letöltés' })
-        const result = await downloadDirect(entry.url, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) })
+        const result = await downloadDirect(audioUrl, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) })
         if (!result.ok) {
           await failed(entry.url, 'reason' in result ? result.reason : 'nem hangfájl (feed)', hash)
           continue
@@ -284,12 +298,14 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
   }
 
   async function fetchDirect(url: string): Promise<void> {
-    // A feedet előre felismerjük (csak kiterjesztés nélküli URL-nél kér le), így listázáskor nincs item:* esemény.
-    if (await detectFeed(url, deps.fetchImpl)) return fetchFeed(url)
+    // A fajtát előre felismerjük (csak kiterjesztés nélküli URL-nél kér le), így listázáskor nincs item:* esemény.
+    const kind = await feedKind(url, deps.fetchImpl)
+    if (kind === 'feed') return fetchFeed(url)
     if (deps.pick !== undefined) {
       sink({ type: 'item:start', itemId: url, title: url })
       return failed(url, 'a --pick csak feedhez adható meg', url)
     }
+    if (kind === 'html') return fetchVideo(url, (channel) => videoDir('', channel, false))
     const target = directTarget(url)
     const label = `${target.name} [${target.hash}]`
     sink({ type: 'item:start', itemId: target.hash, title: label })

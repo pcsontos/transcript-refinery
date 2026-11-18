@@ -16,6 +16,14 @@ async function setup(): Promise<void> {
 }
 
 describe('readLocalPair', () => {
+  it('a nem YouTube-os azonosítóval is kész a pár', async () => {
+    await setup()
+    const id = 'peertube-d4VvgzW5m4jaGr9JFVBUCg'
+    await writeFile(join(dir, `Cím [${id}].en.vtt`), 'WEBVTT\n')
+    await writeFile(join(dir, `Cím [${id}].info.json`), JSON.stringify({ extractor_key: 'PeerTube', id: 'd4VvgzW5m4jaGr9JFVBUCg', title: 'Cím' }))
+    expect((await readLocalPair(dir, id, ['en'])).complete).toBe(true)
+  })
+
   it('egy illeszkedő nyelv és az info kész, akkor is, ha en is a listán van', async () => {
     await setup()
     await writeFile(join(dir, `Cím [${ID}].hu.vtt`), 'WEBVTT\n')

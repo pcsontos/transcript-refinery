@@ -122,6 +122,36 @@ describe('runJob', () => {
     expect(callbacks).toEqual([{ status: 'ready', title: 'Német' }])
   })
 
+  it('nem YouTube-os tétel: az R2-beli info.json puszta id-je a mediaId-vel egyezik (felirat és recept)', async () => {
+    const peer = 'peertube-d4VvgzW5m4jaGr9JFVBUCg'
+    const info = new TextEncoder().encode(
+      JSON.stringify({ extractor_key: 'PeerTube', id: 'd4VvgzW5m4jaGr9JFVBUCg', title: 'Cím', language: 'en' }),
+    )
+    const store = memoryStore({
+      [`videos/${peer}/en.vtt`]: new Uint8Array([1]),
+      [`videos/${peer}/info.json`]: info,
+    })
+    const peerJob = { jobId: 'job-p', videoId: peer, url: 'https://makertube.net/w/d4Vv' }
+    const callbacks: CallbackBody[] = []
+    await runJob(peerJob, {
+      ...emptyEffects(store),
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Cím' }])
+    const seen: string[] = []
+    await runJob({ ...peerJob, recipes: ['summary'] }, {
+      ...effectsWith(store, []),
+      refine: (videoId) => {
+        seen.push(videoId)
+        return Promise.resolve({ ok: true, noteUrl: 'a_transcript.md' })
+      },
+    })
+    expect(seen).toEqual([peer])
+  })
+
   it('hiányos helyi párt töröl, majd letölt', async () => {
     const store = memoryStore()
     const calls: string[] = []
@@ -897,5 +927,68 @@ describe('runJob — átírás utáni futás (pcsontos/issue-tracker#45)', () =>
       }),
     )
     expect(order).toEqual(['failed', 'deploy'])
+  })
+})
+
+describe('runJob resolve', () => {
+  const rjob = { jobId: 'r-1', videoId: 'r-1', url: 'https://makertube.net/w/d4Vv', resolve: true }
+  const out = (stdout: string, over: { code?: number; stderr?: string } = {}) => () =>
+    Promise.resolve({ code: over.code ?? 0, stdout, stderr: over.stderr ?? '' })
+
+  async function resolveWith(resolve: JobEffects['resolve'], j = rjob): Promise<CallbackBody[]> {
+    const callbacks: CallbackBody[] = []
+    await runJob(j, {
+      ...emptyEffects(memoryStore()),
+      resolve,
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+    })
+    return callbacks
+  }
+
+  it('egy videó: playlist false, a tétel azonosítója a mediaId, az URL a webpage_url', async () => {
+    const probe = JSON.stringify({ extractor_key: 'PeerTube', id: 'd4Vv', title: 'Cím', webpage_url: 'https://makertube.net/w/d4Vv' })
+    expect(await resolveWith(out(probe, { stderr: 'WARNING: valami\n' }))).toEqual([
+      { status: 'resolved', title: 'Cím', playlist: false, items: [{ videoId: 'peertube-d4Vv', url: 'https://makertube.net/w/d4Vv', title: 'Cím' }] },
+    ])
+  })
+
+  it('lista: a duplikátum és az azonosító nélküli kimarad, a sorrend marad', async () => {
+    const entry = (id: string | undefined, title: string) => ({ ie_key: 'Youtube', ...(id === undefined ? {} : { id }), url: `https://www.youtube.com/watch?v=${id ?? 'x'}`, title })
+    const list = JSON.stringify({ _type: 'playlist', title: 'L', entries: [entry('aaaaaaaaaaa', 'A'), entry('bbbbbbbbbbb', 'B'), entry('aaaaaaaaaaa', 'A újra'), entry(undefined, 'Névtelen')] })
+    expect(await resolveWith(out(list))).toEqual([
+      {
+        status: 'resolved',
+        title: 'L',
+        playlist: true,
+        items: [
+          { videoId: 'aaaaaaaaaaa', url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa', title: 'A' },
+          { videoId: 'bbbbbbbbbbb', url: 'https://www.youtube.com/watch?v=bbbbbbbbbbb', title: 'B' },
+        ],
+      },
+    ])
+  })
+
+  it('csatorna: a fülek beágyazott listáit egy szinttel kibontja (mért yt-dlp-alak)', async () => {
+    const video = (id: string) => ({ _type: 'url', ie_key: 'Youtube', id, url: `https://www.youtube.com/watch?v=${id}`, title: id })
+    const tab = (title: string, ids: string[]) => ({ _type: 'playlist', id: 'UCx', title, entries: ids.map(video) })
+    const channel = JSON.stringify({ _type: 'playlist', title: 'Csatorna', entries: [tab('Videos', ['aaaaaaaaaaa', 'bbbbbbbbbbb']), tab('Live', ['ccccccccccc', 'aaaaaaaaaaa'])] })
+    const [body] = await resolveWith(out(channel))
+    expect(body).toMatchObject({ status: 'resolved', title: 'Csatorna', playlist: true })
+    expect((body as { items: { videoId: string }[] }).items.map((i) => i.videoId)).toEqual(['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'])
+  })
+
+  it('hibák: nem nulla kilépés, olvashatatlan JSON, üres lista, nincs resolve', async () => {
+    expect(await resolveWith(out('', { code: 1, stderr: '\nERROR: Unsupported URL: x\nmás' }))).toEqual([{ status: 'failed', error: 'ERROR: Unsupported URL: x' }])
+    expect(await resolveWith(out('nem json'))).toEqual([{ status: 'failed', error: 'A link nem oldható fel.' }])
+    expect(await resolveWith(out(JSON.stringify({ _type: 'playlist', title: 'L', entries: [] })))).toEqual([{ status: 'failed', error: 'a lista üres' }])
+    expect(await resolveWith(undefined)).toEqual([{ status: 'failed', error: 'A link nem oldható fel.' }])
+  })
+
+  it('hiányzó yt-dlp (ENOENT) a YTDLP_MISSING hibát adja', async () => {
+    const missing = () => Promise.reject(Object.assign(new Error('spawn yt-dlp'), { code: 'ENOENT' }))
+    expect(await resolveWith(missing)).toEqual([{ status: 'failed', error: YTDLP_MISSING }])
   })
 })

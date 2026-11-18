@@ -23,6 +23,16 @@ describe('célmappa', () => {
 })
 
 describe('alreadyFetched', () => {
+  it('a nem YouTube-os azonosító (peertube-…) fájlneve és info.json-ja kész párt ad', async () => {
+    const dir = await temp()
+    const id = 'peertube-d4VvgzW5m4jaGr9JFVBUCg'
+    await writeFile(join(dir, `Cím [${id}].en.vtt`), 'WEBVTT\n')
+    await writeFile(join(dir, `Cím [${id}].info.json`), JSON.stringify({ extractor_key: 'PeerTube', id: 'd4VvgzW5m4jaGr9JFVBUCg' }))
+    expect(await alreadyFetched(dir, id, ['en'])).toBe(true)
+    await prepareIncomplete(dir, id)
+    expect(await readFile(join(dir, `Cím [${id}].info.json`), 'utf8')).toContain('PeerTube')
+  })
+
   it('a Talk [live] [id].hu.vtt a valódi azonosítót látja', async () => {
     const dir = await temp()
     await writeFile(join(dir, `Talk [live] [${ID}].hu.vtt`), 'WEBVTT\n')

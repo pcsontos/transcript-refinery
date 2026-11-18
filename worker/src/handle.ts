@@ -1,3 +1,4 @@
+import { classifyInput } from 'transcript-refinery/classify'
 import {
   BIND_FIRST,
   DOWNLOAD_FAILED,
@@ -53,6 +54,11 @@ import {
   runQueuedLine,
   deployFailedLine,
   runReadyMessage,
+  transcribeHintLine,
+  LIST_CANCELLED,
+  listLine,
+  listQueuedLine,
+  listKeyboard,
   runStartedLine,
   statusText,
   versionLine,
@@ -98,6 +104,8 @@ export interface PlannedKnock {
   models?: Record<string, string>
   /** Hangletöltés (`/fetch`): az `url` szóközzel elválasztott argumentumlista. */
   fetch?: boolean
+  /** Link vagy lista feloldása: a serve `resolved` visszahívást küld, letöltés nélkül. */
+  resolve?: boolean
 }
 
 export interface WorkerDeps {
@@ -149,6 +157,9 @@ export function workerLang(raw: string): string | null {
   return LANG_TAG.test(tag) ? tag : null
 }
 export const FETCH_ID = /^fetch-\d+$/
+const NO_SUBTITLE = 'Nincs felirat'
+const UNRESOLVED = 'A link nem oldható fel.'
+export const RESOLVE_ID = /^resolve-\d+-\d+$/
 /** A bot feed-listaüzenetének `Feed:` sora; a válasz sorszámai ehhez a feedhez tartoznak. */
 const FEED_LINE = /^Feed: (https?:\/\/\S+)$/m
 const PICK_TEXT = /^\s*\d+(?:\s*,\s*\d+)*\s*$/
@@ -220,6 +231,7 @@ function textKnock(row: JobRow, text: string): PlannedKnock {
  */
 async function jobKnock(row: JobRow, deps: WorkerDeps): Promise<PlannedKnock | null> {
   if (FETCH_ID.test(row.videoId)) return { jobId: row.jobId, videoId: row.videoId, url: row.url, fetch: true }
+  if (RESOLVE_ID.test(row.videoId)) return { jobId: row.jobId, videoId: row.videoId, url: row.url, resolve: true }
   if (row.text) return textKnock(row, row.text)
   if (row.fileId && row.fileName) {
     const bytes = await deps.download(row.fileId)
@@ -703,6 +715,25 @@ export async function handleUpdate(
     await deps.store.insert(row)
     knocks.push({ jobId: row.jobId, videoId: row.videoId, url: row.url })
   }
+  for (const [n, url] of planned.resolves.entries()) {
+    const videoId = `resolve-${update.update_id}-${n}`
+    const row: JobRow = {
+      jobId: `${update.update_id}:${videoId}`,
+      updateId: update.update_id,
+      chatId,
+      messageId: message.message_id,
+      videoId,
+      url,
+      status: 'queued',
+      error: null,
+      title: url,
+      notifiedReady: false,
+      acceptedAt: null,
+      sub: binding.sub,
+    }
+    await deps.store.insert(row)
+    knocks.push({ jobId: row.jobId, videoId, url, resolve: true })
+  }
   if (lines.length > 0) await deps.send(chatId, lines.join('\n'))
   return { status: 200, knocks }
 }
@@ -735,9 +766,10 @@ export type CallbackBody =
   | { status: 'progress'; text: string }
   | { status: 'stalled'; text: string }
   | { status: 'transcribed'; videoId: string; title: string; recipes: string[] }
+  | { status: 'resolved'; title: string; playlist: boolean; items: { videoId: string; url: string; title: string }[] }
 
 /** A futás vagy a sor saját jelentései; a `transcribed` a leadó munkának szól, és a `handleCallback` elején ágazik el. */
-type ServeReport = Exclude<CallbackBody, { status: 'transcribed' }>
+type ServeReport = Exclude<CallbackBody, { status: 'transcribed' } | { status: 'resolved' }>
 
 /** A whisper-utólépés jele a serve-ben (`ServeJob.url`); a `src/whisper/after.ts` `AFTER_WHISPER`-ének másolata. */
 export const AFTER_WHISPER = 'after-whisper'
@@ -868,7 +900,75 @@ async function fetchCallback(row: JobRow, body: ServeReport, deps: WorkerDeps): 
   await deps.store.save(row)
 }
 
+type ResolvedItem = { videoId: string; url: string; title: string }
+
+/** A feloldott tétel új, `queued` sora a feloldó sor üzenetéhez. */
+function newItemRow(source: JobRow, item: ResolvedItem): JobRow {
+  return {
+    jobId: `${source.updateId}:${item.videoId}`,
+    updateId: source.updateId,
+    chatId: source.chatId,
+    messageId: source.messageId,
+    videoId: item.videoId,
+    url: item.url,
+    status: 'queued',
+    error: null,
+    title: item.title,
+    notifiedReady: false,
+    acceptedAt: null,
+    sub: source.sub,
+  }
+}
+
+/** Egy feloldott tétel sora; `null`, ha az azonosítóra van nyitott sor vagy a `jobId` már létezik. */
+async function itemRow(source: JobRow, item: ResolvedItem, deps: WorkerDeps): Promise<JobRow | null> {
+  if ((await deps.store.activeByVideo(item.videoId)) !== null) return null
+  const row = newItemRow(source, item)
+  if ((await findRow(deps.store, row.jobId)) !== null) return null
+  await deps.store.insert(row)
+  return row
+}
+
+/**
+ * A feloldott link. Egy videó: a sor beszúrása (a kopogtatást a cron végzi: a serve kapuja a visszahívás alatt még a
+ * feloldó munkáé). Lista: a tételek a `resolves` táblába, megerősítő üzenet a gombokkal.
+ */
+async function resolvedCallback(row: JobRow, body: Extract<CallbackBody, { status: 'resolved' }>, deps: WorkerDeps): Promise<void> {
+  if (row.notifiedReady) return
+  if (!body.playlist) {
+    const item = body.items[0]
+    if (item === undefined) {
+      if (!(await deps.send(row.chatId, UNRESOLVED))) return
+      row.status = 'failed'
+      row.error = UNRESOLVED
+      await deps.store.save(row)
+      return
+    }
+    if ((await itemRow(row, item, deps)) === null) await deps.send(row.chatId, alreadyLine(item.videoId))
+  } else {
+    const classified = classifyInput(row.url, false)
+    const videoId = classified.kind === 'video' ? classified.id : null
+    await deps.store.insertResolve({ jobId: row.jobId, chatId: row.chatId, title: body.title, items: body.items, videoId })
+    const known = await deps.store.knownVideos(body.items.map((item) => item.videoId))
+    const free = body.items.filter((item) => !known.has(item.videoId)).length
+    const sent = await deps.send(
+      row.chatId,
+      listLine(body.title, body.items.length, body.items.length - free),
+      listKeyboard(row.jobId, videoId !== null, free),
+    )
+    if (!sent) return
+  }
+  row.status = 'ready'
+  row.notifiedReady = true
+  await deps.store.save(row)
+}
+
 export async function handleCallback(id: string, body: CallbackBody, deps: WorkerDeps): Promise<number> {
+  if (body.status === 'resolved') {
+    const row = await findRow(deps.store, id)
+    if (row !== null && row.status !== 'cancelled') await resolvedCallback(row, body, deps)
+    return 200
+  }
   if (body.status === 'transcribed') {
     const row = await findRow(deps.store, id)
     if (row !== null) await afterWhisper(row, body, deps)
@@ -889,7 +989,8 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
   // A felirat-jobnak nincs életjele és leállása; ha mégis érkezik, nem teszünk vele semmit.
   if (body.status === 'progress' || body.status === 'stalled') return 200
   if (body.status === 'failed') {
-    const sent = await deps.send(row.chatId, body.error)
+    const text = body.error.startsWith(NO_SUBTITLE) ? `${body.error}\n${transcribeHintLine(row.url)}` : body.error
+    const sent = await deps.send(row.chatId, text)
     if (!sent) return 200
     row.status = 'failed'
     row.error = body.error
@@ -1009,6 +1110,45 @@ async function modelTap(
   else await show(modelPickLine(tap.key), modelPickKeyboard(tap.key, fitting, reset))
 }
 
+/** A lista gombjai. A `takeResolve` atomi: a második koppintás `null`-t kap, és nem csinál semmit. */
+async function listTap(action: 'a' | 'v' | 'x', source: JobRow, deps: WorkerDeps): Promise<PlannedKnock[]> {
+  const resolve = await deps.store.takeResolve(source.jobId)
+  if (resolve === null) return []
+  if (action === 'x') {
+    await deps.send(source.chatId, LIST_CANCELLED)
+    return []
+  }
+  if (action === 'v') {
+    const id = resolve.videoId
+    if (id === null) return []
+    const item = resolve.items.find((entry) => entry.videoId === id) ?? { videoId: id, url: `https://www.youtube.com/watch?v=${id}`, title: id }
+    const row = await itemRow(source, item, deps)
+    if (row === null) {
+      await deps.send(source.chatId, alreadyLine(id))
+      return []
+    }
+    return [{ jobId: row.jobId, videoId: row.videoId, url: row.url }]
+  }
+  // A K a koppintáskor számolódik újra: a közben beszúrt sor kimarad. Két olvasás és egy batch, tételszámtól függetlenül
+  // (a hívásonkénti D1-keret 1000 lekérdezés); a `known` a nyitott sorokat is fedi, az `activeByVideo` itt felesleges.
+  const known = await deps.store.knownVideos(resolve.items.map((item) => item.videoId))
+  const taken = new Set((await deps.store.listByUpdate(source.updateId)).map((row) => row.jobId))
+  const rows = resolve.items
+    .filter((item) => !known.has(item.videoId))
+    .map((item) => newItemRow(source, item))
+    .filter((row) => !taken.has(row.jobId))
+  if (rows.length === 0) {
+    const n = resolve.items.length
+    await deps.send(source.chatId, listLine(resolve.title, n, n))
+    return []
+  }
+  await deps.store.insertMany(rows)
+  await deps.send(source.chatId, listQueuedLine(rows.length, resolve.title))
+  // A serve kapuja egy munkát fogad: az elsőt kopogtatjuk, a többit a cron viszi.
+  const first = rows[0]
+  return first === undefined ? [] : [{ jobId: first.jobId, videoId: first.videoId, url: first.url }]
+}
+
 export async function handleTap(
   update: {
     update_id: number
@@ -1039,6 +1179,7 @@ export async function handleTap(
   }
   const row = await findRow(deps.store, tap.jobId)
   if (row === null || row.sub !== binding.sub || row.status !== 'ready') return []
+  if (tap.type === 'list') return listTap(tap.action, row, deps)
   if (tap.type === 'drop') {
     // A leállt recept eldobása: nem indul futás; a gombok eltűnnek. Az Újra a receptgombok útján megy (`requestRun`).
     const messageId = update.callback_query.message?.message_id
@@ -1065,20 +1206,29 @@ export async function handleTap(
 }
 
 export async function handleCron(deps: WorkerDeps): Promise<void> {
+  // ponytail: a kapu egy munkát fogad; az első 409 vagy `down` után a többi kopogtatás felesleges (500 sor = 500 kérés).
+  let halted = false
   for (const row of await deps.store.due(deps.now())) {
+    if (halted) break
     const knock = await jobKnock(row, deps)
-    await settle(row, row, () => deps.store.save(row), knock === null ? 'down' : await deps.knock(knock), deps)
+    const result = knock === null ? 'down' : await deps.knock(knock)
+    await settle(row, row, () => deps.store.save(row), result, deps)
+    // A `null` a sor saját hibája (pl. a Telegram-fájl nem tölthető le), nem a serve-é: a többi sor mehet.
+    if (knock !== null && (result === 409 || result === 'down')) halted = true
   }
   for (const run of await deps.store.dueRuns(deps.now())) {
+    if (halted) break
     const row = await findRow(deps.store, run.jobId)
     if (row === null) continue
+    const result = await deps.knock(knockFor(run, row))
     await settle(
       run,
       row,
       () => deps.store.saveRun(run),
-      await deps.knock(knockFor(run, row)),
+      result,
       deps,
       { runId: run.runId, text: runStartedLine(row, run) },
     )
+    if (result === 409 || result === 'down') halted = true
   }
 }

@@ -67,15 +67,72 @@ export function resolvePick(pick: Pick, count: number): { ok: true; indexes: num
   return { ok: true, indexes: pick.map((n) => n - 1) }
 }
 
-/** Feed-e az URL: nincs hangkiterjesztése, és a Content-Type RSS/XML. A törzset eldobja. */
-export async function detectFeed(url: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
-  if (directTarget(url).ext !== null) return false
+export interface FeedItemUrls {
+  link?: string
+  enclosure?: string
+  media?: string
+}
+
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(?:#x([0-9a-f]+)|#(\d+)|(amp|lt|gt|quot|apos));/gi, (_all, hex?: string, dec?: string, name?: string) => {
+    if (name !== undefined) return ENTITIES[name.toLowerCase()] ?? _all
+    const code = hex !== undefined ? parseInt(hex, 16) : parseInt(dec ?? '', 10)
+    return Number.isFinite(code) && code <= 0x10ffff ? String.fromCodePoint(code) : _all
+  })
+}
+
+function attributes(tag: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  for (const match of tag.matchAll(/(\w+)=("[^"]*"|'[^']*')/g)) {
+    result[match[1] as string] = decodeEntities((match[2] as string).slice(1, -1))
+  }
+  return result
+}
+
+/** Epizódonként a `<link>`, az `<enclosure url>` és az első hang-típusú `<media:content url>` (regexszel, XML-parser nélkül). */
+export function feedMediaUrls(xml: string): FeedItemUrls[] {
+  return [...xml.matchAll(/<item\b[\s\S]*?<\/item>/g)].map((block) => {
+    const item = block[0]
+    const link = /<link>([\s\S]*?)<\/link>/.exec(item)?.[1]?.replace(/^\s*<!\[CDATA\[|\]\]>\s*$/g, '').trim()
+    const enclosure = [...item.matchAll(/<enclosure\b[^>]*>/g)].map((tag) => attributes(tag[0]).url).find((url) => url)
+    const media = [...item.matchAll(/<media:content\b[^>]*>/g)]
+      .map((tag) => attributes(tag[0]))
+      .find((attr) => attr.url && attr.type?.toLowerCase().startsWith('audio/'))?.url
+    return {
+      ...(link ? { link: decodeEntities(link) } : {}),
+      ...(enclosure ? { enclosure } : {}),
+      ...(media ? { media } : {}),
+    }
+  })
+}
+
+const bare = (url: string | undefined): string | undefined => url?.split('#')[0]
+
+/** A yt-dlp epizód-URL-je helyett a feed hangfájlja: az egyező tétel `enclosure ?? media`-ja, különben az `entryUrl`. */
+export function episodeAudioUrl(entryUrl: string, items: readonly FeedItemUrls[]): string {
+  const wanted = bare(entryUrl)
+  const item = items.find((candidate) => bare(candidate.enclosure) === wanted || bare(candidate.link) === wanted)
+  return item?.enclosure ?? item?.media ?? entryUrl
+}
+
+const HTML_TYPES = ['text/html', 'application/xhtml+xml']
+
+/**
+ * Az URL fajtája: `feed` (RSS/XML Content-Type), `html` (weboldal, a yt-dlp-nek adjuk), egyébként `other`
+ * (közvetlen fájl). Hangkiterjesztésű URL-re kérés nélkül `other`. Egy GET, a törzset eldobja.
+ */
+export async function feedKind(url: string, fetchImpl: typeof fetch = fetch): Promise<'feed' | 'html' | 'other'> {
+  if (directTarget(url).ext !== null) return 'other'
   try {
     const response = await fetchImpl(url.trim().split('#')[0] ?? url)
     await response.body?.cancel()
     const type = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? ''
-    return response.ok && FEED_TYPES.includes(type)
+    if (!response.ok) return 'other'
+    if (FEED_TYPES.includes(type)) return 'feed'
+    return HTML_TYPES.includes(type) ? 'html' : 'other'
   } catch {
-    return false
+    return 'other'
   }
 }

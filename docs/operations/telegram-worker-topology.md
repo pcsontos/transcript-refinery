@@ -225,6 +225,8 @@ A bot hat parancsot ismer:
 
 **Telepítési sorrend:** a `/cancel` miatt előbb a serve-képet kell frissíteni (a peter-mba-n), utána a Workert. A régi serve nem ismeri a cancel végpontot, az `404`-et adna, a Worker `unknown`-nak venné, és `cancelled`-re állítaná a még futó jobot. Ugyanez a sorrend kell a `/model`-hez: a régi serve a `models` mezőt csendben figyelmen kívül hagyja, így a címke `(modell)`-t mutatna, de a YAML-modell futna. A D1-migrációt (`0006`) a Worker telepítése előtt kell lefuttatni.
 
+**Linkek és listák (`resolve`):** a sorrend serve-kép → `0007` migráció (`resolves` tábla) → Worker. A régi serve a `resolve` jelzőt nem ismeri, és a linket felirat-munkaként futtatná.
+
 A Telegram `/` menüje nem a Worker része: új vagy átnevezett parancs után a `pnpm telegram:commands` állítja be a `/help` listájára (`--dry-run`-nal csak kiírja).
 
 A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden elemet önállóan értékel (`worker/src/plan.ts`):
@@ -235,17 +237,18 @@ A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden el
 | **11 karakteres videó ID** (pl. `dQw4w9WgXcQ`) | Felismeri videóként, feldolgozza | `Sorba került: <id>` |
 | **Több videó egy üzenetben** | Mindegyik videót külön elemként sorba rendezi | Többsoros válasz mindegyik státuszával |
 | **Már sorban lévő videó** | Megelőzi a duplikációt | `Már sorban van: <id>.` |
-| **Lejátszási lista URL** | Jelenleg kihagyja | `Lejátszási lista későbbre marad.` |
-| **Nem YouTube webcím** | Érvénytelen forrásként jelzi | `Nem YouTube-cím.` |
+| **YouTube-lista URL** (`/playlist?list=…`, `watch?v=…&list=…`) | Feloldó munka a serve-ben (`yt-dlp -J --flat-playlist`); a tételek a `resolves` D1-táblába kerülnek | `Megnézem: <url>`, majd `Lista: <cím>, N videó (ebből K már kész vagy sorban). Mit tegyek sorba?` és gombok: `Csak ezt a videót` (csak a `watch?v&list` címnél), `Mind (N−K)`, `Mégse` |
+| **Bármely más http(s) link** (pl. PeerTube) | Ugyanaz a feloldó munka; egy videónál a Worker a tétel sorát felirat-munkaként sorba teszi, listánál a fenti megerősítés jön | `Megnézem: <url>` |
 | **Csatolt `.txt`/`.md` fájl** (parancs nélkül, legfeljebb 2 MB) | A Worker letölti, normalizálja, `t-…` azonosítót számol; a serve az R2-be teszi (`documents/<t-id>/text.txt`) | `Sorba került: <cím>`, kész: `<cím>. A szöveg megvan.` |
 | **`/scan <szöveg>`** (egy üzenetnyi) | Ugyanígy; a cím az első sor, a szöveg a D1-ben vár, amíg a serve át nem veszi | `Sorba került: <cím>`; 3900 karaktertől figyelmeztetés |
 | **Más csatolmány** | Nem indít feladatot | `Csak .txt vagy .md fájlt tudok feldolgozni.` |
-| **Bármilyen egyéb szöveg** | Nem indít feladatot | `Nincs YouTube-videó az üzenetben.` |
+| **Bármilyen egyéb szöveg** | Nem indít feladatot | `Nincs link az üzenetben.` |
 
 ### Életciklus üzenetek a chaten:
 - **Ha a peter-mba nem érhető el**: `A gép ébredésére vár: <id>.` (a háttérben futó percenkénti Cloudflare Cron újra próbálkozik).
 - **Sikeres letöltés és R2 feltöltés**: `<cím>. A felirat megvan.`
-- **Hiba**: a démon által visszaküldött hibaüzenet (pl. `Nincs felirat` vagy `A konténer elutasította a hívást.`).
+- **Hiba**: a démon által visszaküldött hibaüzenet (pl. `Nincs felirat` vagy `A konténer elutasította a hívást.`). A `Nincs felirat` alá egy sor kerül: `Átíráshoz: /fetch_audio <url>` (YouTube-videónál is).
+- **Lista megerősítése:** a gombok adata `L:<a|v|x>:<jobId>` (`a` = Mind, `v` = Csak ezt a videót, `x` = Mégse; legfeljebb 36 bájt, a Telegram-határ 64). A koppintás kiveszi a `resolves` sort, így a második koppintás nem csinál semmit. A `Mind` a koppintáskor újraszámolja a K-t, a nyitott vagy kész tételeket kihagyja, és `Sorba került: <N−K> videó (<cím>).` választ ad; az első sort azonnal kopogtatja, a többit a percenkénti cron viszi egyenként (a serve kapuja egy munkát fogad, az első 409 vagy elérhetetlen serve után a cron abbahagyja a kopogtatást).
 - **Receptgombok** (a felirat kész üzenete alatt): `summary`, `notes`, `qa`, `flashcards`, `bloom`, `clean-mild`, `clean-moderate`, `clean-deep` és `fordítás`. Egy koppintás egy recept, egy futás a konténer `cost_limit_usd` plafonja alatt. A `fordítás` a videó kész jegyzeteit kínálja kapcsolható gombként, a `tovább` után a hét nyelvből (`en`, `hu`, `nl`, `de`, `es`, `fr`, `it`) egyet. A kért jegyzetek egy futásban, egy közös plafon alatt készülnek. A receptenkénti állapot a D1 `runs` táblájában van.
 - **Kész jegyzet:** `<cím> · <recept>. A jegyzet megvan.`, fordításnál `<cím> · <nyelv>. A fordítás megvan.`, és jegyzetenként egy sor: `https://<worker>/notes/<videóazonosító>/<fajta>` (például `notes`, `summary-de`). Az oldal Cloudflare Access mögött van; a Worker a jegyzetet a peter-mba `serve`-étől kéri (`GET /notes/<itemId>/<fajta>`), az a vaultból olvassa és rendereli. A régi, `/notes/<update_id>:<videóazonosító>/<fajta>` alakú linkek is működnek. A `https://<worker>/notes` a vault összes jegyzetének listája, bárhonnan indult a futás, elemenként `telegram`/`cli` címkével és a kész fajtákkal. Ha a peter-mba alszik, az oldal ezt jelzi. A bot csak privát chatben válaszol.
 
@@ -254,6 +257,7 @@ A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden el
 | Tétel | R2-kulcsok |
 |---|---|
 | YouTube-videó | `videos/<videóazonosító>/<nyelv>.vtt` (vagy `.srt`) és `videos/<videóazonosító>/info.json` |
+| Nem YouTube-os videó (pl. PeerTube) | ugyanez, de az azonosító előtagos: `videos/peertube-<id>/<nyelv>.vtt` és `videos/peertube-<id>/info.json` (az `info.json` `id` mezője a puszta `<id>`, az előtag a kinyerőből jön) |
 | Szöveges tétel (csatolmány vagy `/scan`) | `documents/<t-id>/text.txt` és `documents/<t-id>/info.json` (`id`, `title`, `language?`) |
 
 A jegyzet `item_id` mezője egyben az R2-mappa neve: egy jegyzet forrása az `item_id`-ből kereshető meg (`videos/<item_id>/` vagy `documents/<item_id>/`). A `t-…` azonosító a normalizált szöveg hash-e, ezért ugyanaz a tartalom más néven is ugyanaz a tétel, és a jegyzetben az **első** feltöltés neve marad.

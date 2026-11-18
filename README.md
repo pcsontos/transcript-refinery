@@ -77,11 +77,12 @@ metaadat nélkül is, nulla wikilink. Másodszor futtatva nem ír semmit. Sérü
 a futást, a záró riport megnevezi a hibás elemet és az okát. Recept nélkül ez
 bit-azonos a Fázis 0 kimenetével — a Fázis 1 ezt nem törte el.
 
-A `refinery fetch subtitle` YouTube-feliratot és `.info.json` metaadatot tölt egy helyi
+A `refinery fetch subtitle` YouTube-feliratot (és bármely, a `yt-dlp` által ismert
+http(s) link feliratát) és `.info.json` metaadatot tölt egy helyi
 mappába a `yt-dlp` segítségével. Ami már ott van, azt átugorja. A `run` és a
 `watch` ettől még csak a helyi fájlt olvassa, hálózat nélkül.
 
-A `refinery fetch audio` YouTube-, podcast- vagy közvetlen hangot tölt le az eredeti
+A `refinery fetch audio` YouTube-, weboldalas, podcast- vagy közvetlen hangot tölt le az eredeti
 formátumban (konverzió nélkül), `.info.json`-nal, S3-ba (pl. Garage) vagy helyi mappába.
 Podcast-feednél előbb a számozott epizódlistát adja, és a `--pick` választja ki a letöltendőket.
 Részletek: `docs/usage.md` 9. szakasz.

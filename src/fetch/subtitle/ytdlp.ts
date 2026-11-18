@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { mediaId } from '../media-id.js'
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/
 
@@ -42,6 +43,7 @@ export function downloadArgs(input: {
   languages: readonly string[]
   formats: readonly string[]
   overwrite: boolean
+  id: string
 }): string[] {
   return [
     '--skip-download',
@@ -59,14 +61,14 @@ export function downloadArgs(input: {
     '--paths',
     `home:${input.dest}`,
     '-o',
-    '%(title)s [%(id)s].%(ext)s',
+    `%(title)s [${input.id}].%(ext)s`,
     '--',
     input.url,
   ]
 }
 
 /** Hang letöltése az eredeti formátumban (konvertálás és ffmpeg nélkül), `.info.json`-nal. */
-export function audioDownloadArgs(input: { url: string; dest: string; overwrite: boolean }): string[] {
+export function audioDownloadArgs(input: { url: string; dest: string; overwrite: boolean; id: string }): string[] {
   return [
     '-f',
     'bestaudio[ext=m4a]/bestaudio',
@@ -78,7 +80,7 @@ export function audioDownloadArgs(input: { url: string; dest: string; overwrite:
     '--paths',
     `home:${input.dest}`,
     '-o',
-    '%(title)s [%(id)s].%(ext)s',
+    `%(title)s [${input.id}].%(ext)s`,
     '--',
     input.url,
   ]
@@ -86,6 +88,9 @@ export function audioDownloadArgs(input: { url: string; dest: string; overwrite:
 
 export interface VideoProbe {
   id: string
+  /** A yt-dlp `_type` (`playlist`, `video`, …). */
+  type?: string
+  webpageUrl?: string
   title?: string
   channel?: string
   language?: string
@@ -152,6 +157,10 @@ export function subtitleLang(
 export function parseVideoProbe(stdout: string): VideoProbe | null {
   try {
     const raw = JSON.parse(stdout) as {
+      _type?: unknown
+      extractor_key?: unknown
+      ie_key?: unknown
+      webpage_url?: unknown
       id?: unknown
       title?: unknown
       channel?: unknown
@@ -160,9 +169,12 @@ export function parseVideoProbe(stdout: string): VideoProbe | null {
       subtitles?: unknown
       automatic_captions?: unknown
     }
-    if (typeof raw.id !== 'string' || !VIDEO_ID.test(raw.id)) return null
+    const id = mediaId(raw)
+    if (id === null) return null
     return {
-      id: raw.id,
+      id,
+      type: text(raw._type),
+      webpageUrl: text(raw.webpage_url),
       title: text(raw.title),
       channel: text(raw.channel) ?? text(raw.uploader),
       language: text(raw.language),

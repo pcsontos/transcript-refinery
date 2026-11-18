@@ -476,12 +476,18 @@ node dist/cli.js fetch audio https://www.youtube.com/watch?v=<id> --out /abs/map
 node dist/cli.js fetch audio --list cimek.txt
 ```
 
-A `fetch audio` YouTube-videó, -playlist, közvetlen hangfájl-URL vagy podcast-RSS feed hangját tölti le
+A `fetch audio` YouTube-videó, -playlist, a `yt-dlp` által ismert weboldal, közvetlen hangfájl-URL vagy podcast-RSS feed hangját tölti le
 a `yt-dlp`-vel, a `.info.json` metaadattal együtt. **A hang eredeti formátumban marad, nincs konverzió**
 (nincs mp3, az image-be nem kerül ffmpeg). Átiratot nem készít; az a whisper-szelet dolga.
 
 - **Elrendezés:** `<Csatorna>/<Cím> [<id>].<ext>`; playlistnél `<Playlist címe> [<playlist-id>]/…`;
   közvetlen URL-nél `<domain>/<név> [<url-hash>].<ext>` (nincs `.info.json`).
+- **Nem YouTube-os link:** a `fetch subtitle` és a `fetch audio` bármely http(s) linket a `yt-dlp`-nek ad.
+  A fájlnévben az azonosító a kinyerő neve előtaggal (`[peertube-<id>]`), a `generic` kinyerőnél a link
+  hash-e (`[generic-<8 hex>]`); a YouTube-videó azonosítója változatlan (puszta 11 karakter). A `fetch audio` a
+  kiterjesztés nélküli linket egy GET-tel osztályozza: RSS/XML → feed, `text/html` → a `yt-dlp` oldala, más → közvetlen
+  fájl. Nem YouTube-os **lista** nem megy (`nem YouTube-lista: egyenként add meg a videókat`); a `--pick` csak feedhez
+  adható meg. Felirat nélküli oldalnál a `fetch audio` a hangot átírásra adja le (ha az átírás be van kötve).
 - **Duplikátum:** az `[id]` vagy `[url-hash]` alapján a teljes tárolóban; ami már megvan, azt kihagyja.
   Az `--overwrite` felülírja.
 - **Tároló:** `--out` esetén helyi mappa, config nélkül is. Különben a config `audio` blokkja.
@@ -500,6 +506,9 @@ node dist/cli.js fetch audio https://példa.hu/feed.xml --pick 0   # mind
 ```
 
 A `--pick` csak egyetlen feed-címmel adható meg; a lista hossza fölötti sorszámnál semmi nem töltődik le.
+Ha a `yt-dlp` az epizód oldalát adja (pl. FreshRSS-feed), a hangot a feed `<enclosure>`, ennek hiányában a
+hang-típusú `<media:content>` címéről tölti; ha a feed lekérése nem megy, a `yt-dlp` URL-jével próbál. A fájlnév
+`[<hash>]` része a ténylegesen letöltött hang URL-jéből készül.
 Epizódok helye: `<Feed címe> [<feed-hash>]/<Epizód címe> [<url-hash>].<ext>` + `.info.json`.
 
 ### Config (`audio` blokk)
