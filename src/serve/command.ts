@@ -10,7 +10,7 @@ import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
 import { commandFetch } from '../fetch/command.js'
-import { createYtdlpRunner, type ProcessRunner } from '../fetch/subtitle/ytdlp.js'
+import { createYtdlpRunner, playlistProbeArgs, type ProcessRunner } from '../fetch/subtitle/ytdlp.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { VERSION } from '../meta.js'
 import { modelsView } from '../model/recipe-model.js'
@@ -46,6 +46,7 @@ export function serveEffects(input: {
   readFile?: JobEffects['readFile']
   runRecipes?: RecipesRun
   fetchAudio?: JobEffects['fetchAudio']
+  resolve?: JobEffects['resolve']
   transcribe?: JobEffects['transcribe']
   whisperPair?: JobEffects['whisperPair']
   configArg?: string
@@ -71,6 +72,7 @@ export function serveEffects(input: {
     readFile: input.readFile ?? (async (path) => new Uint8Array(await readFile(path))),
     fetchSubtitle: input.fetchSubtitle,
     fetchAudio: input.fetchAudio,
+    resolve: input.resolve ?? ((url) => createYtdlpRunner()(playlistProbeArgs(url))),
     transcribe: input.transcribe,
     callback: input.callback,
     writeFile: async (path, body) => {
