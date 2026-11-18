@@ -1155,7 +1155,7 @@ describe('tájékoztató parancsok', () => {
   it('az ismeretlen parancs a mai választ kapja', async () => {
     const d = deps(await boundStore())
     await handleUpdate(command(98, '/foo'), d)
-    expect(d.sent).toEqual(['Nincs YouTube-videó az üzenetben.'])
+    expect(d.sent).toEqual(['Nincs link az üzenetben.'])
   })
 })
 
@@ -1315,7 +1315,7 @@ describe('szöveges bemenet', () => {
     const store = await boundStore()
     const d = deps(store)
     await handleUpdate(command(5, '/scanner'), d)
-    expect(d.sent).toEqual(['Nincs YouTube-videó az üzenetben.'])
+    expect(d.sent).toEqual(['Nincs link az üzenetben.'])
   })
 
   it('down után a cron a D1 szövegéből kopogtat, és a vár sor a címet mondja', async () => {
@@ -1916,5 +1916,39 @@ describe('átírás utáni utólépés (pcsontos/issue-tracker#45)', () => {
     await handleCallback('7:fetch-7', { status: 'progress', text: 'Epizód: az átírás nem sikerült: rossz fájl' }, d)
     expect(d.sent).toEqual(['Epizód: az átírás nem sikerült: rossz fájl'])
     expect(await findRow(store, '7:fetch-7')).toMatchObject({ status: 'ready' })
+  })
+})
+
+describe('feloldó sorok', () => {
+  const PAGE = 'https://makertube.net/w/d4VvgzW5m4jaGr9JFVBUCg'
+  const LIST = 'https://www.youtube.com/playlist?list=PL123'
+
+  it('a nem YouTube-os link és a lista feloldó sort kap, resolve: true kopogtatással', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    const result = await handleUpdate(command(7, `${PAGE} ${LIST}`), d)
+    expect(d.sent).toEqual([`Megnézem: ${PAGE}\nMegnézem: ${LIST}`])
+    expect(result.knocks).toEqual([
+      { jobId: '7:resolve-7-0', videoId: 'resolve-7-0', url: PAGE, resolve: true },
+      { jobId: '7:resolve-7-1', videoId: 'resolve-7-1', url: LIST, resolve: true },
+    ])
+    expect(await store.listByUpdate(7)).toMatchObject([
+      { jobId: '7:resolve-7-0', videoId: 'resolve-7-0', url: PAGE, title: PAGE, status: 'queued' },
+      { jobId: '7:resolve-7-1', videoId: 'resolve-7-1', url: LIST, title: LIST, status: 'queued' },
+    ])
+  })
+
+  it('a cron a feloldó sort resolve: true jelzővel kopogtatja', async () => {
+    const store = await boundStore()
+    await handleUpdate(command(7, PAGE), deps(store))
+    const clock = deps(store)
+    await handleCron(clock)
+    expect(clock.knocks).toEqual([{ jobId: '7:resolve-7-0', videoId: 'resolve-7-0', url: PAGE, resolve: true }])
+  })
+
+  it('a puszta YouTube-videó marad feliratmunka', async () => {
+    const d = deps(await boundStore())
+    const result = await handleUpdate(command(8, `https://youtu.be/${ID}`), d)
+    expect(result.knocks).toEqual([{ jobId: `8:${ID}`, videoId: ID, url: `https://www.youtube.com/watch?v=${ID}` }])
   })
 })

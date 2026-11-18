@@ -98,6 +98,8 @@ export interface PlannedKnock {
   models?: Record<string, string>
   /** Hangletöltés (`/fetch`): az `url` szóközzel elválasztott argumentumlista. */
   fetch?: boolean
+  /** Link vagy lista feloldása: a serve `resolved` visszahívást küld, letöltés nélkül. */
+  resolve?: boolean
 }
 
 export interface WorkerDeps {
@@ -149,6 +151,7 @@ export function workerLang(raw: string): string | null {
   return LANG_TAG.test(tag) ? tag : null
 }
 export const FETCH_ID = /^fetch-\d+$/
+export const RESOLVE_ID = /^resolve-\d+-\d+$/
 /** A bot feed-listaüzenetének `Feed:` sora; a válasz sorszámai ehhez a feedhez tartoznak. */
 const FEED_LINE = /^Feed: (https?:\/\/\S+)$/m
 const PICK_TEXT = /^\s*\d+(?:\s*,\s*\d+)*\s*$/
@@ -220,6 +223,7 @@ function textKnock(row: JobRow, text: string): PlannedKnock {
  */
 async function jobKnock(row: JobRow, deps: WorkerDeps): Promise<PlannedKnock | null> {
   if (FETCH_ID.test(row.videoId)) return { jobId: row.jobId, videoId: row.videoId, url: row.url, fetch: true }
+  if (RESOLVE_ID.test(row.videoId)) return { jobId: row.jobId, videoId: row.videoId, url: row.url, resolve: true }
   if (row.text) return textKnock(row, row.text)
   if (row.fileId && row.fileName) {
     const bytes = await deps.download(row.fileId)
@@ -703,6 +707,25 @@ export async function handleUpdate(
     await deps.store.insert(row)
     knocks.push({ jobId: row.jobId, videoId: row.videoId, url: row.url })
   }
+  for (const [n, url] of planned.resolves.entries()) {
+    const videoId = `resolve-${update.update_id}-${n}`
+    const row: JobRow = {
+      jobId: `${update.update_id}:${videoId}`,
+      updateId: update.update_id,
+      chatId,
+      messageId: message.message_id,
+      videoId,
+      url,
+      status: 'queued',
+      error: null,
+      title: url,
+      notifiedReady: false,
+      acceptedAt: null,
+      sub: binding.sub,
+    }
+    await deps.store.insert(row)
+    knocks.push({ jobId: row.jobId, videoId, url, resolve: true })
+  }
   if (lines.length > 0) await deps.send(chatId, lines.join('\n'))
   return { status: 200, knocks }
 }
@@ -735,9 +758,10 @@ export type CallbackBody =
   | { status: 'progress'; text: string }
   | { status: 'stalled'; text: string }
   | { status: 'transcribed'; videoId: string; title: string; recipes: string[] }
+  | { status: 'resolved'; title: string; playlist: boolean; items: { videoId: string; url: string; title: string }[] }
 
 /** A futás vagy a sor saját jelentései; a `transcribed` a leadó munkának szól, és a `handleCallback` elején ágazik el. */
-type ServeReport = Exclude<CallbackBody, { status: 'transcribed' }>
+type ServeReport = Exclude<CallbackBody, { status: 'transcribed' } | { status: 'resolved' }>
 
 /** A whisper-utólépés jele a serve-ben (`ServeJob.url`); a `src/whisper/after.ts` `AFTER_WHISPER`-ének másolata. */
 export const AFTER_WHISPER = 'after-whisper'
@@ -869,6 +893,7 @@ async function fetchCallback(row: JobRow, body: ServeReport, deps: WorkerDeps): 
 }
 
 export async function handleCallback(id: string, body: CallbackBody, deps: WorkerDeps): Promise<number> {
+  if (body.status === 'resolved') return 200
   if (body.status === 'transcribed') {
     const row = await findRow(deps.store, id)
     if (row !== null) await afterWhisper(row, body, deps)

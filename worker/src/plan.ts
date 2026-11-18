@@ -1,5 +1,5 @@
 import { classifyInput } from 'transcript-refinery/classify'
-import { LANGS, MODEL_KEYS, NO_VIDEO_LINE, NOT_YOUTUBE_LINE, PLAYLIST_LINE, RECIPES, alreadyLine, flatTitle, queuedLine } from './messages.js'
+import { LANGS, MODEL_KEYS, NO_LINK_LINE, RECIPES, alreadyLine, flatTitle, queuedLine, resolvingLine } from './messages.js'
 import type { JobRow, LinkToken, RunRow } from './store.js'
 
 export {
@@ -205,12 +205,20 @@ const OPEN = new Set(['queued', 'waiting', 'accepted'])
 export function linesForMessage(
   text: string,
   active: readonly JobRow[],
-): { lines: string[]; jobs: { videoId: string; url: string }[] } {
+): { lines: string[]; jobs: { videoId: string; url: string }[]; resolves: string[] } {
   const lines: string[] = []
   const jobs: { videoId: string; url: string }[] = []
+  const resolves: string[] = []
   for (const token of text.split(/\s+/)) {
     if (token === '') continue
     if (!token.includes('://') && !VIDEO_ID.test(token)) continue
+    // A lista (a `watch?v&list` is) és a nem YouTube-os link feloldásra megy; a puszta YouTube-videó közvetlen.
+    const asList = classifyInput(token, true)
+    if (asList.kind === 'playlist' || asList.kind === 'link') {
+      resolves.push(token)
+      lines.push(resolvingLine(token))
+      continue
+    }
     const classified = classifyInput(token, false)
     if (classified.kind === 'video') {
       const open = active.some((row) => row.videoId === classified.id && OPEN.has(row.status))
@@ -221,14 +229,9 @@ export function linesForMessage(
       }
       continue
     }
-    if (classified.kind === 'playlist') {
-      lines.push(PLAYLIST_LINE)
-      continue
-    }
-    if (token.includes('://')) lines.push(NOT_YOUTUBE_LINE)
   }
-  if (lines.length === 0 && jobs.length === 0) return { lines: [NO_VIDEO_LINE], jobs }
-  return { lines, jobs }
+  if (lines.length === 0) return { lines: [NO_LINK_LINE], jobs, resolves }
+  return { lines, jobs, resolves }
 }
 
 export const TOKEN_TTL = 10 * 60 * 1000

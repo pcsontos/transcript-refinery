@@ -69,21 +69,33 @@ function run(partial: Partial<RunRow>): RunRow {
 }
 
 describe('linesForMessage', () => {
-  it('a listás watch cím videó, a summary szó nem sor', () => {
-    const planned = linesForMessage(`https://www.youtube.com/watch?v=${ID}&list=PL123 summary`, [])
+  it('a puszta YouTube-videó közvetlen munka, a summary szó nem sor', () => {
+    const planned = linesForMessage(`https://www.youtube.com/watch?v=${ID} summary`, [])
     expect(planned.jobs).toEqual([{ videoId: ID, url: `https://www.youtube.com/watch?v=${ID}` }])
     expect(planned.lines).toEqual([queuedLine(ID)])
-    expect(planned.lines.join('\n')).not.toContain('Nem YouTube-cím')
+    expect(planned.resolves).toEqual([])
   })
 
-  it('a lista külön mondat, az idegen cím is, a puszta szó nem', () => {
-    const planned = linesForMessage('https://www.youtube.com/playlist?list=PL123 https://vimeo.com/1 summary', [])
+  it('a lista és az idegen link feloldásra megy, a puszta szó nem', () => {
+    const planned = linesForMessage('https://www.youtube.com/playlist?list=PL123 https://makertube.net/w/d4Vv summary', [])
     expect(planned.jobs).toEqual([])
-    expect(planned.lines).toEqual(['Lejátszási lista későbbre marad.', 'Nem YouTube-cím.'])
+    expect(planned.resolves).toEqual(['https://www.youtube.com/playlist?list=PL123', 'https://makertube.net/w/d4Vv'])
+    expect(planned.lines).toEqual([
+      'Megnézem: https://www.youtube.com/playlist?list=PL123',
+      'Megnézem: https://makertube.net/w/d4Vv',
+    ])
   })
 
-  it('videó nélkül a saját mondat megy', () => {
-    expect(linesForMessage('summary', []).lines).toEqual(['Nincs YouTube-videó az üzenetben.'])
+  it('a watch?v&list feloldásra megy, nem jobs-ba', () => {
+    const url = `https://www.youtube.com/watch?v=${ID}&list=PL123`
+    const planned = linesForMessage(url, [])
+    expect(planned.jobs).toEqual([])
+    expect(planned.resolves).toEqual([url])
+  })
+
+  it('link nélkül a saját mondat megy', () => {
+    expect(linesForMessage('summary', []).lines).toEqual(['Nincs link az üzenetben.'])
+    expect(linesForMessage('ftp://x.hu/a', []).lines).toEqual(['Nincs link az üzenetben.'])
   })
 
   it('a queued videó nem nyit új munkát', () => {

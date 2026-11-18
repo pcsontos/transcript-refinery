@@ -2,14 +2,16 @@ import type { JobRow, ModelOverride, RunRow } from './store.js'
 
 export const REJECTED_SECRET = 'A konténer elutasította a hívást.'
 
-export const PLAYLIST_LINE = 'Lejátszási lista későbbre marad.'
-export const NOT_YOUTUBE_LINE = 'Nem YouTube-cím.'
-export const NO_VIDEO_LINE = 'Nincs YouTube-videó az üzenetben.'
+export const NO_LINK_LINE = 'Nincs link az üzenetben.'
 export const TEXT_ONLY = 'Csak .txt vagy .md fájlt tudok feldolgozni.'
 export const SCAN_EMPTY = 'Írd a /scan után a szöveget, vagy küldd fájlként.'
 export const DOWNLOAD_FAILED = 'A fájlt nem tudtam letölteni, küldd újra.'
 export const SCAN_LONG =
   'A szöveg elérhette a Telegram-üzenet határát, lehet, hogy csonka. Hosszabb átiratot fájlként küldj.'
+
+export function resolvingLine(url: string): string {
+  return `Megnézem: ${url}`
+}
 
 export function queuedLine(videoId: string): string {
   return `Sorba került: ${videoId}`

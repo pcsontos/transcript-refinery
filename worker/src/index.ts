@@ -249,6 +249,8 @@ function isCallback(value: unknown): value is CallbackBody {
     deployError?: unknown
     videoId?: unknown
     recipes?: unknown
+    playlist?: unknown
+    items?: unknown
   }
   if (body.status === 'ready') {
     if (typeof body.title !== 'string') return false
@@ -259,6 +261,13 @@ function isCallback(value: unknown): value is CallbackBody {
     // Az azonosító a `jobId`-be kerül: `:` vagy `/` nem lehet benne.
     if (typeof body.videoId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(body.videoId) || typeof body.title !== 'string') return false
     return Array.isArray(body.recipes) && body.recipes.length > 0 && body.recipes.every((id) => typeof id === 'string' && id !== '')
+  }
+  if (body.status === 'resolved') {
+    if (typeof body.title !== 'string' || typeof body.playlist !== 'boolean' || !Array.isArray(body.items)) return false
+    return body.items.every((item: unknown) => {
+      const entry = item as { videoId?: unknown; url?: unknown; title?: unknown }
+      return typeof entry.videoId === 'string' && /^[A-Za-z0-9_-]+$/.test(entry.videoId) && typeof entry.url === 'string' && typeof entry.title === 'string'
+    })
   }
   if (body.status === 'failed') {
     if (typeof body.error !== 'string') return false
