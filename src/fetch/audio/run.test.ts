@@ -309,6 +309,48 @@ describe('podcast-feed', () => {
     expect(await listing(root)).toEqual([])
   })
 
+  describe('<media:content> hang', () => {
+    const PAGE = 'https://omny.fm/shows/x/ep1'
+    const AUDIO = 'https://traffic.omny.fm/ep1/audio.mp3?utm_source=x&t=1'
+    const xml = `<rss><channel><item><link>${PAGE}</link><media:content url="${AUDIO.replace('&', '&amp;')}" type="audio/mpeg"/></item></channel></rss>`
+    const pageFeed = JSON.stringify({ _type: 'playlist', title: 'Podcast', entries: [{ url: `${PAGE}#__youtubedl_smuggle=x`, title: 'Első' }] })
+    const pageRunner: ProcessRunner = (args) => Promise.resolve(args[0] === '--version' ? ok('1') : ok(pageFeed))
+
+    it('a hang a media:content URL-jéről jön, a fájlnév annak hash-ét viseli', async () => {
+      const requested: string[] = []
+      const fetched: typeof fetch = (input) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        requested.push(url)
+        if (url === FEED) return Promise.resolve(new Response(xml, { headers: { 'content-type': 'application/rss+xml' } }))
+        return Promise.resolve(new Response('abc', { headers: { 'content-type': 'audio/mpeg' } }))
+      }
+      const root = await tmp()
+      const run = deps(localAudioStore(root), { runner: pageRunner, calls: [], downloads: () => [] }, { fetchImpl: fetched, pick: [1] })
+      await runAudioFetch([FEED], run.deps)
+      expect(requested).toContain(AUDIO)
+      expect(requested).not.toContain(PAGE)
+      expect(run.lines).toEqual([`letöltve: Első [${hash(AUDIO)}]`])
+    })
+
+    it('ha a feed GET-je hibát ad, a yt-dlp URL-je marad, hibasor nélkül a feed-lekérésről', async () => {
+      let feedCalls = 0
+      const fetched: typeof fetch = (input) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        if (url === FEED) {
+          feedCalls += 1
+          // az első GET (feedKind) feed, a második (<media:content>) hiba
+          return feedCalls === 1
+            ? Promise.resolve(new Response('<rss/>', { headers: { 'content-type': 'application/rss+xml' } }))
+            : Promise.reject(new Error('hálózat'))
+        }
+        return Promise.resolve(new Response('abc', { headers: { 'content-type': 'audio/mpeg' } }))
+      }
+      const run = deps(localAudioStore(await tmp()), { runner: pageRunner, calls: [], downloads: () => [] }, { fetchImpl: fetched, pick: [1] })
+      await runAudioFetch([FEED], run.deps)
+      expect(run.lines).toEqual([`letöltve: Első [${hash(PAGE)}]`])
+    })
+  })
+
   it('előbb közvetlen mp3-linkként, majd a feedből → kihagyva', async () => {
     const root = await tmp()
     const store = localAudioStore(root)

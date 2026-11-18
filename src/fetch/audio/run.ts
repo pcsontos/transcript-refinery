@@ -21,7 +21,7 @@ import {
   YTDLP_MISSING,
 } from '../subtitle/ytdlp.js'
 import { directTarget, downloadDirect } from './direct.js'
-import { feedHash, feedKind, feedMessages, resolvePick } from './feed.js'
+import { episodeAudioUrl, feedHash, feedKind, feedMediaUrls, feedMessages, resolvePick, type FeedItemUrls } from './feed.js'
 import { audioId, type AudioStore } from './store.js'
 
 export type AudioOutcome = 'downloaded' | 'skipped' | 'failed' | 'uploaded' | 'listed'
@@ -258,13 +258,22 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     total += picked.indexes.length - 1
     sink({ type: 'scan:found', count: total })
     const dir = playlistDir('', feed.title, feedHash(url), false)
+    // A yt-dlp néha az epizód oldalát adja; a hang a feed <enclosure>/<media:content>-jében van. Hiba esetén a yt-dlp URL-je marad.
+    let items: FeedItemUrls[] = []
+    try {
+      const response = await (deps.fetchImpl ?? fetch)(url.trim().split('#')[0] ?? url)
+      if (response.ok) items = feedMediaUrls(await response.text())
+    } catch {
+      // marad a yt-dlp URL-je
+    }
     for (const index of picked.indexes) {
       if (deps.stopped()) return
       const entry = feed.entries[index]
       if (entry === undefined) continue
       // Egy rossz epizód (pl. értelmezhetetlen URL) hibasor, a többi tovább megy.
       try {
-        const hash = directTarget(entry.url).hash
+        const audioUrl = episodeAudioUrl(entry.url, items)
+        const hash = directTarget(audioUrl).hash
         const label = `${entry.title} [${hash}]`
         sink({ type: 'item:start', itemId: hash, title: label })
         if (ids.has(hash) && !deps.overwrite) {
@@ -272,7 +281,7 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
           continue
         }
         sink({ type: 'item:step', itemId: hash, step: 'letöltés' })
-        const result = await downloadDirect(entry.url, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) })
+        const result = await downloadDirect(audioUrl, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) })
         if (!result.ok) {
           await failed(entry.url, 'reason' in result ? result.reason : 'nem hangfájl (feed)', hash)
           continue

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FeedProbe } from '../subtitle/ytdlp.js'
-import { chunkMessages, feedKind, feedListLines, feedMessages, feedHash, pickHint, resolvePick } from './feed.js'
+import { chunkMessages, episodeAudioUrl, feedKind, feedMediaUrls, feedListLines, feedMessages, feedHash, pickHint, resolvePick } from './feed.js'
 
 const entry = (title: string, timestamp: number | null = null, duration: number | null = null) => ({ url: `https://f.hu/${title}.mp3`, title, duration, timestamp, raw: {} })
 
@@ -85,5 +85,40 @@ describe('feedKind', () => {
     expect(await feedKind('https://f.hu/a.mp3', counting)).toBe('other')
     expect(calls).toBe(0)
     expect(await feedKind('https://f.hu/w/abc', () => Promise.reject(new Error('hálózat')))).toBe('other')
+  })
+})
+
+describe('feedMediaUrls és episodeAudioUrl', () => {
+  const item = (inner: string): string => `<item>${inner}</item>`
+
+  it('csak media:content: a hang-URL entitásai dekódolva, a kép kimarad', () => {
+    const xml = item(
+      `<media:content type="image/jpeg" url="https://x.hu/k.jpg"/><media:content url="https://omny.fm/a/audio.mp3?utm_source=x&amp;t=1" type="audio/mpeg"/>`,
+    )
+    expect(feedMediaUrls(xml)).toEqual([{ media: 'https://omny.fm/a/audio.mp3?utm_source=x&t=1' }])
+    expect(feedMediaUrls(item('<media:content type="image/jpeg" url="https://x.hu/k.jpg"/>'))).toEqual([{}])
+  })
+
+  it('az enclosure erősebb a media:content-nél', () => {
+    const items = feedMediaUrls(
+      item(`<link>https://x.hu/ep1</link><enclosure url="https://x.hu/e.mp3" type="audio/mpeg"/><media:content url="https://x.hu/m.mp3" type="audio/mpeg"/>`),
+    )
+    expect(episodeAudioUrl('https://x.hu/ep1', items)).toBe('https://x.hu/e.mp3')
+  })
+
+  it('numerikus entitás, &quot; és az aposztróf idézőjel is működik', () => {
+    const xml = item(`<media:content type='audio/mpeg' url='https://x.hu/a.mp3?a=1&#38;b=2&quot;c'/>`)
+    expect(feedMediaUrls(xml)[0]?.media).toBe('https://x.hu/a.mp3?a=1&b=2"c')
+  })
+
+  it('URL szerint párosít: a link nélküli középső tétel nem téveszt meg', () => {
+    const items = feedMediaUrls(
+      item(`<link>https://x.hu/1</link><media:content url="https://a.hu/1.mp3" type="audio/mpeg"/>`) +
+        item(`<media:content url="https://a.hu/2.mp3" type="audio/mpeg"/>`) +
+        item(`<link><![CDATA[https://x.hu/3#fragment]]></link><media:content url="https://a.hu/3.mp3" type="audio/mpeg"/>`),
+    )
+    expect(episodeAudioUrl('https://x.hu/1', items)).toBe('https://a.hu/1.mp3')
+    expect(episodeAudioUrl('https://x.hu/3', items)).toBe('https://a.hu/3.mp3')
+    expect(episodeAudioUrl('https://x.hu/ismeretlen', items)).toBe('https://x.hu/ismeretlen')
   })
 })
