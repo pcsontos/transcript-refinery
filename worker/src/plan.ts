@@ -224,14 +224,16 @@ export function linesForMessage(
   for (const token of text.split(/\s+/)) {
     if (token === '') continue
     if (!token.includes('://') && !VIDEO_ID.test(token)) continue
-    // A lista (a `watch?v&list` is) és a nem YouTube-os link feloldásra megy; a puszta YouTube-videó közvetlen.
+    // A puszta YouTube-videó közvetlen; minden más http(s) link (lista, `watch?v&list`, nem YouTube-os, YouTube-csatorna)
+    // feloldásra megy.
     const asList = classifyInput(token, true)
-    if (asList.kind === 'playlist' || asList.kind === 'link') {
+    const classified = classifyInput(token, false)
+    if (asList.kind !== 'playlist' && classified.kind !== 'video' && !/^https?:\/\//i.test(token)) continue
+    if (asList.kind === 'playlist' || classified.kind !== 'video') {
       resolves.push(token)
       lines.push(resolvingLine(token))
       continue
     }
-    const classified = classifyInput(token, false)
     if (classified.kind === 'video') {
       const open = active.some((row) => row.videoId === classified.id && OPEN.has(row.status))
       if (open) lines.push(alreadyLine(classified.id))

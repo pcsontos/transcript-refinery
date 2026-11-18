@@ -20,6 +20,7 @@ function capture(): D1Like & { calls: { sql: string; values: unknown[] }[] } {
       }
       return statement
     },
+    batch: (statements) => Promise.resolve(statements.map(() => ({ meta: { changes: 1 } }))),
   }
 }
 

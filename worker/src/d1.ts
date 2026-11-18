@@ -19,6 +19,8 @@ export interface D1Statement {
 
 export interface D1Like {
   prepare(sql: string): D1Statement
+  /** Egy tranzakció, egy hívás (D1 `batch`). */
+  batch(statements: D1Statement[]): Promise<unknown>
 }
 
 interface JobRecord {
@@ -139,6 +141,31 @@ function toToken(record: TokenRecord): LinkToken {
 }
 
 export function createD1Store(db: D1Like): JobStore {
+  const insertStatement = (row: JobRow): D1Statement =>
+    db
+      .prepare(
+        `INSERT INTO jobs (
+          job_id, update_id, chat_id, message_id, video_id, url, status, error, title,
+          notified_ready, accepted_at, sub, file_id, file_name, text
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        row.jobId,
+        row.updateId,
+        row.chatId,
+        row.messageId,
+        row.videoId,
+        row.url,
+        row.status,
+        row.error,
+        row.title,
+        row.notifiedReady ? 1 : 0,
+        row.acceptedAt,
+        row.sub,
+        row.fileId ?? null,
+        row.fileName ?? null,
+        row.text ?? null,
+      )
   return {
     async listByUpdate(updateId) {
       const result = await db.prepare('SELECT * FROM jobs WHERE update_id = ?').bind(updateId).all<JobRecord>()
@@ -154,31 +181,10 @@ export function createD1Store(db: D1Like): JobStore {
       return record === null ? null : toRow(record)
     },
     async insert(row) {
-      await db
-        .prepare(
-          `INSERT INTO jobs (
-            job_id, update_id, chat_id, message_id, video_id, url, status, error, title,
-            notified_ready, accepted_at, sub, file_id, file_name, text
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          row.jobId,
-          row.updateId,
-          row.chatId,
-          row.messageId,
-          row.videoId,
-          row.url,
-          row.status,
-          row.error,
-          row.title,
-          row.notifiedReady ? 1 : 0,
-          row.acceptedAt,
-          row.sub,
-          row.fileId ?? null,
-          row.fileName ?? null,
-          row.text ?? null,
-        )
-        .run()
+      await insertStatement(row).run()
+    },
+    async insertMany(rows) {
+      if (rows.length > 0) await db.batch(rows.map(insertStatement))
     },
     async save(row) {
       const result = await db

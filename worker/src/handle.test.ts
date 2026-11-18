@@ -2029,6 +2029,26 @@ describe('a feloldott link (resolved) és a lista gombjai', () => {
     expect(d.sent).toHaveLength(1)
   })
 
+  it('Mind, ha a koppintásig minden tétel sorba került: a mind kész sor, 0 videó nincs', async () => {
+    const store = await setup()
+    const ids = ['aaaaaaaaaaa', 'bbbbbbbbbbb']
+    await handleCallback(RID, { status: 'resolved', title: 'L', playlist: true, items: ids.map((id) => item(id)) }, deps(store))
+    for (const id of ids) await store.insert(acceptedRow({ jobId: `3:${id}`, updateId: 3, videoId: id }))
+    const d = deps(store)
+    expect(await handleTap(tap(8, `L:a:${RID}`, 42, 9), d)).toEqual([])
+    expect(d.sent).toEqual(['Lista: L, 2 videó, mind kész vagy sorban.'])
+  })
+
+  it('Mind: a már létező, lezárt jobId-t (ugyanabból az üzenetből) nem szúrja be újra', async () => {
+    const store = await setup()
+    await store.insert(acceptedRow({ jobId: '7:aaaaaaaaaaa', updateId: 7, videoId: 'aaaaaaaaaaa', status: 'failed' }))
+    await handleCallback(RID, { status: 'resolved', title: 'L', playlist: true, items: [item('aaaaaaaaaaa'), item('bbbbbbbbbbb')] }, deps(store))
+    const d = deps(store)
+    await handleTap(tap(8, `L:a:${RID}`, 42, 9), d)
+    expect(d.sent).toEqual(['Sorba került: 1 videó (L).'])
+    expect((await store.listByUpdate(7)).filter((row) => row.jobId === '7:aaaaaaaaaaa')).toHaveLength(1)
+  })
+
   it('Csak ezt a videót és Mégse', async () => {
     const url = `https://www.youtube.com/watch?v=${ID}&list=PL1`
     const store = await setup(url)
@@ -2086,5 +2106,16 @@ describe('handleCron megáll az első 409-nél vagy down-nál', () => {
     await handleCron(d)
     expect(calls).toEqual(['10:aaaaaaaaaaa'])
     expect(d.sent).toEqual(['A gép ébredésére vár: aaaaaaaaaaa.'])
+  })
+
+  it('a le nem tölthető Telegram-fájl sora (nincs kopogtatás) nem állítja meg a többit', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow({ jobId: '9:t-0123456789abcdef', updateId: 9, videoId: 't-0123456789abcdef', status: 'queued', url: '', fileId: 'F9', fileName: 'a.txt' }))
+    await store.insert(acceptedRow({ jobId: '10:aaaaaaaaaaa', updateId: 10, videoId: 'aaaaaaaaaaa', status: 'queued' }))
+    const d = deps(store)
+    const calls: string[] = []
+    d.knock = (job) => { calls.push(job.jobId); return Promise.resolve(202) }
+    await handleCron(d)
+    expect(calls).toEqual(['10:aaaaaaaaaaa'])
   })
 })

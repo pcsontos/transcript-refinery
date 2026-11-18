@@ -421,7 +421,6 @@ async function runFetchJob(job: ServeJob, effects: JobEffects, signal?: AbortSig
   }
 }
 
-/** A `signal` csak a receptjobot és a hangletöltést állítja meg; a felirat-job lefut, az eredményét a Worker elnyeli. */
 const UNRESOLVABLE = 'A link nem oldható fel.'
 const EMPTY_LIST = 'a lista üres'
 
@@ -460,7 +459,11 @@ async function runResolveJob(job: ServeJob, effects: JobEffects): Promise<void> 
   }
   const seen = new Set<string>()
   const items: { videoId: string; url: string; title: string }[] = []
-  for (const entry of Array.isArray(raw.entries) ? (raw.entries as Record<string, unknown>[]) : []) {
+  // A csatornacím tételei a fülek (Videók, Élő …) beágyazott listaként: egy szinttel kibontjuk őket (mérve, 2026-11-18).
+  const entries = (Array.isArray(raw.entries) ? (raw.entries as Record<string, unknown>[]) : []).flatMap((entry) =>
+    Array.isArray(entry.entries) ? (entry.entries as Record<string, unknown>[]) : [entry],
+  )
+  for (const entry of entries) {
     const videoId = mediaId(entry)
     const url = textOf(entry.url)
     if (videoId === null || url === undefined || seen.has(videoId)) continue
@@ -471,6 +474,7 @@ async function runResolveJob(job: ServeJob, effects: JobEffects): Promise<void> 
   await report(effects, job.jobId, { status: 'resolved', title, playlist: true, items })
 }
 
+/** A `signal` csak a receptjobot és a hangletöltést állítja meg; a felirat-job lefut, az eredményét a Worker elnyeli. */
 export async function runJob(job: ServeJob, effects: JobEffects, signal?: AbortSignal): Promise<void> {
   if (job.resolve === true) {
     await runResolveJob(job, effects)

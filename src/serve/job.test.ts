@@ -971,6 +971,15 @@ describe('runJob resolve', () => {
     ])
   })
 
+  it('csatorna: a fülek beágyazott listáit egy szinttel kibontja (mért yt-dlp-alak)', async () => {
+    const video = (id: string) => ({ _type: 'url', ie_key: 'Youtube', id, url: `https://www.youtube.com/watch?v=${id}`, title: id })
+    const tab = (title: string, ids: string[]) => ({ _type: 'playlist', id: 'UCx', title, entries: ids.map(video) })
+    const channel = JSON.stringify({ _type: 'playlist', title: 'Csatorna', entries: [tab('Videos', ['aaaaaaaaaaa', 'bbbbbbbbbbb']), tab('Live', ['ccccccccccc', 'aaaaaaaaaaa'])] })
+    const [body] = await resolveWith(out(channel))
+    expect(body).toMatchObject({ status: 'resolved', title: 'Csatorna', playlist: true })
+    expect((body as { items: { videoId: string }[] }).items.map((i) => i.videoId)).toEqual(['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'])
+  })
+
   it('hibák: nem nulla kilépés, olvashatatlan JSON, üres lista, nincs resolve', async () => {
     expect(await resolveWith(out('', { code: 1, stderr: '\nERROR: Unsupported URL: x\nmás' }))).toEqual([{ status: 'failed', error: 'ERROR: Unsupported URL: x' }])
     expect(await resolveWith(out('nem json'))).toEqual([{ status: 'failed', error: 'A link nem oldható fel.' }])

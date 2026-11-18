@@ -18,6 +18,15 @@ describe('mediaId', () => {
     expect(mediaId({ extractor_key: 'Vimeo', id: 'a:b.c/d' })).toBe('vimeo-a_b_c_d')
   })
 
+  it('a 36 bájtnál hosszabb azonosító az id hash-ét kapja (Telegram-gombadat), a 36 bájtos marad', () => {
+    const claim = 'f'.repeat(40)
+    expect(mediaId({ extractor_key: 'LBRY', id: claim })).toBe(`lbry-${sha256(claim).slice(0, 8)}`)
+    expect(mediaId({ extractor_key: 'Kick', id: 'a'.repeat(31) })).toBe(`kick-${'a'.repeat(31)}`)
+    const long = mediaId({ extractor_key: 'X'.repeat(40), id: 'y'.repeat(40) })
+    expect(long).toBe(`${'x'.repeat(27)}-${sha256('y'.repeat(40)).slice(0, 8)}`)
+    expect(long?.length).toBe(36)
+  })
+
   it('Generic: a webpage_url hash-e, URL nélkül null', () => {
     const url = 'https://www.w3schools.com/html/horse.mp3'
     expect(mediaId({ extractor_key: 'Generic', id: 'horse', webpage_url: url })).toBe(`generic-${sha256(url).slice(0, 8)}`)

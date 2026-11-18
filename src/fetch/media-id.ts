@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto'
 
 const UNSAFE = /[^A-Za-z0-9_-]/g
+/** A gombadat `r:clean-moderate:<10 jegyű update_id>:<azonosító>` alakja ennyit hagy az azonosítónak. */
+export const MAX_LENGTH = 36
+
+const sha8 = (text: string): string => createHash('sha256').update(text).digest('hex').slice(0, 8)
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined
@@ -25,7 +29,10 @@ export function mediaId(info: {
   if (extractor.toLowerCase() === 'generic') {
     const url = text(info.webpage_url)
     if (url === undefined) return null
-    return `generic-${createHash('sha256').update(url).digest('hex').slice(0, 8)}`
+    return `generic-${sha8(url)}`
   }
-  return `${extractor.toLowerCase().replace(UNSAFE, '_')}-${id.replace(UNSAFE, '_')}`
+  const prefix = extractor.toLowerCase().replace(UNSAFE, '_')
+  const full = `${prefix}-${id.replace(UNSAFE, '_')}`
+  // ponytail: a Telegram-gombadat 64 bájt, a `r:clean-moderate:<update_id>:` után 36 marad; a hosszabb id hash-t kap.
+  return full.length <= MAX_LENGTH ? full : `${prefix.slice(0, MAX_LENGTH - 9)}-${sha8(id)}`
 }

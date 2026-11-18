@@ -98,6 +98,11 @@ describe('linesForMessage', () => {
     expect(linesForMessage('ftp://x.hu/a', []).lines).toEqual(['Nincs link az üzenetben.'])
   })
 
+  it('a YouTube-csatorna (se videó, se lista) is feloldásra megy', () => {
+    const url = 'https://www.youtube.com/@YouTube'
+    expect(linesForMessage(url, [])).toEqual({ lines: [`Megnézem: ${url}`], jobs: [], resolves: [url] })
+  })
+
   it('a queued videó nem nyit új munkát', () => {
     const planned = linesForMessage(`https://youtu.be/${ID}`, [row({ status: 'queued' })])
     expect(planned.jobs).toEqual([])

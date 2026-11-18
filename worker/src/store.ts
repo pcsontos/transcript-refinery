@@ -75,6 +75,8 @@ export interface JobStore {
   listByUpdate(updateId: number): Promise<JobRow[]>
   activeByVideo(videoId: string): Promise<JobRow | null>
   insert(row: JobRow): Promise<void>
+  /** Több sor egy hívásban (D1 `batch`): a lista `Mind`-ja ne fogyassza el a hívásonkénti lekérdezés-keretet. */
+  insertMany(rows: readonly JobRow[]): Promise<void>
   /** `false`, ha nem hatott: a `cancelled` sort semmi nem írja felül. */
   save(row: JobRow): Promise<boolean>
   /** Beszúr vagy cserél: a feloldás újrapróbálása nem ütközhet. */
@@ -142,6 +144,10 @@ export function memoryStore(): JobStore {
       if (index === -1) rows.push(stored)
       else rows[index] = stored
       return Promise.resolve(true)
+    },
+    insertMany: (many) => {
+      rows.push(...many)
+      return Promise.resolve()
     },
     insertResolve: (row) => {
       resolves.set(row.jobId, structuredClone(row))

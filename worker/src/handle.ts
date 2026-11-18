@@ -900,17 +900,12 @@ async function fetchCallback(row: JobRow, body: ServeReport, deps: WorkerDeps): 
   await deps.store.save(row)
 }
 
-/** Egy feloldott tétel sora; `null`, ha az azonosítóra van nyitott sor vagy a `jobId` már létezik. */
-async function itemRow(
-  source: JobRow,
-  item: { videoId: string; url: string; title: string },
-  deps: WorkerDeps,
-): Promise<JobRow | null> {
-  if ((await deps.store.activeByVideo(item.videoId)) !== null) return null
-  const jobId = `${source.updateId}:${item.videoId}`
-  if ((await findRow(deps.store, jobId)) !== null) return null
-  const row: JobRow = {
-    jobId,
+type ResolvedItem = { videoId: string; url: string; title: string }
+
+/** A feloldott tétel új, `queued` sora a feloldó sor üzenetéhez. */
+function newItemRow(source: JobRow, item: ResolvedItem): JobRow {
+  return {
+    jobId: `${source.updateId}:${item.videoId}`,
     updateId: source.updateId,
     chatId: source.chatId,
     messageId: source.messageId,
@@ -923,6 +918,13 @@ async function itemRow(
     acceptedAt: null,
     sub: source.sub,
   }
+}
+
+/** Egy feloldott tétel sora; `null`, ha az azonosítóra van nyitott sor vagy a `jobId` már létezik. */
+async function itemRow(source: JobRow, item: ResolvedItem, deps: WorkerDeps): Promise<JobRow | null> {
+  if ((await deps.store.activeByVideo(item.videoId)) !== null) return null
+  const row = newItemRow(source, item)
+  if ((await findRow(deps.store, row.jobId)) !== null) return null
   await deps.store.insert(row)
   return row
 }
@@ -1127,14 +1129,20 @@ async function listTap(action: 'a' | 'v' | 'x', source: JobRow, deps: WorkerDeps
     }
     return [{ jobId: row.jobId, videoId: row.videoId, url: row.url }]
   }
-  // A K a koppintáskor számolódik újra: a közben beszúrt sor kimarad.
+  // A K a koppintáskor számolódik újra: a közben beszúrt sor kimarad. Két olvasás és egy batch, tételszámtól függetlenül
+  // (a hívásonkénti D1-keret 1000 lekérdezés); a `known` a nyitott sorokat is fedi, az `activeByVideo` itt felesleges.
   const known = await deps.store.knownVideos(resolve.items.map((item) => item.videoId))
-  const rows: JobRow[] = []
-  for (const item of resolve.items) {
-    if (known.has(item.videoId)) continue
-    const row = await itemRow(source, item, deps)
-    if (row !== null) rows.push(row)
+  const taken = new Set((await deps.store.listByUpdate(source.updateId)).map((row) => row.jobId))
+  const rows = resolve.items
+    .filter((item) => !known.has(item.videoId))
+    .map((item) => newItemRow(source, item))
+    .filter((row) => !taken.has(row.jobId))
+  if (rows.length === 0) {
+    const n = resolve.items.length
+    await deps.send(source.chatId, listLine(resolve.title, n, n))
+    return []
   }
+  await deps.store.insertMany(rows)
   await deps.send(source.chatId, listQueuedLine(rows.length, resolve.title))
   // A serve kapuja egy munkát fogad: az elsőt kopogtatjuk, a többit a cron viszi.
   const first = rows[0]
@@ -1205,7 +1213,8 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
     const knock = await jobKnock(row, deps)
     const result = knock === null ? 'down' : await deps.knock(knock)
     await settle(row, row, () => deps.store.save(row), result, deps)
-    if (result === 409 || result === 'down') halted = true
+    // A `null` a sor saját hibája (pl. a Telegram-fájl nem tölthető le), nem a serve-é: a többi sor mehet.
+    if (knock !== null && (result === 409 || result === 'down')) halted = true
   }
   for (const run of await deps.store.dueRuns(deps.now())) {
     if (halted) break
