@@ -162,12 +162,13 @@ export const COMMANDS: readonly CommandHelp[] = [
   },
   {
     name: 'fetch subtitle',
-    summary: 'YouTube-feliratot és .info.json fájlt tölt egy mappába.',
+    summary: 'YouTube- vagy más oldalról feliratot és .info.json fájlt tölt egy mappába.',
     usage:
       'refinery fetch subtitle <url|id> [kapcsolók]\n' + '           refinery fetch subtitle --list <fájl> [kapcsolók]',
     description:
-      'YouTube-feliratot és .info.json metaadatot tölt egy helyi mappába a yt-dlp segítségével.\n' +
-      'Ami már ott van, azt átugorja. A run és a watch nem hívja.',
+      'Feliratot és .info.json metaadatot tölt egy helyi mappába a yt-dlp segítségével: YouTube-videóét vagy listáét,\n' +
+      'és bármely más http(s) linkét, amelyet a yt-dlp ismer (pl. PeerTube). A nem YouTube-os lista nem megy: ott\n' +
+      'egyenként add meg a videókat. Ami már ott van, azt átugorja. A run és a watch nem hívja.',
     options: [
       ['--out <út>', 'célmappa, abszolút; hiányában a config első sources eleme'],
       ['--list <fájl>', 'soronkénti címek; a # sor és az üres sor kimarad'],
@@ -187,14 +188,15 @@ export const COMMANDS: readonly CommandHelp[] = [
   },
   {
     name: 'fetch audio',
-    summary: 'YouTube-, podcast- vagy közvetlen hangot tölt S3-ba vagy helyi mappába.',
+    summary: 'YouTube-, weboldalas, podcast- vagy közvetlen hangot tölt S3-ba vagy helyi mappába.',
     usage:
       'refinery fetch audio <url…> [kapcsolók]\n' +
       '           refinery fetch audio --list <fájl> [kapcsolók]\n' +
       '           refinery fetch audio <feed-url> --pick <lista> [kapcsolók]',
     description:
       'Hangot tölt le az eredeti formátumban (nincs konverzió) .info.json metaadattal, a yt-dlp segítségével:\n' +
-      'YouTube-videót, -playlistet, közvetlen hangfájl-URL-t vagy podcast-RSS feedet. A tároló az S3 (config audio.s3)\n' +
+      'YouTube-videót, -playlistet, a yt-dlp által ismert weboldalt (HTML-oldal), közvetlen hangfájl-URL-t vagy\n' +
+      'podcast-RSS feedet. A tároló az S3 (config audio.s3)\n' +
       'vagy egy helyi mappa (audio.dir, illetve --out). Elrendezés: <Csatorna>/<Cím> [<id>].<ext>; a már tárolt\n' +
       'elemet globálisan átugorja.\n' +
       'Feednél két lépés: előbb a számozott epizódlistát kapod, majd a --pick-kel a kiválasztottakat tölti le.',
