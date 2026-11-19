@@ -55,6 +55,14 @@ export async function commandTranscribe(argv: readonly string[], runtime?: Audio
   }, runtime?.signals)
   const log = openAudioRunLog(cfg.logsDir, `transcribe ${argv.join(' ')}`)
   try {
+    const reader = openStateReader(cfg.statePath, cfg.vaultPath)
+    const done = (() => {
+      try {
+        return doneRecipes(reader, Object.keys(RECIPES))
+      } finally {
+        reader?.close()
+      }
+    })()
     const result = await runTranscribe(
       { ids: args.ids, lang: args.lang },
       {
@@ -66,6 +74,8 @@ export async function commandTranscribe(argv: readonly string[], runtime?: Audio
         sink: log.sink,
         stopped: () => stopped,
         after: afterMarker(cfg, CLI_AFTER),
+        done,
+        afterRecipes: cfg.whisperAfter,
       },
     )
     if (stopped) return 130

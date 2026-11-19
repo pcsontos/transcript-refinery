@@ -6,7 +6,7 @@ import type { EventSink } from '../events.js'
 import type { AudioStore } from '../fetch/audio/store.js'
 import { parseLang } from '../fetch/subtitle/args.js'
 import type { Config } from '../config.js'
-import { AFTER_FIELD } from './after.js'
+import { AFTER_FIELD, CLI_AFTER, missingAfter, requestAfter } from './after.js'
 import { findEntry, listArchive, statusContext, transcriptStatus, type AudioEntry, type TranscriptStatus } from './archive.js'
 import { channelSlug, watcherWarning, whisperDirs, type WhisperDirs } from './paths.js'
 
@@ -147,12 +147,16 @@ export interface TranscribeDeps {
   stopped?: () => boolean
   /** Az utólépés jelölője (`afterMarker`); hiányában nincs jelölő. */
   after?: string
+  /** Tételenként a kész receptek (`doneRecipes`); nélküle a kész tétel „kihagyva (kész)”. */
+  done?: ReadonlyMap<string, readonly string[]>
+  /** A `whisper.after` készlete; `null`/hiányzó = nincs utólépés-kérés. */
+  afterRecipes?: { recipes: readonly string[]; notify: boolean } | null
 }
 
 export async function runTranscribe(
   args: { ids: readonly string[]; lang?: string },
   deps: TranscribeDeps,
-): Promise<{ submitted: number; failed: number }> {
+): Promise<{ submitted: number; requested: number; failed: number }> {
   const sink = deps.sink ?? (() => undefined)
   const { entries, warning } = await listArchive(deps.store)
   if (warning !== undefined) await deps.emit(warning)
@@ -160,6 +164,7 @@ export async function runTranscribe(
   const ctx = await statusContext(deps.sourcesRoot, deps.dirs)
   const handedOver = new Set<string>()
   let submitted = 0
+  let requested = 0
   let skipped = 0
   let failed = 0
   sink({ type: 'scan:found', count: args.ids.length })
@@ -177,6 +182,28 @@ export async function runTranscribe(
     const label = `${entry.title} [${id}]`
     sink({ type: 'item:start', itemId: id, title: entry.title })
     const status = handedOver.has(id) ? 'pending' : transcriptStatus(entry, ctx)
+    if (status === 'done' && deps.after !== undefined && deps.afterRecipes != null) {
+      const have = deps.done?.get(id) ?? []
+      if (missingAfter(have, deps.afterRecipes.recipes).length === 0) {
+        skipped += 1
+        sink({ type: 'item:skipped', itemId: id, reason: 'kész' })
+        await deps.emit(`kihagyva (kész, receptek: ${have.join(', ')}): ${label}`)
+      } else if (await requestAfter(deps.sourcesRoot, id, deps.after)) {
+        requested += 1
+        handedOver.add(id)
+        sink({ type: 'item:step', itemId: id, step: 'utólépés kérve' })
+        const silent = deps.after !== CLI_AFTER && !deps.afterRecipes.notify
+        await deps.emit(
+          `utólépés kérve: ${label} (receptek: ${deps.afterRecipes.recipes.join(', ')}; a serve utólépése futtatja)` +
+            (silent ? ' — kész-üzenet nem jön (whisper.after.notify: false)' : ''),
+        )
+      } else {
+        failed += 1
+        sink({ type: 'item:failed', itemId: id, source: 'whisper', kind: 'whisper', error: 'nincs meg az átirat info.json-ja' })
+        await deps.emit(`hiba: ${label}: nincs meg az átirat info.json-ja`)
+      }
+      continue
+    }
     const lang = resolveLang({ flag: args.lang, info: entry.info, languages: deps.languages })
     const result = await submitEntry(entry, { store: deps.store, dirs: deps.dirs, status, lang, after: deps.after })
     if ('error' in result) {
@@ -197,10 +224,11 @@ export async function runTranscribe(
   }
 
   await deps.emit(`${submitted} tétel leadva.`)
+  if (requested > 0) await deps.emit(`${requested} tételre utólépés kérve.`)
   const warn = await watcherWarning(deps.dirs)
   if (warn !== null) await deps.emit(warn)
   sink({ type: 'run:done', succeeded: submitted, skipped, failed })
-  return { submitted, failed }
+  return { submitted, requested, failed }
 }
 
 /**

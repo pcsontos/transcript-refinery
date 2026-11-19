@@ -153,7 +153,7 @@ export const COMMANDS: readonly CommandHelp[] = [
     summary: 'Az archivált hangot átírásra adja le a gazdagépi whispernek.',
     usage: 'refinery transcribe <audio…> [--lang <kód>] [--config <út>]',
     description:
-      'Az archívum hangját (videó-azonosító vagy a list --audios kulcsa) a whisper-mappa inboxába teszi, és azonnal visszatér; az átírást a gazdagépi figyelő végzi, a kész .srt a sources[0]/whisper alá kerül. A már kész, váró vagy átírás alatti tételt kihagyja. A mappa (whisper.dir, alapértelmezés /data/whisper) nélkül hibával áll meg, és nem hozza létre. Configot kér.',
+      'Az archívum hangját (videó-azonosító vagy a list --audios kulcsa) a whisper-mappa inboxába teszi, és azonnal visszatér; az átírást a gazdagépi figyelő végzi, a kész .srt a sources[0]/whisper alá kerül. A váró vagy átírás alatti tételt kihagyja; a már átírt tételre, ha a whisper.after receptjei közül hiányzik egy, utólépést kér (a serve futtatja), ha mind kész, kihagyja. A mappa (whisper.dir, alapértelmezés /data/whisper) nélkül hibával áll meg, és nem hozza létre. Configot kér.',
     options: [
       ['--lang <kód>', 'a hang nyelve, egyetlen kód (pl. hu, en-US); nélküle az archív info.json, majd a config első nyelve'],
       CONFIG,
