@@ -208,6 +208,28 @@ describe('listFailed', () => {
   })
 })
 
+describe('snapshotArtifact / restoreArtifact', () => {
+  it('null pillanatkép: a később rögzített sor eltűnik', () => {
+    store.recordItem(item({ itemId: 'v1' }))
+    expect(store.snapshotArtifact('v1', 'summary')).toBeNull()
+    store.recordArtifact('v1', 'summary', 'done', '/v/a.md', null, { iterations: 1, score: 1, costUsd: 0, model: 'm', gaps: ['x'] })
+    store.restoreArtifact('v1', 'summary', null)
+    expect(store.isDone('v1', 'summary')).toBe(false)
+    expect(store.artifactOf('v1', 'summary')).toBeNull()
+    expect(store.gapsOf('v1', 'summary')).toBeNull()
+  })
+
+  it('meglévő pillanatkép: a felülírt sor és a hiánylistája visszaáll', () => {
+    store.recordItem(item({ itemId: 'v1' }))
+    store.recordArtifact('v1', 'summary', 'done', '/v/a.md', null, { iterations: 1, score: 0.9, costUsd: 0.01, model: 'm', gaps: ['régi'] })
+    const snapshot = store.snapshotArtifact('v1', 'summary')
+    store.recordArtifact('v1', 'summary', 'done', '/v/a.md', null, { iterations: 2, score: 0.5, costUsd: 0.02, model: 'n', gaps: ['új'] })
+    store.restoreArtifact('v1', 'summary', snapshot)
+    expect(store.artifactOf('v1', 'summary')).toMatchObject({ score: 0.9, costUsd: 0.01, model: 'm' })
+    expect(store.gapsOf('v1', 'summary')).toEqual(['régi'])
+  })
+})
+
 describe('StateStore — hiánylista', () => {
   const metrics = { iterations: 1, score: 0.6, costUsd: 0.01, model: 'szintetikus-modell' }
 
