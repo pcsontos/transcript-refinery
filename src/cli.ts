@@ -525,6 +525,8 @@ export async function commandRun(
     queue?: boolean
     dryRun: boolean
     force: boolean
+    /** Csak a recept jegyzetét írja újra, az átiratot nem (a `serve` Újragenerálása, #104); CLI-kapcsoló nincs. */
+    forceRecipe?: boolean
     commit: boolean
     /** Csak a korábban `failed` állapotú elemeket — queue-módban párokat — futtatja újra. */
     retryFailed?: boolean
@@ -661,6 +663,7 @@ export async function commandRun(
    */
   const alreadyDone = (unit: WorkUnit): boolean =>
     !flags.force &&
+    !(flags.forceRecipe === true && unit.recipe !== undefined) &&
     (store.isDone(unit.item.itemId, unitKind(unit)) ||
       (unit.recipe?.publishable === true &&
         existsSync(
@@ -928,7 +931,10 @@ export async function commandRun(
       const pending = (
         flags.force
           ? units
-          : units.filter((unit) => !store.isDone(unit.item.itemId, unitKind(unit)))
+          : units.filter(
+              (unit) =>
+                (flags.forceRecipe === true && unit.recipe !== undefined) || !store.isDone(unit.item.itemId, unitKind(unit)),
+            )
       ).filter((unit) => {
         // Egy fordítás csak akkor tervezhető, ha a forrása kész, vagy ugyanebben
         // az indításban készül. A szeletelő az első túllépés után mindent
@@ -1016,7 +1022,7 @@ export async function commandRun(
         store,
         sink: printing,
         version: VERSION,
-        options: { force: flags.force, dryRun: flags.dryRun },
+        options: { force: flags.force, forceRecipe: flags.forceRecipe, dryRun: flags.dryRun },
         recipeDeps: depsFor(unit.recipe),
         commit,
         origin: flags.origin,

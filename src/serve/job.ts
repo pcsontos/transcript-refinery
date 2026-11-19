@@ -30,6 +30,8 @@ export interface ServeJob {
    * `<feed-url> --pick <lista>`). Első szava `transcribe`: átírás-munka (`transcribe [<id>…] [--lang <kód>]`).
    */
   fetch?: boolean
+  /** Újragenerálás (#104): a recept jegyzetét újraírja, az átiratot nem (`forceRecipe`). */
+  force?: boolean
   /** Csak a serve belső jobja állítja (CLI-jelölős utólépés, #85); kívülről érkezve az `isJob` elutasítja. */
   origin?: 'cli'
   /** Link vagy lista feloldása (`url`): a serve visszahívja a `resolved` üzenetet, letöltés nincs. */
@@ -63,6 +65,7 @@ export type RecipesOutcome = ({ ok: true; noteUrl: string } | { ok: false; error
 
 /** A `refine` további, a jobból jövő beállításai. */
 export interface RefineOptions {
+  forceRecipe?: boolean
   origin?: NoteOrigin
 }
 
@@ -352,7 +355,9 @@ async function runRecipeJob(
   try {
     outcome = await effects.refine(job.videoId, job.recipes, lang, signal, (body) => {
       void report(effects, job.jobId, body)
-    }, job.models, afterWhisper ? `after-whisper ${job.videoId}` : undefined, job.origin === undefined ? undefined : { origin: job.origin })
+    }, job.models, afterWhisper ? `after-whisper ${job.videoId}` : undefined, job.origin === undefined && job.force !== true
+      ? undefined
+      : { ...(job.origin === undefined ? {} : { origin: job.origin }), ...(job.force === true ? { forceRecipe: true } : {}) })
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await forgetWork(effects, job.videoId)

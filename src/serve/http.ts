@@ -52,7 +52,7 @@ function readBody(request: IncomingMessage): Promise<string> {
 
 function isJob(value: unknown): value is ServeJob {
   if (typeof value !== 'object' || value === null) return false
-  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown; text?: unknown; title?: unknown; textLang?: unknown; models?: unknown; fetch?: unknown; resolve?: unknown; origin?: unknown }
+  const job = value as { jobId?: unknown; videoId?: unknown; url?: unknown; recipe?: unknown; recipes?: unknown; lang?: unknown; text?: unknown; title?: unknown; textLang?: unknown; models?: unknown; fetch?: unknown; resolve?: unknown; origin?: unknown; force?: unknown }
   if (typeof job.jobId !== 'string' || typeof job.videoId !== 'string' || typeof job.url !== 'string') return false
   // A régi, egyreceptes alakot a felirat-munka helyett hibaként kell látni.
   if (job.recipe !== undefined) return false
@@ -69,6 +69,7 @@ function isJob(value: unknown): value is ServeJob {
   }
   // Az eredetet csak a serve állítja: kívülről érkezve a jegyzet valótlan `origin`-t kaphatna.
   if (job.origin !== undefined) return false
+  if (job.force !== undefined && typeof job.force !== 'boolean') return false
   if (job.fetch !== undefined && typeof job.fetch !== 'boolean') return false
   if (job.resolve !== undefined && typeof job.resolve !== 'boolean') return false
   // A nyelvkód a SERVE_OUT fájlnevébe kerül: más érték útvonal-bejárás lenne.

@@ -61,7 +61,11 @@ export interface PipelineDeps {
   store: StateStore
   sink: EventSink
   version: string
-  options: PublishOptions
+  /**
+   * `forceRecipe`: csak a recept jegyzetét írja újra (Újragenerálás, #104); az átirat és a `done` sora érintetlen.
+   * A `force` az átiratot is újrarenderelné (a `generated_at` miatt fölösleges commit).
+   */
+  options: PublishOptions & { forceRecipe?: boolean }
   /** Ha hiányzik, a csővezeték a Fázis 0 útján marad: csak átirat. */
   recipeDeps?: RecipeDeps
   /**
@@ -263,7 +267,7 @@ async function runRecipe(
   // A write-once elv a modellhívás ELŐTT: a már meglévő jegyzetért nem
   // fizetünk. A `force` felülírja a fájlt, ezért ott a hívás is kell. A fájlt
   // nem a pipeline írta, ezért nem kerül a commitra várók közé.
-  if (recipe.publishable && !deps.options.force) {
+  if (recipe.publishable && !deps.options.force && deps.options.forceRecipe !== true) {
     const target = noteFile(deps.notesRoot, item, recipe.outputFile, placement(deps, item))
     if (await exists(target)) {
       if (!deps.options.dryRun) {
@@ -448,7 +452,10 @@ async function runRecipe(
   }
 
   const target = noteFile(deps.notesRoot, item, recipe.outputFile, placement(deps, item))
-  const published = await publishNote(target, markdown, deps.options)
+  const published = await publishNote(target, markdown, {
+    ...deps.options,
+    force: deps.options.force === true || deps.options.forceRecipe === true,
+  })
 
   if (translated !== null && glossary !== null && recipe.translation && published.status === 'written' && !deps.options.dryRun) {
     const changed = glossary !== translated.existing
@@ -533,7 +540,7 @@ export async function processItem(
   const kellAtirat = options.force || !store.isDone(item.itemId, ARTIFACT_KIND)
   const kellRecept =
     recipeDeps !== undefined &&
-    (options.force || !store.isDone(item.itemId, recipeDeps.recipe.id))
+    (options.force || options.forceRecipe === true || !store.isDone(item.itemId, recipeDeps.recipe.id))
 
   if (!kellAtirat && !kellRecept) {
     sink({ type: 'item:skipped', itemId: item.itemId, reason: 'már feldolgozva' })

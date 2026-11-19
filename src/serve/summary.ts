@@ -241,6 +241,7 @@ export async function runRecipes(input: {
       recipes: ids,
       dryRun: false,
       force: false,
+      ...(input.forceRecipe === true ? { forceRecipe: true } : {}),
       commit: false,
       command: [input.command ?? 'serve recipes', ...Object.entries(models).map(([id, model]) => `${id}=${model}`)].join(' '),
       origin: input.origin ?? 'telegram',

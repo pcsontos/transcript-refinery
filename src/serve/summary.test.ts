@@ -594,6 +594,71 @@ describe('runRecipes — eredet (#85)', () => {
   })
 })
 
+describe('runRecipes — forceRecipe (#104)', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  const texted = (text: string): ReturnType<RunRuntime['createClient'] & object> => ({
+    ...client({ generate: 0 }),
+    generate: () => Promise.resolve({ value: text, usage: { inputTokens: 10, outputTokens: 5 } }),
+  })
+  const SUMMARY = TRANSCRIPT.replace('_transcript.md', '_summary.md')
+
+  it('újragenerálás után új jegyzet, egy recept-commit, átirat-commit nincs', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const base = { videoId: ID, outDir, recipes: ['summary'], load, git: gitWith() }
+    expect((await runRecipes({ ...base, createClient: () => texted('## Összefoglaló\n\nRégi szöveg.\n') })).ok).toBe(true)
+    const transcript = await readFile(join(vault, TRANSCRIPT), 'utf8')
+    const second = await runRecipes({ ...base, forceRecipe: true, createClient: () => texted('## Összefoglaló\n\nÚj szöveg.\n') })
+    expect(second.ok).toBe(true)
+    expect(await readFile(join(vault, SUMMARY), 'utf8')).toContain('Új szöveg.')
+    expect(await readFile(join(vault, TRANSCRIPT), 'utf8')).toBe(transcript)
+    const files = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    expect(files.trim()).toBe(SUMMARY)
+  })
+
+  it('megszakított újragenerálás: a régi jegyzet visszaáll', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const base = { videoId: ID, outDir, recipes: ['summary'], load, git: gitWith() }
+    await runRecipes({ ...base, createClient: () => texted('## Összefoglaló\n\nRégi szöveg.\n') })
+    const store = openState(join(root, 'state', 'refinery.db'))
+    const cost = store.artifactOf(ID, 'summary')!.costUsd
+    store.close()
+    const commits = execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    const controller = new AbortController()
+    const result = await runRecipes({
+      ...base,
+      forceRecipe: true,
+      signal: controller.signal,
+      createClient: () => ({
+        ...texted('## Összefoglaló\n\nÚj szöveg.\n'),
+        generate: () => {
+          controller.abort()
+          return Promise.resolve({ value: '## Összefoglaló\n\nÚj szöveg.\n', usage: { inputTokens: 1000, outputTokens: 500 } })
+        },
+      }),
+    })
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    expect(await readFile(join(vault, SUMMARY), 'utf8')).toContain('Régi szöveg.')
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: vault, encoding: 'utf8' }).trim()).toBe('')
+    expect(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: vault, encoding: 'utf8' })).toBe(commits)
+    const after = openState(join(root, 'state', 'refinery.db'))
+    expect(after.artifactOf(ID, 'summary')!.costUsd).toBe(cost)
+    expect(after.isDone(ID, 'summary')).toBe(true)
+    after.close()
+  })
+})
+
 describe('runRecipes — megszakítás (#83)', () => {
   const previous = process.env.LITELLM_API_KEY
   const roots: string[] = []

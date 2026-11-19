@@ -34,6 +34,7 @@ type RecipesRun = (input: {
   models?: Readonly<Record<string, string>>
   command?: string
   origin?: NoteOrigin
+  forceRecipe?: boolean
   load?: () => Promise<{ cfg: Config; raw: unknown }>
 }) => Promise<RecipesOutcome>
 
@@ -96,6 +97,7 @@ export function serveEffects(input: {
         models,
         command,
         ...(options?.origin === undefined ? {} : { origin: options.origin }),
+        ...(options?.forceRecipe === true ? { forceRecipe: true } : {}),
         load: () => loadCliConfig(input.configArg),
       }),
   }
