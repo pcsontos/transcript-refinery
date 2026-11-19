@@ -33,6 +33,10 @@ export interface RunRow {
   acceptedAt: number | null
   /** A futás felülírt modellje; `null` vagy hiány esetén a config dönt. */
   model?: string | null
+  /** Hányszor került `queued` állapotba (a kopogtatás azonosítójának `~<n>` utótagja); hiány = 0. */
+  attempt?: number
+  /** Újragenerálás: a kopogtatás `force: true`-t visz; lezáráskor visszaáll. Hiány = `false`. */
+  force?: boolean
 }
 
 export type OverrideMode = 'once' | 'always'
@@ -100,8 +104,10 @@ export interface JobStore {
   saveRun(run: RunRow): Promise<boolean>
   /** A felhasználó jobjai, amelyek nyitottak vagy van nyitott futásuk, és a nyitott futásaik. */
   openFor(sub: string): Promise<{ jobs: JobRow[]; runs: RunRow[] }>
-  /** Ha a `model` nem `undefined`, a futás modellje is cserélődik. */
-  claimRun(runId: string, expect: JobStatus, next: JobStatus, model?: string | null): Promise<boolean>
+  /**
+   * Ha a `model` vagy a `force` nem `undefined`, az is cserélődik. `next === 'queued'` esetén az `attempt` nő.
+   */
+  claimRun(runId: string, expect: JobStatus, next: JobStatus, model?: string | null, force?: boolean): Promise<boolean>
   runsFor(jobId: string): Promise<RunRow[]>
   dueRuns(now: number): Promise<RunRow[]>
   overridesFor(sub: string): Promise<ModelOverride[]>
@@ -219,7 +225,7 @@ export function memoryStore(): JobStore {
       else runs[index] = run
       return Promise.resolve(true)
     },
-    claimRun: (runId, expect, next, model) => {
+    claimRun: (runId, expect, next, model, force) => {
       const index = runs.findIndex((item) => item.runId === runId)
       const run = runs[index]
       if (run === undefined || run.status !== expect) return Promise.resolve(false)
@@ -229,7 +235,9 @@ export function memoryStore(): JobStore {
         error: null,
         notified: false,
         acceptedAt: null,
+        ...(next === 'queued' ? { attempt: (run.attempt ?? 0) + 1 } : {}),
         ...(model === undefined ? {} : { model }),
+        ...(force === undefined ? {} : { force }),
       }
       return Promise.resolve(true)
     },

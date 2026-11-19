@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,9 +10,10 @@ import { currentScope, RecipeTimeout } from '../model/deadline.js'
 import type { RunRuntime } from '../cli.js'
 import { GLOSSARY_SEPARATOR } from '../recipe/glossary.js'
 import { textItemId } from '../source/text.js'
-import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
+import { gitCommitPaths, gitPullFfOnly, gitPush, gitRestorePaths } from '../vault/git.js'
 import type { CallbackBody } from './job.js'
-import { runRecipes } from './summary.js'
+import { openState } from '../state/db.js'
+import { CANCELLED_RUN, MISSING_NOTE, runRecipes } from './summary.js'
 
 const ID = 'abcdefghijk'
 
@@ -52,7 +54,7 @@ function writer(calls: { generate: number }, summaryText: string): ReturnType<Ru
 }
 
 function gitWith(push: typeof gitPush = gitPush) {
-  return { pull: gitPullFfOnly, commit: gitCommitPaths, push }
+  return { pull: gitPullFfOnly, commit: gitCommitPaths, push, restore: gitRestorePaths }
 }
 
 const TRANSCRIPT = 'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md'
@@ -520,7 +522,7 @@ describe('runRecipes', () => {
     expect(calls.generate).toBe(0)
   })
 
-  it('két recept közül az első után megszakítva: egy modellhívás, a kész jegyzet commitban, a költségsor a hiba', async () => {
+  it('két recept közül az első után megszakítva: egy modellhívás, és a kész jegyzet sem kerül a vaultba (pcsontos/issue-tracker#83)', async () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()
     roots.push(root)
@@ -543,14 +545,226 @@ describe('runRecipes', () => {
       git: gitWith(),
     })
     expect(calls.generate).toBe(1)
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.error).toMatch(/^A futás megállt: megszakítva \(\d+\.\d{4} \$ \/ 5\.0000 \$\)$/)
-    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
-      .split('\n')
-      .filter(Boolean)
-    expect(names).toHaveLength(2)
-    expect(names).toContain('Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_transcript.md')
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    expect(execFileSync('git', ['log', '--format=%s'], { cwd: vault, encoding: 'utf8' }).trim()).toBe('init')
+  })
+})
+
+describe('runRecipes — eredet (pcsontos/issue-tracker#85)', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  async function run(origin?: 'cli') {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    // A configban a forrás neve `sources`, a munkamappáé `telegram`.
+    const named = async () => {
+      const loaded = await load()
+      return { ...loaded, cfg: { ...loaded.cfg, sources: [{ name: 'sources', path: outDir }] } }
+    }
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['summary'],
+      createClient: () => client({ generate: 0 }),
+      load: named,
+      git: gitWith(),
+      ...(origin === undefined ? {} : { origin }),
+    })
+    expect(result.ok).toBe(true)
+    return { vault }
+  }
+
+  it('origin: cli → a config forrásneve alá kerül, és origin: cli a frontmatterben', async () => {
+    const { vault } = await run('cli')
+    const path = join(vault, TRANSCRIPT.replace('/telegram/', '/sources/'))
+    expect(await readFile(path, 'utf8')).toContain('origin: cli')
+  })
+
+  it('origin nélkül marad a telegram mappa és az origin: telegram', async () => {
+    const { vault } = await run()
+    expect(await readFile(join(vault, TRANSCRIPT), 'utf8')).toContain('origin: telegram')
+  })
+})
+
+describe('runRecipes — forceRecipe (pcsontos/issue-tracker#104)', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  const texted = (text: string): ReturnType<RunRuntime['createClient'] & object> => ({
+    ...client({ generate: 0 }),
+    generate: () => Promise.resolve({ value: text, usage: { inputTokens: 10, outputTokens: 5 } }),
+  })
+  const SUMMARY = TRANSCRIPT.replace('_transcript.md', '_summary.md')
+
+  it('újragenerálás után új jegyzet, egy recept-commit, átirat-commit nincs', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const base = { videoId: ID, outDir, recipes: ['summary'], load, git: gitWith() }
+    expect((await runRecipes({ ...base, createClient: () => texted('## Összefoglaló\n\nRégi szöveg.\n') })).ok).toBe(true)
+    const transcript = await readFile(join(vault, TRANSCRIPT), 'utf8')
+    const second = await runRecipes({ ...base, forceRecipe: true, createClient: () => texted('## Összefoglaló\n\nÚj szöveg.\n') })
+    expect(second.ok).toBe(true)
+    expect(await readFile(join(vault, SUMMARY), 'utf8')).toContain('Új szöveg.')
+    expect(await readFile(join(vault, TRANSCRIPT), 'utf8')).toBe(transcript)
+    const files = execFileSync('git', ['-c', 'core.quotepath=false', 'show', '--name-only', '--pretty=format:', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    expect(files.trim()).toBe(SUMMARY)
+  })
+
+  it('megszakított újragenerálás: a régi jegyzet visszaáll', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const base = { videoId: ID, outDir, recipes: ['summary'], load, git: gitWith() }
+    await runRecipes({ ...base, createClient: () => texted('## Összefoglaló\n\nRégi szöveg.\n') })
+    const store = openState(join(root, 'state', 'refinery.db'))
+    const cost = store.artifactOf(ID, 'summary')!.costUsd
+    store.close()
+    const commits = execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    const controller = new AbortController()
+    const result = await runRecipes({
+      ...base,
+      forceRecipe: true,
+      signal: controller.signal,
+      createClient: () => ({
+        ...texted('## Összefoglaló\n\nÚj szöveg.\n'),
+        generate: () => {
+          controller.abort()
+          return Promise.resolve({ value: '## Összefoglaló\n\nÚj szöveg.\n', usage: { inputTokens: 1000, outputTokens: 500 } })
+        },
+      }),
+    })
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    expect(await readFile(join(vault, SUMMARY), 'utf8')).toContain('Régi szöveg.')
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: vault, encoding: 'utf8' }).trim()).toBe('')
+    expect(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: vault, encoding: 'utf8' })).toBe(commits)
+    const after = openState(join(root, 'state', 'refinery.db'))
+    expect(after.artifactOf(ID, 'summary')!.costUsd).toBe(cost)
+    expect(after.isDone(ID, 'summary')).toBe(true)
+    after.close()
+  })
+})
+
+describe('runRecipes — kész, de hiányzó jegyzet (pcsontos/issue-tracker#84)', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  it('done sor, hiányzó fájl: missing eredmény, modellhívás és commit nélkül', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const calls = { generate: 0 }
+    const base = { videoId: ID, outDir, recipes: ['summary'], load, git: gitWith(), createClient: () => client(calls) }
+    expect((await runRecipes(base)).ok).toBe(true)
+    // A vault-revert szimulálása: a jegyzet fájlja eltűnik, a commit megmarad a történetben.
+    execFileSync('git', ['rm', '-q', TRANSCRIPT.replace('_transcript.md', '_summary.md')], { cwd: vault })
+    execFileSync('git', ['commit', '-q', '-m', 'revert'], { cwd: vault })
+    const commits = execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    const generated = calls.generate
+    const result = await runRecipes(base)
+    expect(result).toEqual({ ok: false, error: MISSING_NOTE, missing: true })
+    expect(calls.generate).toBe(generated)
+    expect(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: vault, encoding: 'utf8' })).toBe(commits)
+  })
+})
+
+describe('runRecipes — megszakítás (pcsontos/issue-tracker#83)', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  /** A modellhívás közben megszakít, majd rendes választ ad: a futó egység befejeződik. */
+  function cancelling(controller: AbortController): ReturnType<RunRuntime['createClient'] & object> {
+    const base = client({ generate: 0 })
+    return {
+      ...base,
+      generate(role, prompt) {
+        controller.abort()
+        return base.generate(role, prompt)
+      },
+    }
+  }
+
+  const stateOf = (root: string) => openState(join(root, 'state', 'refinery.db'))
+  const subjects = (vault: string) => execFileSync('git', ['log', '--format=%s'], { cwd: vault }).toString().trim().split('\n')
+
+  it('modellhívás közbeni megszakítás után nincs commit, push, deploy, jegyzetfájl és done sor', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const controller = new AbortController()
+    const deploy = vi.fn()
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['summary'],
+      createClient: () => cancelling(controller),
+      load,
+      git: gitWith(),
+      signal: controller.signal,
+      deploy: deploy,
+    })
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    expect(subjects(vault)).toEqual(['init'])
+    expect(execFileSync('git', ['log', '--format=%s', 'main'], { cwd: join(root, 'origin.git') }).toString().trim()).toBe('init')
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: vault }).toString().trim()).toBe('')
+    const store = stateOf(root)
+    expect(store.isDone(ID, 'summary')).toBe(false)
+    expect(store.isDone(ID, 'transcript')).toBe(false)
+    store.close()
+    expect(deploy).not.toHaveBeenCalled()
+  })
+
+  it('a korábban kész átirat megmarad, csak az új recept görgetődik vissza', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const first = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], createClient: () => client({ generate: 0 }), load, git: gitWith() })
+    expect(first.ok).toBe(true)
+    const controller = new AbortController()
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['qa'],
+      createClient: () => cancelling(controller),
+      load,
+      git: gitWith(),
+      signal: controller.signal,
+    })
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    const store = stateOf(root)
+    expect(store.isDone(ID, 'transcript')).toBe(true)
+    expect(store.isDone(ID, 'summary')).toBe(true)
+    expect(store.isDone(ID, 'qa')).toBe(false)
+    store.close()
+    expect(existsSync(join(vault, TRANSCRIPT))).toBe(true)
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: vault }).toString().trim()).toBe('')
+    expect(subjects(vault)).toHaveLength(3)
   })
 })
 

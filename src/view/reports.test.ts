@@ -30,6 +30,7 @@ const cell = (overrides: Partial<ItemCell> = {}): ItemCell => ({
   score: null,
   costUsd: null,
   belowThreshold: false,
+  missing: false,
   ...overrides,
 })
 

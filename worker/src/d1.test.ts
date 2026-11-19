@@ -42,6 +42,21 @@ const row: JobRow = {
   text: 'Szöveg.',
 }
 
+describe('D1: próbálkozás-számláló (pcsontos/issue-tracker#103)', () => {
+  it('a queued átmenet növeli az attemptet, az accepted nem; a force csak megadva íródik', async () => {
+    const db = capture()
+    const store = createD1Store(db)
+    await store.claimRun('r', 'cancelled', 'queued', null, false)
+    await store.claimRun('r', 'queued', 'accepted')
+    const [queued, accepted] = db.calls
+    expect(queued?.sql).toContain('attempt = attempt + 1')
+    expect(queued?.sql).toContain('force = ?')
+    expect(queued?.values).toEqual(['queued', null, 0, 'r', 'cancelled'])
+    expect(accepted?.sql).not.toContain('attempt')
+    expect(accepted?.sql).not.toContain('force')
+  })
+})
+
 describe('D1: szöveges sor', () => {
   it('a beszúrás és a nyitott mentés viszi a file_id-t, a nevet és a szöveget; a lezárt mentés a szöveget null-ra írja', async () => {
     const db = capture()

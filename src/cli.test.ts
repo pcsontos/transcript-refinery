@@ -2828,10 +2828,13 @@ describe('commandList', () => {
     const cfg = loadConfig(rawConfig(5), '/p/refinery.config.yaml')
     const items = await discoverAll(cfg.sources, cfg.languages)
     const idOf = (title: string) => items.find((i) => i.title === title)!.itemId
+    // A kész jegyzet fájlja megvan: a hiányzó fájlt a lista `!`-lel jelölné (pcsontos/issue-tracker#84).
+    const jegyzet = join(downloads, 'a.md')
+    await writeFile(jegyzet, '# jegyzet\n')
     const store = openState(cfg.statePath, cfg.vaultPath)
     try {
       for (const item of items) store.recordItem(item)
-      store.recordArtifact(idOf('Első videó'), 'summary', 'done', '/v/a.md', null, {
+      store.recordArtifact(idOf('Első videó'), 'summary', 'done', jegyzet, null, {
         iterations: 1,
         score: 0.9,
         costUsd: 0.08,

@@ -84,15 +84,15 @@ describe('buildItemRows', () => {
     )
 
     expect(row!.cells).toEqual({
-      transcript: { status: 'done', score: null, costUsd: null, belowThreshold: false },
-      summary: { status: 'done', score: 0.62, costUsd: 0.01, belowThreshold: true },
-      flashcards: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
-      qa: { status: 'failed', score: null, costUsd: null, belowThreshold: false },
-      'clean-mild': { status: 'pending', score: null, costUsd: null, belowThreshold: false },
-      'clean-moderate': { status: 'pending', score: null, costUsd: null, belowThreshold: false },
-      'clean-deep': { status: 'pending', score: null, costUsd: null, belowThreshold: false },
-      bloom: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
-      notes: { status: 'pending', score: null, costUsd: null, belowThreshold: false },
+      transcript: { status: 'done', score: null, costUsd: null, belowThreshold: false, missing: false },
+      summary: { status: 'done', score: 0.62, costUsd: 0.01, belowThreshold: true, missing: false },
+      flashcards: { status: 'pending', score: null, costUsd: null, belowThreshold: false, missing: false },
+      qa: { status: 'failed', score: null, costUsd: null, belowThreshold: false, missing: false },
+      'clean-mild': { status: 'pending', score: null, costUsd: null, belowThreshold: false, missing: false },
+      'clean-moderate': { status: 'pending', score: null, costUsd: null, belowThreshold: false, missing: false },
+      'clean-deep': { status: 'pending', score: null, costUsd: null, belowThreshold: false, missing: false },
+      bloom: { status: 'pending', score: null, costUsd: null, belowThreshold: false, missing: false },
+      notes: { status: 'pending', score: null, costUsd: null, belowThreshold: false, missing: false },
     })
     expect(row!.updatedAt).toBe('2026-09-11T10:00:00.000Z')
   })
@@ -109,7 +109,23 @@ describe('buildItemRows', () => {
       score: 0.5,
       costUsd: null,
       belowThreshold: true,
+      missing: false,
     })
+  })
+})
+
+describe('buildItemRows — hiányzó fájl (pcsontos/issue-tracker#84)', () => {
+  it('done sor nem létező úttal: missing, a többi cella nem', () => {
+    const [row] = buildItemRows(
+      [sourceItem('a', 'Első példavideó')],
+      [],
+      [artifact({ kind: 'summary', path: '/v/x_summary.md' }), artifact({ kind: 'transcript', path: '/v/x_transcript.md' })],
+      recipesFor({ configPath: '/p/c.yaml', translate: null }),
+      (path) => path !== '/v/x_summary.md',
+    )
+    expect(row!.cells.summary!.missing).toBe(true)
+    expect(row!.cells.transcript!.missing).toBe(false)
+    expect(row!.cells.qa!.missing).toBe(false)
   })
 })
 

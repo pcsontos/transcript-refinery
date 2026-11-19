@@ -16,7 +16,8 @@ import { VERSION } from '../meta.js'
 import { modelsView } from '../model/recipe-model.js'
 import { recipesFor } from '../recipe/registry.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
-import { runJob, subtitleArgv, type CallbackBody, type JobEffects, type RecipesOutcome, type ServeJob } from './job.js'
+import type { NoteOrigin } from '../vault/render.js'
+import { runJob, subtitleArgv, type CallbackBody, type JobEffects, type RecipesOutcome, type RefineOptions, type ServeJob } from './job.js'
 import { createR2Store, type R2Config } from './r2.js'
 import { claimGate, createServeServer, type ServeGate } from './http.js'
 import { createNotesSource } from './notes.js'
@@ -32,6 +33,8 @@ type RecipesRun = (input: {
   /** A Worker felülírása; a YAML `model.recipes` fölé kerül. */
   models?: Readonly<Record<string, string>>
   command?: string
+  origin?: NoteOrigin
+  forceRecipe?: boolean
   load?: () => Promise<{ cfg: Config; raw: unknown }>
 }) => Promise<RecipesOutcome>
 
@@ -60,6 +63,7 @@ export function serveEffects(input: {
     notify?: (body: CallbackBody) => void,
     models?: Readonly<Record<string, string>>,
     command?: string,
+    options?: RefineOptions,
   ) => Promise<RecipesOutcome>
 } {
   const refineWith = input.runRecipes ?? defaultRunRecipes
@@ -82,7 +86,7 @@ export function serveEffects(input: {
     whisperPair:
       input.whisperPair ??
       (async (videoId) => readWhisperPair((await loadCliConfig(input.configArg)).cfg.sources[0]!.path, videoId)),
-    refine: (videoId, recipes, lang, signal, notify, models, command) =>
+    refine: (videoId, recipes, lang, signal, notify, models, command, options) =>
       refineWith({
         videoId,
         outDir: input.outDir,
@@ -92,6 +96,8 @@ export function serveEffects(input: {
         notify,
         models,
         command,
+        ...(options?.origin === undefined ? {} : { origin: options.origin }),
+        ...(options?.forceRecipe === true ? { forceRecipe: true } : {}),
         load: () => loadCliConfig(input.configArg),
       }),
   }

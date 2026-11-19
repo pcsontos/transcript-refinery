@@ -91,6 +91,9 @@ describe('createServeServer', () => {
     expect(await post(port, 'titok', { ...job, jobId: 'job-2', recipes: [1] })).toBe(400)
     expect(await post(port, 'titok', { ...job, jobId: 'job-2', lang: 1 })).toBe(400)
     expect(await post(port, 'titok', { jobId: 'job-2', videoId: job.videoId, url: job.url, recipe: 'summary' })).toBe(400)
+    // A kívülről küldött origin 400 (pcsontos/issue-tracker#85): az eredetet csak a serve állítja.
+    expect(await post(port, 'titok', { ...job, jobId: 'job-3', origin: 'cli' })).toBe(400)
+    expect(await post(port, 'titok', { ...job, jobId: 'job-4', force: 'igen' })).toBe(400)
   })
 
   it('a szöveges mezők szövegként 202, más típussal 400', async () => {
@@ -370,6 +373,16 @@ describe('createServeServer /notes', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     expect((await get(broken, '/notes')).status).toBe(500)
     spy.mockRestore()
+  })
+})
+
+describe('acceptJob — próbálkozás-utótag (pcsontos/issue-tracker#103)', () => {
+  it('a `~<n>` utótagú azonosító saját job: ugyanaz 202, az utótag nélküli régi 409', () => {
+    const local: ServeGate = { current: null }
+    expect(acceptJob(local, '5:abcdefghijk:summary~1')).toBe(202)
+    expect(local.current).toBe('5:abcdefghijk:summary~1')
+    expect(acceptJob(local, '5:abcdefghijk:summary~1')).toBe(202)
+    expect(acceptJob(local, '5:abcdefghijk:summary')).toBe(409)
   })
 })
 

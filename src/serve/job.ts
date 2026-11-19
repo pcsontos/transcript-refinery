@@ -9,6 +9,7 @@ import { RECIPES } from '../recipe/registry.js'
 import { isLanguageTag, normalizeText, textItemId } from '../source/text.js'
 import { sanitizeSegment } from '../vault/sanitize.js'
 import { infoKey, itemPrefix, languageMatches, subtitleKey, textInfoKey, textKey, type LocalPair } from './inventory.js'
+import type { NoteOrigin } from '../vault/render.js'
 import type { ObjectStore } from './r2.js'
 
 export interface ServeJob {
@@ -29,6 +30,10 @@ export interface ServeJob {
    * `<feed-url> --pick <lista>`). Első szava `transcribe`: átírás-munka (`transcribe [<id>…] [--lang <kód>]`).
    */
   fetch?: boolean
+  /** Újragenerálás (pcsontos/issue-tracker#104): a recept jegyzetét újraírja, az átiratot nem (`forceRecipe`). */
+  force?: boolean
+  /** Csak a serve belső jobja állítja (CLI-jelölős utólépés, pcsontos/issue-tracker#85); kívülről érkezve az `isJob` elutasítja. */
+  origin?: 'cli'
   /** Link vagy lista feloldása (`url`): a serve visszahívja a `resolved` üzenetet, letöltés nincs. */
   resolve?: boolean
 }
@@ -40,7 +45,7 @@ export type CallbackBody =
    */
   | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null }
   /** `done`: a futás elkészült jegyzetei, ha a futás recept-leállás miatt bukott; a záró üzenet csak ezeket linkeli. */
-  | { status: 'failed'; error: string; done?: string[] }
+  | { status: 'failed'; error: string; done?: string[]; missing?: true }
   /** Életjel: a futás még dolgozik; a Worker változatlan állapot mellett továbbítja. */
   | { status: 'progress'; text: string }
   /** Egy recept a futásidő-korlát miatt leállt; a Worker rákérdez az újrapróbálásra. */
@@ -54,8 +59,14 @@ export type CallbackBody =
  * `followUp`: a jelentés (`ready`/`failed`) után futó munka, pl. a hosszan tartó showroom-deploy.
  * Nem dobhat: a hibáját maga naplózza, és szövegként visszaadja (az átírás utáni üzenet ebből tudja).
  */
-export type RecipesOutcome = ({ ok: true; noteUrl: string } | { ok: false; error: string; done?: string[] }) & {
+export type RecipesOutcome = ({ ok: true; noteUrl: string } | { ok: false; error: string; done?: string[]; missing?: true }) & {
   followUp?: () => Promise<string | void>
+}
+
+/** A `refine` további, a jobból jövő beállításai. */
+export interface RefineOptions {
+  forceRecipe?: boolean
+  origin?: NoteOrigin
 }
 
 export interface JobEffects {
@@ -92,6 +103,7 @@ export interface JobEffects {
     notify?: (body: CallbackBody) => void,
     models?: Readonly<Record<string, string>>,
     command?: string,
+    options?: RefineOptions,
   ) => Promise<RecipesOutcome>
 }
 
@@ -192,7 +204,16 @@ async function forgetWork(effects: JobEffects, videoId: string): Promise<void> {
 }
 
 export type SummaryPair =
-  | { ok: true; title: string; language: string | null; extension: string; subtitle: Uint8Array; info: Uint8Array }
+  | {
+      ok: true
+      title: string
+      language: string | null
+      extension: string
+      subtitle: Uint8Array
+      info: Uint8Array
+      /** A whisper-`.srt` abszolút útja (csak átírás utáni futásnál): a CLI-tipp ezt használja. */
+      sourcePath?: string
+    }
   | { ok: false; error: string }
 
 async function loadSummaryPair(effects: JobEffects, videoId: string): Promise<SummaryPair> {
@@ -343,7 +364,9 @@ async function runRecipeJob(
   try {
     outcome = await effects.refine(job.videoId, job.recipes, lang, signal, (body) => {
       void report(effects, job.jobId, body)
-    }, job.models, afterWhisper ? `after-whisper ${job.videoId}` : undefined)
+    }, job.models, afterWhisper ? `after-whisper ${job.videoId}` : undefined, job.origin === undefined && job.force !== true
+      ? undefined
+      : { ...(job.origin === undefined ? {} : { origin: job.origin }), ...(job.force === true ? { forceRecipe: true } : {}) })
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await forgetWork(effects, job.videoId)
@@ -360,13 +383,23 @@ async function runRecipeJob(
       ...(deployError === undefined ? {} : { deployError }),
     })
   } else {
+    const hint =
+      outcome.missing === true && job.origin === 'cli' && loaded.sourcePath !== undefined
+        ? `\n${cliRerunHint(loaded.sourcePath, job.recipes)}`
+        : ''
     await report(effects, job.jobId, {
       status: 'failed',
-      error: outcome.error,
+      error: `${outcome.error}${hint}`,
       ...(outcome.done === undefined ? {} : { done: outcome.done }),
+      ...(outcome.missing === true ? { missing: true as const } : {}),
     })
   }
   if (!(afterWhisper && outcome.ok)) await outcome.followUp?.()
+}
+
+/** A CLI-ből leadott tételnél nincs Telegram-gomb: a serve naplójába a pontos parancs kerül (pcsontos/issue-tracker#84). */
+export function cliRerunHint(path: string, recipes: readonly string[]): string {
+  return recipes.map((recipe) => `Újrafuttatás: refinery run --file "${path}" --recipe ${recipe} --force`).join('\n')
 }
 
 /** A hangletöltés: a sorok progressként, az összesítő readyként megy a Workernek. */

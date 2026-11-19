@@ -3,7 +3,8 @@ import { YTDLP_MISSING } from '../fetch/subtitle/ytdlp.js'
 import { textItemId } from '../source/text.js'
 import type { LocalPair } from './inventory.js'
 import type { ObjectStore } from './r2.js'
-import { runJob, subtitleArgv, type CallbackBody, type JobEffects, type ServeJob } from './job.js'
+import { MISSING_NOTE } from './summary.js'
+import { cliRerunHint, runJob, subtitleArgv, type CallbackBody, type JobEffects, type ServeJob } from './job.js'
 
 const ID = 'abcdefghijk'
 const job = { jobId: 'job-1', videoId: ID, url: `https://www.youtube.com/watch?v=${ID}` }
@@ -904,6 +905,38 @@ describe('runJob — átírás utáni futás (pcsontos/issue-tracker#45)', () =>
     )
     expect(refined).toBe(false)
     expect(callbacks).toEqual([{ status: 'failed', error: 'Az átirat nincs meg a sources/whisper alatt.' }])
+  })
+
+  it('CLI-leadott utólépés, hiányzó jegyzet: a hibaszöveg a pontos paranccsal (pcsontos/issue-tracker#84)', async () => {
+    const callbacks: CallbackBody[] = []
+    const path = '/data/sources/whisper/Up First/abc.en.srt'
+    await runJob(
+      { ...afterJob, origin: 'cli' },
+      afterEffects(callbacks, {
+        whisperPair: () => Promise.resolve({ ...pairOk, sourcePath: path }),
+        refine: () => Promise.resolve({ ok: false, error: MISSING_NOTE, missing: true }),
+      }),
+    )
+    expect(callbacks).toEqual([
+      {
+        status: 'failed',
+        error: `${MISSING_NOTE}\n${cliRerunHint(path, ['summary'])}`,
+        missing: true,
+      },
+    ])
+    expect(cliRerunHint(path, ['summary'])).toBe(`Újrafuttatás: refinery run --file "${path}" --recipe summary --force`)
+  })
+
+  it('Telegram-leadásnál a callback missing: true, tipp nélkül (pcsontos/issue-tracker#84)', async () => {
+    const callbacks: CallbackBody[] = []
+    await runJob(
+      afterJob,
+      afterEffects(callbacks, {
+        whisperPair: () => Promise.resolve({ ...pairOk, sourcePath: '/x.srt' }),
+        refine: () => Promise.resolve({ ok: false, error: MISSING_NOTE, missing: true }),
+      }),
+    )
+    expect(callbacks).toEqual([{ status: 'failed', error: MISSING_NOTE, missing: true }])
   })
 
   it('recepthiba: failed, a followUp utána fut (mint ma)', async () => {

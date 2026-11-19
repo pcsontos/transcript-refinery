@@ -227,6 +227,13 @@ A bot hat parancsot ismer:
 
 **Linkek és listák (`resolve`):** a sorrend serve-kép → `0007` migráció (`resolves` tábla) → Worker. A régi serve a `resolve` jelzőt nem ismeri, és a linket felirat-munkaként futtatná.
 
+**Megszakítás, újraindítás, Újragenerálás (pcsontos/issue-tracker#104):** a sorrend serve-kép → `0008` migráció (`runs.attempt`, `runs.force`) → Worker. Az új serve a `~<n>` nélküli azonosítót és a `force` hiányát (`false`) is elfogadja, így a két verzió átmenetileg együtt működik.
+- **Visszagörgetés:** ha a `/cancel` a futó recept alatt érkezik, a modellhívás befejeződik, utána a `runRecipes` nem commitol, nem pushol és nem deployol; a futás által írt jegyzetfájlok és `done` sorok törlődnek (a force-os felülírásnál a commitolt régi jegyzet és a régi állapottár-sor áll vissza). A késői `failed` nem küld második üzenetet, mert a „Megszakítva” sort a bot már elküldte.
+- **Próbálkozás-szám:** a `runs.attempt` minden `→ queued` átmenetnél nő, a kopogtatás azonosítója az első próbálkozásnál a `runId`, utána `<runId>~<n>`. Ezzel megy a serve `jobId`-je, a visszahívás URL-je és a `/jobs/<id>/cancel`. A Worker az elavult próbálkozás visszahívását eldobja és naplózza (`elavult visszahívás eldobva`), így a leállás előtt újraindított futás nem vész el.
+- **`force`:** a kopogtatás `force: true`-t visz (a `runs.force` oszlopból, ezért `409` vagy elérhetetlen serve után a cron is ugyanígy kopogtat; sikeres vagy végleges zárásnál visszaáll). A serve ezt csak a receptre ható `forceRecipe`-ként adja a pipeline-nak: a recept jegyzete felülíródik, az átirat és a `done` sora érintetlen.
+- **Újragenerálás gomb:** a kész üzenet alatt `Újragenerálás` (`g:<maszk>:<nyelv|->:<jobId>`). A koppintás megerősítést kér a recept(ek)kel, a `/model` szerinti modellel és a pénzköltés jelzésével (`Indítás` = `G:…`, `Mégse` = `q`); a futás csak az Indításkor indul, és az egyszeri modellfelülírás is csak ekkor fogy el. Futás közben a gomb „már folyamatban” üzenetet ad.
+- **Kész, de hiányzó jegyzet:** ha az állapottár szerint kész jegyzet fájlja nincs meg, a serve `failed` visszahívást küld `missing: true` jelzéssel. Telegramról leadott tételnél a Worker a hibasor alá az Újragenerálás gombot teszi, CLI-ből leadottnál a serve naplójába kerül a `refinery run --file … --recipe … --force` parancs.
+
 A Telegram `/` menüje nem a Worker része: új vagy átnevezett parancs után a `pnpm telegram:commands` állítja be a `/help` listájára (`--dry-run`-nal csak kiírja).
 
 A szöveges üzeneteket a bot szóközök mentén szavakra bontja, és minden elemet önállóan értékel (`worker/src/plan.ts`):

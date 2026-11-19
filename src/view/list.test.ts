@@ -16,6 +16,7 @@ const cell = (overrides: Partial<ItemCell> = {}): ItemCell => ({
   score: null,
   costUsd: null,
   belowThreshold: false,
+  missing: false,
   ...overrides,
 })
 
@@ -34,6 +35,15 @@ const row = (
   updatedAt: null,
   ...overrides,
   cells: Object.fromEntries(KINDS.map((k) => [k, cell(cells[k])])),
+})
+
+describe('hiányzó fájlú kész cella (pcsontos/issue-tracker#84)', () => {
+  it('a jele ! és a szöveges nézetben „kész, fájl nélkül”', () => {
+    const rows = [row('a', {}, { summary: { status: 'done', missing: true } })]
+    const opts = { showChannel: false, filterNote: '' }
+    expect(renderItemTable(rows, KINDS, opts)).toContain('!')
+    expect(renderItemTable(rows, KINDS, { ...opts, recipe: 'summary' })).toContain('kész, fájl nélkül')
+  })
 })
 
 describe('filterRows', () => {
@@ -166,7 +176,7 @@ describe('renderItemTable', () => {
         '1 Videó a ✓   ✓   ↓       ✗          0.2700',
         '2 Videó b ·   ·   ·       ·               —',
         '',
-        '✓ kész  ↓ küszöb alatt  ✗ hibás  · hátra  † a felirat eltűnt',
+        '✓ kész  ↓ küszöb alatt  ✗ hibás  · hátra  ! kész, de a fájl hiányzik  † a felirat eltűnt',
         'tra = transcript, sum = summary, cle-mod = clean-moderate, cle-mod-hu = clean-moderate-hu',
       ].join('\n'),
     )

@@ -134,13 +134,17 @@ export function pickKeyboard(mask: number, ready: readonly string[], jobId: stri
   return [...inRows(keys, 3), [{ text: 'tovább', data: `n:${mask.toString(16)}:${jobId}` }]]
 }
 
+export function recipeMask(recipes: readonly string[]): number {
+  return recipes.reduce((all, recipe) => all | (1 << (RECIPES as readonly string[]).indexOf(recipe)), 0)
+}
+
 /**
  * A leállt recept rákérdezése. Az Újra a mai receptgomb adatával megy (alaprecept: `r:`,
  * fordítás: `l:` a futás nyelvével és az összes receptjével), tehát nincs új indítási út:
  * a `failed` futás a `decideRun` szerint újraindul.
  */
 export function retryKeyboard(run: { jobId: string; recipes: readonly string[]; lang: string | null }): Key[][] {
-  const mask = run.recipes.reduce((all, recipe) => all | (1 << (RECIPES as readonly string[]).indexOf(recipe)), 0)
+  const mask = recipeMask(run.recipes)
   const retry =
     run.lang === null
       ? `r:${run.recipes[0] ?? ''}:${run.jobId}`
@@ -154,6 +158,29 @@ export function retryKeyboard(run: { jobId: string; recipes: readonly string[]; 
 }
 
 export const DROPPED_LINE = 'Eldobva, nem próbálom újra.'
+
+type RegenerateRun = { jobId: string; recipes: readonly string[]; lang: string | null }
+
+const regenerateData = (head: string, run: RegenerateRun): string =>
+  `${head}:${recipeMask(run.recipes).toString(16)}:${run.lang ?? '-'}:${run.jobId}`
+
+/** A kész (vagy „kész, de hiányzik”) üzenet alatti gomb: megerősítést kér, futást nem indít (pcsontos/issue-tracker#104). */
+export function regenerateKeyboard(run: RegenerateRun): Key[][] {
+  return [[{ text: 'Újragenerálás', data: regenerateData('g', run) }]]
+}
+
+export function regenerateConfirmKeyboard(run: RegenerateRun): Key[][] {
+  return [[
+    { text: 'Indítás', data: regenerateData('G', run) },
+    { text: 'Mégse', data: 'q' },
+  ]]
+}
+
+export function regenerateAskLine(kinds: readonly string[], model: string | null): string {
+  return `Újragenerálás: ${kinds.join(', ')}, modell: ${model ?? 'a config modellje'}. Ez valódi modellhívás, pénzbe kerül.`
+}
+
+export const REGENERATE_DROPPED = 'Rendben, nem generálom újra.'
 
 export function langKeyboard(mask: number, jobId: string): Key[][] {
   return inRows(

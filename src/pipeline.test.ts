@@ -398,6 +398,34 @@ describe('processItem recepttel', () => {
     expect(masodik.status).toBe('skipped')
   })
 
+  it('forceRecipe: a kész recept újraíródik, az átirat és a done sora érintetlen', async () => {
+    const deps = alapDeps()
+    const current = item()
+    const recipe = (text: string) => ({
+      recipe: ATMENO_RECEPT,
+      client: probaKliens(text),
+      modelConfig: MODELL_CFG,
+      guard: createCostGuard(5),
+    })
+    const first = await processItem(current, { ...deps, recipeDeps: recipe('## Régi\n') })
+    const transcript = await readFile(first.path!, 'utf8')
+    const stamp = store.artifactOf(current.itemId, ARTIFACT_KIND)!.path
+    const before = store.snapshotArtifact(current.itemId, ARTIFACT_KIND)
+
+    await new Promise((resolve) => setTimeout(resolve, 1100))
+    const second = await processItem(current, {
+      ...deps,
+      options: { forceRecipe: true },
+      recipeDeps: recipe('## Új\n'),
+    })
+
+    expect(second.status).toBe('published')
+    expect(await readFile(second.recipePath!, 'utf8')).toContain('## Új')
+    expect(await readFile(first.path!, 'utf8')).toBe(transcript)
+    expect(store.artifactOf(current.itemId, ARTIFACT_KIND)!.path).toBe(stamp)
+    expect(store.snapshotArtifact(current.itemId, ARTIFACT_KIND)).toEqual(before)
+  })
+
   it('publishable: false receptet nem ír ki', async () => {
     const outcome = await processItem(item(), {
       ...alapDeps(),

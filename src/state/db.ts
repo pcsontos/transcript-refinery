@@ -169,6 +169,12 @@ export interface CorpusStatus {
   totalCostUsd: number
 }
 
+/** Egy `artifacts` sor (és hiánylistája) átlátszatlan mása a visszagörgetéshez (pcsontos/issue-tracker#83). */
+export interface ArtifactSnapshot {
+  readonly row: Readonly<Record<string, string | number | null>>
+  readonly gaps: string | null
+}
+
 export interface StateStore {
   readonly path: string
   recordItem(item: SourceItem): void
@@ -189,6 +195,10 @@ export interface StateStore {
     pendingCommit?: boolean,
   ): void
   artifactOf(itemId: string, kind: string): ArtifactRecord | null
+  /** A sor mai állapota; `null`, ha nincs. A `restoreArtifact` ezt írja vissza. */
+  snapshotArtifact(itemId: string, kind: string): ArtifactSnapshot | null
+  /** Visszaállítja a pillanatképet (egy tranzakcióban); `null` = a sor és a hiánylistája törlődik. */
+  restoreArtifact(itemId: string, kind: string, snapshot: ArtifactSnapshot | null): void
   /** Az elem mappája (abszolút): az átirat mappája, annak híján egy másik kimenet mappája; `null`, ha nincs. Ez rögzíti az elem mappáját. A szójegyzék (`glossary-*`) nem számít: az bárhová költözhet. */
   noteDirOf(itemId: string): string | null
   /** A `done` sorok nem üres útja, abszolútként. */
@@ -422,6 +432,39 @@ export function openState(path: string, vaultPath?: string): StateStore {
 
     artifactOf(itemId, kind) {
       return selectArtifact(db, itemId, kind, vaultPath)
+    },
+
+    snapshotArtifact(itemId, kind) {
+      const row = db.prepare('SELECT * FROM artifacts WHERE item_id = ? AND kind = ?').get(itemId, kind) as
+        | Record<string, string | number | null>
+        | undefined
+      if (row === undefined) return null
+      const gaps = db.prepare('SELECT gaps FROM artifact_gaps WHERE item_id = ? AND kind = ?').get(itemId, kind) as
+        | { gaps: string }
+        | undefined
+      return { row: { ...row }, gaps: gaps?.gaps ?? null }
+    },
+
+    restoreArtifact(itemId, kind, snapshot) {
+      db.exec('BEGIN')
+      try {
+        db.prepare('DELETE FROM artifact_gaps WHERE item_id = ? AND kind = ?').run(itemId, kind)
+        db.prepare('DELETE FROM pending_commits WHERE item_id = ? AND kind = ?').run(itemId, kind)
+        db.prepare('DELETE FROM artifacts WHERE item_id = ? AND kind = ?').run(itemId, kind)
+        if (snapshot !== null) {
+          const columns = Object.keys(snapshot.row)
+          db.prepare(`INSERT INTO artifacts (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`).run(
+            ...columns.map((column) => snapshot.row[column] ?? null),
+          )
+          if (snapshot.gaps !== null) {
+            db.prepare('INSERT INTO artifact_gaps (item_id, kind, gaps) VALUES (?, ?, ?)').run(itemId, kind, snapshot.gaps)
+          }
+        }
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
     },
 
     trackedPaths() {

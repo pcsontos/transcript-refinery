@@ -11,22 +11,32 @@ import { recipesFor } from '../recipe/registry.js'
 import { DEFAULT_CHUNK_WORDS } from '../recipe/split.js'
 import { discoverAll, splitSubtitleName } from '../source/folder.js'
 import { isTextItemId, TEXT_EXTENSIONS } from '../source/text.js'
-import { openState } from '../state/db.js'
+import { openState, type ArtifactSnapshot } from '../state/db.js'
 import { noteCommitMessage } from '../vault/commit.js'
-import { gitCommitPaths, gitPullFfOnly, gitPush } from '../vault/git.js'
+import type { NoteOrigin } from '../vault/render.js'
+import { gitCommitPaths, gitPullFfOnly, gitPush, gitRestorePaths } from '../vault/git.js'
 import type { CallbackBody, RecipesOutcome } from './job.js'
 
 type SummaryGit = {
   pull(repo: string): Promise<void>
   commit(repo: string, paths: readonly string[], message: string): Promise<boolean>
   push(repo: string): Promise<{ pushed: boolean }>
+  /** Fájlok visszaállítása a HEAD-re (megszakított újragenerálás). */
+  restore(repo: string, paths: readonly string[]): Promise<void>
 }
 
 const defaultGit: SummaryGit = {
   pull: gitPullFfOnly,
   commit: gitCommitPaths,
   push: gitPush,
+  restore: gitRestorePaths,
 }
+
+/** Az állapottár szerint kész jegyzet fájlja hiányzik a vaultból (pcsontos/issue-tracker#84): a teendő az Újragenerálás, nem automatikus újrafuttatás. */
+export const MISSING_NOTE = 'A jegyzet korábban elkészült, de nincs meg a vaultban.'
+
+/** A megszakított futás üzenete: a Worker nem küld belőle másodikat, a bot a „Megszakítva” sort már elküldte. */
+export const CANCELLED_RUN = 'Megszakítva, a jegyzet nem került a vaultba.'
 
 type RunEvent = { type?: string; reason?: string; spentUsd?: number; limitUsd?: number; error?: string; timedOut?: boolean }
 
@@ -96,6 +106,46 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
+/**
+ * Megszakított futás visszagörgetése (pcsontos/issue-tracker#83): a tétel olyan, mintha a futás meg sem történt volna.
+ * Új sor → a fájl és a sor törlődik; force-szal felülírt recept → a commitolt fájl és a régi sor visszaáll.
+ */
+async function rollbackRun(
+  cfg: Config,
+  git: SummaryGit,
+  videoId: string,
+  kinds: readonly string[],
+  before: ReadonlyMap<string, ArtifactSnapshot | null>,
+  forceRecipe: boolean,
+): Promise<void> {
+  const store = openState(cfg.statePath, cfg.vaultPath)
+  try {
+    for (const kind of kinds) {
+      const snapshot = before.get(kind) ?? null
+      const current = store.artifactOf(videoId, kind)
+      const wasDone = snapshot?.row.status === 'done'
+      if (wasDone && !(forceRecipe && kind !== 'transcript')) continue
+      if (wasDone) {
+        const path = current?.path ?? null
+        if (path !== null) {
+          try {
+            await git.restore(cfg.vaultPath, [path])
+          } catch {
+            await rm(path, { force: true })
+          }
+        }
+      } else if (current?.status === 'done' && current.path !== null) {
+        await rm(current.path, { force: true })
+      } else {
+        continue
+      }
+      store.restoreArtifact(videoId, kind, snapshot)
+    }
+  } finally {
+    store.close()
+  }
+}
+
 export async function runRecipes(input: {
   videoId: string
   outDir: string
@@ -112,6 +162,10 @@ export async function runRecipes(input: {
   models?: Readonly<Record<string, string>>
   /** A showroom-deploy; a teszt hamisat ad. */
   deploy?: typeof deployNotes
+  /** Csak a recept jegyzetét írja újra (Újragenerálás); az átirat és a `done` sora érintetlen. */
+  forceRecipe?: boolean
+  /** A jegyzet eredete: `cli` esetén a config forrásneve alá kerül, nem a munkamappa neve alá (pcsontos/issue-tracker#85). */
+  origin?: NoteOrigin
   /** A futásnapló parancsa; alapból `serve recipes`, átírás utáni futásnál `after-whisper <id>`. */
   command?: string
 }): Promise<RecipesOutcome> {
@@ -126,7 +180,7 @@ export async function runRecipes(input: {
   const lang = input.lang
   const cfg: Config = {
     ...loaded.cfg,
-    sources: [{ name: basename(input.outDir), path: input.outDir }],
+    sources: [{ name: input.origin === 'cli' ? loaded.cfg.sources[0]!.name : basename(input.outDir), path: input.outDir }],
     // A célnyelv a kérésé, nem a configé: a futás idejére a kért forrásokból lesz fordítórecept.
     ...(lang === undefined
       ? {}
@@ -164,6 +218,16 @@ export async function runRecipes(input: {
       )
     : undefined
   const logsBefore = new Set(await logNames(cfg.logsDir))
+  // A visszagörgetés alapja (pcsontos/issue-tracker#83): az érintett sorok a futás előtt. A `done` sor esemény nélkül is születhet
+  // („a fájl már létezik” kihagyás), ezért a tárból veszünk pillanatképet, nem az eseményekből.
+  const rollbackKinds = ['transcript', ...ids]
+  const before = new Map<string, ArtifactSnapshot | null>()
+  const snapStore = openState(cfg.statePath, cfg.vaultPath)
+  try {
+    for (const kind of rollbackKinds) before.set(kind, snapStore.snapshotArtifact(input.videoId, kind))
+  } finally {
+    snapStore.close()
+  }
   // A futásidő-korlát miatt leállt receptek: az első üzenete lesz a hiba, a többi kész jegyzet marad.
   const stalled = new Map<string, string>()
   const onEvent = (event: CoreEvent): void => {
@@ -180,13 +244,18 @@ export async function runRecipes(input: {
       recipes: ids,
       dryRun: false,
       force: false,
+      ...(input.forceRecipe === true ? { forceRecipe: true } : {}),
       commit: false,
       command: [input.command ?? 'serve recipes', ...Object.entries(models).map(([id, model]) => `${id}=${model}`)].join(' '),
-      origin: 'telegram',
+      origin: input.origin ?? 'telegram',
       ...(textName === undefined ? {} : { adHoc: { file: join(input.outDir, textName) } }),
     },
     { createClient: input.createClient, signal: input.signal, onEvent },
   )
+  if (input.signal?.aborted === true) {
+    await rollbackRun(cfg, git, input.videoId, rollbackKinds, before, input.forceRecipe === true)
+    return { ok: false, error: CANCELLED_RUN }
+  }
   const events = await runEvents(cfg.logsDir, logsBefore)
   const names = await readdir(input.outDir)
   const fileName =
@@ -266,7 +335,9 @@ export async function runRecipes(input: {
   }
   if (transcriptPath === null) return finish({ ok: false, error: 'A jegyzet nem készült el.' })
   for (const path of notePaths) {
-    if (path === null || !(await exists(path))) return finish({ ok: false, error: failureLine(events, 'A jegyzet nem készült el.') })
+    if (path === null) return finish({ ok: false, error: failureLine(events, 'A jegyzet nem készült el.') })
+    // A sor `done` (különben nem volna útja), de a fájl nincs meg: a futás „már feldolgozva” miatt hagyta ki.
+    if (!(await exists(path))) return finish({ ok: false, error: MISSING_NOTE, missing: true })
   }
   // A vaulton belüli út forge-független: a Worker nem olvassa, csak eltárolja.
   const noteUrl = relative(cfg.vaultPath, transcriptPath).split(sep).join('/')

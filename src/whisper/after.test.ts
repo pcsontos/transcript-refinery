@@ -122,6 +122,20 @@ describe('afterWhisperTick', () => {
     expect(s.local).toEqual([])
   })
 
+  it('CLI-jelölőnél a runLocal job origin: cli, Telegram-jelölőnél (notify: false) nincs origin (pcsontos/issue-tracker#85)', async () => {
+    await done(HASH, 'cli')
+    await done('c3d4e5f6', '7:fetch-7')
+    const s = scene({ recipes: ['summary'], notify: false })
+    await afterWhisperTick(s.deps)
+    expect(s.local.map((job) => [job.videoId, job.origin])).toEqual(
+      expect.arrayContaining([
+        [HASH, 'cli'],
+        ['c3d4e5f6', undefined],
+      ]),
+    )
+    expect(s.local).toHaveLength(2)
+  })
+
   it('ha a visszahívás dob, a jelölő marad, és a következő kör elküldi', async () => {
     const info = await done(HASH, '7:fetch-7')
     const s = scene({ recipes: ['summary'], notify: true })
@@ -138,7 +152,7 @@ describe('afterWhisperTick', () => {
     const info = await done(HASH, 'cli')
     const s = scene({ recipes: ['summary', 'notes'], notify: true })
     await afterWhisperTick(s.deps)
-    expect(s.local).toEqual([{ jobId: `after-whisper:${HASH}`, videoId: HASH, url: AFTER_WHISPER, recipes: ['summary', 'notes'] }])
+    expect(s.local).toEqual([{ jobId: `after-whisper:${HASH}`, videoId: HASH, url: AFTER_WHISPER, recipes: ['summary', 'notes'], origin: 'cli' }])
     expect(s.calls).toEqual([])
     expect(await markerOf(info)).toBeUndefined()
   })

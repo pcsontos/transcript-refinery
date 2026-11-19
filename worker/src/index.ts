@@ -247,6 +247,7 @@ function isCallback(value: unknown): value is CallbackBody {
     text?: unknown
     done?: unknown
     deployError?: unknown
+    missing?: unknown
     videoId?: unknown
     recipes?: unknown
     playlist?: unknown
@@ -271,6 +272,7 @@ function isCallback(value: unknown): value is CallbackBody {
   }
   if (body.status === 'failed') {
     if (typeof body.error !== 'string') return false
+    if (body.missing !== undefined && body.missing !== true) return false
     return body.done === undefined || (Array.isArray(body.done) && body.done.every((kind) => typeof kind === 'string'))
   }
   if (body.status === 'progress' || body.status === 'stalled') return typeof body.text === 'string'

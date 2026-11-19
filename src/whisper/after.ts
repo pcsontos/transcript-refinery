@@ -45,7 +45,7 @@ export async function readWhisperPair(sourcesRoot: string, id: string): Promise<
     const info = await readFile(join(dirname(srt), `${id}.info.json`))
     const parsed = JSON.parse(info.toString('utf8')) as Record<string, unknown>
     const subtitle = await readFile(srt)
-    return { ok: true, title: titleOf(parsed, id), language, extension: 'srt', subtitle: new Uint8Array(subtitle), info: new Uint8Array(info) }
+    return { ok: true, title: titleOf(parsed, id), language, extension: 'srt', subtitle: new Uint8Array(subtitle), info: new Uint8Array(info), sourcePath: srt }
   } catch {
     return { ok: false, error: MISSING_TRANSCRIPT }
   }
@@ -149,7 +149,7 @@ export async function afterWhisperTick(deps: AfterDeps): Promise<void> {
         const release = deps.claim(`after-whisper ${item.id}`)
         if (release === null) return // a kapu foglalt: a következő kör próbálja
         try {
-          await deps.runLocal({ jobId: `after-whisper:${item.id}`, videoId: item.id, url: AFTER_WHISPER, recipes: [...after.recipes] })
+          await deps.runLocal({ jobId: `after-whisper:${item.id}`, videoId: item.id, url: AFTER_WHISPER, recipes: [...after.recipes], ...(item.marker === CLI_AFTER ? { origin: 'cli' as const } : {}) })
         } finally {
           release()
         }

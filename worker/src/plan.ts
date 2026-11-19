@@ -46,6 +46,11 @@ export {
   fetchTitle,
   cancelKeyboard,
   retryKeyboard,
+  recipeMask,
+  regenerateKeyboard,
+  regenerateConfirmKeyboard,
+  regenerateAskLine,
+  REGENERATE_DROPPED,
   DROPPED_LINE,
   type Probe,
   HELP_TEXT,
@@ -73,11 +78,13 @@ export {
   listKeyboard,
 } from './messages.js'
 
-export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
+export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'regenerate' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
 
-export function decideRun(run: RunRow | null): TapAction {
+export function decideRun(run: RunRow | null, regenerate = false): TapAction {
   if (run === null) return { type: 'start' }
   if (OPEN.has(run.status)) return { type: 'busy' }
+  // Újragenerálás (pcsontos/issue-tracker#104): kész és hibás futásra is, force-szal; a sima retry ugyanazt a kihagyást hozná vissza.
+  if (regenerate) return { type: 'regenerate' }
   if (run.status === 'failed' || run.status === 'cancelled') return { type: 'retry' }
   if (run.status === 'ready' && run.notified) return { type: 'resend' }
   return { type: 'ignore' }
@@ -95,6 +102,8 @@ export type Tap =
   | { type: 'modelSet'; mode: 'once' | 'always'; key: string; model: string }
   | { type: 'modelReset'; key: string }
   | { type: 'list'; action: 'a' | 'v' | 'x'; jobId: string }
+  | { type: 'regenerateAsk' | 'regenerate'; mask: number; lang: string | null; jobId: string }
+  | { type: 'regenerateDrop' }
 
 const MASK = /^[0-9a-f]{1,2}$/
 
@@ -136,6 +145,15 @@ export function parseTap(data: string): Tap | null {
     if (mask === null || lang === undefined || !(LANGS as readonly string[]).includes(lang)) return null
     return { type: 'lang', mask, lang, jobId: job.join(':') }
   }
+  if (head === 'g' || head === 'G') {
+    const [hex, lang, ...job] = rest
+    const mask = maskOf(hex)
+    const jobId = job.join(':')
+    if (mask === null || mask === 0 || lang === undefined || jobId === '') return null
+    if (lang !== '-' && !(LANGS as readonly string[]).includes(lang)) return null
+    return { type: head === 'g' ? 'regenerateAsk' : 'regenerate', mask, lang: lang === '-' ? null : lang, jobId }
+  }
+  if (head === 'q') return rest.length === 0 ? { type: 'regenerateDrop' } : null
   if (head === 'L') {
     const [action, ...job] = rest
     const jobId = job.join(':')
@@ -166,6 +184,18 @@ export function maskRecipes(mask: number): string[] {
 
 export function runId(jobId: string, recipes: readonly string[], lang: string | null): string {
   return lang === null ? `${jobId}:${recipes.join('+')}` : `${jobId}:${lang}:${recipes.join('+')}`
+}
+
+/** A kopogtatás azonosítója: az első próbálkozásnál a `runId`, utána `<runId>~<n>` (pcsontos/issue-tracker#103). */
+export function knockId(run: Pick<RunRow, 'runId' | 'attempt'>): string {
+  const attempt = run.attempt ?? 0
+  return attempt > 0 ? `${run.runId}~${attempt}` : run.runId
+}
+
+/** A `knockId` fordítottja; az utótag nélküli (régi) azonosító a 0. próbálkozás. */
+export function splitKnockId(id: string): { runId: string; attempt: number } {
+  const match = /^(.*)~(\d+)$/.exec(id)
+  return match?.[1] === undefined || match[2] === undefined ? { runId: id, attempt: 0 } : { runId: match[1], attempt: Number(match[2]) }
 }
 
 /** A futás jegyzetfajtái: a fordítás `<recept>-<nyelv>`, ahogy a vault fájlneve. */
