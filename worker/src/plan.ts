@@ -83,7 +83,7 @@ export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'regener
 export function decideRun(run: RunRow | null, regenerate = false): TapAction {
   if (run === null) return { type: 'start' }
   if (OPEN.has(run.status)) return { type: 'busy' }
-  // Újragenerálás (#104): kész és hibás futásra is, force-szal; a sima retry ugyanazt a kihagyást hozná vissza.
+  // Újragenerálás (pcsontos/issue-tracker#104): kész és hibás futásra is, force-szal; a sima retry ugyanazt a kihagyást hozná vissza.
   if (regenerate) return { type: 'regenerate' }
   if (run.status === 'failed' || run.status === 'cancelled') return { type: 'retry' }
   if (run.status === 'ready' && run.notified) return { type: 'resend' }
@@ -186,7 +186,7 @@ export function runId(jobId: string, recipes: readonly string[], lang: string | 
   return lang === null ? `${jobId}:${recipes.join('+')}` : `${jobId}:${lang}:${recipes.join('+')}`
 }
 
-/** A kopogtatás azonosítója: az első próbálkozásnál a `runId`, utána `<runId>~<n>` (#103). */
+/** A kopogtatás azonosítója: az első próbálkozásnál a `runId`, utána `<runId>~<n>` (pcsontos/issue-tracker#103). */
 export function knockId(run: Pick<RunRow, 'runId' | 'attempt'>): string {
   const attempt = run.attempt ?? 0
   return attempt > 0 ? `${run.runId}~${attempt}` : run.runId

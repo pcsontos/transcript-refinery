@@ -37,7 +37,7 @@ const row = (
   cells: Object.fromEntries(KINDS.map((k) => [k, cell(cells[k])])),
 })
 
-describe('hiányzó fájlú kész cella (#84)', () => {
+describe('hiányzó fájlú kész cella (pcsontos/issue-tracker#84)', () => {
   it('a jele ! és a szöveges nézetben „kész, fájl nélkül”', () => {
     const rows = [row('a', {}, { summary: { status: 'done', missing: true } })]
     const opts = { showChannel: false, filterNote: '' }

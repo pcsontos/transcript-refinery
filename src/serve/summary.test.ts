@@ -522,7 +522,7 @@ describe('runRecipes', () => {
     expect(calls.generate).toBe(0)
   })
 
-  it('két recept közül az első után megszakítva: egy modellhívás, és a kész jegyzet sem kerül a vaultba (#83)', async () => {
+  it('két recept közül az első után megszakítva: egy modellhívás, és a kész jegyzet sem kerül a vaultba (pcsontos/issue-tracker#83)', async () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()
     roots.push(root)
@@ -550,7 +550,7 @@ describe('runRecipes', () => {
   })
 })
 
-describe('runRecipes — eredet (#85)', () => {
+describe('runRecipes — eredet (pcsontos/issue-tracker#85)', () => {
   const previous = process.env.LITELLM_API_KEY
   const roots: string[] = []
 
@@ -564,7 +564,7 @@ describe('runRecipes — eredet (#85)', () => {
     process.env.LITELLM_API_KEY = 'sk-proba'
     const { root, vault, outDir, load } = await scene()
     roots.push(root)
-    // A configban a forrás neve `sources` (a peter-mba-n a `/data/sources`), a munkamappáé `telegram`.
+    // A configban a forrás neve `sources`, a munkamappáé `telegram`.
     const named = async () => {
       const loaded = await load()
       return { ...loaded, cfg: { ...loaded.cfg, sources: [{ name: 'sources', path: outDir }] } }
@@ -594,7 +594,7 @@ describe('runRecipes — eredet (#85)', () => {
   })
 })
 
-describe('runRecipes — forceRecipe (#104)', () => {
+describe('runRecipes — forceRecipe (pcsontos/issue-tracker#104)', () => {
   const previous = process.env.LITELLM_API_KEY
   const roots: string[] = []
 
@@ -659,7 +659,7 @@ describe('runRecipes — forceRecipe (#104)', () => {
   })
 })
 
-describe('runRecipes — kész, de hiányzó jegyzet (#84)', () => {
+describe('runRecipes — kész, de hiányzó jegyzet (pcsontos/issue-tracker#84)', () => {
   const previous = process.env.LITELLM_API_KEY
   const roots: string[] = []
 
@@ -688,7 +688,7 @@ describe('runRecipes — kész, de hiányzó jegyzet (#84)', () => {
   })
 })
 
-describe('runRecipes — megszakítás (#83)', () => {
+describe('runRecipes — megszakítás (pcsontos/issue-tracker#83)', () => {
   const previous = process.env.LITELLM_API_KEY
   const roots: string[] = []
 

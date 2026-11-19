@@ -525,7 +525,7 @@ export async function commandRun(
     queue?: boolean
     dryRun: boolean
     force: boolean
-    /** Csak a recept jegyzetét írja újra, az átiratot nem (a `serve` Újragenerálása, #104); CLI-kapcsoló nincs. */
+    /** Csak a recept jegyzetét írja újra, az átiratot nem (a `serve` Újragenerálása, pcsontos/issue-tracker#104); CLI-kapcsoló nincs. */
     forceRecipe?: boolean
     commit: boolean
     /** Csak a korábban `failed` állapotú elemeket — queue-módban párokat — futtatja újra. */

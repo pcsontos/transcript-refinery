@@ -112,7 +112,7 @@ export interface PlannedKnock {
   fetch?: boolean
   /** Link vagy lista feloldása: a serve `resolved` visszahívást küld, letöltés nélkül. */
   resolve?: boolean
-  /** Újragenerálás (#104): a serve csak a recept jegyzetét írja újra. */
+  /** Újragenerálás (pcsontos/issue-tracker#104): a serve csak a recept jegyzetét írja újra. */
   force?: boolean
 }
 
@@ -830,7 +830,7 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
   // A megszakított futás késői eredménye csak üzenet: az állapot marad, a cron nem kopogtatja.
   if (run.status === 'cancelled') {
     if (body.status === 'progress' || body.status === 'stalled') return
-    // A megszakítás miatti késői `failed` nem ad második üzenetet: a „Megszakítva” sort a bot már elküldte (#103).
+    // A megszakítás miatti késői `failed` nem ad második üzenetet: a „Megszakítva” sort a bot már elküldte (pcsontos/issue-tracker#103).
     if (body.status === 'failed') {
       console.log(`[worker] késői hiba a megszakított futásra: ${run.runId}`)
       return
@@ -860,7 +860,7 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
     return
   }
   if (body.status === 'failed') {
-    // „Kész, de hiányzik” (#84): hibasor helyett a gomb; az Újragenerálás force-os, megerősítéses út.
+    // „Kész, de hiányzik” (pcsontos/issue-tracker#84): hibasor helyett a gomb; az Újragenerálás force-os, megerősítéses út.
     const sent = await deps.send(
       row.chatId,
       runFailedLine(row, run, body.error),
@@ -1000,7 +1000,7 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
   const split = splitKnockId(id)
   const run = await deps.store.run(split.runId)
   if (run !== null) {
-    // A régi próbálkozás késői visszahívása nem az újraindított futásra szól (#103).
+    // A régi próbálkozás késői visszahívása nem az újraindított futásra szól (pcsontos/issue-tracker#103).
     if ((run.attempt ?? 0) !== split.attempt) {
       console.log(`[worker] elavult visszahívás eldobva: ${id} (a futás ${run.attempt ?? 0}. próbálkozásnál tart)`)
       return 200

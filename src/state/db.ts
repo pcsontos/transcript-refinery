@@ -169,7 +169,7 @@ export interface CorpusStatus {
   totalCostUsd: number
 }
 
-/** Egy `artifacts` sor (és hiánylistája) átlátszatlan mása a visszagörgetéshez (#83). */
+/** Egy `artifacts` sor (és hiánylistája) átlátszatlan mása a visszagörgetéshez (pcsontos/issue-tracker#83). */
 export interface ArtifactSnapshot {
   readonly row: Readonly<Record<string, string | number | null>>
   readonly gaps: string | null

@@ -17,7 +17,7 @@ export interface ItemCell {
   costUsd: number | null
   /** Kész, pontozott, és a recept küszöbe alatt maradt. */
   belowThreshold: boolean
-  /** Az állapottár szerint kész, de a jegyzet fájlja nincs meg (#84). */
+  /** Az állapottár szerint kész, de a jegyzet fájlja nincs meg (pcsontos/issue-tracker#84). */
   missing: boolean
 }
 

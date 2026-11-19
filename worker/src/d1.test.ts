@@ -42,7 +42,7 @@ const row: JobRow = {
   text: 'Szöveg.',
 }
 
-describe('D1: próbálkozás-számláló (#103)', () => {
+describe('D1: próbálkozás-számláló (pcsontos/issue-tracker#103)', () => {
   it('a queued átmenet növeli az attemptet, az accepted nem; a force csak megadva íródik', async () => {
     const db = capture()
     const store = createD1Store(db)

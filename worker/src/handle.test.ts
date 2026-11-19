@@ -990,7 +990,7 @@ describe('megszakítás: verseny és késői visszahívás', () => {
   })
 })
 
-describe('Újragenerálás (#104)', () => {
+describe('Újragenerálás (pcsontos/issue-tracker#104)', () => {
   const RUN = runId(`5:${ID}`, ['summary'], null)
   const jobId = `5:${ID}`
 
@@ -1072,7 +1072,7 @@ describe('Újragenerálás (#104)', () => {
   })
 })
 
-describe('késői visszahívás (#103)', () => {
+describe('késői visszahívás (pcsontos/issue-tracker#103)', () => {
   const RUN = runId(`5:${ID}`, ['summary'], null)
 
   async function restarted(): Promise<{ store: ReturnType<typeof memoryStore>; run: RunRow }> {

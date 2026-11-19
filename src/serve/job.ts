@@ -30,9 +30,9 @@ export interface ServeJob {
    * `<feed-url> --pick <lista>`). Első szava `transcribe`: átírás-munka (`transcribe [<id>…] [--lang <kód>]`).
    */
   fetch?: boolean
-  /** Újragenerálás (#104): a recept jegyzetét újraírja, az átiratot nem (`forceRecipe`). */
+  /** Újragenerálás (pcsontos/issue-tracker#104): a recept jegyzetét újraírja, az átiratot nem (`forceRecipe`). */
   force?: boolean
-  /** Csak a serve belső jobja állítja (CLI-jelölős utólépés, #85); kívülről érkezve az `isJob` elutasítja. */
+  /** Csak a serve belső jobja állítja (CLI-jelölős utólépés, pcsontos/issue-tracker#85); kívülről érkezve az `isJob` elutasítja. */
   origin?: 'cli'
   /** Link vagy lista feloldása (`url`): a serve visszahívja a `resolved` üzenetet, letöltés nincs. */
   resolve?: boolean
@@ -397,7 +397,7 @@ async function runRecipeJob(
   if (!(afterWhisper && outcome.ok)) await outcome.followUp?.()
 }
 
-/** A CLI-ből leadott tételnél nincs Telegram-gomb: a serve naplójába a pontos parancs kerül (#84). */
+/** A CLI-ből leadott tételnél nincs Telegram-gomb: a serve naplójába a pontos parancs kerül (pcsontos/issue-tracker#84). */
 export function cliRerunHint(path: string, recipes: readonly string[]): string {
   return recipes.map((recipe) => `Újrafuttatás: refinery run --file "${path}" --recipe ${recipe} --force`).join('\n')
 }

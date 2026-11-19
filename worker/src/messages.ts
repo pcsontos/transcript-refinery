@@ -134,15 +134,15 @@ export function pickKeyboard(mask: number, ready: readonly string[], jobId: stri
   return [...inRows(keys, 3), [{ text: 'tovább', data: `n:${mask.toString(16)}:${jobId}` }]]
 }
 
+export function recipeMask(recipes: readonly string[]): number {
+  return recipes.reduce((all, recipe) => all | (1 << (RECIPES as readonly string[]).indexOf(recipe)), 0)
+}
+
 /**
  * A leállt recept rákérdezése. Az Újra a mai receptgomb adatával megy (alaprecept: `r:`,
  * fordítás: `l:` a futás nyelvével és az összes receptjével), tehát nincs új indítási út:
  * a `failed` futás a `decideRun` szerint újraindul.
  */
-export function recipeMask(recipes: readonly string[]): number {
-  return recipes.reduce((all, recipe) => all | (1 << (RECIPES as readonly string[]).indexOf(recipe)), 0)
-}
-
 export function retryKeyboard(run: { jobId: string; recipes: readonly string[]; lang: string | null }): Key[][] {
   const mask = recipeMask(run.recipes)
   const retry =
@@ -164,7 +164,7 @@ type RegenerateRun = { jobId: string; recipes: readonly string[]; lang: string |
 const regenerateData = (head: string, run: RegenerateRun): string =>
   `${head}:${recipeMask(run.recipes).toString(16)}:${run.lang ?? '-'}:${run.jobId}`
 
-/** A kész (vagy „kész, de hiányzik”) üzenet alatti gomb: megerősítést kér, futást nem indít (#104). */
+/** A kész (vagy „kész, de hiányzik”) üzenet alatti gomb: megerősítést kér, futást nem indít (pcsontos/issue-tracker#104). */
 export function regenerateKeyboard(run: RegenerateRun): Key[][] {
   return [[{ text: 'Újragenerálás', data: regenerateData('g', run) }]]
 }

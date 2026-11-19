@@ -907,7 +907,7 @@ describe('runJob — átírás utáni futás (pcsontos/issue-tracker#45)', () =>
     expect(callbacks).toEqual([{ status: 'failed', error: 'Az átirat nincs meg a sources/whisper alatt.' }])
   })
 
-  it('CLI-leadott utólépés, hiányzó jegyzet: a hibaszöveg a pontos paranccsal (#84)', async () => {
+  it('CLI-leadott utólépés, hiányzó jegyzet: a hibaszöveg a pontos paranccsal (pcsontos/issue-tracker#84)', async () => {
     const callbacks: CallbackBody[] = []
     const path = '/data/sources/whisper/Up First/abc.en.srt'
     await runJob(
@@ -927,7 +927,7 @@ describe('runJob — átírás utáni futás (pcsontos/issue-tracker#45)', () =>
     expect(cliRerunHint(path, ['summary'])).toBe(`Újrafuttatás: refinery run --file "${path}" --recipe summary --force`)
   })
 
-  it('Telegram-leadásnál a callback missing: true, tipp nélkül (#84)', async () => {
+  it('Telegram-leadásnál a callback missing: true, tipp nélkül (pcsontos/issue-tracker#84)', async () => {
     const callbacks: CallbackBody[] = []
     await runJob(
       afterJob,

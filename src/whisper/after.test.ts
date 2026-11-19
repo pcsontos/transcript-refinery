@@ -122,7 +122,7 @@ describe('afterWhisperTick', () => {
     expect(s.local).toEqual([])
   })
 
-  it('CLI-jelölőnél a runLocal job origin: cli, Telegram-jelölőnél (notify: false) nincs origin (#85)', async () => {
+  it('CLI-jelölőnél a runLocal job origin: cli, Telegram-jelölőnél (notify: false) nincs origin (pcsontos/issue-tracker#85)', async () => {
     await done(HASH, 'cli')
     await done('c3d4e5f6', '7:fetch-7')
     const s = scene({ recipes: ['summary'], notify: false })

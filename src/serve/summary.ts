@@ -32,7 +32,7 @@ const defaultGit: SummaryGit = {
   restore: gitRestorePaths,
 }
 
-/** Az állapottár szerint kész jegyzet fájlja hiányzik a vaultból (#84): a teendő az Újragenerálás, nem automatikus újrafuttatás. */
+/** Az állapottár szerint kész jegyzet fájlja hiányzik a vaultból (pcsontos/issue-tracker#84): a teendő az Újragenerálás, nem automatikus újrafuttatás. */
 export const MISSING_NOTE = 'A jegyzet korábban elkészült, de nincs meg a vaultban.'
 
 /** A megszakított futás üzenete: a Worker nem küld belőle másodikat, a bot a „Megszakítva” sort már elküldte. */
@@ -107,7 +107,7 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * Megszakított futás visszagörgetése (#83): a tétel olyan, mintha a futás meg sem történt volna.
+ * Megszakított futás visszagörgetése (pcsontos/issue-tracker#83): a tétel olyan, mintha a futás meg sem történt volna.
  * Új sor → a fájl és a sor törlődik; force-szal felülírt recept → a commitolt fájl és a régi sor visszaáll.
  */
 async function rollbackRun(
@@ -164,7 +164,7 @@ export async function runRecipes(input: {
   deploy?: typeof deployNotes
   /** Csak a recept jegyzetét írja újra (Újragenerálás); az átirat és a `done` sora érintetlen. */
   forceRecipe?: boolean
-  /** A jegyzet eredete: `cli` esetén a config forrásneve alá kerül, nem a munkamappa neve alá (#85). */
+  /** A jegyzet eredete: `cli` esetén a config forrásneve alá kerül, nem a munkamappa neve alá (pcsontos/issue-tracker#85). */
   origin?: NoteOrigin
   /** A futásnapló parancsa; alapból `serve recipes`, átírás utáni futásnál `after-whisper <id>`. */
   command?: string
@@ -218,7 +218,7 @@ export async function runRecipes(input: {
       )
     : undefined
   const logsBefore = new Set(await logNames(cfg.logsDir))
-  // A visszagörgetés alapja (#83): az érintett sorok a futás előtt. A `done` sor esemény nélkül is születhet
+  // A visszagörgetés alapja (pcsontos/issue-tracker#83): az érintett sorok a futás előtt. A `done` sor esemény nélkül is születhet
   // („a fájl már létezik” kihagyás), ezért a tárból veszünk pillanatképet, nem az eseményekből.
   const rollbackKinds = ['transcript', ...ids]
   const before = new Map<string, ArtifactSnapshot | null>()

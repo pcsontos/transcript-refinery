@@ -114,7 +114,7 @@ describe('buildItemRows', () => {
   })
 })
 
-describe('buildItemRows — hiányzó fájl (#84)', () => {
+describe('buildItemRows — hiányzó fájl (pcsontos/issue-tracker#84)', () => {
   it('done sor nem létező úttal: missing, a többi cella nem', () => {
     const [row] = buildItemRows(
       [sourceItem('a', 'Első példavideó')],

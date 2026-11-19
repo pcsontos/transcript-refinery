@@ -62,7 +62,7 @@ export interface PipelineDeps {
   sink: EventSink
   version: string
   /**
-   * `forceRecipe`: csak a recept jegyzetét írja újra (Újragenerálás, #104); az átirat és a `done` sora érintetlen.
+   * `forceRecipe`: csak a recept jegyzetét írja újra (Újragenerálás, pcsontos/issue-tracker#104); az átirat és a `done` sora érintetlen.
    * A `force` az átiratot is újrarenderelné (a `generated_at` miatt fölösleges commit).
    */
   options: PublishOptions & { forceRecipe?: boolean }

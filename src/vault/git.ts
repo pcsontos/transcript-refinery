@@ -95,7 +95,7 @@ export async function gitCommitPaths(
   return true
 }
 
-/** A megadott fájlok visszaállítása a HEAD-re (megszakított újragenerálás, #83); üres listára nem csinál semmit. */
+/** A megadott fájlok visszaállítása a HEAD-re (megszakított újragenerálás, pcsontos/issue-tracker#83); üres listára nem csinál semmit. */
 export async function gitRestorePaths(repo: string, paths: readonly string[]): Promise<void> {
   if (paths.length === 0) return
   await run('git', ['checkout', 'HEAD', '--', ...paths], { cwd: repo })

@@ -411,7 +411,7 @@ describe('/model gombok', () => {
   })
 })
 
-describe('Újragenerálás: gombok és döntés (#104)', () => {
+describe('Újragenerálás: gombok és döntés (pcsontos/issue-tracker#104)', () => {
   const run = (status: RunRow['status'], over: Partial<RunRow> = {}): RunRow => ({
     runId: '5:abc:summary',
     jobId: '5:abc',
@@ -449,7 +449,7 @@ describe('Újragenerálás: gombok és döntés (#104)', () => {
   })
 })
 
-describe('knockId / splitKnockId (#103)', () => {
+describe('knockId / splitKnockId (pcsontos/issue-tracker#103)', () => {
   it('az első próbálkozásnál a runId, utána runId~n', () => {
     expect(knockId({ runId: '1:abc:summary', attempt: 0 })).toBe('1:abc:summary')
     expect(knockId({ runId: '1:abc:summary' })).toBe('1:abc:summary')
