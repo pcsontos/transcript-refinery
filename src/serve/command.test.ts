@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { ProcessRunner } from '../fetch/subtitle/ytdlp.js'
+import { loadCliConfig } from '../config.js'
+import { openState } from '../state/db.js'
 import { commandServe, installIdleExit, serveEffects, serveFetchAudio, serveTranscribe } from './command.js'
 import type { ObjectStore } from './r2.js'
 
@@ -329,7 +331,7 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
     const out = collect()
     const result = await serveTranscribe(path)({ ids: [] }, undefined, out.emit)
-    expect(out.lines[0]).toBe(`Átírásra váró hangok:\n1. Cím [${ID}]`)
+    expect(out.lines[0]).toBe(`Átírásra váró hangok:\n1. Cím [${ID}] — archivált`)
     expect(result).toBe('Válaszolj a lista egyik üzenetére a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.')
   })
 
@@ -346,5 +348,57 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     expect(result).toMatch(/\nA whisper-figyelő nem fut/)
     expect(await readdir(join(whisper, 'inbox'))).toContain(`${ID}.m4a`)
     expect(await readdir(join(dir, 'logs'))).toHaveLength(1)
+  })
+
+  describe('átírt, recept nélküli tételek (pcsontos/issue-tracker#65)', () => {
+    async function withAfter() {
+      const c = await config(true)
+      await appendFile(c.path, '  after:\n    recipes: [summary]\n')
+      await mkdir(join(c.dir, 'audio', 'Csat'), { recursive: true })
+      const { cfg } = await loadCliConfig(c.path)
+      const store = openState(cfg.statePath, cfg.vaultPath)
+      for (const [id, title] of [['aaaaaaaaaaa', 'Átírt'], ['bbbbbbbbbbb', 'Archivált'], ['ccccccccccc', 'Kész']] as const) {
+        await writeFile(join(c.dir, 'audio', 'Csat', `${title} [${id}].m4a`), 'hang')
+        await writeFile(join(c.dir, 'audio', 'Csat', `${title} [${id}].info.json`), JSON.stringify({ title, channel: 'Csat', duration: 60 }))
+        if (id === 'bbbbbbbbbbb') continue
+        await mkdir(join(c.dir, 'src', 'whisper', 'csat'), { recursive: true })
+        await writeFile(join(c.dir, 'src', 'whisper', 'csat', `${id}.hu.srt`), 'x')
+        await writeFile(join(c.dir, 'src', 'whisper', 'csat', `${id}.info.json`), JSON.stringify({ id, title }))
+        store.recordItem({ itemId: id, source: 'whisper', sourceFile: `whisper/csat/${id}.hu.srt`, subtitlePath: `/s/${id}.hu.srt`, baseName: id, title, language: 'hu', metadata: {} })
+      }
+      store.recordArtifact('ccccccccccc', 'summary', 'done', `${cfg.vaultPath}/c.md`, null)
+      store.close()
+      return c
+    }
+
+    it('a lista az átírt, recept nélküli tételt is mutatja', async () => {
+      const { path } = await withAfter()
+      const out = collect()
+      await serveTranscribe(path)({ ids: [] }, undefined, out.emit)
+      const text = out.lines.join('\n')
+      expect(text).toContain('[aaaaaaaaaaa] — 0:01:00 — átírva · summary –')
+      expect(text).toContain('[bbbbbbbbbbb] — 0:01:00 — archivált')
+      expect(text).not.toContain('ccccccccccc')
+    })
+
+    it('whisper.after nélkül az átírt tétel nincs a listán', async () => {
+      const { path, dir } = await withAfter()
+      await writeFile(path, (await readFile(path, 'utf8')).replace('  after:\n    recipes: [summary]\n', ''))
+      const out = collect()
+      await serveTranscribe(path)({ ids: [] }, undefined, out.emit)
+      const text = out.lines.join('\n')
+      expect(text).toContain('bbbbbbbbbbb')
+      expect(text).not.toContain('aaaaaaaaaaa')
+      expect(dir).toBeTruthy()
+    })
+
+    it('sorszámos válasz átírt tételre: utólépés kérve, a jelölő a jobId', async () => {
+      const { path, dir } = await withAfter()
+      const out = collect()
+      const result = await serveTranscribe(path)({ ids: ['aaaaaaaaaaa'], jobId: 'j1' }, undefined, out.emit)
+      expect(result).toContain('1 tételre utólépés kérve.')
+      const info = JSON.parse(await readFile(join(dir, 'src', 'whisper', 'csat', 'aaaaaaaaaaa.info.json'), 'utf8')) as Record<string, unknown>
+      expect(info.refinery_after).toBe('j1')
+    })
   })
 })

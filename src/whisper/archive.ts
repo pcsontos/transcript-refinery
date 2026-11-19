@@ -154,14 +154,16 @@ const TITLE_MAX = 120
 
 /**
  * Számozott lista: `<N>. <cím ≤120 karakter> [<id>] — <ó:pp:mm>`. A címet vágjuk, a sort nem, így az azonosító
- * sosem vész el; a számozás üzenetenként folytatólagos.
+ * sosem vész el; a számozás üzenetenként folytatólagos. A `notes` azonosítónként ` — <jegyzet>` utótagot ad a sor végére
+ * (nem tartalmazhat `]`-t: a Worker sorfelismerése erre épül).
  */
-export function transcribeMessages(entries: readonly AudioEntry[], limit?: number): string[] {
+export function transcribeMessages(entries: readonly AudioEntry[], limit?: number, notes?: ReadonlyMap<string, string>): string[] {
   const lines = entries.map((entry, index) => {
     const flat = entry.title.replace(/\s+/g, ' ').trim()
     const title = flat.length > TITLE_MAX ? `${flat.slice(0, TITLE_MAX - 1)}…` : flat
     const length = entry.duration === null ? '' : ` — ${audioDuration(entry.duration)}`
-    return `${index + 1}. ${title} [${entry.id}]${length}`
+    const note = notes?.get(entry.id)
+    return `${index + 1}. ${title} [${entry.id}]${length}${note === undefined ? '' : ` — ${note}`}`
   })
   return chunkMessages(`${TRANSCRIBE_HEADER}\n`, lines, limit)
 }

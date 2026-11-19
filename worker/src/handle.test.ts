@@ -1974,6 +1974,9 @@ describe('/transcribe', () => {
     const second = 'Átírásra váró hangok:\n41. Negyvenegy [aaaaaaaaaaa]\n42. Negyvenkettő [bbbbbbbbbbb] — 0:01:00'
     expect((await handleUpdate(reply(7, '42', second), d)).knocks[0]?.url).toBe('transcribe bbbbbbbbbbb')
     expect((await handleUpdate(reply(8, '0', second), d)).knocks[0]?.url).toBe('transcribe aaaaaaaaaaa bbbbbbbbbbb')
+    // pcsontos/issue-tracker#65: az átírt tétel sorának jegyzet-utótagja (` — átírva · summary –`) nem zavarja a felismerést.
+    const noted = 'Átírásra váró hangok:\n1. Cím [abc_DEF-123] — 1:02:03 — átírva · summary –'
+    expect((await handleUpdate(reply(19, '1', noted), d)).knocks[0]?.url).toBe('transcribe abc_DEF-123')
     expect((await handleUpdate(reply(9, '1', second), d)).knocks).toEqual([])
   })
 
