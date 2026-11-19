@@ -49,6 +49,10 @@ import {
   readyLine,
   recipeKeyboard,
   retryKeyboard,
+  regenerateKeyboard,
+  regenerateConfirmKeyboard,
+  regenerateAskLine,
+  REGENERATE_DROPPED,
   knockId,
   runId,
   splitKnockId,
@@ -856,7 +860,12 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
     return
   }
   if (body.status === 'failed') {
-    const sent = await deps.send(row.chatId, runFailedLine(row, run, body.error))
+    // „Kész, de hiányzik” (#84): hibasor helyett a gomb; az Újragenerálás force-os, megerősítéses út.
+    const sent = await deps.send(
+      row.chatId,
+      runFailedLine(row, run, body.error),
+      body.missing === true ? regenerateKeyboard(run) : undefined,
+    )
     if (!sent) return
     run.status = 'failed'
     run.force = false
@@ -875,7 +884,7 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
     return
   }
   run.noteUrl = body.noteUrl
-  const sent = await deps.send(row.chatId, readyText(body, run, deps))
+  const sent = await deps.send(row.chatId, readyText(body, run, deps), regenerateKeyboard(run))
   if (!sent) {
     run.status = 'accepted'
     await deps.store.saveRun(run)
@@ -1045,17 +1054,25 @@ async function pickOverride(row: JobRow, recipes: readonly string[], lang: strin
   return own.find((item) => item.mode === 'once') ?? own.find((item) => item.mode === 'always') ?? null
 }
 
-async function requestRun(row: JobRow, recipes: string[], lang: string | null, deps: WorkerDeps): Promise<PlannedKnock[]> {
+async function requestRun(
+  row: JobRow,
+  recipes: string[],
+  lang: string | null,
+  deps: WorkerDeps,
+  force = false,
+): Promise<PlannedKnock[]> {
   const id = runId(row.jobId, recipes, lang)
   const run = await deps.store.run(id)
-  const action = decideRun(run)
+  const action = decideRun(run, force)
   if (action.type === 'ignore') return []
   if (action.type === 'busy') {
     await deps.send(row.chatId, alreadyLine(label(row)))
     return []
   }
   if (action.type === 'resend') {
-    if (run !== null) await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase, deps.siteUrl))
+    if (run !== null) {
+      await deps.send(row.chatId, runReadyMessage(row.title ?? row.videoId, run, deps.linkBase, deps.siteUrl), regenerateKeyboard(run))
+    }
     return []
   }
   const override = await pickOverride(row, recipes, lang, deps)
@@ -1070,11 +1087,12 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     notified: false,
     acceptedAt: null,
     model: override?.model ?? null,
+    force,
   }
   const claimed =
     action.type === 'start'
       ? await deps.store.insertRun(fresh)
-      : run !== null && (await deps.store.claimRun(id, run.status, 'queued', fresh.model))
+      : run !== null && (await deps.store.claimRun(id, run.status, 'queued', fresh.model, force))
   if (!claimed) {
     await deps.send(row.chatId, alreadyLine(label(row)))
     return []
@@ -1195,6 +1213,11 @@ export async function handleTap(
     if (from !== undefined) await cancelTap(tap.jobId, binding.sub, String(from.id), deps)
     return []
   }
+  if (tap.type === 'regenerateDrop') {
+    const messageId = update.callback_query.message?.message_id
+    if (from !== undefined && typeof messageId === 'number') await deps.edit(String(from.id), messageId, REGENERATE_DROPPED, [])
+    return []
+  }
   if (tap.type === 'model' || tap.type === 'modelPick' || tap.type === 'modelSet' || tap.type === 'modelReset') {
     if (from !== undefined) await modelTap(tap, binding.sub, String(from.id), update.callback_query.message?.message_id, deps)
     return []
@@ -1206,6 +1229,23 @@ export async function handleTap(
     // A leállt recept eldobása: nem indul futás; a gombok eltűnnek. Az Újra a receptgombok útján megy (`requestRun`).
     const messageId = update.callback_query.message?.message_id
     if (typeof messageId === 'number') await deps.edit(row.chatId, messageId, DROPPED_LINE, [])
+    return []
+  }
+  if (tap.type === 'regenerateAsk' || tap.type === 'regenerate') {
+    const recipes = maskRecipes(tap.mask)
+    if (recipes.length === 0) return []
+    if (tap.type === 'regenerate') return requestRun(row, recipes, tap.lang, deps, true)
+    // A megerősítő kérdés még nem fogyasztja el az egyszeri felülírást: az csak az Indításkor fogy el.
+    const id = runId(row.jobId, recipes, tap.lang)
+    const run = await deps.store.run(id)
+    if (run === null) return []
+    if (OPEN.includes(run.status)) {
+      await deps.send(row.chatId, alreadyLine(label(row)))
+      return []
+    }
+    const override = await pickOverride(row, recipes, tap.lang, deps)
+    const kinds = runKinds({ recipes, lang: tap.lang })
+    await deps.send(row.chatId, regenerateAskLine(kinds, override?.model ?? null), regenerateConfirmKeyboard({ jobId: row.jobId, recipes, lang: tap.lang }))
     return []
   }
   if (tap.type === 'recipe') return requestRun(row, [tap.recipe], null, deps)

@@ -27,6 +27,10 @@ import {
   parseTap,
   pickKeyboard,
   recipeKeyboard,
+  regenerateAskLine,
+  regenerateConfirmKeyboard,
+  regenerateKeyboard,
+  REGENERATE_DROPPED,
   retryKeyboard,
   runId,
   runReadyMessage,
@@ -983,6 +987,88 @@ describe('megszakítás: verseny és késői visszahívás', () => {
     const d = deps(store)
     await handleCron(d)
     expect(d.knocked).toEqual([])
+  })
+})
+
+describe('Újragenerálás (#104)', () => {
+  const RUN = runId(`5:${ID}`, ['summary'], null)
+  const jobId = `5:${ID}`
+
+  async function readyScene(over: Partial<RunRow> = {}) {
+    const store = await boundStore()
+    await store.insert(readyRow())
+    await store.insertRun(readyRun(['summary'], null, over))
+    return store
+  }
+
+  it('a kész üzenet alatt ott a gomb', async () => {
+    const store = await readyScene({ status: 'accepted', noteUrl: null, notified: false })
+    const d = deps(store)
+    await handleCallback(RUN, { status: 'ready', title: 'Cím', noteUrl: TRANSCRIPT_URL }, d)
+    expect(d.keyboards.at(-1)).toEqual(regenerateKeyboard({ jobId, recipes: ['summary'], lang: null }))
+  })
+
+  it('a g gomb megerősítést kér a modellel, futást nem indít, az egyszeri felülírás megmarad', async () => {
+    const store = await readyScene()
+    await store.setOverride({ sub: 'sub-42', recipe: 'summary', mode: 'once', model: 'model-x' })
+    const d = deps(store)
+    const knocks = await handleTap(tap(90, `g:1:-:${jobId}`), d)
+    expect(knocks).toEqual([])
+    expect(d.sent).toEqual([regenerateAskLine(['summary'], 'model-x')])
+    expect(d.keyboards.at(-1)).toEqual(regenerateConfirmKeyboard({ jobId, recipes: ['summary'], lang: null }))
+    expect((await store.run(RUN))?.status).toBe('ready')
+    expect(await store.overridesFor('sub-42')).toHaveLength(1)
+  })
+
+  it('az Indítás force-os futást indít a felülírt modellel, az egyszeri elfogy', async () => {
+    const store = await readyScene()
+    await store.setOverride({ sub: 'sub-42', recipe: 'summary', mode: 'once', model: 'model-x' })
+    const d = deps(store)
+    const knocks = await handleTap(tap(91, `G:1:-:${jobId}`), d)
+    expect(await store.run(RUN)).toMatchObject({ status: 'queued', attempt: 1, force: true, model: 'model-x' })
+    expect(knocks).toHaveLength(1)
+    expect(knocks[0]).toMatchObject({ jobId: `${RUN}~1`, force: true, models: { summary: 'model-x' } })
+    expect(d.sent).toEqual([`Sorba került [${ID}] Cím: summary (model-x)`])
+    expect(await store.overridesFor('sub-42')).toEqual([])
+  })
+
+  it('dupla Indítás: a második „már folyamatban”, egy kopogtatás', async () => {
+    const store = await readyScene()
+    const d = deps(store)
+    const first = await handleTap(tap(92, `G:1:-:${jobId}`), d)
+    const second = await handleTap(tap(93, `G:1:-:${jobId}`), d)
+    expect(first).toHaveLength(1)
+    expect(second).toEqual([])
+    expect(d.sent.at(-1)).toBe(`Már sorban van: ${ID}.`)
+    expect((await store.run(RUN))?.attempt).toBe(1)
+  })
+
+  it('a Mégse szerkeszti az üzenetet, futás nincs', async () => {
+    const store = await readyScene()
+    const d = deps(store)
+    const knocks = await handleTap(tap(94, 'q', 42, 7), d)
+    expect(knocks).toEqual([])
+    expect(d.edits).toEqual([{ chatId: '42', messageId: 7, text: REGENERATE_DROPPED, keyboard: [] }])
+    expect((await store.run(RUN))?.status).toBe('ready')
+  })
+
+  it('missing hiba: hibasor a gombbal, utána a g → G lánc force-os futást indít', async () => {
+    const store = await readyScene({ status: 'accepted', noteUrl: null, notified: false })
+    const d = deps(store)
+    await handleCallback(RUN, { status: 'failed', error: 'A jegyzet korábban elkészült, de nincs meg a vaultban.', missing: true }, d)
+    expect(d.sent).toEqual([`[${ID}] Cím: summary: A jegyzet korábban elkészült, de nincs meg a vaultban.`])
+    expect(d.keyboards.at(-1)).toEqual(regenerateKeyboard({ jobId, recipes: ['summary'], lang: null }))
+    expect((await store.run(RUN))?.status).toBe('failed')
+    const knocks = await handleTap(tap(95, `G:1:-:${jobId}`), d)
+    expect(knocks[0]).toMatchObject({ jobId: `${RUN}~1`, force: true })
+  })
+
+  it('a sima Újra nem force-os, és a korábbi force-ot is lenullázza', async () => {
+    const store = await readyScene({ status: 'failed', notified: false, force: true })
+    const d = deps(store)
+    const knocks = await handleTap(tap(96, `r:summary:${jobId}`), d)
+    expect(knocks[0]?.force).toBeUndefined()
+    expect((await store.run(RUN))?.force).toBe(false)
   })
 })
 

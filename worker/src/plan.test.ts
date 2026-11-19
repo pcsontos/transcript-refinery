@@ -18,6 +18,8 @@ import {
   pickKeyboard,
   queuedLine,
   readyBases,
+  regenerateConfirmKeyboard,
+  regenerateKeyboard,
   readyLine,
   recipeKeyboard,
   runId,
@@ -406,6 +408,44 @@ describe('/model gombok', () => {
     expect(text).toContain('notes: cfg-notes')
     expect(text).toContain('qa: d')
     expect(text).toContain('fordítás: a config szerint')
+  })
+})
+
+describe('Újragenerálás: gombok és döntés (#104)', () => {
+  const run = (status: RunRow['status'], over: Partial<RunRow> = {}): RunRow => ({
+    runId: '5:abc:summary',
+    jobId: '5:abc',
+    recipes: ['summary'],
+    lang: null,
+    status,
+    error: null,
+    noteUrl: null,
+    notified: true,
+    acceptedAt: 1,
+    ...over,
+  })
+
+  it('a g/G/q gombok értelmezése', () => {
+    expect(parseTap('g:1:-:123:abcdefghijk')).toEqual({ type: 'regenerateAsk', mask: 1, lang: null, jobId: '123:abcdefghijk' })
+    expect(parseTap('G:3:de:123:abc')).toEqual({ type: 'regenerate', mask: 3, lang: 'de', jobId: '123:abc' })
+    expect(parseTap('q')).toEqual({ type: 'regenerateDrop' })
+    expect(parseTap('G:0:-:123:abc')).toBeNull()
+    expect(parseTap('G:1:xx:123:abc')).toBeNull()
+    expect(parseTap('g:1:-:')).toBeNull()
+  })
+
+  it('a decideRun: nyitottra busy, kész és hibás futásra regenerate, a sima kész továbbra is resend', () => {
+    expect(decideRun(run('ready'), true)).toEqual({ type: 'regenerate' })
+    expect(decideRun(run('failed'), true)).toEqual({ type: 'regenerate' })
+    expect(decideRun(run('queued'), true)).toEqual({ type: 'busy' })
+    expect(decideRun(run('ready'))).toEqual({ type: 'resend' })
+    expect(decideRun(null, true)).toEqual({ type: 'start' })
+  })
+
+  it('a megerősítő gomb adata 64 bájton belül marad a leghosszabb azonosítóra és nyelvre is', () => {
+    const keyboard = regenerateConfirmKeyboard({ jobId: '1234567890:abcdefghijk', recipes: ['summary', 'notes', 'qa'], lang: 'de' })
+    for (const key of keyboard.flat()) expect(new TextEncoder().encode(key.data).length).toBeLessThanOrEqual(64)
+    expect(regenerateKeyboard({ jobId: '5:abc', recipes: ['summary'], lang: null })[0]![0]!.data).toBe('g:1:-:5:abc')
   })
 })
 

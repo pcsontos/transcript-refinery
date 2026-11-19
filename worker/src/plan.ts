@@ -46,6 +46,11 @@ export {
   fetchTitle,
   cancelKeyboard,
   retryKeyboard,
+  recipeMask,
+  regenerateKeyboard,
+  regenerateConfirmKeyboard,
+  regenerateAskLine,
+  REGENERATE_DROPPED,
   DROPPED_LINE,
   type Probe,
   HELP_TEXT,
@@ -73,11 +78,13 @@ export {
   listKeyboard,
 } from './messages.js'
 
-export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
+export type TapAction = { type: 'start' } | { type: 'retry' } | { type: 'regenerate' } | { type: 'busy' } | { type: 'resend' } | { type: 'ignore' }
 
-export function decideRun(run: RunRow | null): TapAction {
+export function decideRun(run: RunRow | null, regenerate = false): TapAction {
   if (run === null) return { type: 'start' }
   if (OPEN.has(run.status)) return { type: 'busy' }
+  // Újragenerálás (#104): kész és hibás futásra is, force-szal; a sima retry ugyanazt a kihagyást hozná vissza.
+  if (regenerate) return { type: 'regenerate' }
   if (run.status === 'failed' || run.status === 'cancelled') return { type: 'retry' }
   if (run.status === 'ready' && run.notified) return { type: 'resend' }
   return { type: 'ignore' }
@@ -95,6 +102,8 @@ export type Tap =
   | { type: 'modelSet'; mode: 'once' | 'always'; key: string; model: string }
   | { type: 'modelReset'; key: string }
   | { type: 'list'; action: 'a' | 'v' | 'x'; jobId: string }
+  | { type: 'regenerateAsk' | 'regenerate'; mask: number; lang: string | null; jobId: string }
+  | { type: 'regenerateDrop' }
 
 const MASK = /^[0-9a-f]{1,2}$/
 
@@ -136,6 +145,15 @@ export function parseTap(data: string): Tap | null {
     if (mask === null || lang === undefined || !(LANGS as readonly string[]).includes(lang)) return null
     return { type: 'lang', mask, lang, jobId: job.join(':') }
   }
+  if (head === 'g' || head === 'G') {
+    const [hex, lang, ...job] = rest
+    const mask = maskOf(hex)
+    const jobId = job.join(':')
+    if (mask === null || mask === 0 || lang === undefined || jobId === '') return null
+    if (lang !== '-' && !(LANGS as readonly string[]).includes(lang)) return null
+    return { type: head === 'g' ? 'regenerateAsk' : 'regenerate', mask, lang: lang === '-' ? null : lang, jobId }
+  }
+  if (head === 'q') return rest.length === 0 ? { type: 'regenerateDrop' } : null
   if (head === 'L') {
     const [action, ...job] = rest
     const jobId = job.join(':')
