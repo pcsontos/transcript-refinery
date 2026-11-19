@@ -26,6 +26,7 @@ import {
   maskRecipes,
   parseTap,
   pickKeyboard,
+  readyBases,
   recipeKeyboard,
   regenerateAskLine,
   regenerateConfirmKeyboard,
@@ -2282,5 +2283,67 @@ describe('handleCron megáll az első 409-nél vagy down-nál', () => {
     d.knock = (job) => { calls.push(job.jobId); return Promise.resolve(202) }
     await handleCron(d)
     expect(calls).toEqual(['10:aaaaaaaaaaa'])
+  })
+})
+
+describe('kész receptek a felirat-ready-ben (pcsontos/issue-tracker#88)', () => {
+  const jobId = `5:${ID}`
+  const body = { status: 'ready' as const, title: 'Cím', done: ['summary', 'notes-hu'], noteUrl: 'n/a.md' }
+
+  it('ready done-nal: kész futás-sor receptenként, ✓ a menüben', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    const d = deps(store)
+    await handleCallback(jobId, body, d)
+    const runs = await store.runsFor(jobId)
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toMatchObject({ recipes: ['summary'], status: 'ready', notified: true, noteUrl: 'n/a.md' })
+    const texts = d.keyboards.at(-1)!.flat().map((key) => key.text)
+    expect(texts).toContain('✓ summary')
+    expect(texts).toContain('notes')
+    expect(d.keyboards.at(-1)!.flat().find((key) => key.text === '✓ summary')?.data).toBe(`r:summary:${jobId}`)
+  })
+
+  it('kész receptre koppintás: a kész üzenet linkkel és Újragenerálás gombbal, futás nem indul', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    await handleCallback(jobId, body, deps(store))
+    const d = deps(store)
+    expect(await handleTap(tap(30, `r:summary:${jobId}`), d)).toEqual([])
+    const run = (await store.run(runId(jobId, ['summary'], null)))!
+    expect(d.sent.at(-1)).toBe(runReadyMessage('Cím', run, 'https://worker.test', ''))
+    expect(d.keyboards.at(-1)).toEqual(regenerateKeyboard(run))
+    expect(d.knocks).toEqual([])
+  })
+
+  it('fordítás-választó: a kész alaprecept felkínálva', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    await handleCallback(jobId, body, deps(store))
+    expect(readyBases(await store.runsFor(jobId))).toEqual(['summary'])
+  })
+
+  it('meglévő futás-sort nem ír felül', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    await store.insertRun(readyRun(['summary'], null, { status: 'failed', error: 'hiba', noteUrl: null, notified: true }))
+    await handleCallback(jobId, body, deps(store))
+    expect(await store.run(runId(jobId, ['summary'], null))).toMatchObject({ status: 'failed', error: 'hiba' })
+  })
+
+  it('done nélkül a mai viselkedés', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    const d = deps(store)
+    await handleCallback(jobId, { status: 'ready', title: 'Cím' }, d)
+    expect(await store.runsFor(jobId)).toEqual([])
+    expect(d.keyboards.at(-1)!.flat().map((key) => key.text).some((text) => text.startsWith('✓'))).toBe(false)
+  })
+
+  it('ismeretlen recept a done-ban nem kerül a D1-be', async () => {
+    const store = await boundStore()
+    await store.insert(acceptedRow())
+    await handleCallback(jobId, { ...body, done: ['nincs-ilyen'] }, deps(store))
+    expect(await store.runsFor(jobId)).toEqual([])
   })
 })

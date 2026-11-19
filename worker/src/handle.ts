@@ -47,6 +47,7 @@ import {
   queuedLine,
   readyBases,
   readyLine,
+  RECIPES,
   recipeKeyboard,
   retryKeyboard,
   regenerateKeyboard,
@@ -770,7 +771,7 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
 }
 
 export type CallbackBody =
-  | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null }
+  | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null; done?: string[] }
   | { status: 'failed'; error: string; done?: string[]; missing?: true }
   | { status: 'progress'; text: string }
   | { status: 'stalled'; text: string }
@@ -1035,7 +1036,17 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
     return 200
   }
   row.title = body.title
-  const sent = await deps.send(row.chatId, readyLine(body.title, isTextItemId(row.videoId)), recipeKeyboard(row.jobId))
+  // A tétel már kész receptjei (pcsontos/issue-tracker#88): kész futás-sorként tárolódnak, így a koppintás a mai úton küldi a kész üzenetet.
+  const noteUrl = body.noteUrl
+  const done = typeof noteUrl === 'string' ? (body.done ?? []).filter((recipe) => (RECIPES as readonly string[]).includes(recipe)) : []
+  if (typeof noteUrl === 'string') {
+    for (const recipe of done) {
+      const id = runId(row.jobId, [recipe], null)
+      if ((await deps.store.run(id)) !== null) continue
+      await deps.store.insertRun({ runId: id, jobId: row.jobId, recipes: [recipe], lang: null, status: 'ready', error: null, noteUrl, notified: true, acceptedAt: null, model: null })
+    }
+  }
+  const sent = await deps.send(row.chatId, readyLine(body.title, isTextItemId(row.videoId)), recipeKeyboard(row.jobId, done))
   if (!sent) {
     await deps.store.save(row)
     return 200
