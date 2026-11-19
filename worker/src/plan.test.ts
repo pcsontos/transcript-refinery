@@ -9,6 +9,7 @@ import {
   hashToken,
   isAllowed,
   isToken,
+  knockId,
   langKeyboard,
   linesForMessage,
   maskRecipes,
@@ -21,6 +22,7 @@ import {
   recipeKeyboard,
   runId,
   runKinds,
+  splitKnockId,
   runQueuedLine,
   runFailedLine,
   runStartedLine,
@@ -404,6 +406,20 @@ describe('/model gombok', () => {
     expect(text).toContain('notes: cfg-notes')
     expect(text).toContain('qa: d')
     expect(text).toContain('fordítás: a config szerint')
+  })
+})
+
+describe('knockId / splitKnockId (#103)', () => {
+  it('az első próbálkozásnál a runId, utána runId~n', () => {
+    expect(knockId({ runId: '1:abc:summary', attempt: 0 })).toBe('1:abc:summary')
+    expect(knockId({ runId: '1:abc:summary' })).toBe('1:abc:summary')
+    expect(knockId({ runId: '1:abc:summary', attempt: 2 })).toBe('1:abc:summary~2')
+  })
+
+  it('a split fordított, az utótag nélküli azonosító a 0. próbálkozás', () => {
+    expect(splitKnockId('1:abc:summary~2')).toEqual({ runId: '1:abc:summary', attempt: 2 })
+    expect(splitKnockId('1:abc:summary')).toEqual({ runId: '1:abc:summary', attempt: 0 })
+    expect(splitKnockId('a~b')).toEqual({ runId: 'a~b', attempt: 0 })
   })
 })
 

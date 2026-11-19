@@ -49,7 +49,9 @@ import {
   readyLine,
   recipeKeyboard,
   retryKeyboard,
+  knockId,
   runId,
+  splitKnockId,
   runFailedLine,
   runQueuedLine,
   deployFailedLine,
@@ -106,6 +108,8 @@ export interface PlannedKnock {
   fetch?: boolean
   /** Link vagy lista feloldása: a serve `resolved` visszahívást küld, letöltés nélkül. */
   resolve?: boolean
+  /** Újragenerálás (#104): a serve csak a recept jegyzetét írja újra. */
+  force?: boolean
 }
 
 export interface WorkerDeps {
@@ -383,7 +387,7 @@ async function cancelTap(target: string, sub: string, chatId: string, deps: Work
     for (const run of open.runs.filter((item) => item.jobId === job.jobId)) {
       outcomes.push(
         await cancelOne(
-          run.runId,
+          knockId(run),
           () => deps.store.run(run.runId),
           (expect) => deps.store.claimRun(run.runId, expect, 'cancelled'),
           deps,
@@ -420,20 +424,20 @@ async function settle(
   save: () => Promise<boolean>,
   result: KnockResult,
   deps: WorkerDeps,
-  started?: { runId: string; text: string },
+  started?: { runId: string; knock: string; text: string },
 ): Promise<void> {
   if (result === 409) return
   if (result === 202) {
     const fresh = target.status !== 'accepted'
     const won = fresh && started !== undefined && (await deps.store.claimRun(started.runId, target.status, 'accepted'))
     if (fresh && started !== undefined && !won) {
-      if ((await deps.store.run(started.runId))?.status === 'cancelled') await stopServe(started.runId, deps)
+      if ((await deps.store.run(started.runId))?.status === 'cancelled') await stopServe(started.knock, deps)
       return
     }
     target.status = 'accepted'
     target.acceptedAt = deps.now()
     if (!(await save())) {
-      await stopServe(started?.runId ?? row.jobId, deps)
+      await stopServe(started?.knock ?? row.jobId, deps)
       return
     }
     if (won) await deps.send(row.chatId, started.text)
@@ -455,7 +459,8 @@ async function settle(
 }
 
 function knockFor(run: RunRow, row: JobRow): PlannedKnock {
-  const knock: PlannedKnock = { jobId: run.runId, videoId: row.videoId, url: row.url, recipes: run.recipes }
+  const knock: PlannedKnock = { jobId: knockId(run), videoId: row.videoId, url: row.url, recipes: run.recipes }
+  if (run.force === true) knock.force = true
   if (run.lang !== null) knock.lang = run.lang
   if (run.model) knock.models = Object.fromEntries(runKinds(run).map((kind) => [kind, run.model as string]))
   return knock
@@ -741,7 +746,7 @@ export async function handleUpdate(
 export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerDeps): Promise<void> {
   for (const knock of knocks) {
     if (knock.recipes !== undefined) {
-      const run = await deps.store.run(knock.jobId)
+      const run = await deps.store.run(splitKnockId(knock.jobId).runId)
       const row = run === null ? null : await findRow(deps.store, run.jobId)
       if (run === null || row === null) continue
       await settle(
@@ -750,7 +755,7 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
         () => deps.store.saveRun(run),
         await deps.knock(knock),
         deps,
-        { runId: run.runId, text: runStartedLine(row, run) },
+        { runId: run.runId, knock: knockId(run), text: runStartedLine(row, run) },
       )
       continue
     }
@@ -762,7 +767,7 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
 
 export type CallbackBody =
   | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null }
-  | { status: 'failed'; error: string; done?: string[] }
+  | { status: 'failed'; error: string; done?: string[]; missing?: true }
   | { status: 'progress'; text: string }
   | { status: 'stalled'; text: string }
   | { status: 'transcribed'; videoId: string; title: string; recipes: string[] }
@@ -821,7 +826,12 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
   // A megszakított futás késői eredménye csak üzenet: az állapot marad, a cron nem kopogtatja.
   if (run.status === 'cancelled') {
     if (body.status === 'progress' || body.status === 'stalled') return
-    await deps.send(row.chatId, body.status === 'failed' ? runFailedLine(row, run, body.error) : readyText(body, run, deps))
+    // A megszakítás miatti késői `failed` nem ad második üzenetet: a „Megszakítva” sort a bot már elküldte (#103).
+    if (body.status === 'failed') {
+      console.log(`[worker] késői hiba a megszakított futásra: ${run.runId}`)
+      return
+    }
+    await deps.send(row.chatId, readyText(body, run, deps))
     return
   }
   // Az életjel és a leállás nem változtat állapotot: a záró üzenet (ready/failed) dönt.
@@ -840,6 +850,7 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
       if (!sent) return
     }
     run.status = 'failed'
+    run.force = false
     run.error = body.error
     await deps.store.saveRun(run)
     return
@@ -848,6 +859,7 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
     const sent = await deps.send(row.chatId, runFailedLine(row, run, body.error))
     if (!sent) return
     run.status = 'failed'
+    run.force = false
     run.error = body.error
     await deps.store.saveRun(run)
     return
@@ -857,6 +869,7 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
     const sent = await deps.send(row.chatId, runFailedLine(row, run, MISSING_NOTE_URL))
     if (!sent) return
     run.status = 'failed'
+    run.force = false
     run.error = MISSING_NOTE_URL
     await deps.store.saveRun(run)
     return
@@ -869,6 +882,7 @@ async function runCallback(run: RunRow, body: ServeReport, deps: WorkerDeps): Pr
     return
   }
   run.status = 'ready'
+  run.force = false
   run.notified = true
   await deps.store.saveRun(run)
 }
@@ -974,8 +988,14 @@ export async function handleCallback(id: string, body: CallbackBody, deps: Worke
     if (row !== null) await afterWhisper(row, body, deps)
     return 200
   }
-  const run = await deps.store.run(id)
+  const split = splitKnockId(id)
+  const run = await deps.store.run(split.runId)
   if (run !== null) {
+    // A régi próbálkozás késői visszahívása nem az újraindított futásra szól (#103).
+    if ((run.attempt ?? 0) !== split.attempt) {
+      console.log(`[worker] elavult visszahívás eldobva: ${id} (a futás ${run.attempt ?? 0}. próbálkozásnál tart)`)
+      return 200
+    }
     await runCallback(run, body, deps)
     return 200
   }
@@ -1065,7 +1085,9 @@ async function requestRun(row: JobRow, recipes: string[], lang: string | null, d
     await deps.store.clearOverride(row.sub, override.recipe, 'once', override.model)
   }
   await deps.send(row.chatId, runQueuedLine(row, fresh))
-  return [knockFor(fresh, row)]
+  // Az `attempt` a claim utáni sorból jön: a kopogtatás azonosítója ezt hordozza.
+  const stored = action.type === 'start' ? fresh : ((await deps.store.run(id)) ?? fresh)
+  return [knockFor(stored, row)]
 }
 
 /** A `/model` gombjai: ugyanazt az üzenetet szerkesztik, ha a Telegram megadta, különben újat küldenek. */
@@ -1227,7 +1249,7 @@ export async function handleCron(deps: WorkerDeps): Promise<void> {
       () => deps.store.saveRun(run),
       result,
       deps,
-      { runId: run.runId, text: runStartedLine(row, run) },
+      { runId: run.runId, knock: knockId(run), text: runStartedLine(row, run) },
     )
     if (result === 409 || result === 'down') halted = true
   }

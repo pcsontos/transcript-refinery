@@ -76,6 +76,8 @@ interface RunRecord {
   notified: number
   accepted_at: number | null
   model: string | null
+  attempt: number
+  force: number
 }
 
 function toRun(record: RunRecord): RunRow {
@@ -90,6 +92,8 @@ function toRun(record: RunRecord): RunRow {
     noteUrl: record.note_url,
     notified: record.notified === 1,
     acceptedAt: record.accepted_at,
+    attempt: record.attempt ?? 0,
+    force: record.force === 1,
   }
 }
 
@@ -336,21 +340,28 @@ export function createD1Store(db: D1Like): JobStore {
     async saveRun(run) {
       const result = await db
         .prepare(
-          "UPDATE runs SET status = ?, error = ?, note_url = ?, notified = ?, accepted_at = ? WHERE run_id = ? AND status != 'cancelled'",
+          "UPDATE runs SET status = ?, error = ?, note_url = ?, notified = ?, accepted_at = ?, force = ? WHERE run_id = ? AND status != 'cancelled'",
         )
-        .bind(run.status, run.error, run.noteUrl, run.notified ? 1 : 0, run.acceptedAt, run.runId)
+        .bind(run.status, run.error, run.noteUrl, run.notified ? 1 : 0, run.acceptedAt, run.force ? 1 : 0, run.runId)
         .run()
       return changed(result)
     },
-    async claimRun(runId, expect, next, model) {
-      const reset = 'status = ?, error = NULL, notified = 0, accepted_at = NULL'
-      const result =
-        model === undefined
-          ? await db.prepare(`UPDATE runs SET ${reset} WHERE run_id = ? AND status = ?`).bind(next, runId, expect).run()
-          : await db
-              .prepare(`UPDATE runs SET ${reset}, model = ? WHERE run_id = ? AND status = ?`)
-              .bind(next, model, runId, expect)
-              .run()
+    async claimRun(runId, expect, next, model, force) {
+      const sets = ['status = ?', 'error = NULL', 'notified = 0', 'accepted_at = NULL']
+      const values: unknown[] = [next]
+      if (next === 'queued') sets.push('attempt = attempt + 1')
+      if (model !== undefined) {
+        sets.push('model = ?')
+        values.push(model)
+      }
+      if (force !== undefined) {
+        sets.push('force = ?')
+        values.push(force ? 1 : 0)
+      }
+      const result = await db
+        .prepare(`UPDATE runs SET ${sets.join(', ')} WHERE run_id = ? AND status = ?`)
+        .bind(...values, runId, expect)
+        .run()
       return changed(result)
     },
     async openFor(sub) {

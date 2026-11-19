@@ -168,6 +168,18 @@ export function runId(jobId: string, recipes: readonly string[], lang: string | 
   return lang === null ? `${jobId}:${recipes.join('+')}` : `${jobId}:${lang}:${recipes.join('+')}`
 }
 
+/** A kopogtatás azonosítója: az első próbálkozásnál a `runId`, utána `<runId>~<n>` (#103). */
+export function knockId(run: Pick<RunRow, 'runId' | 'attempt'>): string {
+  const attempt = run.attempt ?? 0
+  return attempt > 0 ? `${run.runId}~${attempt}` : run.runId
+}
+
+/** A `knockId` fordítottja; az utótag nélküli (régi) azonosító a 0. próbálkozás. */
+export function splitKnockId(id: string): { runId: string; attempt: number } {
+  const match = /^(.*)~(\d+)$/.exec(id)
+  return match?.[1] === undefined || match[2] === undefined ? { runId: id, attempt: 0 } : { runId: match[1], attempt: Number(match[2]) }
+}
+
 /** A futás jegyzetfajtái: a fordítás `<recept>-<nyelv>`, ahogy a vault fájlneve. */
 export function runKinds(run: Pick<RunRow, 'recipes' | 'lang'>): string[] {
   const lang = run.lang
