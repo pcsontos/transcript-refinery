@@ -12,6 +12,13 @@ export const CLI_AFTER = 'cli'
 /** A `ServeJob.url` értéke az átírás utáni futásnál: a bemenet a helyi `.srt`, nem az R2. A Worker ugyanezt a szót írja. */
 export const AFTER_WHISPER = 'after-whisper'
 
+export const NO_AFTER = 'Nincs whisper.after recept a configban: nincs mit futtatni.'
+
+/** Az `after` receptjei közül a `done`-ban nem szereplők. */
+export function missingAfter(done: readonly string[], after: readonly string[]): string[] {
+  return after.filter((recipe) => !done.includes(recipe))
+}
+
 export const MISSING_TRANSCRIPT = 'Az átirat nincs meg a sources/whisper alatt.'
 
 const SRT = /^(.+)\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.srt$/

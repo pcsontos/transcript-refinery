@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -5,7 +6,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SourceItem } from '../types.js'
 import { openState } from './db.js'
-import { openReadOnlyDatabase, openStateReader } from './reader.js'
+import { doneRecipes, openReadOnlyDatabase, openStateReader } from './reader.js'
 
 let dir: string
 let path: string
@@ -134,5 +135,26 @@ describe('openReadOnlyDatabase', () => {
       db.exec("INSERT INTO artifact_gaps (item_id, kind, gaps) VALUES ('x', 'y', '[]')"),
     ).toThrow(/readonly/)
     db.close()
+  })
+})
+
+describe('doneRecipes', () => {
+  it('csak a kész, kért receptek, a kért sorrendben', () => {
+    const store = openState(path)
+    store.recordItem(item({ itemId: 'v1' }))
+    store.recordArtifact('v1', 'summary', 'done', '/v/s.md', null)
+    store.recordArtifact('v1', 'notes', 'failed', null, 'hiba')
+    store.recordArtifact('v1', 'notes-hu', 'done', '/v/n-hu.md', null)
+    store.recordArtifact('v1', 'transcript', 'done', '/v/t.md', null)
+    store.close()
+    const reader = openStateReader(path)
+    expect(doneRecipes(reader, ['notes', 'summary'])).toEqual(new Map([['v1', ['summary']]]))
+    reader?.close()
+  })
+
+  it('hiányzó állapotfájl: üres, fájl nem jön létre', () => {
+    const missing = join(dir, 'nincs', 'ilyen.db')
+    expect(doneRecipes(openStateReader(missing), ['summary']).size).toBe(0)
+    expect(existsSync(missing)).toBe(false)
   })
 })

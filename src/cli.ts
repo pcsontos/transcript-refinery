@@ -1186,6 +1186,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       status: { type: 'string' },
       channels: { type: 'boolean', default: false },
       audios: { type: 'boolean', default: false },
+      'no-recipe': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: false,
@@ -1195,10 +1196,14 @@ export async function main(argv: readonly string[]): Promise<number> {
     console.error('Az --audios csak a list kapcsolója.')
     return 1
   }
+  if (values['no-recipe'] && !values.audios) {
+    console.error('A --no-recipe csak a list --audios kapcsolója.')
+    return 1
+  }
   if (values.audios) {
     const clash = (['source', 'recipe', 'channels'] as const).find((name) => (name === 'recipe' ? values.recipe !== undefined : values[name]))
     if (clash !== undefined) {
-      console.error(`Az --audios mellett a --${clash} nem használható; támogatott: --channel, --status pending, --limit, --config.`)
+      console.error(`Az --audios mellett a --${clash} nem használható; támogatott: --channel, --status pending, --no-recipe, --limit, --config.`)
       return 1
     }
   }
@@ -1330,7 +1335,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     })
   }
   if (command === 'list' && values.audios) {
-    return commandListAudios(cfg, { channel: values.channel, limit, status: values.status })
+    return commandListAudios(cfg, { channel: values.channel, limit, status: values.status, noRecipe: values['no-recipe'] })
   }
   if (command === 'list') {
     return commandList(cfg, {
