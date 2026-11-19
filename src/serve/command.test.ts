@@ -371,6 +371,18 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
       return c
     }
 
+    it('serveEffects.doneRecipes: a kész receptek és a leirat-jegyzet vault-relatív útja', async () => {
+      const { path, dir } = await withAfter()
+      const { cfg } = await loadCliConfig(path)
+      const store = openState(cfg.statePath, cfg.vaultPath)
+      store.recordArtifact('ccccccccccc', 'transcript', 'done', join(cfg.vaultPath, 'Inbox', 'Kész_transcript.md'), null)
+      store.close()
+      const effects = serveEffects({ outDir: dir, languages: ['hu'], store: memoryStore(), fetchSubtitle: () => Promise.resolve({ code: 0, stdout: '', stderr: '' }), callback: () => Promise.resolve(), configArg: path })
+      expect(await effects.doneRecipes!('ccccccccccc')).toEqual({ recipes: ['summary'], noteUrl: 'Inbox/Kész_transcript.md' })
+      expect(await effects.doneRecipes!('aaaaaaaaaaa')).toBeNull()
+      expect(await effects.doneRecipes!('nincs')).toBeNull()
+    })
+
     it('a lista az átírt, recept nélküli tételt is mutatja', async () => {
       const { path } = await withAfter()
       const out = collect()

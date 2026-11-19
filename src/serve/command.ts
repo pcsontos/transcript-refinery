@@ -1,5 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, relative, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { pickHint } from '../fetch/audio/feed.js'
@@ -53,6 +53,7 @@ export function serveEffects(input: {
   resolve?: JobEffects['resolve']
   transcribe?: JobEffects['transcribe']
   whisperPair?: JobEffects['whisperPair']
+  doneRecipes?: JobEffects['doneRecipes']
   configArg?: string
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
@@ -87,6 +88,21 @@ export function serveEffects(input: {
     whisperPair:
       input.whisperPair ??
       (async (videoId) => readWhisperPair((await loadCliConfig(input.configArg)).cfg.sources[0]!.path, videoId)),
+    doneRecipes:
+      input.doneRecipes ??
+      (async (videoId) => {
+        const { cfg } = await loadCliConfig(input.configArg)
+        const reader = openStateReader(cfg.statePath, cfg.vaultPath)
+        try {
+          const recipes = doneRecipes(reader, Object.keys(RECIPES)).get(videoId) ?? []
+          const transcript = reader?.artifacts().find((row) => row.itemId === videoId && row.kind === 'transcript' && row.status === 'done' && row.path !== null)
+          if (recipes.length === 0 || transcript?.path == null) return null
+          // Mint a recept-futás `ready`-je (summary.ts): a leirat-jegyzet vault-relatív útja.
+          return { recipes, noteUrl: relative(cfg.vaultPath, transcript.path).split(sep).join('/') }
+        } finally {
+          reader?.close()
+        }
+      }),
     refine: (videoId, recipes, lang, signal, notify, models, command, options) =>
       refineWith({
         videoId,
