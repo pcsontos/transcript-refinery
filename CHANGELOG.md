@@ -3,6 +3,47 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.36.0] — 2026-11-19
+
+A megszakított receptfutás nem hagy félkész jegyzetet a vaultban, a gyors
+újraindítást nem nyeli el a régi futás késői válasza, és a kész jegyzet
+Telegramból megerősítés után újragenerálható.
+
+### ✨ Újdonságok
+
+- **Újragenerálás gomb:** a kész üzenet alatt `Újragenerálás` gomb áll. A
+  koppintás megerősítést kér, és kiírja a receptet, a modellt (a `/model`
+  szerint) és azt, hogy a futás pénzbe kerül. Az **Indítás** csak a recept
+  jegyzetét írja újra, az átiratot nem; a **Mégse** nem indít semmit. Az
+  egyszeri modellfelülírás csak az Indításkor fogy el
+  (pcsontos/issue-tracker#104, pcsontos/issue-tracker#106,
+  pcsontos/issue-tracker#107).
+- **Hiányzó jegyzetfájl jelölése:** ha az állapottár szerint kész jegyzet
+  fájlja hiányzik a vaultból, a `refinery list` `!` jellel mutatja
+  (`! kész, de a fájl hiányzik`). Telegramról leadott tételnél a hibasor alá
+  az Újragenerálás gomb kerül, CLI-ből leadottnál a szerver naplójába a
+  pontos `refinery run --file … --recipe … --force` parancs
+  (pcsontos/issue-tracker#84).
+
+### 🔧 Javítások
+
+- **Megszakítás nyom nélkül:** ha a `/cancel` egy futó recept alatt érkezik,
+  a futás nem commitol, nem pushol és nem deployol, és az általa írt
+  jegyzetek törlődnek. Megszakított Újragenerálásnál a korábbi, commitolt
+  jegyzet áll vissza (pcsontos/issue-tracker#83).
+- **Gyors újraindítás:** a megszakított futás késői hibaüzenete már nem
+  zárja le az utána újraindított futást, és nem küld második üzenetet
+  (pcsontos/issue-tracker#103).
+- **CLI-ből leadott utólépés:** a parancssorból átírásra leadott tétel
+  átirata és jegyzete a config forrásneve alá kerül, nem a `telegram/`
+  mappába (pcsontos/issue-tracker#85).
+
+### ⚙️ Üzemeltetés
+
+- **Telepítési sorrend:** előbb a szerver képe, aztán a `0008` D1-migráció
+  (`runs.attempt`, `runs.force`), végül a Worker. Az új Worker a migráció
+  nélkül nem tudja menteni a futásokat.
+
 ## [1.35.0] — 2026-11-18
 
 Nem csak YouTube: a felirat- és hangletöltés más oldalak linkjét is elfogadja,
