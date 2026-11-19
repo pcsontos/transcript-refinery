@@ -13,7 +13,7 @@ import { textItemId } from '../source/text.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush, gitRestorePaths } from '../vault/git.js'
 import type { CallbackBody } from './job.js'
 import { openState } from '../state/db.js'
-import { CANCELLED_RUN, runRecipes } from './summary.js'
+import { CANCELLED_RUN, MISSING_NOTE, runRecipes } from './summary.js'
 
 const ID = 'abcdefghijk'
 
@@ -656,6 +656,35 @@ describe('runRecipes — forceRecipe (#104)', () => {
     expect(after.artifactOf(ID, 'summary')!.costUsd).toBe(cost)
     expect(after.isDone(ID, 'summary')).toBe(true)
     after.close()
+  })
+})
+
+describe('runRecipes — kész, de hiányzó jegyzet (#84)', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  it('done sor, hiányzó fájl: missing eredmény, modellhívás és commit nélkül', async () => {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    const calls = { generate: 0 }
+    const base = { videoId: ID, outDir, recipes: ['summary'], load, git: gitWith(), createClient: () => client(calls) }
+    expect((await runRecipes(base)).ok).toBe(true)
+    // A vault-revert szimulálása: a jegyzet fájlja eltűnik, a commit megmarad a történetben.
+    execFileSync('git', ['rm', '-q', TRANSCRIPT.replace('_transcript.md', '_summary.md')], { cwd: vault })
+    execFileSync('git', ['commit', '-q', '-m', 'revert'], { cwd: vault })
+    const commits = execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: vault, encoding: 'utf8' })
+    const generated = calls.generate
+    const result = await runRecipes(base)
+    expect(result).toEqual({ ok: false, error: MISSING_NOTE, missing: true })
+    expect(calls.generate).toBe(generated)
+    expect(execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: vault, encoding: 'utf8' })).toBe(commits)
   })
 })
 

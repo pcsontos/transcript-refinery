@@ -32,6 +32,9 @@ const defaultGit: SummaryGit = {
   restore: gitRestorePaths,
 }
 
+/** Az állapottár szerint kész jegyzet fájlja hiányzik a vaultból (#84): a teendő az Újragenerálás, nem automatikus újrafuttatás. */
+export const MISSING_NOTE = 'A jegyzet korábban elkészült, de nincs meg a vaultban.'
+
 /** A megszakított futás üzenete: a Worker nem küld belőle másodikat, a bot a „Megszakítva” sort már elküldte. */
 export const CANCELLED_RUN = 'Megszakítva, a jegyzet nem került a vaultba.'
 
@@ -332,7 +335,9 @@ export async function runRecipes(input: {
   }
   if (transcriptPath === null) return finish({ ok: false, error: 'A jegyzet nem készült el.' })
   for (const path of notePaths) {
-    if (path === null || !(await exists(path))) return finish({ ok: false, error: failureLine(events, 'A jegyzet nem készült el.') })
+    if (path === null) return finish({ ok: false, error: failureLine(events, 'A jegyzet nem készült el.') })
+    // A sor `done` (különben nem volna útja), de a fájl nincs meg: a futás „már feldolgozva” miatt hagyta ki.
+    if (!(await exists(path))) return finish({ ok: false, error: MISSING_NOTE, missing: true })
   }
   // A vaulton belüli út forge-független: a Worker nem olvassa, csak eltárolja.
   const noteUrl = relative(cfg.vaultPath, transcriptPath).split(sep).join('/')

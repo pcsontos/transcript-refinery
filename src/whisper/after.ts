@@ -45,7 +45,7 @@ export async function readWhisperPair(sourcesRoot: string, id: string): Promise<
     const info = await readFile(join(dirname(srt), `${id}.info.json`))
     const parsed = JSON.parse(info.toString('utf8')) as Record<string, unknown>
     const subtitle = await readFile(srt)
-    return { ok: true, title: titleOf(parsed, id), language, extension: 'srt', subtitle: new Uint8Array(subtitle), info: new Uint8Array(info) }
+    return { ok: true, title: titleOf(parsed, id), language, extension: 'srt', subtitle: new Uint8Array(subtitle), info: new Uint8Array(info), sourcePath: srt }
   } catch {
     return { ok: false, error: MISSING_TRANSCRIPT }
   }
