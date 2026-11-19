@@ -118,13 +118,13 @@ const usd = (value: number): string => value.toFixed(4)
 
 function mark(cell: ItemCell | undefined): string {
   if (cell?.status === 'failed') return '✗'
-  if (cell?.status === 'done') return cell.belowThreshold ? '↓' : '✓'
+  if (cell?.status === 'done') return cell.missing ? '!' : cell.belowThreshold ? '↓' : '✓'
   return '·'
 }
 
 function statusText(cell: ItemCell | undefined): string {
   if (cell?.status === 'failed') return 'hibás'
-  if (cell?.status === 'done') return cell.belowThreshold ? 'kész ↓' : 'kész'
+  if (cell?.status === 'done') return cell.missing ? 'kész, fájl nélkül' : cell.belowThreshold ? 'kész ↓' : 'kész'
   return 'hátra'
 }
 
@@ -148,7 +148,7 @@ const SUMMARY_CHANNEL_WIDTH = 24
 /** A cím szélessége, ha nincs terminál (csővezeték, fájl). */
 export const PIPE_TITLE_WIDTH = 40
 const MIN_TITLE_WIDTH = 20
-const LEGEND = '✓ kész  ↓ küszöb alatt  ✗ hibás  · hátra  † a felirat eltűnt'
+const LEGEND = '✓ kész  ↓ küszöb alatt  ✗ hibás  · hátra  ! kész, de a fájl hiányzik  † a felirat eltűnt'
 
 export interface ItemTableOptions {
   /** Ha meg van adva, a jeloszlopok helyett ennek a típusnak a részletei. */

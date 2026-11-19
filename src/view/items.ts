@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { Config } from '../config.js'
 import { recipesFor, type Registry } from '../recipe/registry.js'
@@ -16,6 +17,8 @@ export interface ItemCell {
   costUsd: number | null
   /** Kész, pontozott, és a recept küszöbe alatt maradt. */
   belowThreshold: boolean
+  /** Az állapottár szerint kész, de a jegyzet fájlja nincs meg (#84). */
+  missing: boolean
 }
 
 export interface ItemListRow {
@@ -51,6 +54,7 @@ export function buildItemRows(
   items: readonly ItemRow[],
   artifacts: readonly ArtifactRow[],
   registry: Registry,
+  fileExists: (path: string) => boolean = () => true,
 ): ItemListRow[] {
   const rowOf = new Map(items.map((row) => [row.itemId, row] as const))
   const artifactsOf = new Map<string, ArtifactRow[]>()
@@ -80,6 +84,7 @@ export function buildItemRows(
         score,
         costUsd: artifact?.costUsd ?? null,
         belowThreshold: status === 'done' && threshold !== null && score !== null && score < threshold,
+        missing: status === 'done' && artifact?.path != null && !fileExists(artifact.path),
       }
     }
     const times = own.map((a) => a.createdAt).sort()
@@ -115,7 +120,7 @@ export async function readItems(
   const discovered = await discoverAll(cfg.sources, cfg.languages)
   const reader = openStateReader(cfg.statePath, cfg.vaultPath)
   try {
-    return buildItemRows(discovered, reader?.items() ?? [], reader?.artifacts() ?? [], registry)
+    return buildItemRows(discovered, reader?.items() ?? [], reader?.artifacts() ?? [], registry, existsSync)
   } finally {
     reader?.close()
   }
