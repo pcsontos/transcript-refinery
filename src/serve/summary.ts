@@ -13,6 +13,7 @@ import { discoverAll, splitSubtitleName } from '../source/folder.js'
 import { isTextItemId, TEXT_EXTENSIONS } from '../source/text.js'
 import { openState, type ArtifactSnapshot } from '../state/db.js'
 import { noteCommitMessage } from '../vault/commit.js'
+import type { NoteOrigin } from '../vault/render.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush, gitRestorePaths } from '../vault/git.js'
 import type { CallbackBody, RecipesOutcome } from './job.js'
 
@@ -160,6 +161,8 @@ export async function runRecipes(input: {
   deploy?: typeof deployNotes
   /** Csak a recept jegyzetét írja újra (Újragenerálás); az átirat és a `done` sora érintetlen. */
   forceRecipe?: boolean
+  /** A jegyzet eredete: `cli` esetén a config forrásneve alá kerül, nem a munkamappa neve alá (#85). */
+  origin?: NoteOrigin
   /** A futásnapló parancsa; alapból `serve recipes`, átírás utáni futásnál `after-whisper <id>`. */
   command?: string
 }): Promise<RecipesOutcome> {
@@ -174,7 +177,7 @@ export async function runRecipes(input: {
   const lang = input.lang
   const cfg: Config = {
     ...loaded.cfg,
-    sources: [{ name: basename(input.outDir), path: input.outDir }],
+    sources: [{ name: input.origin === 'cli' ? loaded.cfg.sources[0]!.name : basename(input.outDir), path: input.outDir }],
     // A célnyelv a kérésé, nem a configé: a futás idejére a kért forrásokból lesz fordítórecept.
     ...(lang === undefined
       ? {}
@@ -240,7 +243,7 @@ export async function runRecipes(input: {
       force: false,
       commit: false,
       command: [input.command ?? 'serve recipes', ...Object.entries(models).map(([id, model]) => `${id}=${model}`)].join(' '),
-      origin: 'telegram',
+      origin: input.origin ?? 'telegram',
       ...(textName === undefined ? {} : { adHoc: { file: join(input.outDir, textName) } }),
     },
     { createClient: input.createClient, signal: input.signal, onEvent },

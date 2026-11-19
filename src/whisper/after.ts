@@ -149,7 +149,7 @@ export async function afterWhisperTick(deps: AfterDeps): Promise<void> {
         const release = deps.claim(`after-whisper ${item.id}`)
         if (release === null) return // a kapu foglalt: a következő kör próbálja
         try {
-          await deps.runLocal({ jobId: `after-whisper:${item.id}`, videoId: item.id, url: AFTER_WHISPER, recipes: [...after.recipes] })
+          await deps.runLocal({ jobId: `after-whisper:${item.id}`, videoId: item.id, url: AFTER_WHISPER, recipes: [...after.recipes], ...(item.marker === CLI_AFTER ? { origin: 'cli' as const } : {}) })
         } finally {
           release()
         }

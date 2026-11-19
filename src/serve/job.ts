@@ -9,6 +9,7 @@ import { RECIPES } from '../recipe/registry.js'
 import { isLanguageTag, normalizeText, textItemId } from '../source/text.js'
 import { sanitizeSegment } from '../vault/sanitize.js'
 import { infoKey, itemPrefix, languageMatches, subtitleKey, textInfoKey, textKey, type LocalPair } from './inventory.js'
+import type { NoteOrigin } from '../vault/render.js'
 import type { ObjectStore } from './r2.js'
 
 export interface ServeJob {
@@ -29,6 +30,8 @@ export interface ServeJob {
    * `<feed-url> --pick <lista>`). Első szava `transcribe`: átírás-munka (`transcribe [<id>…] [--lang <kód>]`).
    */
   fetch?: boolean
+  /** Csak a serve belső jobja állítja (CLI-jelölős utólépés, #85); kívülről érkezve az `isJob` elutasítja. */
+  origin?: 'cli'
   /** Link vagy lista feloldása (`url`): a serve visszahívja a `resolved` üzenetet, letöltés nincs. */
   resolve?: boolean
 }
@@ -56,6 +59,11 @@ export type CallbackBody =
  */
 export type RecipesOutcome = ({ ok: true; noteUrl: string } | { ok: false; error: string; done?: string[] }) & {
   followUp?: () => Promise<string | void>
+}
+
+/** A `refine` további, a jobból jövő beállításai. */
+export interface RefineOptions {
+  origin?: NoteOrigin
 }
 
 export interface JobEffects {
@@ -92,6 +100,7 @@ export interface JobEffects {
     notify?: (body: CallbackBody) => void,
     models?: Readonly<Record<string, string>>,
     command?: string,
+    options?: RefineOptions,
   ) => Promise<RecipesOutcome>
 }
 
@@ -343,7 +352,7 @@ async function runRecipeJob(
   try {
     outcome = await effects.refine(job.videoId, job.recipes, lang, signal, (body) => {
       void report(effects, job.jobId, body)
-    }, job.models, afterWhisper ? `after-whisper ${job.videoId}` : undefined)
+    }, job.models, afterWhisper ? `after-whisper ${job.videoId}` : undefined, job.origin === undefined ? undefined : { origin: job.origin })
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await forgetWork(effects, job.videoId)

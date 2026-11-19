@@ -91,6 +91,8 @@ describe('createServeServer', () => {
     expect(await post(port, 'titok', { ...job, jobId: 'job-2', recipes: [1] })).toBe(400)
     expect(await post(port, 'titok', { ...job, jobId: 'job-2', lang: 1 })).toBe(400)
     expect(await post(port, 'titok', { jobId: 'job-2', videoId: job.videoId, url: job.url, recipe: 'summary' })).toBe(400)
+    // A kívülről küldött origin 400 (#85): az eredetet csak a serve állítja.
+    expect(await post(port, 'titok', { ...job, jobId: 'job-3', origin: 'cli' })).toBe(400)
   })
 
   it('a szöveges mezők szövegként 202, más típussal 400', async () => {

@@ -550,6 +550,50 @@ describe('runRecipes', () => {
   })
 })
 
+describe('runRecipes — eredet (#85)', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  async function run(origin?: 'cli') {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const { root, vault, outDir, load } = await scene()
+    roots.push(root)
+    // A configban a forrás neve `sources` (a peter-mba-n a `/data/sources`), a munkamappáé `telegram`.
+    const named = async () => {
+      const loaded = await load()
+      return { ...loaded, cfg: { ...loaded.cfg, sources: [{ name: 'sources', path: outDir }] } }
+    }
+    const result = await runRecipes({
+      videoId: ID,
+      outDir,
+      recipes: ['summary'],
+      createClient: () => client({ generate: 0 }),
+      load: named,
+      git: gitWith(),
+      ...(origin === undefined ? {} : { origin }),
+    })
+    expect(result.ok).toBe(true)
+    return { vault }
+  }
+
+  it('origin: cli → a config forrásneve alá kerül, és origin: cli a frontmatterben', async () => {
+    const { vault } = await run('cli')
+    const path = join(vault, TRANSCRIPT.replace('/telegram/', '/sources/'))
+    expect(await readFile(path, 'utf8')).toContain('origin: cli')
+  })
+
+  it('origin nélkül marad a telegram mappa és az origin: telegram', async () => {
+    const { vault } = await run()
+    expect(await readFile(join(vault, TRANSCRIPT), 'utf8')).toContain('origin: telegram')
+  })
+})
+
 describe('runRecipes — megszakítás (#83)', () => {
   const previous = process.env.LITELLM_API_KEY
   const roots: string[] = []
