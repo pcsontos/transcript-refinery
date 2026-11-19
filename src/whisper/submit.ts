@@ -147,7 +147,7 @@ export interface TranscribeDeps {
   stopped?: () => boolean
   /** Az utólépés jelölője (`afterMarker`); hiányában nincs jelölő. */
   after?: string
-  /** Tételenként a kész receptek (`doneRecipes`); nélküle a kész tétel „kihagyva (kész)”. */
+  /** Tételenként a kész receptek (`readDoneRecipes`); nélküle a kész tétel „kihagyva (kész)”, utólépés-kérés nincs. */
   done?: ReadonlyMap<string, readonly string[]>
   /** A `whisper.after` készlete; `null`/hiányzó = nincs utólépés-kérés. */
   afterRecipes?: { recipes: readonly string[]; notify: boolean } | null
@@ -182,8 +182,8 @@ export async function runTranscribe(
     const label = `${entry.title} [${id}]`
     sink({ type: 'item:start', itemId: id, title: entry.title })
     const status = handedOver.has(id) ? 'pending' : transcriptStatus(entry, ctx)
-    if (status === 'done' && deps.after !== undefined && deps.afterRecipes != null) {
-      const have = deps.done?.get(id) ?? []
+    if (status === 'done' && deps.after !== undefined && deps.afterRecipes != null && deps.done !== undefined) {
+      const have = deps.done.get(id) ?? []
       if (missingAfter(have, deps.afterRecipes.recipes).length === 0) {
         skipped += 1
         sink({ type: 'item:skipped', itemId: id, reason: 'kész' })

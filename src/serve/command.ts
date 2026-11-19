@@ -6,7 +6,7 @@ import { pickHint } from '../fetch/audio/feed.js'
 import { audioSummary, openAudioRunLog, runAudioFetch } from '../fetch/audio/run.js'
 import { createAudioStore } from '../fetch/audio/store.js'
 import { afterMarker, missingAfter, readWhisperPair, startAfterWhisper } from '../whisper/after.js'
-import { doneRecipes, openStateReader } from '../state/reader.js'
+import { doneRecipes, openStateReader, readDoneRecipes } from '../state/reader.js'
 import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
@@ -15,7 +15,7 @@ import { createYtdlpRunner, playlistProbeArgs, type ProcessRunner } from '../fet
 import type { LanguageTag } from '../lang/identify.js'
 import { VERSION } from '../meta.js'
 import { modelsView } from '../model/recipe-model.js'
-import { RECIPES, recipesFor } from '../recipe/registry.js'
+import { RECIPE_IDS, recipesFor } from '../recipe/registry.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
 import type { NoteOrigin } from '../vault/render.js'
 import { runJob, subtitleArgv, type CallbackBody, type JobEffects, type RecipesOutcome, type RefineOptions, type ServeJob } from './job.js'
@@ -94,7 +94,7 @@ export function serveEffects(input: {
         const { cfg } = await loadCliConfig(input.configArg)
         const reader = openStateReader(cfg.statePath, cfg.vaultPath)
         try {
-          const recipes = doneRecipes(reader, Object.keys(RECIPES)).get(videoId) ?? []
+          const recipes = doneRecipes(reader, RECIPE_IDS).get(videoId) ?? []
           const transcript = reader?.artifacts().find((row) => row.itemId === videoId && row.kind === 'transcript' && row.status === 'done' && row.path !== null)
           if (recipes.length === 0 || transcript?.path == null) return null
           // Mint a recept-futás `ready`-je (summary.ts): a leirat-jegyzet vault-relatív útja.
@@ -184,14 +184,7 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
     if (dirs === null) throw new Error(`nincs whisper-mappa: ${cfg.whisperDir}`)
     const store = createAudioStore(cfg.audio, process.env)
     const sourcesRoot = cfg.sources[0]!.path
-    const reader = openStateReader(cfg.statePath, cfg.vaultPath)
-    const done = (() => {
-      try {
-        return doneRecipes(reader, Object.keys(RECIPES))
-      } finally {
-        reader?.close()
-      }
-    })()
+    const done = readDoneRecipes(cfg.statePath, cfg.vaultPath, RECIPE_IDS)
 
     if (request.ids.length === 0) {
       const { entries } = await listArchive(store)

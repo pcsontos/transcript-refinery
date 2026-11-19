@@ -4,8 +4,8 @@ import { audioDuration } from '../fetch/audio/feed.js'
 import { openAudioRunLog } from '../fetch/audio/run.js'
 import { createAudioStore, type AudioStore } from '../fetch/audio/store.js'
 import { installSigint } from '../run/finish.js'
-import { RECIPES } from '../recipe/registry.js'
-import { doneRecipes, openStateReader } from '../state/reader.js'
+import { RECIPE_IDS } from '../recipe/registry.js'
+import { readDoneRecipes } from '../state/reader.js'
 import { afterMarker, CLI_AFTER, missingAfter, NO_AFTER } from './after.js'
 import { failedReason, listArchive, STATUS_LABEL, statusContext, transcriptStatus } from './archive.js'
 import { watcherWarning, whisperDirs } from './paths.js'
@@ -55,14 +55,7 @@ export async function commandTranscribe(argv: readonly string[], runtime?: Audio
   }, runtime?.signals)
   const log = openAudioRunLog(cfg.logsDir, `transcribe ${argv.join(' ')}`)
   try {
-    const reader = openStateReader(cfg.statePath, cfg.vaultPath)
-    const done = (() => {
-      try {
-        return doneRecipes(reader, Object.keys(RECIPES))
-      } finally {
-        reader?.close()
-      }
-    })()
+    const done = readDoneRecipes(cfg.statePath, cfg.vaultPath, RECIPE_IDS)
     const result = await runTranscribe(
       { ids: args.ids, lang: args.lang },
       {
@@ -134,14 +127,7 @@ export async function commandListAudios(
   if (listed.warning !== undefined) stdout(listed.warning)
 
   const ctx = await statusContext(cfg.sources[0]!.path, dirs)
-  const reader = openStateReader(cfg.statePath, cfg.vaultPath)
-  const done = (() => {
-    try {
-      return doneRecipes(reader, Object.keys(RECIPES))
-    } finally {
-      reader?.close()
-    }
-  })()
+  const done = readDoneRecipes(cfg.statePath, cfg.vaultPath, RECIPE_IDS)
   const doneOf = (id: string): string[] => done.get(id) ?? []
   const needle = opts.channel?.toLowerCase()
   let rows = listed.entries

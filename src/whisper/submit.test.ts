@@ -200,7 +200,7 @@ describe('runTranscribe: utólépés kérése (pcsontos/issue-tracker#65)', () =
     await put(sources, 'whisper/csat/kkkkkkkkkkk.info.json', JSON.stringify({ id: 'kkkkkkkkkkk', title: 'Kész' }))
   })
 
-  async function run(over: { done?: Map<string, string[]>; afterRecipes?: typeof after | null; after?: string; ids?: string[] }) {
+  async function run(over: { done?: Map<string, string[]> | undefined; afterRecipes?: typeof after | null; after?: string; ids?: string[] }) {
     const lines: string[] = []
     const events: RunEvent[] = []
     const result = await runTranscribe(
@@ -213,7 +213,7 @@ describe('runTranscribe: utólépés kérése (pcsontos/issue-tracker#65)', () =
         emit: (l) => void lines.push(l),
         sink: (e) => void events.push(e),
         after: over.after ?? 'cli',
-        done: over.done ?? new Map(),
+        done: 'done' in over ? over.done : new Map(),
         afterRecipes: over.afterRecipes === undefined ? after : over.afterRecipes,
       },
     )
@@ -222,6 +222,12 @@ describe('runTranscribe: utólépés kérése (pcsontos/issue-tracker#65)', () =
 
   it('after nélkül a mai „kihagyva (kész)”', async () => {
     const { lines, result } = await run({ afterRecipes: null, after: undefined })
+    expect(lines[0]).toBe('kihagyva (kész): Kész [kkkkkkkkkkk]')
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0 })
+  })
+
+  it('done nélkül nincs utólépés-kérés: a mai „kihagyva (kész)”', async () => {
+    const { lines, result } = await run({ done: undefined })
     expect(lines[0]).toBe('kihagyva (kész): Kész [kkkkkkkkkkk]')
     expect(result).toEqual({ submitted: 0, requested: 0, failed: 0 })
   })

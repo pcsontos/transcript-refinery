@@ -80,3 +80,13 @@ export function doneRecipes(reader: StateReader | null, recipeIds: readonly stri
   }
   return new Map([...done].map(([id, kinds]) => [id, recipeIds.filter((r) => kinds.has(r))]))
 }
+
+/** `doneRecipes` a megnyitott és lezárt állapottárból (hiányzó fájl = üres). */
+export function readDoneRecipes(statePath: string, vaultPath: string, recipeIds: readonly string[]): Map<string, string[]> {
+  const reader = openStateReader(statePath, vaultPath)
+  try {
+    return doneRecipes(reader, recipeIds)
+  } finally {
+    reader?.close()
+  }
+}
