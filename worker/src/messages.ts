@@ -117,8 +117,9 @@ function inRows(keys: readonly Key[], size: number): Key[][] {
   return rows
 }
 
-export function recipeKeyboard(jobId: string): Key[][] {
-  const keys = RECIPES.map((recipe) => ({ text: recipe, data: `r:${recipe}:${jobId}` }))
+/** `done`: a már kész receptek (pcsontos/issue-tracker#88): gombfeliratuk `✓ <recept>`, az adatuk változatlan. */
+export function recipeKeyboard(jobId: string, done: readonly string[] = []): Key[][] {
+  const keys = RECIPES.map((recipe) => ({ text: done.includes(recipe) ? `✓ ${recipe}` : recipe, data: `r:${recipe}:${jobId}` }))
   return inRows([...keys, { text: 'fordítás', data: `f:${jobId}` }], 3)
 }
 

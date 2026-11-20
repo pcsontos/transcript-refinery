@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { loadConfig } from '../config.js'
 import type { CallbackBody, ServeJob } from '../serve/job.js'
-import { AFTER_WHISPER, afterMarker, afterWhisperTick, failedLine, MISSING_TRANSCRIPT, pendingAfter, readWhisperPair, type AfterDeps } from './after.js'
+import { AFTER_WHISPER, afterMarker, afterWhisperTick, failedLine, MISSING_TRANSCRIPT, pendingAfter, readWhisperPair, requestAfter, type AfterDeps } from './after.js'
 import type { WhisperDirs } from './paths.js'
 
 const HASH = 'a1b2c3d4'
@@ -55,6 +55,20 @@ describe('readWhisperPair', () => {
   it('.srt nélkül hiba', async () => {
     await done(HASH, undefined, false)
     expect(await readWhisperPair(sources, HASH)).toEqual({ ok: false, error: MISSING_TRANSCRIPT })
+  })
+})
+
+describe('requestAfter', () => {
+  it('a jelölő a kész átirat info.json-jába kerül, a többi mező marad, és a pendingAfter felveszi', async () => {
+    await put('src/whisper/ch/v1.hu.srt', 'x')
+    await put('src/whisper/ch/v1.info.json', JSON.stringify({ id: 'v1', title: 'T' }))
+    expect(await requestAfter(sources, 'v1', 'cli')).toBe(true)
+    expect(JSON.parse(await readFile(join(sources, 'whisper/ch/v1.info.json'), 'utf8'))).toEqual({ id: 'v1', title: 'T', refinery_after: 'cli' })
+    expect(await pendingAfter(sources, dirs)).toEqual([expect.objectContaining({ id: 'v1', marker: 'cli', failed: null })])
+  })
+
+  it('pár nélkül false', async () => {
+    expect(await requestAfter(sources, 'nincs', 'cli')).toBe(false)
   })
 })
 

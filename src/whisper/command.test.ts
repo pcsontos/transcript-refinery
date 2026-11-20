@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { loadConfig, type Config } from '../config.js'
+import { openState } from '../state/db.js'
+import { NO_AFTER } from './after.js'
 import { commandListAudios, commandTranscribe } from './command.js'
 
 let dir: string
@@ -36,7 +38,7 @@ async function configFile(withWhisper: boolean): Promise<string> {
   return path
 }
 
-function config(withWhisper = true): Config {
+function config(withWhisper = true, after = false): Config {
   return loadConfig(
     {
       vault: { path: `${dir}/vault` },
@@ -44,7 +46,9 @@ function config(withWhisper = true): Config {
       languages: ['hu'],
       logs: { dir: `${dir}/logs` },
       audio: { dir: archive },
-      ...(withWhisper ? { whisper: { dir: whisper } } : { whisper: { dir: join(dir, 'nincs-whisper') } }),
+      ...(withWhisper
+        ? { whisper: { dir: whisper, ...(after ? { after: { recipes: ['summary'] } } : {}) } }
+        : { whisper: { dir: join(dir, 'nincs-whisper') } }),
     },
     join(dir, 'refinery.config.yaml'),
   )
@@ -177,5 +181,53 @@ describe('commandListAudios', () => {
     expect(streams.out[0]).toContain('Nincs whisper-mappa')
     expect(streams.out.join('\n')).toContain('kész')
     expect(streams.out.join('\n')).not.toContain('vár ')
+  })
+
+  describe('receptek', () => {
+    beforeEach(async () => {
+      await put(archive, 'Csat/Recepttel [eeeeeeeeeee].m4a')
+      await put(dir, 'src/whisper/csat/eeeeeeeeeee.hu.srt')
+      const cfg = config(true, true)
+      const store = openState(cfg.statePath, cfg.vaultPath)
+      for (const id of ['bbbbbbbbbbb', 'eeeeeeeeeee']) {
+        store.recordItem({ itemId: id, source: 'whisper', sourceFile: `whisper/csat/${id}.hu.srt`, subtitlePath: `/s/${id}.hu.srt`, baseName: id, title: id, language: 'hu', metadata: {} })
+      }
+      store.recordArtifact('eeeeeeeeeee', 'summary', 'done', `${cfg.vaultPath}/e.md`, null)
+      store.close()
+    })
+
+    const rowOf = (lines: string[], id: string): string => lines.find((line) => line.startsWith(id)) ?? ''
+
+    it('receptek oszlop', async () => {
+      const streams = io()
+      expect(await commandListAudios(config(true, true), {}, streams)).toBe(0)
+      expect(streams.out.find((line) => line.startsWith('kulcs'))).toMatch(/állapot +receptek$/)
+      expect(rowOf(streams.out, 'eeeeeeeeeee')).toMatch(/summary ✓$/)
+      expect(rowOf(streams.out, 'bbbbbbbbbbb')).toMatch(/—$/)
+      expect(rowOf(streams.out, 'aaaaaaaaaaa')).toMatch(/—$/)
+    })
+
+    it('--no-recipe: az átírt, recept nélküli és a leadható tételek', async () => {
+      const streams = io()
+      expect(await commandListAudios(config(true, true), { noRecipe: true }, streams)).toBe(0)
+      const text = streams.out.join('\n')
+      expect(text).toContain('bbbbbbbbbbb')
+      expect(text).toContain('aaaaaaaaaaa')
+      expect(text).not.toContain('eeeeeeeeeee')
+    })
+
+    it('--no-recipe whisper.after nélkül: hiba', async () => {
+      const streams = io()
+      expect(await commandListAudios(config(), { noRecipe: true }, streams)).toBe(1)
+      expect(streams.err).toEqual([NO_AFTER])
+    })
+
+    it('--no-recipe --status pending: a metszet', async () => {
+      const streams = io()
+      await commandListAudios(config(true, true), { noRecipe: true, status: 'pending' }, streams)
+      const text = streams.out.join('\n')
+      expect(text).toContain('aaaaaaaaaaa')
+      expect(text).not.toContain('bbbbbbbbbbb')
+    })
   })
 })

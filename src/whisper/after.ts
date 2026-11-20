@@ -12,6 +12,13 @@ export const CLI_AFTER = 'cli'
 /** A `ServeJob.url` értéke az átírás utáni futásnál: a bemenet a helyi `.srt`, nem az R2. A Worker ugyanezt a szót írja. */
 export const AFTER_WHISPER = 'after-whisper'
 
+export const NO_AFTER = 'Nincs whisper.after recept a configban: nincs mit futtatni.'
+
+/** Az `after` receptjei közül a `done`-ban nem szereplők. */
+export function missingAfter(done: readonly string[], after: readonly string[]): string[] {
+  return after.filter((recipe) => !done.includes(recipe))
+}
+
 export const MISSING_TRANSCRIPT = 'Az átirat nincs meg a sources/whisper alatt.'
 
 const SRT = /^(.+)\.([a-z]{2,3}(?:-[A-Za-z]{2,4})?)\.srt$/
@@ -104,13 +111,22 @@ export async function pendingAfter(sourcesRoot: string, dirs: WhisperDirs): Prom
   return items
 }
 
-/** A jelölő törlése (átnevezéssel, atomikusan): ez az egyszeriség, újraindítás után sem fut újra. */
-async function dropMarker(path: string): Promise<void> {
+/** A jelölő beírása (`null`: törlése) átnevezéssel, atomikusan; a többi mező érintetlen. A törlés az egyszeriség: újraindítás után sem fut újra. */
+async function setMarker(path: string, marker: string | null): Promise<void> {
   const info = JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
-  delete info[AFTER_FIELD]
+  if (marker === null) delete info[AFTER_FIELD]
+  else info[AFTER_FIELD] = marker
   const temp = `${path}.after-tmp`
   await writeFile(temp, JSON.stringify(info, null, 2))
   await rename(temp, path)
+}
+
+/** Utólépést kér egy már átírt tételre: a jelölőt a kész átirat `info.json`-jába írja. `false`, ha a pár nincs meg. */
+export async function requestAfter(sourcesRoot: string, id: string, marker: string): Promise<boolean> {
+  const pair = await readWhisperPair(sourcesRoot, id)
+  if (!pair.ok || pair.sourcePath === undefined) return false
+  await setMarker(join(dirname(pair.sourcePath), `${id}.info.json`), marker)
+  return true
 }
 
 export function failedLine(title: string, reason: string): string {
@@ -154,7 +170,7 @@ export async function afterWhisperTick(deps: AfterDeps): Promise<void> {
           release()
         }
       }
-      await dropMarker(item.infoPath)
+      await setMarker(item.infoPath, null)
     } catch (error) {
       console.warn(`[after-whisper] ${item.id}: ${error instanceof Error ? error.message : String(error)}; a következő kör újra próbálja`)
     }

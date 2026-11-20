@@ -256,6 +256,7 @@ function isCallback(value: unknown): value is CallbackBody {
   if (body.status === 'ready') {
     if (typeof body.title !== 'string') return false
     if (body.deployError !== undefined && body.deployError !== null && typeof body.deployError !== 'string') return false
+    if (body.done !== undefined && !(Array.isArray(body.done) && body.done.every((id) => typeof id === 'string'))) return false
     return body.noteUrl === undefined || typeof body.noteUrl === 'string'
   }
   if (body.status === 'transcribed') {

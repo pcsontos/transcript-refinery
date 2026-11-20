@@ -42,8 +42,9 @@ export type CallbackBody =
   /**
    * `deployError` csak átírás utáni futásnál (pcsontos/issue-tracker#45): hiányzik = a deploy kint van (showroom-link),
    * `null` = nem volt deploy (Worker-link), szöveg = a deploy hibája (Worker-link + hibasor).
+   * `done`: csak a felirat-job `ready`-jében (pcsontos/issue-tracker#88): a tétel már kész receptjei, `noteUrl` a leirat-jegyzete.
    */
-  | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null }
+  | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null; done?: string[] }
   /** `done`: a futás elkészült jegyzetei, ha a futás recept-leállás miatt bukott; a záró üzenet csak ezeket linkeli. */
   | { status: 'failed'; error: string; done?: string[]; missing?: true }
   /** Életjel: a futás még dolgozik; a Worker változatlan állapot mellett továbbítja. */
@@ -95,6 +96,8 @@ export interface JobEffects {
   writeFile?: (path: string, body: Uint8Array) => Promise<void>
   /** Átírás utáni futás bemenete: a helyi whisper-pár (`readWhisperPair`). */
   whisperPair?: (videoId: string) => Promise<SummaryPair>
+  /** A tétel kész receptjei és a leirat-jegyzet vault-relatív útja; `null`, ha nincs kész recept vagy nincs leirat-sor. */
+  doneRecipes?: (videoId: string) => Promise<{ recipes: string[]; noteUrl: string } | null>
   refine?: (
     videoId: string,
     recipes: readonly string[],
@@ -124,6 +127,19 @@ export function subtitleArgv(url: string, outDir: string): string[] {
 function firstLine(text: string): string {
   const line = text.split('\n').find((item) => item.trim() !== '')
   return line?.trim() ?? ''
+}
+
+/** A felirat-job `ready` törzse: a kész receptekkel és a jegyzet útjával, ha van; az állapottár hibája nem buktatja a jobot. */
+async function readyBody(effects: JobEffects, videoId: string, title: string): Promise<CallbackBody> {
+  try {
+    const found = await effects.doneRecipes?.(videoId)
+    if (found != null && found.recipes.length > 0 && found.noteUrl !== '') {
+      return { status: 'ready', title, done: found.recipes, noteUrl: found.noteUrl }
+    }
+  } catch (error) {
+    console.error(error)
+  }
+  return { status: 'ready', title }
 }
 
 async function report(effects: JobEffects, jobId: string, body: CallbackBody): Promise<void> {
@@ -338,7 +354,12 @@ async function runRecipeJob(
   const lang = job.lang as LanguageTag | undefined
   // Átírás utáni futás (#45): a bemenet a helyi .srt (nem az R2), a deploy az üzenet előtt fut.
   const afterWhisper = job.url === AFTER_WHISPER
-  const loaded = afterWhisper ? await localPair(effects, job.videoId) : await loadSummaryPair(effects, job.videoId)
+  let loaded = afterWhisper ? await localPair(effects, job.videoId) : await loadSummaryPair(effects, job.videoId)
+  // Az R2-ben nincs pár: a már whisperrel átírt tétel a helyi .srt-ből fut (pcsontos/issue-tracker#88).
+  if (!afterWhisper && !loaded.ok && loaded.error === MISSING_PAIR) {
+    const local = await localPair(effects, job.videoId)
+    if (local.ok) loaded = local
+  }
   if (!loaded.ok) {
     await forgetWork(effects, job.videoId)
     await report(effects, job.jobId, { status: 'failed', error: loaded.error })
@@ -529,7 +550,7 @@ export async function runJob(job: ServeJob, effects: JobEffects, signal?: AbortS
     const remote = await remoteReady(effects.store, job.videoId, effects.languages)
     if (remote.complete) {
       console.log(`[job] A videó (${job.videoId}) már készen van az R2-ben: "${remote.title}"`)
-      await report(effects, job.jobId, { status: 'ready', title: remote.title })
+      await report(effects, job.jobId, await readyBody(effects, job.videoId, remote.title))
       return
     }
     let local = await effects.readPair(job.videoId)
@@ -537,10 +558,17 @@ export async function runJob(job: ServeJob, effects: JobEffects, signal?: AbortS
       console.log(`[job] Helyi pár kész (${job.videoId}), feltöltés indul`)
       await upload(job, effects, local)
       await effects.deletePair(job.videoId)
-      await report(effects, job.jobId, { status: 'ready', title: local.title })
+      await report(effects, job.jobId, await readyBody(effects, job.videoId, local.title))
       return
     }
     await effects.deletePair(job.videoId)
+    // Már whisperrel átírt videó (pcsontos/issue-tracker#88): a helyi átirat is felirat, hálózati lekérés és R2-feltöltés nélkül.
+    const whisper = await localPair(effects, job.videoId)
+    if (whisper.ok) {
+      console.log(`[job] Whisper-átirat megvan (${job.videoId}): "${whisper.title}"`)
+      await report(effects, job.jobId, await readyBody(effects, job.videoId, whisper.title))
+      return
+    }
     console.log(`[job] Felirat lekérése indul YouTube-ról: ${job.url}`)
     const result = await effects.fetchSubtitle(job.url)
     if (result.stderr.includes(YTDLP_MISSING)) {
@@ -568,7 +596,7 @@ export async function runJob(job: ServeJob, effects: JobEffects, signal?: AbortS
     await upload(job, effects, local)
     await effects.deletePair(job.videoId)
     console.log(`[job] Sikeresen feldolgozva és feltöltve R2-be: "${local.title}" (${job.videoId})`)
-    await report(effects, job.jobId, { status: 'ready', title: local.title })
+    await report(effects, job.jobId, await readyBody(effects, job.videoId, local.title))
   } catch (error) {
     const message = error instanceof Error ? error.message : UPLOAD_FAILED
     console.error(`[job] Feldolgozási kivétel (${job.videoId}):`, message)

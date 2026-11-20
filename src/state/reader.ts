@@ -67,3 +67,26 @@ export function openStateReader(path: string, vaultPath?: string): StateReader |
     },
   }
 }
+
+/**
+ * Tételenként a kész receptek (`status === 'done'`) a `recipeIds` sorrendjében.
+ * Egy lekérdezés az egész tárra; `null` reader (még nincs állapotfájl) = üres.
+ */
+export function doneRecipes(reader: StateReader | null, recipeIds: readonly string[]): Map<string, string[]> {
+  const done = new Map<string, Set<string>>()
+  for (const row of reader?.artifacts() ?? []) {
+    if (row.status !== 'done' || !recipeIds.includes(row.kind)) continue
+    done.set(row.itemId, (done.get(row.itemId) ?? new Set()).add(row.kind))
+  }
+  return new Map([...done].map(([id, kinds]) => [id, recipeIds.filter((r) => kinds.has(r))]))
+}
+
+/** `doneRecipes` a megnyitott és lezárt állapottárból (hiányzó fájl = üres). */
+export function readDoneRecipes(statePath: string, vaultPath: string, recipeIds: readonly string[]): Map<string, string[]> {
+  const reader = openStateReader(statePath, vaultPath)
+  try {
+    return doneRecipes(reader, recipeIds)
+  } finally {
+    reader?.close()
+  }
+}

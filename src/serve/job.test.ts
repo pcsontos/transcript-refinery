@@ -1025,3 +1025,89 @@ describe('runJob resolve', () => {
     expect(await resolveWith(missing)).toEqual([{ status: 'failed', error: YTDLP_MISSING }])
   })
 })
+
+describe('runJob — whisper-átirat és kész receptek (pcsontos/issue-tracker#65, #88)', () => {
+  const pairOk = { ok: true as const, title: 'W', language: 'hu', extension: 'srt', subtitle: new Uint8Array([1]), info: new Uint8Array([2]) }
+  const r2Pair = {
+    [`videos/${ID}/hu.vtt`]: new Uint8Array([1]),
+    [`videos/${ID}/info.json`]: new TextEncoder().encode(JSON.stringify({ id: ID, title: 'Cím', language: 'hu' })),
+  }
+
+  function setup(store: ReturnType<typeof memoryStore>, over: Partial<JobEffects> = {}) {
+    const callbacks: CallbackBody[] = []
+    const calls: string[] = []
+    const effects: JobEffects = {
+      ...emptyEffects(store),
+      fetchSubtitle: () => {
+        calls.push('fetch')
+        return Promise.resolve({ code: 0, stdout: `${'Nincs felirat'}`, stderr: '' })
+      },
+      callback: (_id, body) => {
+        callbacks.push(body)
+        return Promise.resolve()
+      },
+      ...over,
+    }
+    return { effects, callbacks, calls }
+  }
+
+  it('felirat-job: R2 és helyi pár nélkül a whisper-átiratot használja, yt-dlp nélkül', async () => {
+    const store = memoryStore()
+    const { effects, callbacks, calls } = setup(store, { whisperPair: () => Promise.resolve(pairOk) })
+    await runJob(job, effects)
+    expect(calls).toEqual([])
+    expect(Object.keys(store.objects)).toEqual([])
+    expect(callbacks).toEqual([{ status: 'ready', title: 'W' }])
+  })
+
+  it('felirat-job: whisper-átirat sincs → yt-dlp, és a „Nincs felirat” marad', async () => {
+    const { effects, callbacks, calls } = setup(memoryStore(), { whisperPair: () => Promise.resolve({ ok: false, error: 'nincs' }) })
+    await runJob(job, effects)
+    expect(calls).toEqual(['fetch'])
+    expect(callbacks).toEqual([{ status: 'failed', error: 'Nincs felirat' }])
+  })
+
+  it('ready: a kész receptek és a noteUrl', async () => {
+    const { effects, callbacks } = setup(memoryStore(r2Pair), {
+      doneRecipes: () => Promise.resolve({ recipes: ['summary'], noteUrl: 'n/a.md' }),
+    })
+    await runJob(job, effects)
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Cím', done: ['summary'], noteUrl: 'n/a.md' }])
+  })
+
+  it('ready: doneRecipes null → nincs done mező', async () => {
+    const { effects, callbacks } = setup(memoryStore(r2Pair), { doneRecipes: () => Promise.resolve(null) })
+    await runJob(job, effects)
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Cím' }])
+  })
+
+  it('ready: a doneRecipes hibája nem buktatja a jobot', async () => {
+    const { effects, callbacks } = setup(memoryStore(r2Pair), {
+      doneRecipes: () => {
+        throw new Error('állapottár')
+      },
+    })
+    await runJob(job, effects)
+    expect(callbacks).toEqual([{ status: 'ready', title: 'Cím' }])
+  })
+
+  it('recept-job: R2-pár nélkül a whisper-átiratból fut', async () => {
+    const refined: string[] = []
+    const { effects, callbacks } = setup(memoryStore(), {
+      whisperPair: () => Promise.resolve(pairOk),
+      refine: (videoId) => {
+        refined.push(videoId)
+        return Promise.resolve({ ok: true, noteUrl: 'n/a.md' })
+      },
+    })
+    await runJob({ ...job, recipes: ['summary'] }, effects)
+    expect(refined).toEqual([ID])
+    expect(callbacks).toEqual([{ status: 'ready', title: 'W', noteUrl: 'n/a.md' }])
+  })
+
+  it('recept-job: R2-pár és whisper sincs → a mai MISSING_PAIR hiba', async () => {
+    const { effects, callbacks } = setup(memoryStore(), { whisperPair: () => Promise.resolve({ ok: false, error: 'nincs' }) })
+    await runJob({ ...job, recipes: ['summary'] }, effects)
+    expect(callbacks).toEqual([{ status: 'failed', error: 'A felirat nincs az R2-ben.' }])
+  })
+})

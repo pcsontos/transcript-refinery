@@ -78,6 +78,21 @@ whisper-transcribe watch --root <whisper-mappa> --out <sources-gyökér> [--logs
 A modell keresése: `$WHISPER_MODEL`, majd `<script mappa>/models/`, majd `~/.local/share/whisper-transcribe/models/`.
 A `whisper-cli`: `<script mappa>/bin/whisper-cli`, majd `PATH`. Az `ffmpeg`: `PATH`, majd a Homebrew helyei.
 
+## Recept-állapot és utólépés kérése
+
+A refinery az átírt hangokra a `whisper.after` receptjeit futtatja (pcsontos/issue-tracker#45). A korábban recept nélkül átírt hangokra utólag így lehet kérni:
+
+```bash
+# az archívum hangjai, receptenként a kész állapottal (pl. `summary ✓`, üresen `—`)
+refinery list --audios
+# csak az átírt, recept nélküli (whisper.after szerint) és a leadható hangok
+refinery list --audios --no-recipe
+# a már átírt, recept nélküli hangra utólépést kér; a futó serve utólépése futtatja
+refinery transcribe <azonosító>
+```
+
+A `transcribe` az átirat `info.json`-jába írja az utólépés jelölőjét, a futtatást a serve 30 másodperces köre veszi fel; ehhez futó serve kell. Ha a `whisper.after` receptjei mind készen vannak, a tételt kihagyja (`kihagyva (kész, receptek: …)`). A `--no-recipe` `whisper.after` nélkül hibával áll meg.
+
 ## Tesztek
 
 ```bash

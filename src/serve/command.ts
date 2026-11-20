@@ -1,11 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, relative, sep } from 'node:path'
 import { parseArgs } from 'node:util'
 import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { pickHint } from '../fetch/audio/feed.js'
 import { audioSummary, openAudioRunLog, runAudioFetch } from '../fetch/audio/run.js'
 import { createAudioStore } from '../fetch/audio/store.js'
-import { afterMarker, readWhisperPair, startAfterWhisper } from '../whisper/after.js'
+import { afterMarker, missingAfter, readWhisperPair, startAfterWhisper } from '../whisper/after.js'
+import { doneRecipes, openStateReader, readDoneRecipes } from '../state/reader.js'
 import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
@@ -14,7 +15,7 @@ import { createYtdlpRunner, playlistProbeArgs, type ProcessRunner } from '../fet
 import type { LanguageTag } from '../lang/identify.js'
 import { VERSION } from '../meta.js'
 import { modelsView } from '../model/recipe-model.js'
-import { recipesFor } from '../recipe/registry.js'
+import { RECIPE_IDS, recipesFor } from '../recipe/registry.js'
 import { deleteLocalPair, readLocalPair } from './inventory.js'
 import type { NoteOrigin } from '../vault/render.js'
 import { runJob, subtitleArgv, type CallbackBody, type JobEffects, type RecipesOutcome, type RefineOptions, type ServeJob } from './job.js'
@@ -52,6 +53,7 @@ export function serveEffects(input: {
   resolve?: JobEffects['resolve']
   transcribe?: JobEffects['transcribe']
   whisperPair?: JobEffects['whisperPair']
+  doneRecipes?: JobEffects['doneRecipes']
   configArg?: string
 }): JobEffects & {
   writeFile: (path: string, body: Uint8Array) => Promise<void>
@@ -86,6 +88,21 @@ export function serveEffects(input: {
     whisperPair:
       input.whisperPair ??
       (async (videoId) => readWhisperPair((await loadCliConfig(input.configArg)).cfg.sources[0]!.path, videoId)),
+    doneRecipes:
+      input.doneRecipes ??
+      (async (videoId) => {
+        const { cfg } = await loadCliConfig(input.configArg)
+        const reader = openStateReader(cfg.statePath, cfg.vaultPath)
+        try {
+          const recipes = doneRecipes(reader, RECIPE_IDS).get(videoId) ?? []
+          const transcript = reader?.artifacts().find((row) => row.itemId === videoId && row.kind === 'transcript' && row.status === 'done' && row.path !== null)
+          if (recipes.length === 0 || transcript?.path == null) return null
+          // Mint a recept-futás `ready`-je (summary.ts): a leirat-jegyzet vault-relatív útja.
+          return { recipes, noteUrl: relative(cfg.vaultPath, transcript.path).split(sep).join('/') }
+        } finally {
+          reader?.close()
+        }
+      }),
     refine: (videoId, recipes, lang, signal, notify, models, command, options) =>
       refineWith({
         videoId,
@@ -167,16 +184,25 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
     if (dirs === null) throw new Error(`nincs whisper-mappa: ${cfg.whisperDir}`)
     const store = createAudioStore(cfg.audio, process.env)
     const sourcesRoot = cfg.sources[0]!.path
+    const done = readDoneRecipes(cfg.statePath, cfg.vaultPath, RECIPE_IDS)
 
     if (request.ids.length === 0) {
       const { entries } = await listArchive(store)
       const ctx = await statusContext(sourcesRoot, dirs)
+      const after = cfg.whisperAfter?.recipes ?? []
+      const notes = new Map<string, string>()
       const pending = entries.filter((entry) => {
         const status = transcriptStatus(entry, ctx)
-        return status === 'archived' || status === 'failed'
+        if (status === 'archived') notes.set(entry.id, 'archivált')
+        else if (status === 'failed') notes.set(entry.id, 'hibás')
+        else if (status === 'done' && missingAfter(done.get(entry.id) ?? [], after).length > 0) {
+          const have = done.get(entry.id) ?? []
+          notes.set(entry.id, `átírva · ${after.map((recipe) => `${recipe} ${have.includes(recipe) ? '✓' : '–'}`).join(' ')}`)
+        } else return false
+        return true
       })
       if (pending.length === 0) return 'Nincs átírásra váró hang.'
-      for (const message of transcribeMessages(pending, 4000)) await emit(message)
+      for (const message of transcribeMessages(pending, 4000, notes)) await emit(message)
       const warning = await watcherWarning(dirs)
       if (warning !== null) await emit(warning)
       return TRANSCRIBE_HINT
@@ -194,6 +220,8 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         sourcesRoot,
         languages: cfg.languages,
         after: request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId),
+        done,
+        afterRecipes: cfg.whisperAfter,
         emit: async (line) => {
           if (/ tétel leadva\.$/.test(line)) inTail = true
           if (inTail) tail.push(line)

@@ -116,6 +116,15 @@ describe('transcribeMessages', () => {
       id: `id${String(i).padStart(4, '0')}abc`.slice(0, 11), key: `C/t [x].m4a`, ext: 'm4a', title: title(i), channel: 'C', duration, date: null, info: {},
     }))
 
+  it('jegyzettel a sor végén', () => {
+    const [message] = transcribeMessages(
+      [{ id: 'abc', key: 'C/t [x].m4a', ext: 'm4a', title: 'Ki hiteles tanító?', channel: 'C', duration: 3723, date: null, info: {} }],
+      4000,
+      new Map([['abc', 'átírva · summary –']]),
+    )
+    expect(message).toBe(`${TRANSCRIBE_HEADER}\n1. Ki hiteles tanító? [abc] — 1:02:03 — átírva · summary –`)
+  })
+
   it('a hosszú cím vágódik, az azonosító megmarad, a számozás folytatólagos', () => {
     const messages = transcribeMessages(entries(60, () => 'Á'.repeat(300)), 4000)
     expect(messages.length).toBeGreaterThan(1)

@@ -4,7 +4,9 @@ import { audioDuration } from '../fetch/audio/feed.js'
 import { openAudioRunLog } from '../fetch/audio/run.js'
 import { createAudioStore, type AudioStore } from '../fetch/audio/store.js'
 import { installSigint } from '../run/finish.js'
-import { afterMarker, CLI_AFTER } from './after.js'
+import { RECIPE_IDS } from '../recipe/registry.js'
+import { readDoneRecipes } from '../state/reader.js'
+import { afterMarker, CLI_AFTER, missingAfter, NO_AFTER } from './after.js'
 import { failedReason, listArchive, STATUS_LABEL, statusContext, transcriptStatus } from './archive.js'
 import { watcherWarning, whisperDirs } from './paths.js'
 import { parseTranscribeArgs, runTranscribe } from './submit.js'
@@ -53,6 +55,7 @@ export async function commandTranscribe(argv: readonly string[], runtime?: Audio
   }, runtime?.signals)
   const log = openAudioRunLog(cfg.logsDir, `transcribe ${argv.join(' ')}`)
   try {
+    const done = readDoneRecipes(cfg.statePath, cfg.vaultPath, RECIPE_IDS)
     const result = await runTranscribe(
       { ids: args.ids, lang: args.lang },
       {
@@ -64,6 +67,8 @@ export async function commandTranscribe(argv: readonly string[], runtime?: Audio
         sink: log.sink,
         stopped: () => stopped,
         after: afterMarker(cfg, CLI_AFTER),
+        done,
+        afterRecipes: cfg.whisperAfter,
       },
     )
     if (stopped) return 130
@@ -88,13 +93,17 @@ const TITLE_WIDTH = 50
 
 export async function commandListAudios(
   cfg: Config,
-  opts: { channel?: string; limit?: number; status?: string },
+  opts: { channel?: string; limit?: number; status?: string; noRecipe?: boolean },
   runtime?: AudioRuntime,
 ): Promise<number> {
   const stdout = runtime?.stdout ?? ((line: string) => console.log(line))
   const stderr = runtime?.stderr ?? ((line: string) => console.error(line))
   if (opts.status !== undefined && opts.status !== 'pending') {
     stderr('Az --audios mellett a --status értéke csak pending lehet.')
+    return 1
+  }
+  if (opts.noRecipe === true && cfg.whisperAfter === null) {
+    stderr(NO_AFTER)
     return 1
   }
   if (cfg.audio === null) {
@@ -118,11 +127,20 @@ export async function commandListAudios(
   if (listed.warning !== undefined) stdout(listed.warning)
 
   const ctx = await statusContext(cfg.sources[0]!.path, dirs)
+  const done = readDoneRecipes(cfg.statePath, cfg.vaultPath, RECIPE_IDS)
+  const doneOf = (id: string): string[] => done.get(id) ?? []
   const needle = opts.channel?.toLowerCase()
   let rows = listed.entries
     .filter((entry) => needle === undefined || entry.channel.toLowerCase().includes(needle))
     .map((entry) => ({ entry, status: transcriptStatus(entry, ctx) }))
     .filter(({ status }) => opts.status === undefined || status === 'archived' || status === 'failed')
+    .filter(
+      ({ entry, status }) =>
+        opts.noRecipe !== true ||
+        status === 'archived' ||
+        status === 'failed' ||
+        (status === 'done' && missingAfter(doneOf(entry.id), cfg.whisperAfter?.recipes ?? []).length > 0),
+    )
   if (opts.limit !== undefined) rows = rows.slice(0, opts.limit)
   if (rows.length === 0) {
     stdout('Nincs a szűrőnek megfelelő hang.')
@@ -137,8 +155,9 @@ export async function commandListAudios(
       if (reason !== null) label = `${label}: ${reason}`
     }
     const title = entry.title.length > TITLE_WIDTH ? `${entry.title.slice(0, TITLE_WIDTH - 1)}…` : entry.title
-    cells.push([entry.id, title, entry.channel, audioDuration(entry.duration), entry.date ?? '—', label])
+    const recipes = doneOf(entry.id).map((recipe) => `${recipe} ✓`).join(' ')
+    cells.push([entry.id, title, entry.channel, audioDuration(entry.duration), entry.date ?? '—', label, recipes === '' ? '—' : recipes])
   }
-  for (const line of table(['kulcs', 'cím', 'csatorna', 'hossz', 'dátum', 'állapot'], cells)) stdout(line)
+  for (const line of table(['kulcs', 'cím', 'csatorna', 'hossz', 'dátum', 'állapot', 'receptek'], cells)) stdout(line)
   return 0
 }
