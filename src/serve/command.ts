@@ -170,7 +170,7 @@ export function serveFetchAudio(
 
 /** A leadható (archivált vagy hibás) hangok listája üzenetekben; a vég a használati sor. */
 export const TRANSCRIBE_HINT =
-  'Válaszolj a lista egyik üzenetére a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.'
+  'Erre ne válaszolj: a lista üzenetére (amelyik így kezdődik: „Átírásra váró hangok:”) válaszolj a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.'
 
 /**
  * A Telegram `/transcribe`: munkánként tölti a configot. Üres `ids`: a leadható hangok listája; különben leadás

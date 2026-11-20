@@ -26,6 +26,8 @@ import {
   FETCH_RENAMED,
   FETCH_USAGE,
   PICK_USAGE,
+  TRANSCRIBE_HINT,
+  TRANSCRIBE_HINT_REPLY,
   TRANSCRIBE_LIST_HEADER,
   TRANSCRIBE_PICK_USAGE,
   TRANSCRIBE_USAGE,
@@ -533,8 +535,12 @@ export async function handleLink(
   return { status: 302, location: `https://t.me/${deps.botUsername}?start=${back}` }
 }
 
+/** A Telegram a „--lang”-ot gondolatjeles alakra (—lang, –lang) cserélheti: visszaállítjuk (pcsontos/issue-tracker#81). */
+const dashLang = (text: string): string => text.replace(/(^|\s)[—–]-?lang(?=\s|$)/g, '$1--lang')
+
 /** A `/transcribe` listaüzenetére adott válasz: az üzenet saját soraiból oldja fel a sorszámokat. */
-function transcribePick(text: string, listText: string): { url: string; title: string } | string {
+function transcribePick(rawText: string, listText: string): { url: string; title: string } | string {
+  const text = dashLang(rawText)
   const match = TRANSCRIBE_PICK.exec(text)
   if (match === null) return TRANSCRIBE_PICK_USAGE
   let lang: string | null = null
@@ -566,7 +572,7 @@ function transcribePick(text: string, listText: string): { url: string; title: s
 
 /** A `/fetch_audio` szavai: linkek és legfeljebb egy `--lang <kód>`; minden más kapcsoló használati sort ad. */
 function fetchAudioWords(raw: string): { url: string; title: string } | string {
-  const words = raw.split(/\s+/).filter(Boolean)
+  const words = dashLang(raw).split(/\s+/).filter(Boolean)
   const links: string[] = []
   let lang: string | null = null
   for (let i = 0; i < words.length; i += 1) {
@@ -601,6 +607,7 @@ function fetchRequest(message: {
   // A válaszban írt parancs (pl. /fetch_audio) a megszokott úton megy.
   if (reply?.from?.is_bot === true && !text.startsWith('/')) {
     const replyText = reply.text ?? ''
+    if (replyText.trim() === TRANSCRIBE_HINT) return TRANSCRIBE_HINT_REPLY
     if (replyText.split('\n')[0] === TRANSCRIBE_LIST_HEADER) return transcribePick(text, replyText)
     const feed = FEED_LINE.exec(replyText)?.[1]
     if (feed !== undefined) {

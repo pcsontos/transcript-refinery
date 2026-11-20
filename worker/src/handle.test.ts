@@ -18,7 +18,16 @@ import {
   type WorkerDeps,
 } from './handle.js'
 import { listKeyboard } from './messages.js'
-import { BOT_COMMANDS, FETCH_RENAMED, FETCH_USAGE, PICK_USAGE, TRANSCRIBE_PICK_USAGE, TRANSCRIBE_USAGE } from './messages.js'
+import {
+  BOT_COMMANDS,
+  FETCH_RENAMED,
+  FETCH_USAGE,
+  PICK_USAGE,
+  TRANSCRIBE_HINT,
+  TRANSCRIBE_HINT_REPLY,
+  TRANSCRIBE_PICK_USAGE,
+  TRANSCRIBE_USAGE,
+} from './messages.js'
 import {
   BIND_FIRST,
   DROPPED_LINE,
@@ -1958,6 +1967,28 @@ describe('/transcribe', () => {
     expect((await handleUpdate(command(7, '/transcribe abc'), d)).knocks).toEqual([])
     expect(d.sent).toEqual([TRANSCRIBE_USAGE])
     expect(await store.listByUpdate(7)).toEqual([])
+  })
+
+  // pcsontos/issue-tracker#81: a használati sor a lista végén külön üzenet; a rá adott válasz nem adhat le semmit.
+  it('a használati sorra adott válasz pontos hibát ad, munka nem indul', async () => {
+    const store = await boundStore()
+    const d = deps(store)
+    const planned = await handleUpdate(reply(7, '1', TRANSCRIBE_HINT), d)
+    expect(planned.knocks).toEqual([])
+    expect(d.sent).toEqual([TRANSCRIBE_HINT_REPLY])
+    expect(await store.listByUpdate(7)).toEqual([])
+  })
+
+  // A Telegram a „--”-t gondolatjellé alakíthatja.
+  it.each(['—lang', '–lang', '—-lang'])('a listaválaszban a %s a --lang-gal egyenértékű', async (dash) => {
+    const d = deps(await boundStore())
+    expect((await handleUpdate(reply(7, `1 ${dash} en`), d)).knocks[0]?.url).toBe('transcribe abcdefghijk --lang en')
+  })
+
+  it('a /fetch_audio —lang en <link> ugyanaz, mint a --lang en', async () => {
+    const d = deps(await boundStore())
+    const planned = await handleUpdate(command(7, '/fetch_audio —lang en https://a'), d)
+    expect(planned.knocks[0]?.url).toBe('https://a --lang en')
   })
 
   it('válasz a listára: az üzenet azonosítói, akkor is, ha a cím [ ]-t és —-t tartalmaz', async () => {

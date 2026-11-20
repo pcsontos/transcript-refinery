@@ -332,7 +332,9 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     const out = collect()
     const result = await serveTranscribe(path)({ ids: [] }, undefined, out.emit)
     expect(out.lines[0]).toBe(`Átírásra váró hangok:\n1. Cím [${ID}] — archivált`)
-    expect(result).toBe('Válaszolj a lista egyik üzenetére a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.')
+    expect(result).toBe(
+      'Erre ne válaszolj: a lista üzenetére (amelyik így kezdődik: „Átírásra váró hangok:”) válaszolj a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.',
+    )
   })
 
   it('serveTranscribe leadás: az inboxba kerül, az összesítő a „tétel leadva” sor, futásnapló készül', async () => {

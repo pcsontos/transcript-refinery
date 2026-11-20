@@ -249,6 +249,11 @@ export const TRANSCRIBE_USAGE = 'Használat: /transcribe – listát kapsz az á
 export const TRANSCRIBE_PICK_USAGE = 'Válaszként a sorszámokat írd: 0 = az üzenet összes tétele, vagy pl. 1,3; nyelv: 1,3 --lang en.'
 /** A serve `/transcribe` listaüzeneteinek első sora (a `src/whisper/archive.ts` `TRANSCRIBE_HEADER`-je); a Worker ebből ismeri fel a választ. */
 export const TRANSCRIBE_LIST_HEADER = 'Átírásra váró hangok:'
+/** A serve `/transcribe` használati sora (a `src/serve/command.ts` `TRANSCRIBE_HINT`-je, szó szerint); erre a válasz nem adhat le semmit. */
+export const TRANSCRIBE_HINT =
+  'Erre ne válaszolj: a lista üzenetére (amelyik így kezdődik: „Átírásra váró hangok:”) válaszolj a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.'
+export const TRANSCRIBE_HINT_REPLY =
+  'Ez a használati sor, nem a lista. A lista üzenetére válaszolj (amelyik így kezdődik: „Átírásra váró hangok:”).'
 export const PICK_USAGE = 'Válaszként a sorszámokat írd: 0 = mind, vagy pl. 1,3.'
 
 export function fetchTitle(n: number): string {
