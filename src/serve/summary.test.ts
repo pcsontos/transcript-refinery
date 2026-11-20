@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -973,5 +973,84 @@ describe('runRecipes — deploy', () => {
       deployImpl: () => Promise.resolve({ ...REPORT, push: { pushed: false, reason: 'Command failed: git push\nrejected' } }),
     })
     expect(await result.followUp!()).toBe('a showroom-push nem sikerült')
+  })
+})
+
+describe('runRecipes — szójegyzék (pcsontos/issue-tracker#109)', () => {
+  const previous = process.env.LITELLM_API_KEY
+  const roots: string[] = []
+  const GLOSSARY_DE = 'Inbox/transcript-refinery/telegram/abcdefghijk/Beszéd [abcdefghijk]_glossary-de.md'
+
+  afterEach(async () => {
+    if (previous === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = previous
+    await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  })
+
+  /** A fordítás modellhívásában megszakít, majd rendes választ ad: a futó egység befejeződik. */
+  function cancelling(controller: AbortController): ReturnType<RunRuntime['createClient'] & object> {
+    const base = writer({ generate: 0 }, HUNGARIAN)
+    return {
+      ...base,
+      generate(role, prompt) {
+        if (prompt.startsWith('Translate the note below into German')) controller.abort()
+        return base.generate(role, prompt)
+      },
+    }
+  }
+
+  const status = (vault: string) => execFileSync('git', ['status', '--porcelain'], { cwd: vault }).toString().trim()
+
+  async function firstRun() {
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    const s = await scene()
+    roots.push(s.root)
+    const git = gitWith()
+    const first = await runRecipes({ videoId: ID, outDir: s.outDir, recipes: ['summary'], createClient: () => writer({ generate: 0 }, HUNGARIAN), load: s.load, git })
+    expect(first.ok).toBe(true)
+    return { ...s, git }
+  }
+
+  it('siker: a szójegyzék commitolódik, a vault tiszta', async () => {
+    const { vault, outDir, load, git } = await firstRun()
+    const result = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
+    expect(result.ok).toBe(true)
+    const names = execFileSync('git', ['-c', 'core.quotepath=false', 'log', '--name-only', '--pretty=format:'], { cwd: vault, encoding: 'utf8' })
+    expect(names).toContain(GLOSSARY_DE)
+    expect(status(vault)).toBe('')
+  })
+
+  it('megszakítás: az ebben a futásban létrejött szójegyzék törlődik, a vault tiszta', async () => {
+    const { vault, outDir, load, git } = await firstRun()
+    const controller = new AbortController()
+    const result = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', createClient: () => cancelling(controller), load, git, signal: controller.signal })
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    expect(existsSync(join(vault, GLOSSARY_DE))).toBe(false)
+    expect(status(vault)).toBe('')
+  })
+
+  it('megszakítás: a futás előtt meglévő, követetlen szójegyzék megmarad', async () => {
+    const { vault, outDir, load, git } = await firstRun()
+    const done = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
+    expect(done.ok).toBe(true)
+    // A szójegyzék commitja visszavonva: kész sor, követetlen fájl.
+    execFileSync('git', ['rm', '--cached', '-q', GLOSSARY_DE], { cwd: vault })
+    execFileSync('git', ['commit', '-q', '-m', 'szójegyzék levéve'], { cwd: vault })
+    const controller = new AbortController()
+    const result = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', forceRecipe: true, createClient: () => cancelling(controller), load, git, signal: controller.signal })
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    expect(existsSync(join(vault, GLOSSARY_DE))).toBe(true)
+  })
+
+  it('megszakítás: a commitolt szójegyzék visszaáll a HEAD-re', async () => {
+    const { vault, outDir, load, git } = await firstRun()
+    const done = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
+    expect(done.ok).toBe(true)
+    const committed = readFileSync(join(vault, GLOSSARY_DE), 'utf8')
+    const controller = new AbortController()
+    const result = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', forceRecipe: true, createClient: () => cancelling(controller), load, git, signal: controller.signal })
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    expect(readFileSync(join(vault, GLOSSARY_DE), 'utf8')).toBe(committed)
+    expect(status(vault)).toBe('')
   })
 })

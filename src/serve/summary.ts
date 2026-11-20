@@ -7,6 +7,7 @@ import { mdxTransformFor } from '../deploy/llm.js'
 import { progressText, type RunEvent as CoreEvent } from '../events.js'
 import type { LanguageTag } from '../lang/identify.js'
 import { assertOverrideModels, withRecipeModels } from '../model/recipe-model.js'
+import { glossaryKind } from '../recipe/glossary.js'
 import { recipesFor } from '../recipe/registry.js'
 import { DEFAULT_CHUNK_WORDS } from '../recipe/split.js'
 import { discoverAll, splitSubtitleName } from '../source/folder.js'
@@ -117,6 +118,7 @@ async function rollbackRun(
   kinds: readonly string[],
   before: ReadonlyMap<string, ArtifactSnapshot | null>,
   forceRecipe: boolean,
+  glossary: string | null,
 ): Promise<void> {
   const store = openState(cfg.statePath, cfg.vaultPath)
   try {
@@ -124,6 +126,21 @@ async function rollbackRun(
       const snapshot = before.get(kind) ?? null
       const current = store.artifactOf(videoId, kind)
       const wasDone = snapshot?.row.status === 'done'
+      if (kind === glossary) {
+        // A szójegyzék a fordítással jön létre, force nélkül is újraíródhat: a `wasDone`-kihagyás nem érvényes rá (pcsontos/issue-tracker#109).
+        // ponytail: a kézzel betett, állapotsor nélküli szójegyzéket a megszakítás törli; ha ez gond lesz, a futás előtti `git ls-files --others` halmaz a bővítés útja.
+        const path = current?.path ?? null
+        if (path !== null) {
+          if (wasDone) {
+            // Követetlen fájlnál a restore hibát ad: ahhoz nem nyúlunk, `rm` nincs.
+            await git.restore(cfg.vaultPath, [path]).catch(() => undefined)
+          } else {
+            await rm(path, { force: true })
+          }
+        }
+        store.restoreArtifact(videoId, kind, snapshot)
+        continue
+      }
       if (wasDone && !(forceRecipe && kind !== 'transcript')) continue
       if (wasDone) {
         const path = current?.path ?? null
@@ -220,7 +237,8 @@ export async function runRecipes(input: {
   const logsBefore = new Set(await logNames(cfg.logsDir))
   // A visszagörgetés alapja (pcsontos/issue-tracker#83): az érintett sorok a futás előtt. A `done` sor esemény nélkül is születhet
   // („a fájl már létezik” kihagyás), ezért a tárból veszünk pillanatképet, nem az eseményekből.
-  const rollbackKinds = ['transcript', ...ids]
+  const glossary = lang === undefined ? null : glossaryKind(lang)
+  const rollbackKinds = ['transcript', ...ids, ...(glossary === null ? [] : [glossary])]
   const before = new Map<string, ArtifactSnapshot | null>()
   const snapStore = openState(cfg.statePath, cfg.vaultPath)
   try {
@@ -253,7 +271,7 @@ export async function runRecipes(input: {
     { createClient: input.createClient, signal: input.signal, onEvent },
   )
   if (input.signal?.aborted === true) {
-    await rollbackRun(cfg, git, input.videoId, rollbackKinds, before, input.forceRecipe === true)
+    await rollbackRun(cfg, git, input.videoId, rollbackKinds, before, input.forceRecipe === true, glossary)
     return { ok: false, error: CANCELLED_RUN }
   }
   const events = await runEvents(cfg.logsDir, logsBefore)
@@ -270,10 +288,12 @@ export async function runRecipes(input: {
   const store = openState(cfg.statePath, cfg.vaultPath)
   let transcriptPath: string | null
   let notePaths: (string | null)[]
+  let glossaryPath: string | null = null
   try {
     const stored = (kind: string): string | null => store.artifactOf(input.videoId, kind)?.path ?? null
     transcriptPath = stored('transcript')
     notePaths = ids.map(stored)
+    if (glossary !== null) glossaryPath = stored(glossary)
   } finally {
     store.close()
   }
@@ -282,8 +302,8 @@ export async function runRecipes(input: {
     const found = (await discoverAll(cfg.sources, cfg.languages)).find((item) => item.baseName === parsed.base)
     const title = found?.title ?? parsed.base
     // Jegyzetenként külön commit, az üzenetben a fajtával: az átirat elöl, utána a receptek.
-    const kinds = ['transcript', ...ids]
-    for (const [index, path] of [transcriptPath, ...notePaths].entries()) {
+    const kinds = ['transcript', ...ids, ...(glossary === null ? [] : [glossary])]
+    for (const [index, path] of [transcriptPath, ...notePaths, ...(glossary === null ? [] : [glossaryPath])].entries()) {
       if (path !== null && (await exists(path))) {
         await git.commit(cfg.vaultPath, [path], noteCommitMessage(kinds[index]!, title, input.videoId))
       }
