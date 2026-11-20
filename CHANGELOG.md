@@ -3,6 +3,41 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.37.0] — 2026-11-20
+
+Az audio-listák mutatják, melyik recept kész egy tételhez. A korábban recept
+nélkül átírt hangokra utólag is lefuttatható a configolt recept, és egy már
+whisperrel átírt videó linkjére a bot nem mond „Nincs felirat”-ot.
+
+### ✨ Újdonságok
+
+- **Receptek az audio-listán:** a `refinery list --audios` új **receptek**
+  oszlopa a tétel kész receptjeit mutatja (pl. `summary ✓`). Az új
+  `--no-recipe` szűrő csak azokat a hangokat hagyja meg, amelyekkel a
+  `transcribe` tenne valamit: az átírt, de a `whisper.after` receptjei közül
+  valamelyik nélküli tételeket, valamint a leadható (archivált, hibás)
+  hangokat (pcsontos/issue-tracker#65).
+- **Recept utólag, átírt hangra:** a `refinery transcribe` a már átírt, de
+  recept nélküli hangra utólépést kér, és a `whisper.after` receptjeit a
+  futó szerver lefuttatja, ugyanúgy, mint egy friss átírás után. Ha minden
+  recept kész, a tétel `kihagyva (kész, receptek: …)` sorral marad ki
+  (pcsontos/issue-tracker#65).
+- **Telegram `/transcribe`:** a listán az átírt, recept nélküli hangok is
+  megjelennek, soronként az állapottal (pl. `átírva · summary –`,
+  `archivált`). A sorszámos válasz rájuk utólépést kér, a kész üzenet a
+  megszokott módon érkezik (pcsontos/issue-tracker#65).
+- **Kész receptek a receptmenüben:** egy link beküldésekor a menüben a már
+  kész recept gombja `✓ summary` feliratú. Koppintásra a bot a kész jegyzet
+  linkjét küldi az **Újragenerálás** gombbal, új futás nem indul
+  (pcsontos/issue-tracker#88).
+
+### 🔧 Javítások
+
+- **Whisperrel átírt videó linkje:** a bot a már whisperrel átírt videó
+  linkjére a helyi átiratból kínálja a receptmenüt, a „Nincs felirat”
+  helyett, és a recept is ebből az átiratból fut
+  (pcsontos/issue-tracker#88).
+
 ## [1.36.0] — 2026-11-19
 
 A megszakított receptfutás nem hagy félkész jegyzetet a vaultban, a gyors
