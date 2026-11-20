@@ -120,6 +120,9 @@ export function serveEffects(input: {
   }
 }
 
+/** A leadott hangok követésére: a futások oldala (pcsontos/issue-tracker#90). */
+export const runsLine = (webUrl: string): string => `Itt lehet a feldolgozást követni: ${webUrl}/runs`
+
 /**
  * A Telegram `/fetch` hangletöltése: munkánként tölti a configot, így a `audio` blokk
  * szerkesztése újraindítás nélkül hat. A futás a `logs.dir` alá naplózódik.
@@ -160,7 +163,14 @@ export function serveFetchAudio(
       if (notice !== null) await emit(notice)
       return rows.length === 1 && rows[0]?.outcome === 'listed'
         ? { title: pickHint(request.inputs[0] ?? rows[0].label, 'telegram') }
-        : { title: audioSummary(rows, { stopped: signal?.aborted ?? false, total }), langPending, languages: [...cfg.languages] }
+        : {
+            title: [
+              audioSummary(rows, { stopped: signal?.aborted ?? false, total }),
+              ...(cfg.webUrl !== null && rows.some((row) => row.whisper === 'submitted') ? [runsLine(cfg.webUrl)] : []),
+            ].join('\n'),
+            langPending,
+            languages: [...cfg.languages],
+          }
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()
@@ -231,6 +241,7 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         sink: log.sink,
         stopped: () => signal?.aborted ?? false,
       })
+      if (cfg.webUrl !== null && result.submitted > 0) tail.push(runsLine(cfg.webUrl))
       return { title: tail.join('\n'), langPending: result.langPending, languages: [...cfg.languages] }
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })

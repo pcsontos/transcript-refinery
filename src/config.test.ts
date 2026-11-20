@@ -149,6 +149,21 @@ describe('loadConfig', () => {
   })
 })
 
+// pcsontos/issue-tracker#90: a futások oldalának alapcíme a Telegram-válasz követési linkjéhez.
+describe('web', () => {
+  it('web.url: a záró perjel levágva', () => {
+    expect(loadConfig({ ...MIN, web: { url: 'https://web.example/' } }, '/p/c.yaml').webUrl).toBe('https://web.example')
+  })
+
+  it('web hiányzik: webUrl null', () => {
+    expect(loadConfig(MIN, '/p/c.yaml').webUrl).toBeNull()
+  })
+
+  it('érvénytelen web.url: hiba', () => {
+    expect(() => loadConfig({ ...MIN, web: { url: 'nem-cim' } }, '/p/c.yaml')).toThrow()
+  })
+})
+
 describe('showroom', () => {
   it('showroom: blokk nélkül a showroom null', () => {
     expect(loadConfig(MIN, '/p/c.yaml').showroom).toBeNull()

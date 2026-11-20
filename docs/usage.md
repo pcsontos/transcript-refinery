@@ -493,6 +493,7 @@ a `yt-dlp`-vel, a `.info.json` metaadattal együtt. **A hang eredeti formátumba
 - **Tároló:** `--out` esetén helyi mappa, config nélkül is. Különben a config `audio` blokkja.
 - **Futásnapló:** ha config töltődik be (nem csak `--out`), a futás a `logs.dir` alá naplózódik,
   és a webes felület `/runs` oldala élőben mutatja.
+- **Telegram:** a `web.url` (elhagyható `web:` blokk a configban) megadásakor a leadás utáni válasz a `<web.url>/runs` linket is adja.
 
 ### Podcast-feed (két lépésben)
 

@@ -328,6 +328,48 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     expect(await readdir(join(whisper, 'inbox'))).toContain(`${ID}.m4a`)
   })
 
+  // pcsontos/issue-tracker#90: leadás után a válasz végén egyszer a futások oldalának linkje.
+  describe('követési link', () => {
+    const LINK = 'Itt lehet a feldolgozást követni: https://web.example/runs'
+    const linkLines = (title: string) => title.split('\n').filter((line) => line.includes('/runs'))
+
+    async function withWeb() {
+      const c = await config(true)
+      await mkdir(join(c.dir, 'audio', 'Csat'), { recursive: true })
+      await writeFile(join(c.dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
+      await appendFile(c.path, 'web:\n  url: https://web.example/\n')
+      return c
+    }
+
+    it('serveTranscribe leadás után a válasz végén egyszer a /runs link', async () => {
+      const { path } = await withWeb()
+      const reply = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, collect().emit)
+      expect(linkLines(reply.title)).toEqual([LINK])
+      expect(reply.title.endsWith(LINK)).toBe(true)
+    })
+
+    it('serveFetchAudio leadás után a válasz végén egyszer a /runs link', async () => {
+      const { path } = await withWeb()
+      const reply = await serveFetchAudio(path, { runner: noSubRunner })({ inputs: [`https://www.youtube.com/watch?v=${ID}`], lang: 'en' }, undefined, collect().emit)
+      expect(linkLines(reply.title)).toEqual([LINK])
+    })
+
+    it('leadás nélkül (csak nyelvre vár) nincs link', async () => {
+      const { path } = await withWeb()
+      const reply = await serveTranscribe(path)({ ids: [ID] }, undefined, collect().emit)
+      expect(reply.langPending).toEqual([ID])
+      expect(linkLines(reply.title)).toEqual([])
+    })
+
+    it('web.url nélkül nincs link', async () => {
+      const { dir, path } = await config(true)
+      await mkdir(join(dir, 'audio', 'Csat'), { recursive: true })
+      await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
+      const reply = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, collect().emit)
+      expect(linkLines(reply.title)).toEqual([])
+    })
+  })
+
   it('/fetch_audio whisper.after mellett a leadó jobId-je a jelölő; after nélkül nincs jelölő', async () => {
     const readInfo = async (whisper: string) =>
       JSON.parse(await readFile(join(whisper, 'inbox', `${ID}.info.json`), 'utf8')) as Record<string, unknown>
