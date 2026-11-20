@@ -42,6 +42,9 @@ export {
   PICK_USAGE,
   TRANSCRIBE_HINT,
   TRANSCRIBE_HINT_REPLY,
+  langAskKeyboard,
+  langAskLine,
+  langChosenLine,
   TRANSCRIBE_LIST_HEADER,
   TRANSCRIBE_PICK_USAGE,
   TRANSCRIBE_USAGE,
@@ -92,6 +95,16 @@ export function decideRun(run: RunRow | null, regenerate = false): TapAction {
   return { type: 'ignore' }
 }
 
+const LANG_TAG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
+
+/** A CLI `parseLang`-jának másolata (a Worker nem importálhat a `src/`-ből); közös tesztesetekkel. */
+export function workerLang(raw: string): string | null {
+  const [head, ...rest] = raw.trim().split('-')
+  if (head === undefined || head === '' || head.toLowerCase() === 'all') return null
+  const tag = rest.length === 0 ? head.toLowerCase() : `${head.toLowerCase()}-${rest.join('-')}`
+  return LANG_TAG.test(tag) ? tag : null
+}
+
 export type Tap =
   | { type: 'recipe'; recipe: string; jobId: string }
   | { type: 'translate'; jobId: string }
@@ -106,6 +119,7 @@ export type Tap =
   | { type: 'list'; action: 'a' | 'v' | 'x'; jobId: string }
   | { type: 'regenerateAsk' | 'regenerate'; mask: number; lang: string | null; jobId: string }
   | { type: 'regenerateDrop' }
+  | { type: 'langAsk'; lang: string; jobId: string }
 
 const MASK = /^[0-9a-f]{1,2}$/
 
@@ -154,6 +168,12 @@ export function parseTap(data: string): Tap | null {
     if (mask === null || mask === 0 || lang === undefined || jobId === '') return null
     if (lang !== '-' && !(LANGS as readonly string[]).includes(lang)) return null
     return { type: head === 'g' ? 'regenerateAsk' : 'regenerate', mask, lang: lang === '-' ? null : lang, jobId }
+  }
+  if (head === 'w') {
+    const [raw, ...job] = rest
+    const lang = raw === undefined ? null : workerLang(raw)
+    const jobId = job.join(':')
+    return lang === null || jobId === '' ? null : { type: 'langAsk', lang, jobId }
   }
   if (head === 'q') return rest.length === 0 ? { type: 'regenerateDrop' } : null
   if (head === 'L') {

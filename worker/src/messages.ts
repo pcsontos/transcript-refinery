@@ -190,6 +190,16 @@ export function langKeyboard(mask: number, jobId: string): Key[][] {
   )
 }
 
+/** A nyelv nélküli hangok kérdése és gombjai (pcsontos/issue-tracker#82); az adat `w:<nyelv>:<jobId>`. */
+export const langAskLine = (n: number): string => `${n} hang nyelvre vár. Milyen nyelvű?`
+export const langChosenLine = (lang: string): string => `Nyelv: ${lang}`
+export function langAskKeyboard(jobId: string, langs: readonly string[]): Key[][] {
+  return inRows(
+    langs.map((lang) => ({ text: lang, data: `w:${lang}:${jobId}` })),
+    4,
+  )
+}
+
 export const PICK_LINE = 'Melyik jegyzetet fordítsam?'
 export const LANG_LINE = 'Melyik nyelvre?'
 export const NOTHING_TO_TRANSLATE = 'Előbb készíts egy jegyzetet.'

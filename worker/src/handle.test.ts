@@ -1925,6 +1925,65 @@ describe('/fetch_audio', () => {
     expect((await store.listByUpdate(7))[0]?.status).toBe('cancelled')
   })
 
+  // pcsontos/issue-tracker#82: a nyelv nélküli hangokra egy kérdés jön, nyelvgombokkal.
+  describe('nyelvre váró hangok', () => {
+    const ASK = 'T\n2 hang nyelvre vár. Milyen nyelvű?'
+    async function ready(over: { langPending?: string[]; languages?: string[]; cancelled?: boolean } = {}) {
+      const store = await boundStore()
+      const d = deps(store)
+      await handleUpdate(command(7, '/fetch_audio https://a'), d)
+      if (over.cancelled === true) await store.claimJob('7:fetch-7', 'queued', 'cancelled')
+      d.sent.length = 0
+      await handleCallback(
+        '7:fetch-7',
+        { status: 'ready', title: 'T', langPending: over.langPending ?? ['a', 'b'], languages: over.languages ?? ['hu', 'en'] },
+        d,
+      )
+      return { store, d }
+    }
+
+    it('a kész-üzenet alatt nyelvgombok, egy kérdés', async () => {
+      const { d } = await ready()
+      expect(d.sent).toEqual([ASK])
+      expect(d.keyboards.at(-1)).toEqual([[{ text: 'hu', data: 'w:hu:7:fetch-7' }, { text: 'en', data: 'w:en:7:fetch-7' }]])
+    })
+
+    it('a nyelvgomb transcribe-munkát indít --lang-gal, és kopogtat', async () => {
+      const { store, d } = await ready()
+      const knocks = await handleTap(tap(8, 'w:en:7:fetch-7', 42, 50), d)
+      expect(knocks).toEqual([{ jobId: '8:fetch-8', videoId: 'fetch-8', url: 'transcribe a b --lang en', fetch: true }])
+      expect(d.sent.at(-1)).toBe('Sorba került: átírás (2 tétel)')
+      expect(d.edits).toEqual([{ chatId: '42', messageId: 50, text: `${ASK}\nNyelv: en`, keyboard: [] }])
+      expect((await store.listByUpdate(8))[0]).toMatchObject({ url: 'transcribe a b --lang en', title: 'átírás (2 tétel)', status: 'queued' })
+    })
+
+    it('a második koppintás nem indít munkát', async () => {
+      const { d } = await ready()
+      expect(await handleTap(tap(8, 'w:en:7:fetch-7', 42, 50), d)).toHaveLength(1)
+      expect(await handleTap(tap(9, 'w:hu:7:fetch-7', 42, 50), d)).toEqual([])
+    })
+
+    it('megszakított hangmunkánál nincs gomb és nincs tárolás', async () => {
+      const { store, d } = await ready({ cancelled: true })
+      expect(d.sent).toEqual(['T'])
+      expect(d.keyboards).toEqual([])
+      expect(await store.takeResolve('7:fetch-7')).toBeNull()
+    })
+
+    it('üres vagy érvénytelen languages: nincs gomb, a mai üzenet', async () => {
+      for (const languages of [[], ['!!']]) {
+        const { d } = await ready({ languages })
+        expect(d.sent).toEqual(['T'])
+        expect(d.keyboards).toEqual([])
+      }
+    })
+
+    it('a nem LANGS-beli, de érvényes kód is gombot kap', async () => {
+      const { d } = await ready({ languages: ['pt'] })
+      expect(d.keyboards.at(-1)).toEqual([[{ text: 'pt', data: 'w:pt:7:fetch-7' }]])
+    })
+  })
+
   it('cron: a fetch-sor kopogtatása fetch: true', async () => {
     const store = await boundStore()
     await store.insert(acceptedRow({ jobId: '7:fetch-7', updateId: 7, videoId: 'fetch-7', url: 'https://a https://b', status: 'queued', title: 'hangletöltés (2 link)' }))
