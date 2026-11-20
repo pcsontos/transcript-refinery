@@ -11,6 +11,7 @@ import { findEntry, listArchive, statusContext, transcriptStatus, type AudioEntr
 import { channelSlug, watcherWarning, whisperDirs, type WhisperDirs } from './paths.js'
 
 const LANG_ERROR = 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.'
+const NO_LANG_ERROR = 'nincs nyelv: adj meg --lang kapcsolót'
 
 /** `--lang` > az archív `info.json` `language` mezője > a config első nyelve. */
 export function resolveLang(input: { flag?: string; info: Record<string, unknown>; languages: readonly string[] }): string | null {
@@ -34,7 +35,12 @@ export function inboxInfo(entry: AudioEntry, lang: string, after?: string): Reco
   }
 }
 
-export type SubmitResult = { ok: true } | { ok: false; skip: 'kész' | 'vár' | 'átírás alatt' } | { ok: false; error: string }
+/** `needsLang`: nincs nyelv, a hívó dönt (kérdez vagy hibát ad); az inboxhoz nem nyúltunk (pcsontos/issue-tracker#82). */
+export type SubmitResult =
+  | { ok: true }
+  | { ok: false; skip: 'kész' | 'vár' | 'átírás alatt' }
+  | { ok: false; needsLang: true }
+  | { ok: false; error: string }
 
 const SKIP: Partial<Record<TranscriptStatus, 'kész' | 'vár' | 'átírás alatt'>> = {
   done: 'kész',
@@ -49,7 +55,7 @@ export async function submitEntry(
 ): Promise<SubmitResult> {
   const skip = SKIP[deps.status]
   if (skip !== undefined) return { ok: false, skip }
-  if (deps.lang === null) return { ok: false, error: 'nincs nyelv: adj meg --lang kapcsolót' }
+  if (deps.lang === null) return { ok: false, needsLang: true }
   const info = join(deps.dirs.inbox, `${entry.id}.info.json`)
   const audio = join(deps.dirs.inbox, `${entry.id}.${entry.ext}`)
   // Leadónként külön átmeneti név: két egyidejű leadó nem ír közös fájlba, és nem takarítja egymás félkészét.
@@ -151,12 +157,17 @@ export interface TranscribeDeps {
   done?: ReadonlyMap<string, readonly string[]>
   /** A `whisper.after` készlete; `null`/hiányzó = nincs utólépés-kérés. */
   afterRecipes?: { recipes: readonly string[]; notify: boolean } | null
+  /**
+   * Telegramról: a nyelv nélküli hangnál nincs config-tartalék, a hang „nyelvre vár” (`langPending`), a Worker nyelvgombot küld.
+   * Hiányában (CLI) a config első nyelve a tartalék, és nyelv hiányában a mai hibasor jön.
+   */
+  askLang?: boolean
 }
 
 export async function runTranscribe(
   args: { ids: readonly string[]; lang?: string },
   deps: TranscribeDeps,
-): Promise<{ submitted: number; requested: number; failed: number }> {
+): Promise<{ submitted: number; requested: number; failed: number; langPending: string[] }> {
   const sink = deps.sink ?? (() => undefined)
   const { entries, warning } = await listArchive(deps.store)
   if (warning !== undefined) await deps.emit(warning)
@@ -167,6 +178,7 @@ export async function runTranscribe(
   let requested = 0
   let skipped = 0
   let failed = 0
+  const langPending: string[] = []
   sink({ type: 'scan:found', count: args.ids.length })
 
   for (const id of args.ids) {
@@ -204,9 +216,20 @@ export async function runTranscribe(
       }
       continue
     }
-    const lang = resolveLang({ flag: args.lang, info: entry.info, languages: deps.languages })
+    const lang = resolveLang({ flag: args.lang, info: entry.info, languages: deps.askLang === true ? [] : deps.languages })
     const result = await submitEntry(entry, { store: deps.store, dirs: deps.dirs, status, lang, after: deps.after })
-    if ('error' in result) {
+    if ('needsLang' in result) {
+      if (deps.askLang === true) {
+        langPending.push(id)
+        skipped += 1
+        sink({ type: 'item:skipped', itemId: id, reason: 'nyelvre vár' })
+        await deps.emit(`nyelvre vár: ${label}`)
+      } else {
+        failed += 1
+        sink({ type: 'item:failed', itemId: id, source: 'whisper', kind: 'whisper', error: NO_LANG_ERROR })
+        await deps.emit(`hiba: ${label}: ${NO_LANG_ERROR}`)
+      }
+    } else if ('error' in result) {
       failed += 1
       sink({ type: 'item:failed', itemId: id, source: 'whisper', kind: 'whisper', error: result.error })
       await deps.emit(`hiba: ${label}: ${result.error}`)
@@ -228,7 +251,7 @@ export async function runTranscribe(
   const warn = await watcherWarning(deps.dirs)
   if (warn !== null) await deps.emit(warn)
   sink({ type: 'run:done', succeeded: submitted, skipped, failed })
-  return { submitted, requested, failed }
+  return { submitted, requested, failed, langPending }
 }
 
 /**
@@ -240,11 +263,15 @@ export async function createHandoff(input: {
   store: AudioStore
   lang?: string
   after?: string
-}): Promise<{ handoff: (id: string) => Promise<string>; warning: () => Promise<string | null> }> {
+  /** Lásd `TranscribeDeps.askLang`: igaz értéknél a nyelv nélküli hang `needs-lang`, az id a `langPending`-be kerül. */
+  askLang?: boolean
+}): Promise<{ handoff: (id: string) => Promise<string>; warning: () => Promise<string | null>; langPending: string[] }> {
   const { cfg, store } = input
   const dirs = cfg === null ? null : await whisperDirs(cfg)
   const handedOver = new Set<string>()
+  const langPending: string[] = []
   return {
+    langPending,
     async handoff(id) {
       if (cfg === null) return 'nincs config'
       if (dirs === null) return 'nincs whisper-mappa'
@@ -252,8 +279,13 @@ export async function createHandoff(input: {
       if (entry === null) return 'nincs ilyen hang'
       const ctx = await statusContext(cfg.sources[0]!.path, dirs)
       const status = handedOver.has(id) ? 'pending' : transcriptStatus(entry, ctx)
-      const lang = resolveLang({ flag: input.lang, info: entry.info, languages: cfg.languages })
+      const lang = resolveLang({ flag: input.lang, info: entry.info, languages: input.askLang === true ? [] : cfg.languages })
       const result = await submitEntry(entry, { store, dirs, status, lang, after: input.after })
+      if ('needsLang' in result) {
+        if (input.askLang !== true) return NO_LANG_ERROR
+        langPending.push(id)
+        return 'needs-lang'
+      }
       if ('error' in result) return result.error
       if ('skip' in result) return 'skipped'
       handedOver.add(id)

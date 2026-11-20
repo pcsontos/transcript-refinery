@@ -30,7 +30,7 @@ export interface AudioRow {
   outcome: AudioOutcome
   label: string
   reason?: string
-  /** Csak `downloaded` / `skipped` soron: `submitted` = átírásra leadva, egyéb szöveg = miért nem elérhető. */
+  /** Csak `downloaded` / `skipped` soron: `submitted` = átírásra leadva, `needs-lang` = nyelvre vár, egyéb szöveg = miért nem elérhető. */
   whisper?: string
 }
 
@@ -39,6 +39,7 @@ export type Handoff = (id: string) => Promise<string>
 
 function whisperNote(row: AudioRow): string {
   if (row.whisper === undefined) return ''
+  if (row.whisper === 'needs-lang') return ', nyelvre vár'
   return row.whisper === 'submitted' ? ', átírásra leadva' : `, átírás nem elérhető (${row.whisper})`
 }
 
@@ -65,10 +66,11 @@ export function audioSummary(rows: readonly AudioRow[], run?: { stopped: boolean
   const count = (outcome: AudioOutcome) => rows.filter((row) => row.outcome === outcome).length
   const uploaded = count('uploaded')
   const handed = rows.filter((row) => row.whisper === 'submitted').length
+  const langPending = rows.filter((row) => row.whisper === 'needs-lang').length
   const left = run?.stopped ? Math.max(0, run.total - rows.length) : 0
   const counts = `letöltve ${count('downloaded')} db fájl, ${count('skipped')} kihagyva, ${count('failed')} hibás`
   const base = left > 0 ? `Megszakítva: ${counts} (${left} elem nem indult el).` : `Kész: ${counts}.`
-  return [base, uploaded > 0 ? `Korábbi letöltésből feltöltve: ${uploaded}.` : '', handed > 0 ? `${handed} átírásra leadva.` : '']
+  return [base, uploaded > 0 ? `Korábbi letöltésből feltöltve: ${uploaded}.` : '', handed > 0 ? `${handed} átírásra leadva.` : '', langPending > 0 ? `${langPending} nyelvre vár.` : '']
     .filter((part) => part !== '')
     .join(' ')
 }

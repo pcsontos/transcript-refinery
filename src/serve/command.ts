@@ -136,7 +136,7 @@ export function serveFetchAudio(
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
     const log = openAudioRunLog(cfg.logsDir, `/fetch_audio ${[...lang, ...request.inputs, ...pick].join(' ')}`)
     const after = request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId)
-    const { handoff, warning } = await createHandoff({ cfg, store, lang: request.lang, after })
+    const { handoff, warning, langPending } = await createHandoff({ cfg, store, lang: request.lang, after, askLang: true })
     let total = 0
     try {
       const rows = await runAudioFetch(request.inputs, {
@@ -159,8 +159,8 @@ export function serveFetchAudio(
       const notice = await warning()
       if (notice !== null) await emit(notice)
       return rows.length === 1 && rows[0]?.outcome === 'listed'
-        ? pickHint(request.inputs[0] ?? rows[0].label, 'telegram')
-        : audioSummary(rows, { stopped: signal?.aborted ?? false, total })
+        ? { title: pickHint(request.inputs[0] ?? rows[0].label, 'telegram') }
+        : { title: audioSummary(rows, { stopped: signal?.aborted ?? false, total }), langPending, languages: [...cfg.languages] }
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()
@@ -201,11 +201,11 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         } else return false
         return true
       })
-      if (pending.length === 0) return 'Nincs átírásra váró hang.'
+      if (pending.length === 0) return { title: 'Nincs átírásra váró hang.' }
       for (const message of transcribeMessages(pending, 4000, notes)) await emit(message)
       const warning = await watcherWarning(dirs)
       if (warning !== null) await emit(warning)
-      return TRANSCRIBE_HINT
+      return { title: TRANSCRIBE_HINT }
     }
 
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
@@ -214,7 +214,8 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
     const tail: string[] = []
     let inTail = false
     try {
-      await runTranscribe(request, {
+      const result = await runTranscribe(request, {
+        askLang: true,
         store,
         dirs,
         sourcesRoot,
@@ -230,7 +231,7 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         sink: log.sink,
         stopped: () => signal?.aborted ?? false,
       })
-      return tail.join('\n')
+      return { title: tail.join('\n'), langPending: result.langPending, languages: [...cfg.languages] }
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()

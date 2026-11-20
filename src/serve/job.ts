@@ -43,8 +43,17 @@ export type CallbackBody =
    * `deployError` csak átírás utáni futásnál (pcsontos/issue-tracker#45): hiányzik = a deploy kint van (showroom-link),
    * `null` = nem volt deploy (Worker-link), szöveg = a deploy hibája (Worker-link + hibasor).
    * `done`: csak a felirat-job `ready`-jében (pcsontos/issue-tracker#88): a tétel már kész receptjei, `noteUrl` a leirat-jegyzete.
+   * `langPending` + `languages`: csak hangmunka `ready`-jében (pcsontos/issue-tracker#82): a nyelv nélküli hangok azonosítói és a config nyelvei, a Worker nyelvgombot küld.
    */
-  | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null; done?: string[] }
+  | {
+      status: 'ready'
+      title: string
+      noteUrl?: string
+      deployError?: string | null
+      done?: string[]
+      langPending?: string[]
+      languages?: string[]
+    }
   /** `done`: a futás elkészült jegyzetei, ha a futás recept-leállás miatt bukott; a záró üzenet csak ezeket linkeli. */
   | { status: 'failed'; error: string; done?: string[]; missing?: true }
   /** Életjel: a futás még dolgozik; a Worker változatlan állapot mellett továbbítja. */
@@ -70,19 +79,22 @@ export interface RefineOptions {
   origin?: NoteOrigin
 }
 
+/** A hangmunka válasza: az összesítő, és a nyelvre váró hangok (pcsontos/issue-tracker#82). */
+export type AudioReply = { title: string; langPending?: string[]; languages?: string[] }
+
 export interface JobEffects {
   /** A hangletöltés; az összesítőt adja vissza (feed-listázásnál a választási felszólítást). */
   fetchAudio?: (
     request: { inputs: readonly string[]; pick?: Pick; lang?: string; jobId?: string },
     signal: AbortSignal | undefined,
     emit: (line: string) => Promise<void>,
-  ) => Promise<string>
+  ) => Promise<AudioReply>
   /** Az átírás: üres `ids` = a váró hangok listája (`emit`-tel), különben leadás. Az összesítőt adja vissza. */
   transcribe?: (
     request: { ids: readonly string[]; lang?: string; jobId?: string },
     signal: AbortSignal | undefined,
     emit: (line: string) => Promise<void>,
-  ) => Promise<string>
+  ) => Promise<AudioReply>
   store: ObjectStore
   languages: readonly string[]
   readPair: (videoId: string) => Promise<LocalPair>
@@ -423,6 +435,12 @@ export function cliRerunHint(path: string, recipes: readonly string[]): string {
   return recipes.map((recipe) => `Újrafuttatás: refinery run --file "${path}" --recipe ${recipe} --force`).join('\n')
 }
 
+/** A hangmunka `ready`-je; megszakított munkánál nincs nyelvkérdés (a hangok nincsenek leadva, de a felhasználó leállította). */
+function audioReady(reply: AudioReply, signal: AbortSignal | undefined): CallbackBody {
+  const { title, langPending = [], languages = [] } = reply
+  return { status: 'ready', title, ...(langPending.length > 0 && signal?.aborted !== true ? { langPending, languages } : {}) }
+}
+
 /** A hangletöltés: a sorok progressként, az összesítő readyként megy a Workernek. */
 async function runTranscribeJob(job: ServeJob, words: readonly string[], effects: JobEffects, signal?: AbortSignal): Promise<void> {
   // Üres maradék = lista-mód, nem hiba.
@@ -437,12 +455,12 @@ async function runTranscribeJob(job: ServeJob, words: readonly string[], effects
   }
   const { ids, lang } = parsed.args as { ids: string[]; lang?: string }
   try {
-    const title = await effects.transcribe(
+    const reply = await effects.transcribe(
       { ids, ...(lang === undefined ? {} : { lang }), jobId: job.jobId },
       signal,
       (text) => report(effects, job.jobId, { status: 'progress', text }),
     )
-    await report(effects, job.jobId, { status: 'ready', title })
+    await report(effects, job.jobId, audioReady(reply, signal))
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await report(effects, job.jobId, { status: 'failed', error: message === '' ? 'Az átírás nem sikerült.' : message })
@@ -463,12 +481,12 @@ async function runFetchJob(job: ServeJob, effects: JobEffects, signal?: AbortSig
   }
   const { inputs, pick, lang } = parsed.args
   try {
-    const title = await effects.fetchAudio(
+    const reply = await effects.fetchAudio(
       { inputs, ...(pick === undefined ? {} : { pick }), ...(lang === undefined ? {} : { lang }), jobId: job.jobId },
       signal,
       (text) => report(effects, job.jobId, { status: 'progress', text }),
     )
-    await report(effects, job.jobId, { status: 'ready', title })
+    await report(effects, job.jobId, audioReady(reply, signal))
   } catch (error) {
     const message = error instanceof Error ? firstLine(error.message) : ''
     await report(effects, job.jobId, { status: 'failed', error: message === '' ? 'A hangletöltés nem sikerült.' : message })
