@@ -3,6 +3,37 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.38.0] — 2026-11-21
+
+A Telegramról leadott hang már nem a config nyelvén indul: a bot megkérdezi a
+nyelvet. A `/transcribe` használati sora pontosabb, a kész üzenet a futások
+oldalára mutató linket kap, és a szójegyzék megszakításkor nem vész el.
+
+### ✨ Újdonságok
+
+- **Nyelvgombok a hangokhoz:** ha a leadott hangnak nincs megadott nyelve,
+  a bot nem a config első nyelvét választja, hanem a kész üzenet alatt
+  nyelvgombokat kínál. A gomb a váró hangokból egy `transcribe --lang`
+  munkát indít; a második koppintás nem indít újat, megszakított munkánál
+  nincs gomb. A CLI viselkedése nem változik
+  (pcsontos/issue-tracker#82).
+- **Követési link:** az új, elhagyható `web.url` beállítással a leadás utáni
+  Telegram-válasz végén egyszer megjelenik a `<web.url>/runs` link a futások
+  oldalára. Leadás nélkül (csak nyelvre vár) és `web.url` nélkül nincs link
+  (pcsontos/issue-tracker#90).
+
+### 🔧 Javítások
+
+- **Pontosabb használati sor:** a `/transcribe` használati sora kimondja,
+  melyik üzenetre kell válaszolni, a használati sorra adott válasz pontos
+  hibát ad, és nem indul munka. A gondolatjeles `—lang` és `–lang` alak
+  `--lang`-ként értelmeződik a listaválaszban és a `/fetch_audio`-ban
+  (pcsontos/issue-tracker#81).
+- **Szójegyzék a commitban:** a fordítás szójegyzéke is bekerül a futás
+  commitjába. Megszakításkor csak a futásban létrejött szójegyzék törlődik; a
+  korábban commitolt visszaáll, a követetlen fájlhoz a futás nem nyúl
+  (pcsontos/issue-tracker#109).
+
 ## [1.37.0] — 2026-11-20
 
 Az audio-listák mutatják, melyik recept kész egy tételhez. A korábban recept
