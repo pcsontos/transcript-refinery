@@ -1042,6 +1042,22 @@ describe('runRecipes — szójegyzék (pcsontos/issue-tracker#109)', () => {
     expect(existsSync(join(vault, GLOSSARY_DE))).toBe(true)
   })
 
+  it('megszakítás: a követett, de állapotsor nélküli szójegyzék nem törlődik, a HEAD-re áll vissza', async () => {
+    const { root, vault, outDir, load, git } = await firstRun()
+    const done = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
+    expect(done.ok).toBe(true)
+    const committed = readFileSync(join(vault, GLOSSARY_DE), 'utf8')
+    // A sor eltűnik, a fájl a gitben marad: a visszagörgetés nem a sorból tudja, hogy a fájl a futás előtt is megvolt.
+    const store = openState(join(root, 'state', 'refinery.db'))
+    store.restoreArtifact(ID, 'glossary-de', null)
+    store.close()
+    const controller = new AbortController()
+    const result = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', forceRecipe: true, createClient: () => cancelling(controller), load, git, signal: controller.signal })
+    expect(result).toEqual({ ok: false, error: CANCELLED_RUN })
+    expect(readFileSync(join(vault, GLOSSARY_DE), 'utf8')).toBe(committed)
+    expect(status(vault)).toBe('')
+  })
+
   it('megszakítás: a commitolt szójegyzék visszaáll a HEAD-re', async () => {
     const { vault, outDir, load, git } = await firstRun()
     const done = await runRecipes({ videoId: ID, outDir, recipes: ['summary'], lang: 'de', createClient: () => writer({ generate: 0 }, HUNGARIAN), load, git })
