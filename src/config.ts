@@ -152,6 +152,7 @@ const CoreSchema = z.object({
   showroom: ShowroomSchema.optional(),
   audio: AudioSchema.optional(),
   whisper: WhisperSchema.optional(),
+  web: z.object({ url: z.string().url('A web.url érvényes cím legyen.') }).optional(),
 })
 
 /** Egy feliratforrás: a YAML-beli útvonal és a belőle képzett név. */
@@ -225,6 +226,8 @@ export interface Config {
   whisperDir: string
   /** Az átírás utólépése (`whisper.after`); `null`, ha nincs blokk, vagy üres a receptlista. */
   whisperAfter: { recipes: string[]; notify: boolean } | null
+  /** A futások oldalának alapcíme (`web.url`, záró `/` nélkül); `null`, ha nincs: ilyenkor nincs követési link (pcsontos/issue-tracker#90). */
+  webUrl: string | null
 }
 
 function normalizePrefix(raw: string): string {
@@ -323,6 +326,7 @@ export function loadConfig(raw: unknown, configPath: string, baseDir = process.c
       c.whisper?.after !== undefined && c.whisper.after.recipes.length > 0
         ? { recipes: c.whisper.after.recipes, notify: c.whisper.after.notify }
         : null,
+    webUrl: c.web === undefined ? null : c.web.url.replace(/\/+$/, ''),
   }
 }
 

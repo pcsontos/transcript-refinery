@@ -120,6 +120,11 @@ export function serveEffects(input: {
   }
 }
 
+/** A leadott hangok követésére: a futások oldala (pcsontos/issue-tracker#90). */
+/** A Worker a nyelvkérdést e sor elé teszi, ezért a Workerben másolata van (`worker/src/messages.ts`). */
+export const RUNS_PREFIX = 'Itt lehet a feldolgozást követni: '
+export const runsLine = (webUrl: string): string => `${RUNS_PREFIX}${webUrl}/runs`
+
 /**
  * A Telegram `/fetch` hangletöltése: munkánként tölti a configot, így a `audio` blokk
  * szerkesztése újraindítás nélkül hat. A futás a `logs.dir` alá naplózódik.
@@ -136,7 +141,7 @@ export function serveFetchAudio(
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
     const log = openAudioRunLog(cfg.logsDir, `/fetch_audio ${[...lang, ...request.inputs, ...pick].join(' ')}`)
     const after = request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId)
-    const { handoff, warning } = await createHandoff({ cfg, store, lang: request.lang, after })
+    const { handoff, warning, langPending } = await createHandoff({ cfg, store, lang: request.lang, after, askLang: true })
     let total = 0
     try {
       const rows = await runAudioFetch(request.inputs, {
@@ -159,8 +164,14 @@ export function serveFetchAudio(
       const notice = await warning()
       if (notice !== null) await emit(notice)
       return rows.length === 1 && rows[0]?.outcome === 'listed'
-        ? pickHint(request.inputs[0] ?? rows[0].label, 'telegram')
-        : audioSummary(rows, { stopped: signal?.aborted ?? false, total })
+        ? { title: pickHint(request.inputs[0] ?? rows[0].label, 'telegram') }
+        : {
+            title: [
+              audioSummary(rows, { stopped: signal?.aborted ?? false, total }),
+              ...(cfg.webUrl !== null && rows.some((row) => row.whisper === 'submitted') ? [runsLine(cfg.webUrl)] : []),
+            ].join('\n'),
+            langAsk: { ids: langPending, languages: [...cfg.languages] },
+          }
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()
@@ -170,7 +181,7 @@ export function serveFetchAudio(
 
 /** A leadható (archivált vagy hibás) hangok listája üzenetekben; a vég a használati sor. */
 export const TRANSCRIBE_HINT =
-  'Válaszolj a lista egyik üzenetére a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.'
+  'Erre ne válaszolj: a lista üzenetére (amelyik így kezdődik: „Átírásra váró hangok:”) válaszolj a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.'
 
 /**
  * A Telegram `/transcribe`: munkánként tölti a configot. Üres `ids`: a leadható hangok listája; különben leadás
@@ -201,11 +212,11 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         } else return false
         return true
       })
-      if (pending.length === 0) return 'Nincs átírásra váró hang.'
+      if (pending.length === 0) return { title: 'Nincs átírásra váró hang.' }
       for (const message of transcribeMessages(pending, 4000, notes)) await emit(message)
       const warning = await watcherWarning(dirs)
       if (warning !== null) await emit(warning)
-      return TRANSCRIBE_HINT
+      return { title: TRANSCRIBE_HINT }
     }
 
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
@@ -214,7 +225,8 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
     const tail: string[] = []
     let inTail = false
     try {
-      await runTranscribe(request, {
+      const result = await runTranscribe(request, {
+        askLang: true,
         store,
         dirs,
         sourcesRoot,
@@ -230,7 +242,8 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         sink: log.sink,
         stopped: () => signal?.aborted ?? false,
       })
-      return tail.join('\n')
+      if (cfg.webUrl !== null && result.submitted > 0) tail.push(runsLine(cfg.webUrl))
+      return { title: tail.join('\n'), langAsk: { ids: result.langPending, languages: [...cfg.languages] } }
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()

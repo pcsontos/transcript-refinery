@@ -190,6 +190,19 @@ export function langKeyboard(mask: number, jobId: string): Key[][] {
   )
 }
 
+/** A serve követési sorának eleje (a `src/serve/command.ts` `RUNS_PREFIX`-e, szó szerint); a nyelvkérdés elé kerül (pcsontos/issue-tracker#90). */
+export const RUNS_PREFIX = 'Itt lehet a feldolgozást követni: '
+
+/** A nyelv nélküli hangok kérdése és gombjai (pcsontos/issue-tracker#82); az adat `w:<nyelv>:<jobId>`. */
+export const langAskLine = (n: number): string => `${n} hang nyelvre vár. Milyen nyelvű?`
+export const langChosenLine = (lang: string): string => `Nyelv: ${lang}`
+export function langAskKeyboard(jobId: string, langs: readonly string[]): Key[][] {
+  return inRows(
+    langs.map((lang) => ({ text: lang, data: `w:${lang}:${jobId}` })),
+    4,
+  )
+}
+
 export const PICK_LINE = 'Melyik jegyzetet fordítsam?'
 export const LANG_LINE = 'Melyik nyelvre?'
 export const NOTHING_TO_TRANSLATE = 'Előbb készíts egy jegyzetet.'
@@ -249,6 +262,11 @@ export const TRANSCRIBE_USAGE = 'Használat: /transcribe – listát kapsz az á
 export const TRANSCRIBE_PICK_USAGE = 'Válaszként a sorszámokat írd: 0 = az üzenet összes tétele, vagy pl. 1,3; nyelv: 1,3 --lang en.'
 /** A serve `/transcribe` listaüzeneteinek első sora (a `src/whisper/archive.ts` `TRANSCRIBE_HEADER`-je); a Worker ebből ismeri fel a választ. */
 export const TRANSCRIBE_LIST_HEADER = 'Átírásra váró hangok:'
+/** A serve `/transcribe` használati sora (a `src/serve/command.ts` `TRANSCRIBE_HINT`-je, szó szerint); erre a válasz nem adhat le semmit. */
+export const TRANSCRIBE_HINT =
+  'Erre ne válaszolj: a lista üzenetére (amelyik így kezdődik: „Átírásra váró hangok:”) válaszolj a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.'
+export const TRANSCRIBE_HINT_REPLY =
+  'Ez a használati sor, nem a lista. A lista üzenetére válaszolj (amelyik így kezdődik: „Átírásra váró hangok:”).'
 export const PICK_USAGE = 'Válaszként a sorszámokat írd: 0 = mind, vagy pl. 1,3.'
 
 export function fetchTitle(n: number): string {

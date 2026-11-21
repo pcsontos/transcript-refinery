@@ -26,6 +26,13 @@ import {
   FETCH_RENAMED,
   FETCH_USAGE,
   PICK_USAGE,
+  TRANSCRIBE_HINT,
+  TRANSCRIBE_HINT_REPLY,
+  RUNS_PREFIX,
+  langAskKeyboard,
+  langAskLine,
+  langChosenLine,
+  workerLang,
   TRANSCRIBE_LIST_HEADER,
   TRANSCRIBE_PICK_USAGE,
   TRANSCRIBE_USAGE,
@@ -156,15 +163,6 @@ const TRANSCRIBE_PICK = /^\s*(\d+(?:\s*,\s*\d+)*)(?:\s+--lang\s+(\S+))?\s*$/
 /** Egy listasor: a mohó `.*` a sor utolsó `[…]`-ját fogja, így a címben lévő `[ ]` és `—` sem zavar. */
 const TRANSCRIBE_ITEM = /^(\d+)\. .*\[([A-Za-z0-9_-]+)\](?: — [^\]]*)?$/
 
-const LANG_TAG = /^[a-z]{2,3}(-[A-Za-z]{2,4})?$/
-
-/** A CLI `parseLang`-jának másolata (a Worker nem importálhat a `src/`-ből); közös tesztesetekkel. */
-export function workerLang(raw: string): string | null {
-  const [head, ...rest] = raw.trim().split('-')
-  if (head === undefined || head === '' || head.toLowerCase() === 'all') return null
-  const tag = rest.length === 0 ? head.toLowerCase() : `${head.toLowerCase()}-${rest.join('-')}`
-  return LANG_TAG.test(tag) ? tag : null
-}
 export const FETCH_ID = /^fetch-\d+$/
 const NO_SUBTITLE = 'Nincs felirat'
 const UNRESOLVED = 'A link nem oldható fel.'
@@ -533,8 +531,12 @@ export async function handleLink(
   return { status: 302, location: `https://t.me/${deps.botUsername}?start=${back}` }
 }
 
+/** A Telegram a „--lang”-ot gondolatjeles alakra (—lang, –lang) cserélheti: visszaállítjuk (pcsontos/issue-tracker#81). */
+const dashLang = (text: string): string => text.replace(/(^|\s)[—–]-?lang(?=\s|$)/g, '$1--lang')
+
 /** A `/transcribe` listaüzenetére adott válasz: az üzenet saját soraiból oldja fel a sorszámokat. */
-function transcribePick(text: string, listText: string): { url: string; title: string } | string {
+function transcribePick(rawText: string, listText: string): { url: string; title: string } | string {
+  const text = dashLang(rawText)
   const match = TRANSCRIBE_PICK.exec(text)
   if (match === null) return TRANSCRIBE_PICK_USAGE
   let lang: string | null = null
@@ -566,7 +568,7 @@ function transcribePick(text: string, listText: string): { url: string; title: s
 
 /** A `/fetch_audio` szavai: linkek és legfeljebb egy `--lang <kód>`; minden más kapcsoló használati sort ad. */
 function fetchAudioWords(raw: string): { url: string; title: string } | string {
-  const words = raw.split(/\s+/).filter(Boolean)
+  const words = dashLang(raw).split(/\s+/).filter(Boolean)
   const links: string[] = []
   let lang: string | null = null
   for (let i = 0; i < words.length; i += 1) {
@@ -601,6 +603,7 @@ function fetchRequest(message: {
   // A válaszban írt parancs (pl. /fetch_audio) a megszokott úton megy.
   if (reply?.from?.is_bot === true && !text.startsWith('/')) {
     const replyText = reply.text ?? ''
+    if (replyText.trim() === TRANSCRIBE_HINT) return TRANSCRIBE_HINT_REPLY
     if (replyText.split('\n')[0] === TRANSCRIBE_LIST_HEADER) return transcribePick(text, replyText)
     const feed = FEED_LINE.exec(replyText)?.[1]
     if (feed !== undefined) {
@@ -771,7 +774,15 @@ export async function applyKnocks(knocks: readonly PlannedKnock[], deps: WorkerD
 }
 
 export type CallbackBody =
-  | { status: 'ready'; title: string; noteUrl?: string; deployError?: string | null; done?: string[] }
+  | {
+      status: 'ready'
+      title: string
+      noteUrl?: string
+      deployError?: string | null
+      done?: string[]
+      /** Hangmunkánál (pcsontos/issue-tracker#82): a nyelv nélküli hangok azonosítói és a config nyelvei. */
+      langAsk?: { ids: string[]; languages: string[] }
+    }
   | { status: 'failed'; error: string; done?: string[]; missing?: true }
   | { status: 'progress'; text: string }
   | { status: 'stalled'; text: string }
@@ -916,12 +927,40 @@ async function fetchCallback(row: JobRow, body: ServeReport, deps: WorkerDeps): 
     return
   }
   if (row.notifiedReady) return
-  const sent = await deps.send(row.chatId, body.title)
+  const { text, keyboard } = await langAskPrompt(row, body, deps)
+  const sent = await deps.send(row.chatId, text, keyboard)
   if (sent && row.status !== 'cancelled') {
     row.status = 'ready'
     row.notifiedReady = true
   }
   await deps.store.save(row)
+}
+
+/**
+ * A hangmunka kész-üzenete nyelvre váró hangokkal (pcsontos/issue-tracker#82): a kérdés és a nyelvgombok; a hangok a `resolves`
+ * táblában várnak. Megszakított munkánál nincs kérdés és nincs tárolás. Az érvényes kódokra szűrünk (`workerLang`), nem a
+ * `LANGS`-ra. A kérdés a serve követési sora elé kerül, hogy a link a válasz végén maradjon (pcsontos/issue-tracker#90).
+ */
+async function langAskPrompt(
+  row: JobRow,
+  body: Extract<CallbackBody, { status: 'ready' }>,
+  deps: WorkerDeps,
+): Promise<{ text: string; keyboard?: Key[][] }> {
+  const langs = [...new Set((body.langAsk?.languages ?? []).map(workerLang).filter((lang): lang is string => lang !== null))]
+  const ids = body.langAsk?.ids ?? []
+  if (ids.length === 0 || langs.length === 0 || row.status === 'cancelled') return { text: body.title }
+  const lines = body.title.split('\n')
+  const at = lines.at(-1)?.startsWith(RUNS_PREFIX) === true ? lines.length - 1 : lines.length
+  lines.splice(at, 0, langAskLine(ids.length))
+  const text = lines.join('\n')
+  await deps.store.insertResolve({
+    jobId: row.jobId,
+    chatId: row.chatId,
+    title: text,
+    items: ids.map((id) => ({ videoId: id, url: '', title: id })),
+    videoId: null,
+  })
+  return { text, keyboard: langAskKeyboard(row.jobId, langs) }
 }
 
 type ResolvedItem = { videoId: string; url: string; title: string }
@@ -1200,6 +1239,38 @@ async function listTap(action: 'a' | 'v' | 'x', source: JobRow, deps: WorkerDeps
   return first === undefined ? [] : [{ jobId: first.jobId, videoId: first.videoId, url: first.url }]
 }
 
+/** A nyelvgomb: a váró hangok egy `transcribe --lang` munkát kapnak. A `takeResolve` atomi, a második koppintás nem csinál semmit. */
+async function langAskTap(
+  tap: Extract<Tap, { type: 'langAsk' }>,
+  source: JobRow,
+  sub: string,
+  updateId: number,
+  messageId: number | undefined,
+  deps: WorkerDeps,
+): Promise<PlannedKnock[]> {
+  const resolve = await deps.store.takeResolve(source.jobId)
+  if (resolve === null) return []
+  const ids = resolve.items.map((item) => item.videoId)
+  if (ids.length === 0) return []
+  let planned: { knocks: PlannedKnock[] }
+  try {
+    planned = await fetchRow(
+      updateId,
+      source.messageId,
+      source.chatId,
+      sub,
+      { url: `transcribe ${ids.join(' ')} --lang ${tap.lang}`, title: `átírás (${ids.length} tétel)` },
+      deps,
+    )
+  } catch (error) {
+    // A munka nem jött létre: a kérdés visszakerül, a gombok maradnak, újra koppintható.
+    await deps.store.insertResolve(resolve)
+    throw error
+  }
+  if (typeof messageId === 'number') await deps.edit(source.chatId, messageId, `${resolve.title}\n${langChosenLine(tap.lang)}`, [])
+  return planned.knocks
+}
+
 export async function handleTap(
   update: {
     update_id: number
@@ -1236,6 +1307,7 @@ export async function handleTap(
   const row = await findRow(deps.store, tap.jobId)
   if (row === null || row.sub !== binding.sub || row.status !== 'ready') return []
   if (tap.type === 'list') return listTap(tap.action, row, deps)
+  if (tap.type === 'langAsk') return langAskTap(tap, row, binding.sub, update.update_id, update.callback_query.message?.message_id, deps)
   if (tap.type === 'drop') {
     // A leállt recept eldobása: nem indul futás; a gombok eltűnnek. Az Újra a receptgombok útján megy (`requestRun`).
     const messageId = update.callback_query.message?.message_id

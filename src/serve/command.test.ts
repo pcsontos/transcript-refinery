@@ -6,7 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ProcessRunner } from '../fetch/subtitle/ytdlp.js'
 import { loadCliConfig } from '../config.js'
 import { openState } from '../state/db.js'
-import { commandServe, installIdleExit, serveEffects, serveFetchAudio, serveTranscribe } from './command.js'
+import { RUNS_PREFIX as WORKER_RUNS_PREFIX, TRANSCRIBE_HINT as WORKER_TRANSCRIBE_HINT } from '../../worker/src/messages.js'
+import { RUNS_PREFIX, TRANSCRIBE_HINT, commandServe, installIdleExit, serveEffects, serveFetchAudio, serveTranscribe } from './command.js'
 import type { ObjectStore } from './r2.js'
 
 function memoryStore(initial: Record<string, Uint8Array> = {}): ObjectStore & { objects: Record<string, Uint8Array> } {
@@ -194,7 +195,7 @@ describe('serveFetchAudio', () => {
       return Promise.resolve()
     })
     expect(lines).toEqual([`letöltve: Cím [${ID}]`])
-    expect(summary).toBe('Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás.')
+    expect(summary.title).toBe('Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás.')
     expect(await readdir(join(dir, 'logs'))).toHaveLength(1)
   })
 
@@ -217,7 +218,7 @@ describe('serveFetchAudio', () => {
       controller.signal,
       () => Promise.resolve(),
     )
-    expect(summary).toBe('Megszakítva: letöltve 1 db fájl, 0 kihagyva, 0 hibás (2 elem nem indult el).')
+    expect(summary.title).toBe('Megszakítva: letöltve 1 db fájl, 0 kihagyva, 0 hibás (2 elem nem indult el).')
   })
 
   it('megszakított jelre a napló interrupted-ként zárul', async () => {
@@ -232,7 +233,7 @@ describe('serveFetchAudio', () => {
   })
 
   it('a serveEffects továbbadja a fetchAudio-t', () => {
-    const fetchAudio = () => Promise.resolve('k')
+    const fetchAudio = () => Promise.resolve({ title: 'k' })
     const effects = serveEffects({
       outDir: '/o',
       languages: ['hu'],
@@ -245,7 +246,7 @@ describe('serveFetchAudio', () => {
   })
 
   it('a serveEffects továbbadja a transcribe-ot', () => {
-    const transcribe = () => Promise.resolve('k')
+    const transcribe = () => Promise.resolve({ title: 'k' })
     const effects = serveEffects({
       outDir: '/o',
       languages: ['hu'],
@@ -297,7 +298,7 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     )
     expect(out.lines[0]).toBe(`letöltve, átírásra leadva: Cím [${ID}]`)
     expect(out.lines.at(-1)).toMatch(/^A whisper-figyelő nem fut/)
-    expect(summary).toContain('1 átírásra leadva.')
+    expect(summary.title).toContain('1 átírásra leadva.')
     const info = JSON.parse(await (await import('node:fs/promises')).readFile(join(whisper, 'inbox', `${ID}.info.json`), 'utf8')) as { refinery_lang: string }
     expect(info.refinery_lang).toBe('en')
     const [file] = await readdir(join(dir, 'logs'))
@@ -305,10 +306,75 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     expect((JSON.parse(first as string) as { command: string }).command).toMatch(/^\/fetch_audio --lang en /)
   })
 
+  // pcsontos/issue-tracker#82: a Telegramról nyelv nélkül érkező hangot nem adjuk le a config nyelvével, a felhasználót kérdezzük.
+  it('/fetch_audio: nyelv nélküli videó nyelvre vár, az inbox üres, a válasz a nyelvkérdést (langAsk) adja', async () => {
+    const { path, whisper } = await config(true)
+    const out = collect()
+    const reply = await serveFetchAudio(path, { runner: noSubRunner })({ inputs: [`https://www.youtube.com/watch?v=${ID}`] }, undefined, out.emit)
+    expect(out.lines[0]).toBe(`letöltve, nyelvre vár: Cím [${ID}]`)
+    expect(reply.langAsk).toEqual({ ids: [ID], languages: ['hu'] })
+    expect(reply.title).toContain('1 nyelvre vár.')
+    expect(await readdir(join(whisper, 'inbox'))).toEqual([])
+  })
+
+  it('serveTranscribe: nyelv nélküli archív hang nyelvre vár; --lang mellett leadódik', async () => {
+    const { dir, path, whisper } = await config(true)
+    await mkdir(join(dir, 'audio', 'Csat'), { recursive: true })
+    await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
+    const pending = await serveTranscribe(path)({ ids: [ID] }, undefined, collect().emit)
+    expect(pending.langAsk).toEqual({ ids: [ID], languages: ['hu'] })
+    expect(await readdir(join(whisper, 'inbox'))).toEqual([])
+    const given = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, collect().emit)
+    expect(given.langAsk?.ids ?? []).toEqual([])
+    expect(await readdir(join(whisper, 'inbox'))).toContain(`${ID}.m4a`)
+  })
+
+  // pcsontos/issue-tracker#90: leadás után a válasz végén egyszer a futások oldalának linkje.
+  describe('követési link', () => {
+    const LINK = 'Itt lehet a feldolgozást követni: https://web.example/runs'
+    const linkLines = (title: string) => title.split('\n').filter((line) => line.includes('/runs'))
+
+    async function withWeb() {
+      const c = await config(true)
+      await mkdir(join(c.dir, 'audio', 'Csat'), { recursive: true })
+      await writeFile(join(c.dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
+      await appendFile(c.path, 'web:\n  url: https://web.example/\n')
+      return c
+    }
+
+    it('serveTranscribe leadás után a válasz végén egyszer a /runs link', async () => {
+      const { path } = await withWeb()
+      const reply = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, collect().emit)
+      expect(linkLines(reply.title)).toEqual([LINK])
+      expect(reply.title.endsWith(LINK)).toBe(true)
+    })
+
+    it('serveFetchAudio leadás után a válasz végén egyszer a /runs link', async () => {
+      const { path } = await withWeb()
+      const reply = await serveFetchAudio(path, { runner: noSubRunner })({ inputs: [`https://www.youtube.com/watch?v=${ID}`], lang: 'en' }, undefined, collect().emit)
+      expect(linkLines(reply.title)).toEqual([LINK])
+    })
+
+    it('leadás nélkül (csak nyelvre vár) nincs link', async () => {
+      const { path } = await withWeb()
+      const reply = await serveTranscribe(path)({ ids: [ID] }, undefined, collect().emit)
+      expect(reply.langAsk?.ids).toEqual([ID])
+      expect(linkLines(reply.title)).toEqual([])
+    })
+
+    it('web.url nélkül nincs link', async () => {
+      const { dir, path } = await config(true)
+      await mkdir(join(dir, 'audio', 'Csat'), { recursive: true })
+      await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
+      const reply = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, collect().emit)
+      expect(linkLines(reply.title)).toEqual([])
+    })
+  })
+
   it('/fetch_audio whisper.after mellett a leadó jobId-je a jelölő; after nélkül nincs jelölő', async () => {
     const readInfo = async (whisper: string) =>
       JSON.parse(await readFile(join(whisper, 'inbox', `${ID}.info.json`), 'utf8')) as Record<string, unknown>
-    const request = { inputs: [`https://www.youtube.com/watch?v=${ID}`], jobId: '7:fetch-7' }
+    const request = { inputs: [`https://www.youtube.com/watch?v=${ID}`], jobId: '7:fetch-7', lang: 'hu' }
     const plain = await config(true)
     await serveFetchAudio(plain.path, { runner: noSubRunner })(request, undefined, () => Promise.resolve())
     expect(await readInfo(plain.whisper)).not.toHaveProperty('refinery_after')
@@ -326,13 +392,15 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
   it('serveTranscribe lista-mód: üzenetek emit-tel, a vég a használati sor; nincs váró hang → szöveg', async () => {
     const { dir, path } = await config(true)
     const empty = collect()
-    expect(await serveTranscribe(path)({ ids: [] }, undefined, empty.emit)).toBe('Nincs átírásra váró hang.')
+    expect(await serveTranscribe(path)({ ids: [] }, undefined, empty.emit)).toEqual({ title: 'Nincs átírásra váró hang.' })
     await mkdir(join(dir, 'audio', 'Csat'), { recursive: true })
     await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
     const out = collect()
     const result = await serveTranscribe(path)({ ids: [] }, undefined, out.emit)
     expect(out.lines[0]).toBe(`Átírásra váró hangok:\n1. Cím [${ID}] — archivált`)
-    expect(result).toBe('Válaszolj a lista egyik üzenetére a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.')
+    expect(result.title).toBe(
+      'Erre ne válaszolj: a lista üzenetére (amelyik így kezdődik: „Átírásra váró hangok:”) válaszolj a sorszámokkal: 0 = az üzenet összes tétele, vagy pl. 1,3. Nyelv: 1,3 --lang en.',
+    )
   })
 
   it('serveTranscribe leadás: az inboxba kerül, az összesítő a „tétel leadva” sor, futásnapló készül', async () => {
@@ -341,11 +409,11 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
     const out = collect()
     const result = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, out.emit)
-    expect(result.split('\n')[0]).toBe('1 tétel leadva.')
+    expect(result.title.split('\n')[0]).toBe('1 tétel leadva.')
     expect(out.lines[0]).toBe(`leadva: Cím [${ID}]`)
     // Az összesítő és a figyelmeztetés csak a végső válaszban szerepel, a menet közbeni sorokban nem: nem megy ki kétszer.
     expect(out.lines.filter((line) => / tétel leadva\.$/.test(line) || /^A whisper-figyelő nem fut/.test(line))).toEqual([])
-    expect(result).toMatch(/\nA whisper-figyelő nem fut/)
+    expect(result.title).toMatch(/\nA whisper-figyelő nem fut/)
     expect(await readdir(join(whisper, 'inbox'))).toContain(`${ID}.m4a`)
     expect(await readdir(join(dir, 'logs'))).toHaveLength(1)
   })
@@ -408,9 +476,21 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
       const { path, dir } = await withAfter()
       const out = collect()
       const result = await serveTranscribe(path)({ ids: ['aaaaaaaaaaa'], jobId: 'j1' }, undefined, out.emit)
-      expect(result).toContain('1 tételre utólépés kérve.')
+      expect(result.title).toContain('1 tételre utólépés kérve.')
       const info = JSON.parse(await readFile(join(dir, 'src', 'whisper', 'csat', 'aaaaaaaaaaa.info.json'), 'utf8')) as Record<string, unknown>
       expect(info.refinery_after).toBe('j1')
     })
+  })
+})
+
+// A Worker a használati sort szó szerinti egyezéssel ismeri fel (pcsontos/issue-tracker#81): a két másolat nem térhet el.
+describe('a serve és a Worker közös szövegei', () => {
+  it('a TRANSCRIBE_HINT szó szerint azonos', () => {
+    expect(WORKER_TRANSCRIBE_HINT).toBe(TRANSCRIBE_HINT)
+  })
+
+  // A Worker ez alapján teszi a nyelvkérdést a követési sor elé (pcsontos/issue-tracker#90).
+  it('a RUNS_PREFIX szó szerint azonos', () => {
+    expect(WORKER_RUNS_PREFIX).toBe(RUNS_PREFIX)
   })
 })

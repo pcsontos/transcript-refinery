@@ -108,10 +108,15 @@ describe('submitEntry', () => {
     expect(await readdir(dirs.inbox)).toEqual([])
   })
 
-  it('nyelv nélkül hiba, nincs <id>.undefined', async () => {
+  it('nyelv nélkül needsLang, az inbox üres, nincs <id>.undefined (pcsontos/issue-tracker#82)', async () => {
     const result = await submitEntry(await firstEntry(), { store, dirs, status: 'archived', lang: null })
-    expect(result).toEqual({ ok: false, error: 'nincs nyelv: adj meg --lang kapcsolót' })
+    expect(result).toEqual({ ok: false, needsLang: true })
     expect(await readdir(dirs.inbox)).toEqual([])
+  })
+
+  it('a kihagyás előbb jön: kész hang nyelv nélkül is „kész” (pcsontos/issue-tracker#82)', async () => {
+    const result = await submitEntry(await firstEntry(), { store, dirs, status: 'done', lang: null })
+    expect(result).toEqual({ ok: false, skip: 'kész' })
   })
 })
 
@@ -131,16 +136,28 @@ describe('resolveLang', () => {
     expect(resolveLang({ info: {}, languages: ['hu', 'en'] })).toBe('hu')
     expect(resolveLang({ info: {}, languages: [] })).toBeNull()
     expect(resolveLang({ info: { language: 'hu,en' }, languages: ['de'] })).toBe('de')
+    // askLang (Telegram, pcsontos/issue-tracker#82): nincs config-tartalék, a jelző és az info.language marad.
+    expect(resolveLang({ info: {}, languages: ['hu'], askLang: true })).toBeNull()
+    expect(resolveLang({ info: { language: 'en' }, languages: ['hu'], askLang: true })).toBe('en')
+    expect(resolveLang({ flag: 'de', info: {}, languages: ['hu'], askLang: true })).toBe('de')
   })
 })
 
 describe('runTranscribe', () => {
-  async function run(ids: string[], over: { lang?: string; languages?: string[] } = {}) {
+  async function run(ids: string[], over: { lang?: string; languages?: string[]; askLang?: boolean } = {}) {
     const lines: string[] = []
     const events: RunEvent[] = []
     const result = await runTranscribe(
       { ids, lang: over.lang },
-      { store, dirs, sourcesRoot: sources, languages: over.languages ?? ['hu'], emit: (l) => void lines.push(l), sink: (e) => void events.push(e) },
+      {
+        store,
+        dirs,
+        sourcesRoot: sources,
+        languages: over.languages ?? ['hu'],
+        askLang: over.askLang,
+        emit: (l) => void lines.push(l),
+        sink: (e) => void events.push(e),
+      },
     )
     return { lines, events, result }
   }
@@ -156,7 +173,7 @@ describe('runTranscribe', () => {
       'kihagyva (vár): Cím [abcdefghijk]',
       '1 tétel leadva.',
     ])
-    expect(result).toEqual({ submitted: 1, requested: 0, failed: 1 })
+    expect(result).toEqual({ submitted: 1, requested: 0, failed: 1, langPending: [] })
     expect((await readdir(dirs.inbox)).sort()).toEqual(['abcdefghijk.info.json', 'abcdefghijk.m4a'])
   })
 
@@ -177,8 +194,29 @@ describe('runTranscribe', () => {
     await put(archive, 'Feed [0f0f0f0f]/Epi [1a2b3c4d].mp3')
     const { lines, result } = await run(['1a2b3c4d'], { languages: [] })
     expect(lines[0]).toBe('hiba: Epi [1a2b3c4d]: nincs nyelv: adj meg --lang kapcsolót')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 1 })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 1, langPending: [] })
     expect(await readdir(dirs.inbox)).toEqual([])
+  })
+
+  // pcsontos/issue-tracker#82: a Telegramról érkező, nyelv nélküli hang nem kap config-nyelvet, a felhasználótól kérdezünk.
+  it('askLang vegyes válasz: a nyelves leadva, a nyelv nélküli langPending', async () => {
+    await put(archive, 'Feed [0f0f0f0f]/Epi [1a2b3c4d].mp3')
+    const { lines, result } = await run(['abcdefghijk', '1a2b3c4d'], { languages: ['hu', 'en'], askLang: true })
+    expect(result).toMatchObject({ submitted: 1, failed: 0, langPending: ['1a2b3c4d'] })
+    expect(lines).toContain('nyelvre vár: Epi [1a2b3c4d]')
+    expect(await readdir(dirs.inbox)).toEqual(expect.not.arrayContaining(['1a2b3c4d.mp3']))
+  })
+
+  it('askLang nélkül (CLI) a config első nyelvével ad le', async () => {
+    await put(archive, 'Feed [0f0f0f0f]/Epi [1a2b3c4d].mp3')
+    const { result } = await run(['1a2b3c4d'], { languages: ['hu', 'en'] })
+    expect(result).toMatchObject({ submitted: 1, langPending: [] })
+  })
+
+  it('askLang esetén a --lang megadva: nincs kérdés', async () => {
+    await put(archive, 'Feed [0f0f0f0f]/Epi [1a2b3c4d].mp3')
+    const { result } = await run(['1a2b3c4d'], { lang: 'en', askLang: true })
+    expect(result).toMatchObject({ submitted: 1, langPending: [] })
   })
 
   it('--lang felülírja az archív nyelvet, és eseményeket ír', async () => {
@@ -223,19 +261,19 @@ describe('runTranscribe: utólépés kérése (pcsontos/issue-tracker#65)', () =
   it('after nélkül a mai „kihagyva (kész)”', async () => {
     const { lines, result } = await run({ afterRecipes: null, after: undefined })
     expect(lines[0]).toBe('kihagyva (kész): Kész [kkkkkkkkkkk]')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0 })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [] })
   })
 
   it('done nélkül nincs utólépés-kérés: a mai „kihagyva (kész)”', async () => {
     const { lines, result } = await run({ done: undefined })
     expect(lines[0]).toBe('kihagyva (kész): Kész [kkkkkkkkkkk]')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0 })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [] })
   })
 
   it('hiányzó recept: utólépés kérve, a jelölő az info.json-ban', async () => {
     const { lines, result, events } = await run({})
     expect(lines[0]).toBe('utólépés kérve: Kész [kkkkkkkkkkk] (receptek: summary; a serve utólépése futtatja)')
-    expect(result).toEqual({ submitted: 0, requested: 1, failed: 0 })
+    expect(result).toEqual({ submitted: 0, requested: 1, failed: 0, langPending: [] })
     expect(JSON.parse(await readFile(infoPath(), 'utf8'))).toMatchObject({ refinery_after: 'cli' })
     expect(events).toContainEqual({ type: 'item:step', itemId: 'kkkkkkkkkkk', step: 'utólépés kérve' })
   })
@@ -249,13 +287,13 @@ describe('runTranscribe: utólépés kérése (pcsontos/issue-tracker#65)', () =
     await rm(infoPath())
     const { lines, result } = await run({})
     expect(lines[0]).toBe('hiba: Kész [kkkkkkkkkkk]: nincs meg az átirat info.json-ja')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 1 })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 1, langPending: [] })
   })
 
   it('minden recept kész: kihagyva a kész receptekkel', async () => {
     const { lines, result } = await run({ done: new Map([['kkkkkkkkkkk', ['summary']]]) })
     expect(lines[0]).toBe('kihagyva (kész, receptek: summary): Kész [kkkkkkkkkkk]')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0 })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [] })
   })
 
   it('a záró sor: utólépés kérve; kétszeres id egyszer kér', async () => {
@@ -306,14 +344,14 @@ describe('createHandoff', () => {
 
   it('config nélkül mindig „nincs config”', async () => {
     const { handoff, warning } = await createHandoff({ cfg: null, store })
-    expect(await handoff('abcdefghijk')).toBe('nincs config')
+    expect(await handoff('abcdefghijk')).toEqual({ error: 'nincs config' })
     expect(await warning()).toBeNull()
   })
 
   it('whisper-mappa nélkül „nincs whisper-mappa”, és nem jön létre', async () => {
     const missing = join(tmpdir(), 'nincs-ilyen-whisper-mappa')
     const { handoff } = await createHandoff({ cfg: cfgFor(missing), store })
-    expect(await handoff('abcdefghijk')).toBe('nincs whisper-mappa')
+    expect(await handoff('abcdefghijk')).toEqual({ error: 'nincs whisper-mappa' })
   })
 
   it('leadás: submitted, másodszor skipped; a friss letöltés is megtalálható; a figyelmeztetés csak leadás után', async () => {
@@ -327,12 +365,28 @@ describe('createHandoff', () => {
     expect(await warning()).toMatch(/^A whisper-figyelő nem fut/)
   })
 
+  it('askLang: nyelv nélküli hangnál needs-lang, a langPending tömbben az id (pcsontos/issue-tracker#82)', async () => {
+    await put(archive, 'Feed [0f0f0f0f]/Epi [1a2b3c4d].mp3')
+    const { handoff, langPending } = await createHandoff({ cfg: cfgFor(dirs.root), store, askLang: true })
+    expect(await handoff('1a2b3c4d')).toBe('needs-lang')
+    expect(langPending).toEqual(['1a2b3c4d'])
+    expect(await readdir(dirs.inbox)).toEqual([])
+  })
+
+  it('askLang nélkül a nyelv nélküli hang a mai szöveges okot adja, és nincs langPending', async () => {
+    await put(archive, 'Feed [0f0f0f0f]/Epi [1a2b3c4d].mp3')
+    const cfg = loadConfig({ vault: { path: '/v' }, sources: [sources], languages: [], whisper: { dir: dirs.root }, audio: { dir: archive } }, '/p/c.yaml')
+    const { handoff, langPending } = await createHandoff({ cfg, store })
+    expect(await handoff('1a2b3c4d')).toEqual({ error: 'nincs nyelv: adj meg --lang kapcsolót' })
+    expect(langPending).toEqual([])
+  })
+
   it('a --lang átmegy; ismeretlen azonosító szöveges ok', async () => {
     const { handoff } = await createHandoff({ cfg: cfgFor(dirs.root), store, lang: 'en' })
     await handoff('abcdefghijk')
     const info = JSON.parse(await readFile(join(dirs.inbox, 'abcdefghijk.info.json'), 'utf8')) as { refinery_lang: string }
     expect(info.refinery_lang).toBe('en')
-    expect(await handoff('nincsnincsni')).toBe('nincs ilyen hang')
+    expect(await handoff('nincsnincsni')).toEqual({ error: 'nincs ilyen hang' })
   })
 })
 

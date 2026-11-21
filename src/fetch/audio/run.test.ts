@@ -231,6 +231,15 @@ describe('sorok', () => {
     expect(audioSummary([{ outcome: 'uploaded', label: 'a' }])).toBe('Kész: letöltve 0 db fájl, 0 kihagyva, 0 hibás. Korábbi letöltésből feltöltve: 1.')
   })
 
+  it('a nyelvre váró sor és összesítő (pcsontos/issue-tracker#82)', () => {
+    expect(rowLine({ outcome: 'downloaded', label: 'X', whisper: 'needs-lang' })).toBe('letöltve, nyelvre vár: X')
+    const rows = [
+      { outcome: 'downloaded' as const, label: 'a', whisper: 'needs-lang' as const },
+      { outcome: 'downloaded' as const, label: 'b', whisper: 'submitted' as const },
+    ]
+    expect(audioSummary(rows)).toBe('Kész: letöltve 2 db fájl, 0 kihagyva, 0 hibás. 1 átírásra leadva. 1 nyelvre vár.')
+  })
+
   it('audioSummary megszakításnál (pcsontos/issue-tracker#43)', () => {
     const three = [{ outcome: 'downloaded', label: 'a' }, { outcome: 'downloaded', label: 'b' }, { outcome: 'downloaded', label: 'c' }] as const
     expect(audioSummary(three, { stopped: true, total: 19 })).toBe('Megszakítva: letöltve 3 db fájl, 0 kihagyva, 0 hibás (16 elem nem indult el).')
@@ -467,7 +476,7 @@ describe('whisper-fallback', () => {
   })
 
   it('handoff ok-szöveggel: letöltve, átírás nem elérhető, nem hiba', async () => {
-    const out = await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.resolve('nincs whisper-mappa'), [yt('abcdefghijk')])
+    const out = await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.resolve({ error: 'nincs whisper-mappa' }), [yt('abcdefghijk')])
     expect(out.lines).toEqual(['letöltve, átírás nem elérhető (nincs whisper-mappa): Cím [abcdefghijk]'])
     expect(out.rows.map((row) => row.outcome)).toEqual(['downloaded'])
     expect(audioSummary(out.rows)).toBe('Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás.')
@@ -481,6 +490,6 @@ describe('whisper-fallback', () => {
   })
 
   it('rowLine', () => {
-    expect(rowLine({ outcome: 'skipped', label: 'x', whisper: 'nincs config' })).toBe('kihagyva, átírás nem elérhető (nincs config): x')
+    expect(rowLine({ outcome: 'skipped', label: 'x', whisper: { error: 'nincs config' } })).toBe('kihagyva, átírás nem elérhető (nincs config): x')
   })
 })

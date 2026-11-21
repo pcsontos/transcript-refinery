@@ -90,6 +90,11 @@ logs:
 #   deploy: manual
 #   clone_path: /abs/út/refinery-showroom-deploy
 
+# A futások oldalának alapcíme (elhagyható). Megadva a Telegram-válasz a leadott
+# hangok után a <cím>/runs linket is adja, a feldolgozás követéséhez.
+# web:
+#   url: https://refinery.example.com
+
 # Szerep → modell. A receptek szerepet kérnek, nem modellnevet; a konkrét
 # választás mérési eredmény lesz, nem vélemény (decisions/0004).
 model:
