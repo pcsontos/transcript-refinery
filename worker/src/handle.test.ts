@@ -1928,7 +1928,7 @@ describe('/fetch_audio', () => {
   // pcsontos/issue-tracker#82: a nyelv nélküli hangokra egy kérdés jön, nyelvgombokkal.
   describe('nyelvre váró hangok', () => {
     const ASK = 'T\n2 hang nyelvre vár. Milyen nyelvű?'
-    async function ready(over: { langPending?: string[]; languages?: string[]; cancelled?: boolean } = {}) {
+    async function ready(over: { ids?: string[]; languages?: string[]; cancelled?: boolean } = {}) {
       const store = await boundStore()
       const d = deps(store)
       await handleUpdate(command(7, '/fetch_audio https://a'), d)
@@ -1936,7 +1936,7 @@ describe('/fetch_audio', () => {
       d.sent.length = 0
       await handleCallback(
         '7:fetch-7',
-        { status: 'ready', title: 'T', langPending: over.langPending ?? ['a', 'b'], languages: over.languages ?? ['hu', 'en'] },
+        { status: 'ready', title: 'T', langAsk: { ids: over.ids ?? ['a', 'b'], languages: over.languages ?? ['hu', 'en'] } },
         d,
       )
       return { store, d }
@@ -1984,7 +1984,7 @@ describe('/fetch_audio', () => {
       await handleUpdate(command(7, '/fetch_audio https://a'), d)
       d.sent.length = 0
       const link = 'Itt lehet a feldolgozást követni: https://web.example/runs'
-      await handleCallback('7:fetch-7', { status: 'ready', title: `T\n${link}`, langPending: ['a'], languages: ['hu'] }, d)
+      await handleCallback('7:fetch-7', { status: 'ready', title: `T\n${link}`, langAsk: { ids: ['a'], languages: ['hu'] } }, d)
       expect(d.sent).toEqual([`T\n1 hang nyelvre vár. Milyen nyelvű?\n${link}`])
     })
 

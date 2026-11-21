@@ -762,24 +762,24 @@ describe('runJob fetch ág', () => {
     await runJob(fetchJob, withFetch(undefined, none))
     expect(none).toEqual([{ status: 'failed', error: 'A hangletöltés nincs beállítva.' }])
   })
-  it('a ready átadja a langPending-et és a languages-t (pcsontos/issue-tracker#82)', async () => {
+  it('a ready átadja a nyelvkérdést (langAsk) (pcsontos/issue-tracker#82)', async () => {
     const callbacks: CallbackBody[] = []
-    await runJob(fetchJob, withFetch(() => Promise.resolve({ title: 'T', langPending: ['a'], languages: ['hu', 'en'] }), callbacks))
-    expect(callbacks.at(-1)).toEqual({ status: 'ready', title: 'T', langPending: ['a'], languages: ['hu', 'en'] })
+    await runJob(fetchJob, withFetch(() => Promise.resolve({ title: 'T', langAsk: { ids: ['a'], languages: ['hu', 'en'] } }), callbacks))
+    expect(callbacks.at(-1)).toEqual({ status: 'ready', title: 'T', langAsk: { ids: ['a'], languages: ['hu', 'en'] } })
   })
 
-  it('üres langPending-nél a ready csak a címet viszi', async () => {
+  it('üres langAsk.ids-nél a ready csak a címet viszi', async () => {
     const callbacks: CallbackBody[] = []
-    await runJob(fetchJob, withFetch(() => Promise.resolve({ title: 'T', langPending: [], languages: ['hu'] }), callbacks))
+    await runJob(fetchJob, withFetch(() => Promise.resolve({ title: 'T', langAsk: { ids: [], languages: ['hu'] } }), callbacks))
     expect(callbacks.at(-1)).toEqual({ status: 'ready', title: 'T' })
   })
 
-  it('megszakított hangmunka ready-jében nincs langPending', async () => {
+  it('megszakított hangmunka ready-jében nincs langAsk', async () => {
     const controller = new AbortController()
     const callbacks: CallbackBody[] = []
     await runJob(
       fetchJob,
-      withFetch(() => (controller.abort(), Promise.resolve({ title: 'T', langPending: ['a'], languages: ['hu'] })), callbacks),
+      withFetch(() => (controller.abort(), Promise.resolve({ title: 'T', langAsk: { ids: ['a'], languages: ['hu'] } })), callbacks),
       controller.signal,
     )
     expect(callbacks.at(-1)).toEqual({ status: 'ready', title: 'T' })
@@ -837,17 +837,17 @@ describe('runJob transcribe ág', () => {
 })
 
 describe('runJob transcribe ág — nyelvre váró hangok (pcsontos/issue-tracker#82)', () => {
-  it('a ready átadja a langPending-et és a languages-t', async () => {
+  it('a ready átadja a nyelvkérdést (langAsk)', async () => {
     const callbacks: CallbackBody[] = []
     await runJob(
       { jobId: 'fetch-2', videoId: 'fetch-2', url: 'transcribe a', fetch: true },
       {
         ...emptyEffects(memoryStore()),
-        transcribe: () => Promise.resolve({ title: 'Z', langPending: ['a'], languages: ['hu', 'en'] }),
+        transcribe: () => Promise.resolve({ title: 'Z', langAsk: { ids: ['a'], languages: ['hu', 'en'] } }),
         callback: (_id, body) => (callbacks.push(body), Promise.resolve()),
       },
     )
-    expect(callbacks.at(-1)).toEqual({ status: 'ready', title: 'Z', langPending: ['a'], languages: ['hu', 'en'] })
+    expect(callbacks.at(-1)).toEqual({ status: 'ready', title: 'Z', langAsk: { ids: ['a'], languages: ['hu', 'en'] } })
   })
 })
 

@@ -252,18 +252,19 @@ function isCallback(value: unknown): value is CallbackBody {
     recipes?: unknown
     playlist?: unknown
     items?: unknown
-    langPending?: unknown
-    languages?: unknown
+    langAsk?: unknown
   }
   if (body.status === 'ready') {
     if (typeof body.title !== 'string') return false
     if (body.deployError !== undefined && body.deployError !== null && typeof body.deployError !== 'string') return false
     if (body.done !== undefined && !(Array.isArray(body.done) && body.done.every((id) => typeof id === 'string'))) return false
-    // A langPending azonosítói a `w:` gombadatba és a `transcribe` parancsba kerülnek: csak azonosító-karakterek.
-    const ids = body.langPending
-    if (ids !== undefined && !(Array.isArray(ids) && ids.every((id) => typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id)))) return false
-    const langs = body.languages
-    if (langs !== undefined && !(Array.isArray(langs) && langs.every((lang) => typeof lang === 'string'))) return false
+    if (body.langAsk !== undefined) {
+      if (typeof body.langAsk !== 'object' || body.langAsk === null) return false
+      const { ids, languages } = body.langAsk as { ids?: unknown; languages?: unknown }
+      // Az azonosítók a `w:` gombadatba és a `transcribe` parancsba kerülnek: csak azonosító-karakterek.
+      if (!(Array.isArray(ids) && ids.every((id) => typeof id === 'string' && /^[A-Za-z0-9_-]+$/.test(id)))) return false
+      if (!(Array.isArray(languages) && languages.every((lang) => typeof lang === 'string'))) return false
+    }
     return body.noteUrl === undefined || typeof body.noteUrl === 'string'
   }
   if (body.status === 'transcribed') {

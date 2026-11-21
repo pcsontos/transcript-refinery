@@ -370,12 +370,14 @@ describe('worker belépés', () => {
     expect((await post({ status: 'ready', title: 'Cím', deployError: 5 })).status).toBe(400)
     expect((await post({ status: 'ready', title: 'Cím', done: 'summary' })).status).toBe(400)
     expect((await post({ status: 'ready', title: 'Cím', done: [5] })).status).toBe(400)
-    // pcsontos/issue-tracker#82: a langPending azonosító-lista, a languages szöveglista.
-    expect((await post({ status: 'ready', title: 'Cím', langPending: ['a b'] })).status).toBe(400)
-    expect((await post({ status: 'ready', title: 'Cím', langPending: 'a' })).status).toBe(400)
-    expect((await post({ status: 'ready', title: 'Cím', langPending: ['a'], languages: [5] })).status).toBe(400)
+    // pcsontos/issue-tracker#82: a langAsk.ids azonosító-lista, a langAsk.languages szöveglista.
+    expect((await post({ status: 'ready', title: 'Cím', langAsk: { ids: ['a b'], languages: ['hu'] } })).status).toBe(400)
+    expect((await post({ status: 'ready', title: 'Cím', langAsk: { ids: 'a', languages: ['hu'] } })).status).toBe(400)
+    expect((await post({ status: 'ready', title: 'Cím', langAsk: { ids: ['a'], languages: [5] } })).status).toBe(400)
+    expect((await post({ status: 'ready', title: 'Cím', langAsk: { ids: ['a'] } })).status).toBe(400)
+    expect((await post({ status: 'ready', title: 'Cím', langAsk: ['a'] })).status).toBe(400)
     // Az érvényes törzs átmegy az ellenőrzésen, és a hamis DB-nél dob: nem 400.
-    await expect(post({ status: 'ready', title: 'Cím', langPending: ['abc_-1'], languages: ['hu'] })).rejects.toThrow('db.prepare')
+    await expect(post({ status: 'ready', title: 'Cím', langAsk: { ids: ['abc_-1'], languages: ['hu'] } })).rejects.toThrow('db.prepare')
     expect((await post({ status: 'transcribed', videoId: 'a:b', title: 'x', recipes: ['summary'] })).status).toBe(400)
     expect((await post({ status: 'transcribed', videoId: 'a1b2c3d4', title: 'x', recipes: [] })).status).toBe(400)
   })

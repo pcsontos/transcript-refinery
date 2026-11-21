@@ -30,17 +30,21 @@ export interface AudioRow {
   outcome: AudioOutcome
   label: string
   reason?: string
-  /** Csak `downloaded` / `skipped` soron: `submitted` = átírásra leadva, `needs-lang` = nyelvre vár, egyéb szöveg = miért nem elérhető. */
-  whisper?: string
+  /** Csak `downloaded` / `skipped` soron: a leadás kimenete (a `skipped` nem kerül a sorra). */
+  whisper?: Exclude<HandoffResult, 'skipped'>
 }
 
-/** Egy hang leadása átírásra: `skipped` = nincs teendő (kész/vár/átírás alatt); egyéb szöveg = nem elérhető oka. */
-export type Handoff = (id: string) => Promise<string>
+/**
+ * Egy hang leadásának kimenete: `submitted` = átírásra leadva, `skipped` = nincs teendő (kész/vár/átírás alatt),
+ * `needs-lang` = nyelvre vár (pcsontos/issue-tracker#82), `error` = miért nem elérhető.
+ */
+export type HandoffResult = 'submitted' | 'skipped' | 'needs-lang' | { error: string }
+export type Handoff = (id: string) => Promise<HandoffResult>
 
 function whisperNote(row: AudioRow): string {
   if (row.whisper === undefined) return ''
   if (row.whisper === 'needs-lang') return ', nyelvre vár'
-  return row.whisper === 'submitted' ? ', átírásra leadva' : `, átírás nem elérhető (${row.whisper})`
+  return row.whisper === 'submitted' ? ', átírásra leadva' : `, átírás nem elérhető (${row.whisper.error})`
 }
 
 export function rowLine(row: AudioRow): string {
@@ -132,17 +136,17 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
   const failed = (label: string, reason: string, itemId: string): Promise<void> =>
     row({ outcome: 'failed', label, reason }, { type: 'item:failed', itemId, source: 'audio', kind: 'audio', error: reason })
 
-  const skipped = (label: string, itemId: string, whisper?: string): Promise<void> =>
+  const skipped = (label: string, itemId: string, whisper?: AudioRow['whisper']): Promise<void> =>
     row({ outcome: 'skipped', label, whisper }, { type: 'item:skipped', itemId, reason: 'már a tárolóban' })
 
   /** A fallback-leadás; `undefined`, ha nincs teendő. A hiba nem buktatja a letöltést. */
-  async function handOff(wanted: boolean, id: string): Promise<string | undefined> {
+  async function handOff(wanted: boolean, id: string): Promise<AudioRow['whisper']> {
     if (!wanted || deps.handoff === undefined) return undefined
-    let result: string
+    let result: HandoffResult
     try {
       result = await deps.handoff(id)
     } catch (error) {
-      result = (error as Error).message
+      result = { error: (error as Error).message }
     }
     if (result === 'skipped') return undefined
     if (result === 'submitted') sink({ type: 'item:step', itemId: id, step: 'átírásra leadva' })

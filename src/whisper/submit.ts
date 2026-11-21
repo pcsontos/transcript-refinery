@@ -3,6 +3,7 @@ import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 import type { EventSink } from '../events.js'
+import type { HandoffResult } from '../fetch/audio/run.js'
 import type { AudioStore } from '../fetch/audio/store.js'
 import { parseLang } from '../fetch/subtitle/args.js'
 import type { Config } from '../config.js'
@@ -13,13 +14,21 @@ import { channelSlug, watcherWarning, whisperDirs, type WhisperDirs } from './pa
 const LANG_ERROR = 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.'
 const NO_LANG_ERROR = 'nincs nyelv: adj meg --lang kapcsolót'
 
-/** `--lang` > az archív `info.json` `language` mezője > a config első nyelve. */
-export function resolveLang(input: { flag?: string; info: Record<string, unknown>; languages: readonly string[] }): string | null {
+/**
+ * `--lang` > az archív `info.json` `language` mezője > a config első nyelve. `askLang` (Telegram, pcsontos/issue-tracker#82):
+ * nincs config-tartalék, a nyelv hiányát a hívó kérdéssé alakítja.
+ */
+export function resolveLang(input: {
+  flag?: string
+  info: Record<string, unknown>
+  languages: readonly string[]
+  askLang?: boolean
+}): string | null {
   const fromFlag = input.flag === undefined ? null : parseLang(input.flag)
   if (fromFlag !== null) return fromFlag
   const fromInfo = typeof input.info.language === 'string' ? parseLang(input.info.language) : null
   if (fromInfo !== null) return fromInfo
-  const first = input.languages[0]
+  const first = input.askLang === true ? undefined : input.languages[0]
   return first === undefined ? null : parseLang(first)
 }
 
@@ -216,7 +225,7 @@ export async function runTranscribe(
       }
       continue
     }
-    const lang = resolveLang({ flag: args.lang, info: entry.info, languages: deps.askLang === true ? [] : deps.languages })
+    const lang = resolveLang({ flag: args.lang, info: entry.info, languages: deps.languages, askLang: deps.askLang })
     const result = await submitEntry(entry, { store: deps.store, dirs: deps.dirs, status, lang, after: deps.after })
     if ('needsLang' in result) {
       if (deps.askLang === true) {
@@ -265,7 +274,7 @@ export async function createHandoff(input: {
   after?: string
   /** Lásd `TranscribeDeps.askLang`: igaz értéknél a nyelv nélküli hang `needs-lang`, az id a `langPending`-be kerül. */
   askLang?: boolean
-}): Promise<{ handoff: (id: string) => Promise<string>; warning: () => Promise<string | null>; langPending: string[] }> {
+}): Promise<{ handoff: (id: string) => Promise<HandoffResult>; warning: () => Promise<string | null>; langPending: string[] }> {
   const { cfg, store } = input
   const dirs = cfg === null ? null : await whisperDirs(cfg)
   const handedOver = new Set<string>()
@@ -273,20 +282,20 @@ export async function createHandoff(input: {
   return {
     langPending,
     async handoff(id) {
-      if (cfg === null) return 'nincs config'
-      if (dirs === null) return 'nincs whisper-mappa'
+      if (cfg === null) return { error: 'nincs config' }
+      if (dirs === null) return { error: 'nincs whisper-mappa' }
       const entry = await findEntry(store, id)
-      if (entry === null) return 'nincs ilyen hang'
+      if (entry === null) return { error: 'nincs ilyen hang' }
       const ctx = await statusContext(cfg.sources[0]!.path, dirs)
       const status = handedOver.has(id) ? 'pending' : transcriptStatus(entry, ctx)
-      const lang = resolveLang({ flag: input.lang, info: entry.info, languages: input.askLang === true ? [] : cfg.languages })
+      const lang = resolveLang({ flag: input.lang, info: entry.info, languages: cfg.languages, askLang: input.askLang })
       const result = await submitEntry(entry, { store, dirs, status, lang, after: input.after })
       if ('needsLang' in result) {
-        if (input.askLang !== true) return NO_LANG_ERROR
+        if (input.askLang !== true) return { error: NO_LANG_ERROR }
         langPending.push(id)
         return 'needs-lang'
       }
-      if ('error' in result) return result.error
+      if ('error' in result) return { error: result.error }
       if ('skip' in result) return 'skipped'
       handedOver.add(id)
       return 'submitted'

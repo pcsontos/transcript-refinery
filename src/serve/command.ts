@@ -170,8 +170,7 @@ export function serveFetchAudio(
               audioSummary(rows, { stopped: signal?.aborted ?? false, total }),
               ...(cfg.webUrl !== null && rows.some((row) => row.whisper === 'submitted') ? [runsLine(cfg.webUrl)] : []),
             ].join('\n'),
-            langPending,
-            languages: [...cfg.languages],
+            langAsk: { ids: langPending, languages: [...cfg.languages] },
           }
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
@@ -244,7 +243,7 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         stopped: () => signal?.aborted ?? false,
       })
       if (cfg.webUrl !== null && result.submitted > 0) tail.push(runsLine(cfg.webUrl))
-      return { title: tail.join('\n'), langPending: result.langPending, languages: [...cfg.languages] }
+      return { title: tail.join('\n'), langAsk: { ids: result.langPending, languages: [...cfg.languages] } }
     } finally {
       log.sink({ type: 'run:ended', interrupted: signal?.aborted ?? false })
       log.close()

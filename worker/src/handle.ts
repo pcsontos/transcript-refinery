@@ -781,8 +781,7 @@ export type CallbackBody =
       deployError?: string | null
       done?: string[]
       /** Hangmunkánál (pcsontos/issue-tracker#82): a nyelv nélküli hangok azonosítói és a config nyelvei. */
-      langPending?: string[]
-      languages?: string[]
+      langAsk?: { ids: string[]; languages: string[] }
     }
   | { status: 'failed'; error: string; done?: string[]; missing?: true }
   | { status: 'progress'; text: string }
@@ -947,8 +946,8 @@ async function langAskPrompt(
   body: Extract<CallbackBody, { status: 'ready' }>,
   deps: WorkerDeps,
 ): Promise<{ text: string; keyboard?: Key[][] }> {
-  const langs = [...new Set((body.languages ?? []).map(workerLang).filter((lang): lang is string => lang !== null))]
-  const ids = body.langPending ?? []
+  const langs = [...new Set((body.langAsk?.languages ?? []).map(workerLang).filter((lang): lang is string => lang !== null))]
+  const ids = body.langAsk?.ids ?? []
   if (ids.length === 0 || langs.length === 0 || row.status === 'cancelled') return { text: body.title }
   const lines = body.title.split('\n')
   const at = lines.at(-1)?.startsWith(RUNS_PREFIX) === true ? lines.length - 1 : lines.length

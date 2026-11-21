@@ -307,12 +307,12 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
   })
 
   // pcsontos/issue-tracker#82: a Telegramról nyelv nélkül érkező hangot nem adjuk le a config nyelvével, a felhasználót kérdezzük.
-  it('/fetch_audio: nyelv nélküli videó nyelvre vár, az inbox üres, a válasz a langPending-et és a languages-t adja', async () => {
+  it('/fetch_audio: nyelv nélküli videó nyelvre vár, az inbox üres, a válasz a nyelvkérdést (langAsk) adja', async () => {
     const { path, whisper } = await config(true)
     const out = collect()
     const reply = await serveFetchAudio(path, { runner: noSubRunner })({ inputs: [`https://www.youtube.com/watch?v=${ID}`] }, undefined, out.emit)
     expect(out.lines[0]).toBe(`letöltve, nyelvre vár: Cím [${ID}]`)
-    expect(reply).toMatchObject({ langPending: [ID], languages: ['hu'] })
+    expect(reply.langAsk).toEqual({ ids: [ID], languages: ['hu'] })
     expect(reply.title).toContain('1 nyelvre vár.')
     expect(await readdir(join(whisper, 'inbox'))).toEqual([])
   })
@@ -322,10 +322,10 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     await mkdir(join(dir, 'audio', 'Csat'), { recursive: true })
     await writeFile(join(dir, 'audio', 'Csat', `Cím [${ID}].m4a`), 'hang')
     const pending = await serveTranscribe(path)({ ids: [ID] }, undefined, collect().emit)
-    expect(pending).toMatchObject({ langPending: [ID], languages: ['hu'] })
+    expect(pending.langAsk).toEqual({ ids: [ID], languages: ['hu'] })
     expect(await readdir(join(whisper, 'inbox'))).toEqual([])
     const given = await serveTranscribe(path)({ ids: [ID], lang: 'en' }, undefined, collect().emit)
-    expect(given.langPending).toEqual([])
+    expect(given.langAsk?.ids ?? []).toEqual([])
     expect(await readdir(join(whisper, 'inbox'))).toContain(`${ID}.m4a`)
   })
 
@@ -358,7 +358,7 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
     it('leadás nélkül (csak nyelvre vár) nincs link', async () => {
       const { path } = await withWeb()
       const reply = await serveTranscribe(path)({ ids: [ID] }, undefined, collect().emit)
-      expect(reply.langPending).toEqual([ID])
+      expect(reply.langAsk?.ids).toEqual([ID])
       expect(linkLines(reply.title)).toEqual([])
     })
 

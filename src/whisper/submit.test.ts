@@ -136,6 +136,10 @@ describe('resolveLang', () => {
     expect(resolveLang({ info: {}, languages: ['hu', 'en'] })).toBe('hu')
     expect(resolveLang({ info: {}, languages: [] })).toBeNull()
     expect(resolveLang({ info: { language: 'hu,en' }, languages: ['de'] })).toBe('de')
+    // askLang (Telegram, pcsontos/issue-tracker#82): nincs config-tartalék, a jelző és az info.language marad.
+    expect(resolveLang({ info: {}, languages: ['hu'], askLang: true })).toBeNull()
+    expect(resolveLang({ info: { language: 'en' }, languages: ['hu'], askLang: true })).toBe('en')
+    expect(resolveLang({ flag: 'de', info: {}, languages: ['hu'], askLang: true })).toBe('de')
   })
 })
 
@@ -340,14 +344,14 @@ describe('createHandoff', () => {
 
   it('config nélkül mindig „nincs config”', async () => {
     const { handoff, warning } = await createHandoff({ cfg: null, store })
-    expect(await handoff('abcdefghijk')).toBe('nincs config')
+    expect(await handoff('abcdefghijk')).toEqual({ error: 'nincs config' })
     expect(await warning()).toBeNull()
   })
 
   it('whisper-mappa nélkül „nincs whisper-mappa”, és nem jön létre', async () => {
     const missing = join(tmpdir(), 'nincs-ilyen-whisper-mappa')
     const { handoff } = await createHandoff({ cfg: cfgFor(missing), store })
-    expect(await handoff('abcdefghijk')).toBe('nincs whisper-mappa')
+    expect(await handoff('abcdefghijk')).toEqual({ error: 'nincs whisper-mappa' })
   })
 
   it('leadás: submitted, másodszor skipped; a friss letöltés is megtalálható; a figyelmeztetés csak leadás után', async () => {
@@ -373,7 +377,7 @@ describe('createHandoff', () => {
     await put(archive, 'Feed [0f0f0f0f]/Epi [1a2b3c4d].mp3')
     const cfg = loadConfig({ vault: { path: '/v' }, sources: [sources], languages: [], whisper: { dir: dirs.root }, audio: { dir: archive } }, '/p/c.yaml')
     const { handoff, langPending } = await createHandoff({ cfg, store })
-    expect(await handoff('1a2b3c4d')).toBe('nincs nyelv: adj meg --lang kapcsolót')
+    expect(await handoff('1a2b3c4d')).toEqual({ error: 'nincs nyelv: adj meg --lang kapcsolót' })
     expect(langPending).toEqual([])
   })
 
@@ -382,7 +386,7 @@ describe('createHandoff', () => {
     await handoff('abcdefghijk')
     const info = JSON.parse(await readFile(join(dirs.inbox, 'abcdefghijk.info.json'), 'utf8')) as { refinery_lang: string }
     expect(info.refinery_lang).toBe('en')
-    expect(await handoff('nincsnincsni')).toBe('nincs ilyen hang')
+    expect(await handoff('nincsnincsni')).toEqual({ error: 'nincs ilyen hang' })
   })
 })
 

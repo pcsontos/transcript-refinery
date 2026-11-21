@@ -234,8 +234,8 @@ describe('sorok', () => {
   it('a nyelvre váró sor és összesítő (pcsontos/issue-tracker#82)', () => {
     expect(rowLine({ outcome: 'downloaded', label: 'X', whisper: 'needs-lang' })).toBe('letöltve, nyelvre vár: X')
     const rows = [
-      { outcome: 'downloaded' as const, label: 'a', whisper: 'needs-lang' },
-      { outcome: 'downloaded' as const, label: 'b', whisper: 'submitted' },
+      { outcome: 'downloaded' as const, label: 'a', whisper: 'needs-lang' as const },
+      { outcome: 'downloaded' as const, label: 'b', whisper: 'submitted' as const },
     ]
     expect(audioSummary(rows)).toBe('Kész: letöltve 2 db fájl, 0 kihagyva, 0 hibás. 1 átírásra leadva. 1 nyelvre vár.')
   })
@@ -476,7 +476,7 @@ describe('whisper-fallback', () => {
   })
 
   it('handoff ok-szöveggel: letöltve, átírás nem elérhető, nem hiba', async () => {
-    const out = await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.resolve('nincs whisper-mappa'), [yt('abcdefghijk')])
+    const out = await run({ abcdefghijk: { probe: NO_SUB } }, () => Promise.resolve({ error: 'nincs whisper-mappa' }), [yt('abcdefghijk')])
     expect(out.lines).toEqual(['letöltve, átírás nem elérhető (nincs whisper-mappa): Cím [abcdefghijk]'])
     expect(out.rows.map((row) => row.outcome)).toEqual(['downloaded'])
     expect(audioSummary(out.rows)).toBe('Kész: letöltve 1 db fájl, 0 kihagyva, 0 hibás.')
@@ -490,6 +490,6 @@ describe('whisper-fallback', () => {
   })
 
   it('rowLine', () => {
-    expect(rowLine({ outcome: 'skipped', label: 'x', whisper: 'nincs config' })).toBe('kihagyva, átírás nem elérhető (nincs config): x')
+    expect(rowLine({ outcome: 'skipped', label: 'x', whisper: { error: 'nincs config' } })).toBe('kihagyva, átírás nem elérhető (nincs config): x')
   })
 })

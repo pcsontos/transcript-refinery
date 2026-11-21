@@ -43,7 +43,7 @@ export type CallbackBody =
    * `deployError` csak átírás utáni futásnál (pcsontos/issue-tracker#45): hiányzik = a deploy kint van (showroom-link),
    * `null` = nem volt deploy (Worker-link), szöveg = a deploy hibája (Worker-link + hibasor).
    * `done`: csak a felirat-job `ready`-jében (pcsontos/issue-tracker#88): a tétel már kész receptjei, `noteUrl` a leirat-jegyzete.
-   * `langPending` + `languages`: csak hangmunka `ready`-jében (pcsontos/issue-tracker#82): a nyelv nélküli hangok azonosítói és a config nyelvei, a Worker nyelvgombot küld.
+   * `langAsk`: csak hangmunka `ready`-jében (pcsontos/issue-tracker#82): a nyelv nélküli hangok azonosítói és a config nyelvei, a Worker nyelvgombot küld.
    */
   | {
       status: 'ready'
@@ -51,8 +51,7 @@ export type CallbackBody =
       noteUrl?: string
       deployError?: string | null
       done?: string[]
-      langPending?: string[]
-      languages?: string[]
+      langAsk?: LangAsk
     }
   /** `done`: a futás elkészült jegyzetei, ha a futás recept-leállás miatt bukott; a záró üzenet csak ezeket linkeli. */
   | { status: 'failed'; error: string; done?: string[]; missing?: true }
@@ -80,7 +79,9 @@ export interface RefineOptions {
 }
 
 /** A hangmunka válasza: az összesítő, és a nyelvre váró hangok (pcsontos/issue-tracker#82). */
-export type AudioReply = { title: string; langPending?: string[]; languages?: string[] }
+/** A nyelvre váró hangok azonosítói és a felkínált nyelvek (a config `languages`-e). */
+export type LangAsk = { ids: string[]; languages: string[] }
+export type AudioReply = { title: string; langAsk?: LangAsk }
 
 export interface JobEffects {
   /** A hangletöltés; az összesítőt adja vissza (feed-listázásnál a választási felszólítást). */
@@ -437,8 +438,8 @@ export function cliRerunHint(path: string, recipes: readonly string[]): string {
 
 /** A hangmunka `ready`-je; megszakított munkánál nincs nyelvkérdés (a hangok nincsenek leadva, de a felhasználó leállította). */
 function audioReady(reply: AudioReply, signal: AbortSignal | undefined): CallbackBody {
-  const { title, langPending = [], languages = [] } = reply
-  return { status: 'ready', title, ...(langPending.length > 0 && signal?.aborted !== true ? { langPending, languages } : {}) }
+  const { title, langAsk } = reply
+  return { status: 'ready', title, ...(langAsk !== undefined && langAsk.ids.length > 0 && signal?.aborted !== true ? { langAsk } : {}) }
 }
 
 /** A hangletöltés: a sorok progressként, az összesítő readyként megy a Workernek. */
