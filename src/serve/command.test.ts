@@ -6,7 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ProcessRunner } from '../fetch/subtitle/ytdlp.js'
 import { loadCliConfig } from '../config.js'
 import { openState } from '../state/db.js'
-import { commandServe, installIdleExit, serveEffects, serveFetchAudio, serveTranscribe } from './command.js'
+import { TRANSCRIBE_HINT as WORKER_TRANSCRIBE_HINT } from '../../worker/src/messages.js'
+import { TRANSCRIBE_HINT, commandServe, installIdleExit, serveEffects, serveFetchAudio, serveTranscribe } from './command.js'
 import type { ObjectStore } from './r2.js'
 
 function memoryStore(initial: Record<string, Uint8Array> = {}): ObjectStore & { objects: Record<string, Uint8Array> } {
@@ -479,5 +480,12 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
       const info = JSON.parse(await readFile(join(dir, 'src', 'whisper', 'csat', 'aaaaaaaaaaa.info.json'), 'utf8')) as Record<string, unknown>
       expect(info.refinery_after).toBe('j1')
     })
+  })
+})
+
+// A Worker a használati sort szó szerinti egyezéssel ismeri fel (pcsontos/issue-tracker#81): a két másolat nem térhet el.
+describe('a serve és a Worker közös szövegei', () => {
+  it('a TRANSCRIBE_HINT szó szerint azonos', () => {
+    expect(WORKER_TRANSCRIBE_HINT).toBe(TRANSCRIBE_HINT)
   })
 })
