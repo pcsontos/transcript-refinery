@@ -190,6 +190,9 @@ export function langKeyboard(mask: number, jobId: string): Key[][] {
   )
 }
 
+/** A serve követési sorának eleje (a `src/serve/command.ts` `RUNS_PREFIX`-e, szó szerint); a nyelvkérdés elé kerül (pcsontos/issue-tracker#90). */
+export const RUNS_PREFIX = 'Itt lehet a feldolgozást követni: '
+
 /** A nyelv nélküli hangok kérdése és gombjai (pcsontos/issue-tracker#82); az adat `w:<nyelv>:<jobId>`. */
 export const langAskLine = (n: number): string => `${n} hang nyelvre vár. Milyen nyelvű?`
 export const langChosenLine = (lang: string): string => `Nyelv: ${lang}`

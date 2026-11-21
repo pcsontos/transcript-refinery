@@ -6,8 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ProcessRunner } from '../fetch/subtitle/ytdlp.js'
 import { loadCliConfig } from '../config.js'
 import { openState } from '../state/db.js'
-import { TRANSCRIBE_HINT as WORKER_TRANSCRIBE_HINT } from '../../worker/src/messages.js'
-import { TRANSCRIBE_HINT, commandServe, installIdleExit, serveEffects, serveFetchAudio, serveTranscribe } from './command.js'
+import { RUNS_PREFIX as WORKER_RUNS_PREFIX, TRANSCRIBE_HINT as WORKER_TRANSCRIBE_HINT } from '../../worker/src/messages.js'
+import { RUNS_PREFIX, TRANSCRIBE_HINT, commandServe, installIdleExit, serveEffects, serveFetchAudio, serveTranscribe } from './command.js'
 import type { ObjectStore } from './r2.js'
 
 function memoryStore(initial: Record<string, Uint8Array> = {}): ObjectStore & { objects: Record<string, Uint8Array> } {
@@ -487,5 +487,10 @@ describe('serveFetchAudio átírás és serveTranscribe', () => {
 describe('a serve és a Worker közös szövegei', () => {
   it('a TRANSCRIBE_HINT szó szerint azonos', () => {
     expect(WORKER_TRANSCRIBE_HINT).toBe(TRANSCRIBE_HINT)
+  })
+
+  // A Worker ez alapján teszi a nyelvkérdést a követési sor elé (pcsontos/issue-tracker#90).
+  it('a RUNS_PREFIX szó szerint azonos', () => {
+    expect(WORKER_RUNS_PREFIX).toBe(RUNS_PREFIX)
   })
 })

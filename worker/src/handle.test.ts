@@ -13,7 +13,6 @@ import {
   SCAN,
   START,
   TRANSCRIBE,
-  workerLang,
   type PlannedKnock,
   type WorkerDeps,
 } from './handle.js'
@@ -51,6 +50,7 @@ import {
   modelSetLine,
   modelText,
   noModelLine,
+  workerLang,
   type Key,
   type ModelsReply,
   type Probe,
@@ -1976,6 +1976,25 @@ describe('/fetch_audio', () => {
         expect(d.sent).toEqual(['T'])
         expect(d.keyboards).toEqual([])
       }
+    })
+
+    it('a követési link a kérdés után, a válasz végén marad (pcsontos/issue-tracker#90)', async () => {
+      const store = await boundStore()
+      const d = deps(store)
+      await handleUpdate(command(7, '/fetch_audio https://a'), d)
+      d.sent.length = 0
+      const link = 'Itt lehet a feldolgozást követni: https://web.example/runs'
+      await handleCallback('7:fetch-7', { status: 'ready', title: `T\n${link}`, langPending: ['a'], languages: ['hu'] }, d)
+      expect(d.sent).toEqual([`T\n1 hang nyelvre vár. Milyen nyelvű?\n${link}`])
+    })
+
+    it('ha a munka nem jön létre, a kérdés megmarad, és újra koppintható', async () => {
+      const { store, d } = await ready()
+      const failing = { ...d, store: { ...store, insert: () => Promise.reject(new Error('D1 hiba')) } }
+      await expect(handleTap(tap(8, 'w:en:7:fetch-7', 42, 50), failing)).rejects.toThrow('D1 hiba')
+      expect(d.edits).toEqual([])
+      const knocks = await handleTap(tap(9, 'w:en:7:fetch-7', 42, 50), d)
+      expect(knocks[0]?.url).toBe('transcribe a b --lang en')
     })
 
     it('a nem LANGS-beli, de érvényes kód is gombot kap', async () => {

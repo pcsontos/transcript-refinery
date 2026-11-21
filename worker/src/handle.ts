@@ -28,6 +28,7 @@ import {
   PICK_USAGE,
   TRANSCRIBE_HINT,
   TRANSCRIBE_HINT_REPLY,
+  RUNS_PREFIX,
   langAskKeyboard,
   langAskLine,
   langChosenLine,
@@ -162,8 +163,6 @@ const TRANSCRIBE_PICK = /^\s*(\d+(?:\s*,\s*\d+)*)(?:\s+--lang\s+(\S+))?\s*$/
 /** Egy listasor: a mohó `.*` a sor utolsó `[…]`-ját fogja, így a címben lévő `[ ]` és `—` sem zavar. */
 const TRANSCRIBE_ITEM = /^(\d+)\. .*\[([A-Za-z0-9_-]+)\](?: — [^\]]*)?$/
 
-// A `workerLang` a `plan.ts`-ben él (a `parseTap` is használja); innen is elérhető.
-export { workerLang }
 export const FETCH_ID = /^fetch-\d+$/
 const NO_SUBTITLE = 'Nincs felirat'
 const UNRESOLVED = 'A link nem oldható fel.'
@@ -929,29 +928,40 @@ async function fetchCallback(row: JobRow, body: ServeReport, deps: WorkerDeps): 
     return
   }
   if (row.notifiedReady) return
-  // Nyelvre váró hangok (pcsontos/issue-tracker#82): egy kérdés nyelvgombokkal; a hangok a `resolves` táblában várnak.
-  // Megszakított munkánál nincs kérdés és nincs tárolás. Az érvényes kódokra szűrünk (`workerLang`), nem a `LANGS`-ra.
-  const langs = [...new Set((body.languages ?? []).map(workerLang).filter((lang): lang is string => lang !== null))]
-  const ids = body.langPending ?? []
-  let text = body.title
-  let keyboard: Key[][] | undefined
-  if (ids.length > 0 && langs.length > 0 && row.status !== 'cancelled') {
-    text = `${body.title}\n${langAskLine(ids.length)}`
-    await deps.store.insertResolve({
-      jobId: row.jobId,
-      chatId: row.chatId,
-      title: text,
-      items: ids.map((id) => ({ videoId: id, url: '', title: id })),
-      videoId: null,
-    })
-    keyboard = langAskKeyboard(row.jobId, langs)
-  }
+  const { text, keyboard } = await langAskPrompt(row, body, deps)
   const sent = await deps.send(row.chatId, text, keyboard)
   if (sent && row.status !== 'cancelled') {
     row.status = 'ready'
     row.notifiedReady = true
   }
   await deps.store.save(row)
+}
+
+/**
+ * A hangmunka kész-üzenete nyelvre váró hangokkal (pcsontos/issue-tracker#82): a kérdés és a nyelvgombok; a hangok a `resolves`
+ * táblában várnak. Megszakított munkánál nincs kérdés és nincs tárolás. Az érvényes kódokra szűrünk (`workerLang`), nem a
+ * `LANGS`-ra. A kérdés a serve követési sora elé kerül, hogy a link a válasz végén maradjon (pcsontos/issue-tracker#90).
+ */
+async function langAskPrompt(
+  row: JobRow,
+  body: Extract<CallbackBody, { status: 'ready' }>,
+  deps: WorkerDeps,
+): Promise<{ text: string; keyboard?: Key[][] }> {
+  const langs = [...new Set((body.languages ?? []).map(workerLang).filter((lang): lang is string => lang !== null))]
+  const ids = body.langPending ?? []
+  if (ids.length === 0 || langs.length === 0 || row.status === 'cancelled') return { text: body.title }
+  const lines = body.title.split('\n')
+  const at = lines.at(-1)?.startsWith(RUNS_PREFIX) === true ? lines.length - 1 : lines.length
+  lines.splice(at, 0, langAskLine(ids.length))
+  const text = lines.join('\n')
+  await deps.store.insertResolve({
+    jobId: row.jobId,
+    chatId: row.chatId,
+    title: text,
+    items: ids.map((id) => ({ videoId: id, url: '', title: id })),
+    videoId: null,
+  })
+  return { text, keyboard: langAskKeyboard(row.jobId, langs) }
 }
 
 type ResolvedItem = { videoId: string; url: string; title: string }
@@ -1243,15 +1253,22 @@ async function langAskTap(
   if (resolve === null) return []
   const ids = resolve.items.map((item) => item.videoId)
   if (ids.length === 0) return []
+  let planned: { knocks: PlannedKnock[] }
+  try {
+    planned = await fetchRow(
+      updateId,
+      source.messageId,
+      source.chatId,
+      sub,
+      { url: `transcribe ${ids.join(' ')} --lang ${tap.lang}`, title: `átírás (${ids.length} tétel)` },
+      deps,
+    )
+  } catch (error) {
+    // A munka nem jött létre: a kérdés visszakerül, a gombok maradnak, újra koppintható.
+    await deps.store.insertResolve(resolve)
+    throw error
+  }
   if (typeof messageId === 'number') await deps.edit(source.chatId, messageId, `${resolve.title}\n${langChosenLine(tap.lang)}`, [])
-  const planned = await fetchRow(
-    updateId,
-    source.messageId,
-    source.chatId,
-    sub,
-    { url: `transcribe ${ids.join(' ')} --lang ${tap.lang}`, title: `átírás (${ids.length} tétel)` },
-    deps,
-  )
   return planned.knocks
 }
 

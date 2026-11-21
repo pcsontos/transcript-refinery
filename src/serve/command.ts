@@ -121,7 +121,9 @@ export function serveEffects(input: {
 }
 
 /** A leadott hangok követésére: a futások oldala (pcsontos/issue-tracker#90). */
-export const runsLine = (webUrl: string): string => `Itt lehet a feldolgozást követni: ${webUrl}/runs`
+/** A Worker a nyelvkérdést e sor elé teszi, ezért a Workerben másolata van (`worker/src/messages.ts`). */
+export const RUNS_PREFIX = 'Itt lehet a feldolgozást követni: '
+export const runsLine = (webUrl: string): string => `${RUNS_PREFIX}${webUrl}/runs`
 
 /**
  * A Telegram `/fetch` hangletöltése: munkánként tölti a configot, így a `audio` blokk
