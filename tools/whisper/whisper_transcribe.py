@@ -22,6 +22,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,10 @@ SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 MODEL_NAME = "ggml-large-v3-turbo.bin"
 SUPPORTED_FORMATS = {".flac", ".mp3", ".ogg", ".wav"}
 HEARTBEAT_SECONDS = 30
+ADVANCE_SECONDS = 3
+SEGMENT_MAX = 80
+_PROGRESS_RE = re.compile(r"progress\s*=\s*(\d+)%")
+_SEGMENT_RE = re.compile(r"^\[\d\d:\d\d:\d\d\.\d{3} --> \d\d:\d\d:\d\d\.\d{3}\]\s*(.*)$")
 
 FORMAT_FLAG = {
     "txt": "--output-txt",
@@ -141,6 +146,21 @@ def _fail(tool: str, stderr: str) -> TranscribeError:
     return TranscribeError("\n".join(lines + ["%s: %s" % (tool, last)]))
 
 
+def parse_progress(line: str) -> Optional[int]:
+    """A whisper-cli `-pp` sorából a százalék (`progress =  42%`)."""
+    found = _PROGRESS_RE.search(line)
+    return int(found.group(1)) if found else None
+
+
+def parse_segment(line: str) -> Optional[str]:
+    """Egy felismert szegmens szövege egy sorban; 80 karakter fölött `…` + az utolsó 79 karakter."""
+    found = _SEGMENT_RE.match(line.strip())
+    if not found:
+        return None
+    text = " ".join(found.group(1).split())
+    return "…" + text[-(SEGMENT_MAX - 1):] if len(text) > SEGMENT_MAX else text
+
+
 def _run(
     cmd: List[str],
     cancelled: Callable[[], bool],
@@ -209,6 +229,33 @@ def transcribe(
     """Átírja a hangot; a kimenet `<out_dir>/<alap>[.<nyelv>].<kiterjesztés>`, az első kért formátum útját adja vissza."""
     phase = on_phase or (lambda _name: None)
     stop = cancelled or (lambda: False)
+    log_fh = None
+    if log_path:
+        os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+        log_fh = open(log_path, "w", encoding="utf-8")  # kísérletenként újra; siker után is megmarad
+    write_lock = threading.Lock()
+    state = {"percent": 0, "text": ""}  # type: Dict[str, object]
+
+    def make_on_line(parse: bool) -> Callable[[str, str], None]:
+        def on_line(_stream: str, line: str) -> None:
+            with write_lock:
+                if log_fh is not None:
+                    log_fh.write(line + "\n")
+                    log_fh.flush()
+                if not (parse and on_progress is not None):
+                    return
+                percent = parse_progress(line)
+                text = parse_segment(line)
+                if percent is None and text is None:
+                    return
+                if percent is not None:
+                    state["percent"] = percent
+                if text is not None:
+                    state["text"] = text
+                on_progress(state["percent"], state["text"])
+
+        return on_line
+
     cli = find_whisper_cli()
     ffmpeg = find_ffmpeg()
     model = find_model()
@@ -225,15 +272,17 @@ def transcribe(
         if needs_conversion(path):
             tmp_dir = tempfile.mkdtemp(prefix="whisper_", dir=out_dir)
             audio = os.path.join(tmp_dir, "audio_converted.wav")
-            code, stderr = _run([ffmpeg, "-y", "-i", path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", audio], stop)
+            code, stderr = _run([ffmpeg, "-y", "-i", path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", audio], stop, make_on_line(False))
             if code != 0:
                 raise _fail("ffmpeg", stderr)
         phase("átírás")
-        cmd = [cli, "--model", model, "--language", lang, "--output-file", prefix] + flags + list(extra or []) + ["--file", audio]
-        code, stderr = _run(cmd, stop)
+        cmd = [cli, "--model", model, "--language", lang, "--print-progress", "--output-file", prefix] + flags + list(extra or []) + ["--file", audio]
+        code, stderr = _run(cmd, stop, make_on_line(True))
         if code != 0:
             raise _fail("whisper-cli", stderr)
     finally:
+        if log_fh is not None:
+            log_fh.close()
         if tmp_dir and os.path.isdir(tmp_dir):
             shutil.rmtree(tmp_dir, ignore_errors=True)
     return "%s.%s" % (prefix, output_extension(outputs[0])) if outputs else prefix
@@ -395,6 +444,32 @@ def process(
         def cancelled() -> bool:
             return os.path.exists(cancel_path)
 
+        last_emit = [0.0]
+        latest = {"done": 0, "text": ""}  # type: Dict[str, object]
+
+        def emit(done: int, text: str) -> None:
+            """item:advance + a `.working` fájl tartalma (atomikusan), egyszerre."""
+            payload = {"done": done, "total": 100, "unit": "percent", "text": text}
+            fields = dict(payload)
+            if not text:
+                del fields["text"]
+            log.event(type="item:advance", itemId=id_, **fields)
+            tmp = marker + ".tmp"
+            try:
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    json.dump(payload, fh, ensure_ascii=False)
+                os.replace(tmp, marker)
+            except OSError:
+                pass
+
+        def on_progress(percent: int, text: str) -> None:
+            latest["done"] = percent
+            latest["text"] = text
+            now = time.monotonic()
+            if now - last_emit[0] >= ADVANCE_SECONDS:
+                last_emit[0] = now
+                emit(percent, text)
+
         reason = None  # type: Optional[str]
         detail = ""
         published = None  # type: Optional[str]
@@ -420,9 +495,20 @@ def process(
                 def on_phase(name: str) -> None:
                     log.event(type="item:step", itemId=id_, step=name)
 
-                made = transcribe_fn(audio, lang, work, ["srt"], on_phase=on_phase, cancelled=cancelled)
+                made = transcribe_fn(
+                    audio,
+                    lang,
+                    work,
+                    ["srt"],
+                    on_phase=on_phase,
+                    cancelled=cancelled,
+                    on_progress=on_progress,
+                    log_path=os.path.join(logs, id_ + ".whisper.log"),
+                )
                 if cancelled():
                     raise Cancelled()
+                if latest["done"] or latest["text"]:
+                    emit(100, str(latest["text"]))
                 if os.path.exists(final_srt):
                     raise TranscribeError("a cél .srt már létezik: %s" % os.path.join(target, srt_name))
                 _atomic_copy(info_path, final_info)

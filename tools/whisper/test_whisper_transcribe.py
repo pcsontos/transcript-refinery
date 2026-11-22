@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from datetime import datetime
 
 import whisper_transcribe as wt
@@ -276,6 +277,80 @@ class Process(Root):
         self.assertEqual(sorted(os.listdir(target)), ["a.hu.srt", "a.info.json"])
         self.assertEqual(self.cancel(), [])
         self.assertEqual(self.inbox(), [])
+
+    def run_progress(self, calls):
+        seen = []
+
+        def fake_progress(path, lang, out_dir, outputs, on_progress=None, **kw):
+            for percent, text in calls:
+                on_progress(percent, text)
+            with open(os.path.join(self.root, "work", "a.working")) as fh:
+                seen.append(fh.read())
+            return fake_ok(path, lang, out_dir, outputs)
+
+        self.put_item()
+        self.run_process(fake_progress)
+        _, lines = self.log_lines()
+        return seen, [line for line in lines if line["type"] in ("item:advance", "item:published")]
+
+    def test_haladas_a_naploba_es_a_working_fajlba(self):
+        seen, lines = self.run_progress([(50, "fél")])
+        self.assertEqual(json.loads(seen[0]), {"done": 50, "total": 100, "unit": "percent", "text": "fél"})
+        advances = [line for line in lines if line["type"] == "item:advance"]
+        self.assertEqual(advances[0]["done"], 50)
+        self.assertEqual((advances[0]["total"], advances[0]["unit"], advances[0]["text"]), (100, "percent", "fél"))
+        self.assertEqual(advances[-1]["done"], 100)
+        self.assertEqual(lines[-1]["type"], "item:published")
+
+    def test_haladas_ritkitva(self):
+        _, lines = self.run_progress([(10, "a"), (11, "b"), (12, "c")])
+        advances = [line for line in lines if line["type"] == "item:advance"]
+        self.assertEqual([line["done"] for line in advances], [10, 100])
+
+
+class Progress(unittest.TestCase):
+    def test_parse_progress(self):
+        self.assertEqual(wt.parse_progress("whisper_print_progress_callback: progress =  42%"), 42)
+        self.assertIsNone(wt.parse_progress("valami"))
+
+    def test_parse_segment(self):
+        self.assertEqual(wt.parse_segment("[00:01:02.500 --> 00:01:05.250]   Szia világ"), "Szia világ")
+        self.assertIsNone(wt.parse_segment("valami"))
+
+    def test_hosszu_szegmens_vagva(self):
+        line = "[00:00:00.000 --> 00:00:05.000] " + "x" * 100
+        text = wt.parse_segment(line)
+        self.assertEqual(len(text), 80)
+        self.assertTrue(text.startswith("…"))
+
+
+class WhisperLog(unittest.TestCase):
+    def test_whisper_log_megmarad(self):
+        tmp = tempfile.mkdtemp(prefix="wt-log-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        os.makedirs(os.path.join(tmp, "bin"))
+        cli = os.path.join(tmp, "bin", "whisper-cli")
+        write(
+            cli,
+            "#!/bin/sh\n"
+            'while [ $# -gt 0 ]; do if [ "$1" = "--output-file" ]; then out="$2"; fi; shift; done\n'
+            'echo "[00:00:00.000 --> 00:00:01.000]   Szia világ"\n'
+            'echo "whisper_print_progress_callback: progress =  50%" >&2\n'
+            'printf "1\\n" > "$out.srt"\n',
+        )
+        os.chmod(cli, 0o755)
+        audio = os.path.join(tmp, "a.wav")
+        write(audio, "hang")
+        log_path = os.path.join(tmp, "logs", "a.whisper.log")
+        calls = []
+        with mock.patch.object(wt, "SCRIPT_DIR", tmp), mock.patch.object(wt, "find_model", return_value="m"), mock.patch.object(
+            wt, "find_ffmpeg", return_value="ffmpeg"
+        ):
+            made = wt.transcribe(audio, "hu", os.path.join(tmp, "out"), ["srt"], on_progress=lambda p, t: calls.append((p, t)), log_path=log_path)
+        self.assertTrue(os.path.exists(made))
+        with open(log_path) as fh:
+            self.assertIn("Szia világ", fh.read())
+        self.assertEqual(calls[-1], (50, "Szia világ"))
 
 
 class Run(unittest.TestCase):
