@@ -8,6 +8,7 @@ export interface WhisperDirs {
   inbox: string
   work: string
   failed: string
+  cancel: string
   heartbeat: string
 }
 
@@ -42,6 +43,7 @@ export async function whisperDirs(cfg: Pick<Config, 'whisperDir'>): Promise<Whis
     inbox: join(root, 'inbox'),
     work: join(root, 'work'),
     failed: join(root, 'failed'),
+    cancel: join(root, 'cancel'),
     heartbeat: join(root, 'heartbeat'),
   }
 }

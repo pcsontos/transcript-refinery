@@ -8,6 +8,7 @@ csak egy mappa. Ez a mappa a refinery `whisper.dir` kulcsa (alapértéke `/data/
 ├── inbox/     <id>.<ext> + <id>.info.json   (a refinery írja, .partial + átnevezéssel)
 ├── work/      a figyelő munkafájljai
 ├── failed/    <id>.<ext> + <id>.info.json + <id>.log
+├── cancel/    <id> (üres jelzőfájl: a refinery írja, a figyelő törli)
 └── heartbeat  a figyelő frissíti (pollozáskor és átírás közben is)
 ```
 
@@ -24,6 +25,19 @@ csak egy mappa. Ez a mappa a refinery `whisper.dir` kulcsa (alapértéke `/data/
 - Minden tételhez JSONL futásnapló készül a `--logs` mappába, a refinery formátumában, ezért a refinery-web `/runs`
   oldala változtatás nélkül mutatja a fázisokat (vár → konvertálás → átírás). Az életjel 30 mp-enként frissíti a
   napló fájlidejét.
+
+### Megszakítás, haladás, napló
+
+- **`cancel/<id>`:** a refinery írja (a serve, a Telegram `/cancel` hatására). A figyelő másodpercenként nézi; futó átírásnál
+  leállítja az `ffmpeg`/`whisper-cli` gyerekfolyamatot (`terminate`, 5 mp után `kill`), törli a bemenetet és a munkafájlokat,
+  és a `failed/` alá **nem** rak semmit. Ha az `.srt` és az `info.json` már kint van, a jelzés hatástalan. Árva jelzést
+  (nincs se inbox-hang, se `work/<id>.working`) a figyelő körönként töröl. Induláskor csak a `work/` ürül, a `cancel/` nem.
+- **`work/<id>.working`:** üres, amíg nincs adat; utána UTF-8 JSON, atomikusan (`os.replace`) írva:
+  `{"done": <0–100>, "total": 100, "unit": "percent", "text": "<utolsó szegmens, legfeljebb 80 karakter>"}`.
+  A refinery (`refinery transcribe`, serve) ebből olvas. Legfeljebb 3 másodpercenként frissül.
+- **`refinery_job`:** az inbox-`info.json` új mezője: a leadó Telegram-munka azonosítója (pl. `12:3`). CLI-leadásnál hiányzik.
+  A figyelő nem olvassa; a refinery ebből tudja, kinek az átírása a sorban álló tétel.
+- **`<logs>/<id>.whisper.log`:** az `ffmpeg` és a `whisper-cli` minden sora, kísérletenként újraírva (`"w"`); siker után is megmarad.
 
 ## Telepítés
 

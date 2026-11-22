@@ -60,7 +60,7 @@ describe('listArchive', () => {
 })
 
 describe('transcriptStatus', () => {
-  const dirs: WhisperDirs = { root: '/w', inbox: '/w/inbox', work: '/w/work', failed: '/w/failed', heartbeat: '/w/heartbeat' }
+  const dirs: WhisperDirs = { root: '/w', inbox: '/w/inbox', work: '/w/work', failed: '/w/failed', cancel: '/w/cancel', heartbeat: '/w/heartbeat' }
   const entry = (id: string, ext = 'm4a'): AudioEntry => ({
     id, key: `C/t [${id}].${ext}`, ext, title: 't', channel: 'C', duration: null, date: null, info: {},
   })
@@ -84,6 +84,16 @@ describe('transcriptStatus', () => {
     expect(transcriptStatus(entry('c'), ctx({ dirs: null, dirFiles: { inbox: ['c.m4a'], work: [], failed: [] } }))).toBe('archived')
   })
 
+  it('a cancel mappa nem változtat a státuszon', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'whisper-'))
+    await put(root, 'inbox/a.m4a')
+    await put(root, 'cancel/a', '')
+    const real: WhisperDirs = {
+      root, inbox: join(root, 'inbox'), work: join(root, 'work'), failed: join(root, 'failed'), cancel: join(root, 'cancel'), heartbeat: join(root, 'heartbeat'),
+    }
+    expect(transcriptStatus(entry('a'), await statusContext(await mkdtemp(join(tmpdir(), 'sources-')), real))).toBe('pending')
+  })
+
   it('címkék', () => {
     expect(STATUS_LABEL).toEqual({ archived: 'archivált', pending: 'vár', working: 'átírás alatt', done: 'kész', failed: 'hibás' })
   })
@@ -99,7 +109,7 @@ describe('statusContext és failedReason', () => {
     await put(root, 'inbox/x.m4a')
     await put(root, 'failed/y.log', 'eleje\nffmpeg: invalid data\n\n')
     const dirs: WhisperDirs = {
-      root, inbox: join(root, 'inbox'), work: join(root, 'work'), failed: join(root, 'failed'), heartbeat: join(root, 'heartbeat'),
+      root, inbox: join(root, 'inbox'), work: join(root, 'work'), failed: join(root, 'failed'), cancel: join(root, 'cancel'), heartbeat: join(root, 'heartbeat'),
     }
     const ctx = await statusContext(sources, dirs)
     expect([...ctx.srtIds]).toEqual(['abcdefghijk'])

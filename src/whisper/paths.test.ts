@@ -35,6 +35,7 @@ describe('whisperDirs', () => {
       inbox: join(tmp, 'inbox'),
       work: join(tmp, 'work'),
       failed: join(tmp, 'failed'),
+      cancel: join(tmp, 'cancel'),
       heartbeat: join(tmp, 'heartbeat'),
     })
     expect(existsSync(join(tmp, 'inbox'))).toBe(false)

@@ -141,7 +141,7 @@ export function serveFetchAudio(
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
     const log = openAudioRunLog(cfg.logsDir, `/fetch_audio ${[...lang, ...request.inputs, ...pick].join(' ')}`)
     const after = request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId)
-    const { handoff, warning, langPending } = await createHandoff({ cfg, store, lang: request.lang, after, askLang: true })
+    const { handoff, warning, langPending } = await createHandoff({ cfg, store, lang: request.lang, after, job: request.jobId, askLang: true })
     let total = 0
     try {
       const rows = await runAudioFetch(request.inputs, {
@@ -233,6 +233,7 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         sourcesRoot,
         languages: cfg.languages,
         after: request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId),
+        job: request.jobId,
         done,
         afterRecipes: cfg.whisperAfter,
         emit: async (line) => {
