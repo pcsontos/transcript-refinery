@@ -9,6 +9,7 @@ import {
   type CallbackBody,
   type WorkerDeps,
 } from './handle.js'
+import type { TranscriptRow } from './messages.js'
 import { LINK_INVALID_PAGE, newToken, type Key, type ModelsReply } from './plan.js'
 import { notePage, notesPage, TIMEOUT_MS, type ReaderDeps } from './reader.js'
 
@@ -104,6 +105,32 @@ function deps(env: Env, linkBase = ''): WorkerDeps {
     cancel: async (id) => {
       try {
         const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/jobs/${encodeURIComponent(id)}/cancel`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${env.REFINERY_SERVE_SECRET}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        if (response.status === 200) return 'ok'
+        return response.status === 404 ? 'unknown' : 'unreachable'
+      } catch {
+        return 'unreachable'
+      }
+    },
+    transcripts: async () => {
+      try {
+        const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/whisper`, {
+          headers: { authorization: `Bearer ${env.REFINERY_SERVE_SECRET}` },
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+        })
+        if (!response.ok) return null
+        const body: unknown = await response.json()
+        return Array.isArray(body) ? (body as TranscriptRow[]) : null
+      } catch {
+        return null
+      }
+    },
+    cancelTranscript: async (id) => {
+      try {
+        const response = await fetch(`${env.SERVE_URL.replace(/\/$/, '')}/whisper/${encodeURIComponent(id)}/cancel`, {
           method: 'POST',
           headers: { authorization: `Bearer ${env.REFINERY_SERVE_SECRET}` },
           signal: AbortSignal.timeout(TIMEOUT_MS),

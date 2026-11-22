@@ -81,6 +81,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
   edits: { chatId: string; messageId: number; text: string; keyboard: Key[][] }[]
   answered: string[]
   cancelled: string[]
+  transcriptCancelled: string[]
 } {
   const sent: string[] = []
   const chats: string[] = []
@@ -90,6 +91,7 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
   const edits: { chatId: string; messageId: number; text: string; keyboard: Key[][] }[] = []
   const answered: string[] = []
   const cancelled: string[] = []
+  const transcriptCancelled: string[] = []
   let next = 0
   return {
     allowedEmails: 'en@example.com',
@@ -107,6 +109,12 @@ function deps(store: ReturnType<typeof memoryStore>, over: Partial<WorkerDeps> =
     edits,
     answered,
     cancelled,
+    transcriptCancelled,
+    transcripts: () => Promise.resolve([]),
+    cancelTranscript: (id) => {
+      transcriptCancelled.push(id)
+      return Promise.resolve('ok')
+    },
     cancel: (id) => {
       cancelled.push(id)
       return Promise.resolve('ok')
@@ -1257,6 +1265,110 @@ describe('/cancel', () => {
     expect((await findRow(store, `5:${ID}`))?.status).toBe('cancelled')
     expect((await findRow(store, `7:${ID2}`))?.status).toBe('cancelled')
     expect(d.sent).toEqual([`Megszakítva: ${ID}.`, `Megszakítva: ${ID2}.`])
+  })
+
+  describe('átírások (pcsontos/issue-tracker#134)', () => {
+    const own = { id: 'a', title: 'A', state: 'working' as const, job: `5:${ID}` }
+
+    it('listázza a saját átírást, a más felhasználóét és a job nélkülit nem', async () => {
+      const store = await boundStore()
+      await store.insert(acceptedRow({ status: 'ready', title: 'Cím' }))
+      await store.insert(acceptedRow({ jobId: `6:${ID2}`, updateId: 6, videoId: ID2, sub: 'sub-masik', status: 'ready' }))
+      const d = deps(store, {
+        transcripts: () =>
+          Promise.resolve([
+            own,
+            { id: 'b', title: 'B', state: 'queued', job: `6:${ID2}` },
+            { id: 'c', title: 'C', state: 'queued', job: null },
+          ]),
+      })
+      await handleUpdate(command(70, '/cancel'), d)
+      expect(d.sent).toEqual(['Melyiket szakítsam meg?'])
+      expect(d.keyboards).toEqual([[[{ text: 'átírás: A', data: 'C:a' }], [{ text: 'Mind megszakítása', data: 'c:*' }]]])
+    })
+
+    it('a sorban álló átírás gombja sorban: előtagot kap', async () => {
+      const store = await boundStore()
+      await store.insert(acceptedRow({ status: 'ready' }))
+      const d = deps(store, { transcripts: () => Promise.resolve([{ ...own, state: 'queued' }]) })
+      await handleUpdate(command(70, '/cancel'), d)
+      expect(d.keyboards[0]?.[0]).toEqual([{ text: 'sorban: A', data: 'C:a' }])
+    })
+
+    it('a 64 bájtnál hosszabb gombadatú átírás kimarad a gombok közül', async () => {
+      const store = await boundStore()
+      await store.insert(acceptedRow({ status: 'ready' }))
+      const long = 'x'.repeat(63)
+      const d = deps(store, { transcripts: () => Promise.resolve([{ ...own, id: long }, own]) })
+      await handleUpdate(command(70, '/cancel'), d)
+      expect(d.keyboards[0]?.map((row) => row[0]?.data)).toEqual(['C:a', 'c:*'])
+    })
+
+    it('más felhasználó átírása nem jelenik meg és nem szakítható', async () => {
+      const store = await boundStore()
+      await store.insert(acceptedRow({ jobId: `6:${ID2}`, updateId: 6, videoId: ID2, sub: 'sub-masik', status: 'ready' }))
+      const d = deps(store, { transcripts: () => Promise.resolve([{ ...own, job: `6:${ID2}` }]) })
+      await handleUpdate(command(70, '/cancel'), d)
+      expect(d.sent).toEqual(['Nincs megszakítható munka.'])
+      expect(d.keyboards).toEqual([])
+      expect(await handleTap(tap(80, 'C:a'), d)).toEqual([])
+      expect(d.sent).toEqual(['Nincs megszakítható munka.', 'Ez már lefutott vagy meg lett szakítva.'])
+      expect(d.transcriptCancelled).toEqual([])
+    })
+
+    it('serve nélkül a D1 munkái jönnek, munka nélkül a nincs-sor', async () => {
+      const store = await boundStore()
+      const d = deps(store, { transcripts: () => Promise.resolve(null) })
+      await handleUpdate(command(70, '/cancel'), d)
+      expect(d.sent).toEqual(['Nincs megszakítható munka.'])
+      await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+      await handleUpdate(command(71, '/cancel'), d)
+      expect(d.keyboards).toEqual([[[{ text: ID, data: `c:5:${ID}` }], [{ text: 'Mind megszakítása', data: 'c:*' }]]])
+    })
+
+    it('C:<id>: ok, unknown és unreachable', async () => {
+      const cases = [
+        ['ok', 'Megszakítva: A.'],
+        ['unknown', 'Ez már lefutott vagy meg lett szakítva.'],
+        ['unreachable', 'Most nem érem el a szervert, próbáld újra.'],
+      ] as const
+      for (const [answer, line] of cases) {
+        const store = await boundStore()
+        await store.insert(acceptedRow({ status: 'ready' }))
+        const d = deps(store, { transcripts: () => Promise.resolve([own]), cancelTranscript: () => Promise.resolve(answer) })
+        expect(await handleTap(tap(80, 'C:a'), d)).toEqual([])
+        expect(d.sent).toEqual([line])
+      }
+    })
+
+    it('C:<id> elérhetetlen serve-listánál újrapróbálást kér, nem hívja a megszakítást', async () => {
+      const store = await boundStore()
+      const d = deps(store, { transcripts: () => Promise.resolve(null) })
+      await handleTap(tap(80, 'C:a'), d)
+      expect(d.sent).toEqual(['Most nem érem el a szervert, próbáld újra.'])
+      expect(d.transcriptCancelled).toEqual([])
+    })
+
+    it('a c:* a jobok után a saját átírásokat is megszakítja, tételenként egy sorral', async () => {
+      const store = await boundStore()
+      await store.insert(acceptedRow({ status: 'queued', acceptedAt: null }))
+      await store.insert(acceptedRow({ jobId: `7:${ID2}`, updateId: 7, videoId: ID2, status: 'ready' }))
+      const d = deps(store, {
+        transcripts: () =>
+          Promise.resolve([own, { id: 'z', title: 'Z', state: 'queued', job: `7:${ID2}` }, { id: 'q', title: 'Q', state: 'queued', job: null }]),
+      })
+      await handleTap(tap(86, 'c:*'), d)
+      expect(d.sent).toEqual([`Megszakítva: ${ID}.`, 'Megszakítva: A.', 'Megszakítva: Z.'])
+      expect(d.transcriptCancelled).toEqual(['a', 'z'])
+    })
+
+    it('a c:* csak átírással is működik', async () => {
+      const store = await boundStore()
+      await store.insert(acceptedRow({ status: 'ready' }))
+      const d = deps(store, { transcripts: () => Promise.resolve([own]) })
+      await handleTap(tap(86, 'c:*'), d)
+      expect(d.sent).toEqual(['Megszakítva: A.'])
+    })
   })
 })
 

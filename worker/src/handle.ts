@@ -1,4 +1,5 @@
 import { classifyInput } from 'transcript-refinery/classify'
+import type { TranscriptRow } from './messages.js'
 import {
   BIND_FIRST,
   DOWNLOAD_FAILED,
@@ -136,6 +137,10 @@ export interface WorkerDeps {
   knock: (job: PlannedKnock) => Promise<202 | 409 | 401 | 'down'>
   /** A serve futó jobjának leállítása: `ok` 200, `unknown` 404, minden más `unreachable`. */
   cancel: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>
+  /** A serve `GET /whisper`-je: a sorban álló és futó átírások; `null`, ha a serve nem érhető el (pcsontos/issue-tracker#134). */
+  transcripts: () => Promise<TranscriptRow[] | null>
+  /** Egy átírás megszakítása (`POST /whisper/<id>/cancel`): `ok` 200, `unknown` 404, minden más `unreachable`. */
+  cancelTranscript: (id: string) => Promise<'ok' | 'unknown' | 'unreachable'>
   /** A serve `GET /status`-a, mért válaszidővel; ebből dolgozik a `/ping`, a `/version` és a `/status`. */
   probe: () => Promise<Probe>
   /** A serve `GET /models`-a: a YAML-alap és a választható modellek. */
@@ -327,8 +332,9 @@ async function handleCommand(
   }
   if (command === 'cancel') {
     const open = await deps.store.openFor(binding.sub)
-    if (open.jobs.length === 0) await deps.send(chatId, NOTHING_TO_CANCEL)
-    else await deps.send(chatId, CANCEL_LINE, cancelKeyboard(open.jobs))
+    const transcripts = (await ownTranscripts(binding.sub, deps)) ?? []
+    if (open.jobs.length === 0 && transcripts.length === 0) await deps.send(chatId, NOTHING_TO_CANCEL)
+    else await deps.send(chatId, CANCEL_LINE, cancelKeyboard(open.jobs, transcripts))
     return
   }
   if (command === 'model') {
@@ -371,10 +377,51 @@ async function cancelOne(
   return 'closed'
 }
 
+/**
+ * A hívó saját átírásai: a `job`-juk sora a hívó `sub`-jáé (a más felhasználóé és a CLI-leadásé nem).
+ * `null`, ha a serve nem érhető el.
+ */
+async function ownTranscripts(sub: string, deps: WorkerDeps): Promise<TranscriptRow[] | null> {
+  const rows = await deps.transcripts()
+  if (rows === null) return null
+  const own: TranscriptRow[] = []
+  for (const row of rows) {
+    if (row.job !== null && (await findRow(deps.store, row.job))?.sub === sub) own.push(row)
+  }
+  return own
+}
+
+async function cancelTranscriptRow(row: TranscriptRow, deps: WorkerDeps): Promise<string> {
+  const result = await deps.cancelTranscript(row.id)
+  if (result === 'ok') return cancelledLine(row.title)
+  return result === 'unknown' ? CANCEL_CLOSED : CANCEL_RETRY
+}
+
+async function sendCancelReply(chatId: string, text: string, what: string, deps: WorkerDeps): Promise<void> {
+  // A sor ilyenkor is cancelled marad; a spec szerint csak naplózzuk.
+  if (!(await deps.send(chatId, text))) console.warn(`[worker] A megszakítás üzenete nem ment ki: ${what}`)
+}
+
+/** A `C:<id>` gomb: a lista újra lekérve és a hívó saját tételeire szűrve (a callback-adat nem megbízható). */
+async function cancelTranscriptTap(id: string, sub: string, chatId: string, deps: WorkerDeps): Promise<void> {
+  const own = await ownTranscripts(sub, deps)
+  if (own === null) {
+    await deps.send(chatId, CANCEL_RETRY)
+    return
+  }
+  const row = own.find((item) => item.id === id)
+  if (row === undefined) {
+    await deps.send(chatId, CANCEL_CLOSED)
+    return
+  }
+  await sendCancelReply(chatId, await cancelTranscriptRow(row, deps), id, deps)
+}
+
 async function cancelTap(target: string, sub: string, chatId: string, deps: WorkerDeps): Promise<void> {
   const open = await deps.store.openFor(sub)
   const jobs = target === '*' ? open.jobs : open.jobs.filter((job) => job.jobId === target)
-  if (jobs.length === 0) {
+  const transcripts = target === '*' ? ((await ownTranscripts(sub, deps)) ?? []) : []
+  if (jobs.length === 0 && transcripts.length === 0) {
     await deps.send(chatId, CANCEL_CLOSED)
     return
   }
@@ -402,9 +449,9 @@ async function cancelTap(target: string, sub: string, chatId: string, deps: Work
       : outcomes.includes('cancelled')
         ? cancelledLine(job.title ?? job.videoId)
         : CANCEL_CLOSED
-    // A sor ilyenkor is cancelled marad; a spec szerint csak naplózzuk.
-    if (!(await deps.send(chatId, text))) console.warn(`[worker] A megszakítás üzenete nem ment ki: ${job.jobId}`)
+    await sendCancelReply(chatId, text, job.jobId, deps)
   }
+  for (const row of transcripts) await sendCancelReply(chatId, await cancelTranscriptRow(row, deps), row.id, deps)
 }
 
 /** Az utólagos leállítás: ha a serve nem érhető el, a sor már cancelled, és csak a napló őrzi a nyomát. */
@@ -1293,6 +1340,10 @@ export async function handleTap(
   // A privát chatben a chat azonosítója a feladóé.
   if (tap.type === 'cancel') {
     if (from !== undefined) await cancelTap(tap.jobId, binding.sub, String(from.id), deps)
+    return []
+  }
+  if (tap.type === 'cancelTranscript') {
+    if (from !== undefined) await cancelTranscriptTap(tap.id, binding.sub, String(from.id), deps)
     return []
   }
   if (tap.type === 'regenerateDrop') {

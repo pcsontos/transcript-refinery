@@ -244,10 +244,30 @@ export function cancelledLine(title: string): string {
   return `Megszakítva: ${flatTitle(title)}.`
 }
 
-/** Jobonként egy gomb, alul a „Mind megszakítása”; a `c:*` a felhasználó minden nyitott munkája. */
-export function cancelKeyboard(jobs: readonly { jobId: string; videoId: string; title: string | null }[]): Key[][] {
+/** A serve `GET /whisper` egy sora (a `src/whisper/queue.ts` `QueuedTranscript`-je); a Worker helyi típusa. */
+export interface TranscriptRow {
+  id: string
+  title: string
+  state: 'queued' | 'working'
+  job: string | null
+}
+
+const CALLBACK_MAX = 64
+
+/**
+ * Jobonként, majd átírásonként egy gomb, alul a „Mind megszakítása”; a `c:*` a felhasználó minden nyitott munkája.
+ * A 64 bájtnál hosszabb gombadatú átírás kimarad (a Telegram az egész üzenetet elutasítaná); a `c:*` megszakítja.
+ */
+export function cancelKeyboard(
+  jobs: readonly { jobId: string; videoId: string; title: string | null }[],
+  transcripts: readonly TranscriptRow[] = [],
+): Key[][] {
   return [
     ...jobs.map((job) => [{ text: flatTitle(job.title ?? job.videoId), data: `c:${job.jobId}` }]),
+    ...transcripts
+      .map((row) => ({ text: `${row.state === 'working' ? 'átírás' : 'sorban'}: ${flatTitle(row.title)}`, data: `C:${row.id}` }))
+      .filter((key) => new TextEncoder().encode(key.data).length <= CALLBACK_MAX)
+      .map((key) => [key]),
     [{ text: 'Mind megszakítása', data: 'c:*' }],
   ]
 }

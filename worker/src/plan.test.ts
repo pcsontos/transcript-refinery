@@ -221,6 +221,8 @@ describe('futások', () => {
     expect(parseTap(`r:notes:5:${ID}`)).toEqual({ type: 'recipe', recipe: 'notes', jobId: `5:${ID}` })
     expect(parseTap(`summary:5:${ID}`)).toEqual({ type: 'recipe', recipe: 'summary', jobId: `5:${ID}` })
     expect(parseTap(`f:5:${ID}`)).toEqual({ type: 'translate', jobId: `5:${ID}` })
+    expect(parseTap(`C:${ID}`)).toEqual({ type: 'cancelTranscript', id: ID })
+    expect(parseTap('C:')).toBeNull()
     expect(parseTap('w:en:12:fetch-12')).toEqual({ type: 'langAsk', lang: 'en', jobId: '12:fetch-12' })
     expect(parseTap('w:pt:12:fetch-12')).toEqual({ type: 'langAsk', lang: 'pt', jobId: '12:fetch-12' })
     expect(parseTap('w:xx1:12:fetch-12')).toBeNull()
