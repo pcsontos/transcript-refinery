@@ -111,6 +111,7 @@ export type Tap =
   | { type: 'translate'; jobId: string }
   | { type: 'toggle' | 'next'; mask: number; jobId: string }
   | { type: 'cancel'; jobId: string }
+  | { type: 'cancelTranscript'; id: string }
   | { type: 'drop'; jobId: string }
   | { type: 'lang'; mask: number; lang: string; jobId: string }
   | { type: 'model'; key: string }
@@ -149,6 +150,10 @@ export function parseTap(data: string): Tap | null {
   if (head === 'c') {
     const jobId = rest.join(':')
     return jobId === '' ? null : { type: 'cancel', jobId }
+  }
+  if (head === 'C') {
+    const id = rest.join(':')
+    return id === '' ? null : { type: 'cancelTranscript', id }
   }
   if (head === 't' || head === 'n') {
     const [hex, ...job] = rest

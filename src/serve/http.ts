@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { ServeJob } from './job.js'
 import { isLanguageTag } from '../source/text.js'
 import type { ModelsView } from '../model/recipe-model.js'
+import type { QueuedTranscript } from '../whisper/queue.js'
 import { NotesUnavailable, type NotesSource } from './notes.js'
 import { firstLine } from './summary.js'
 
@@ -102,11 +103,17 @@ export interface ServeServerInput {
   notes?: NotesSource
   /** A `GET /models` forrása; hiányában a végpont `503`. */
   models?: () => Promise<ModelsView>
+  /** A whisper-sor és az átírás megszakítása (`GET /whisper`, `POST /whisper/<id>/cancel`); hiányában mindkettő `503`. */
+  whisper?: {
+    list(): Promise<QueuedTranscript[]>
+    cancel(id: string): Promise<'removed' | 'signalled' | 'unknown'>
+  }
   onJob: (job: ServeJob, signal: AbortSignal) => Promise<void>
 }
 
 const NOTE_PATH = /^\/notes\/([^/]+)\/([^/]+)$/
 const CANCEL_PATH = /^\/jobs\/([^/]+)\/cancel$/
+const WHISPER_CANCEL_PATH = /^\/whisper\/([^/]+)\/cancel$/
 
 function decoded(segment: string | undefined): string | null {
   if (segment === undefined) return null
@@ -191,6 +198,30 @@ async function handle(request: IncomingMessage, response: ServerResponse, input:
       sendBody(response, 200, 'application/json', JSON.stringify(await input.models()))
     } catch (cause) {
       console.warn(`[serve] 503 /models: ${cause instanceof Error ? firstLine(cause.message) : String(cause)}`)
+      send(response, 503)
+    }
+    return
+  }
+  const whisperCancel = WHISPER_CANCEL_PATH.exec(path)
+  if ((request.method === 'GET' && path === '/whisper') || (request.method === 'POST' && whisperCancel !== null)) {
+    if (!authorized(request.headers.authorization, input.secret)) {
+      rejectUnauthorized(request, response)
+      return
+    }
+    try {
+      if (input.whisper === undefined) throw new Error('nincs whisper-forrás')
+      if (request.method === 'GET') {
+        sendBody(response, 200, 'application/json', JSON.stringify(await input.whisper.list()))
+        return
+      }
+      // Az azonosító szűrése (útvonal-biztonság) a `cancelTranscript` dolga; ide a dekódolt érték megy.
+      const id = decoded(whisperCancel?.[1])
+      const result = id === null ? 'unknown' : await input.whisper.cancel(id)
+      console.log(`[serve] POST /whisper/${id ?? '?'}/cancel -> ${result}`)
+      if (result === 'unknown') send(response, 404)
+      else sendBody(response, 200, 'application/json', JSON.stringify({ result }))
+    } catch (cause) {
+      console.warn(`[serve] 503 /whisper: ${cause instanceof Error ? firstLine(cause.message) : String(cause)}`)
       send(response, 503)
     }
     return

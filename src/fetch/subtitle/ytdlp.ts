@@ -9,7 +9,14 @@ export interface ProcessResult {
   stderr: string
 }
 
-export type ProcessRunner = (args: readonly string[]) => Promise<ProcessResult>
+export interface RunOptions {
+  /** Abortnál a gyerekfolyamat SIGTERM-et kap, és a futás a `close`-on oldódik fel (nem elutasítással). */
+  signal?: AbortSignal
+  /** A kimenet soronként (stdout és stderr); a haladás-jelzéshez. */
+  onLine?: (line: string) => void
+}
+
+export type ProcessRunner = (args: readonly string[], options?: RunOptions) => Promise<ProcessResult>
 
 export const YTDLP_MISSING =
   'A yt-dlp nem található a PATH-on. Telepítés: brew install yt-dlp vagy mise use yt-dlp'
@@ -74,7 +81,9 @@ export function audioDownloadArgs(input: { url: string; dest: string; overwrite:
     'bestaudio[ext=m4a]/bestaudio',
     '--write-info-json',
     '--no-playlist',
-    '--no-progress',
+    '--newline',
+    '--progress-template',
+    'download:refinery-progress %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s',
     input.overwrite ? '--force-overwrites' : '--no-overwrites',
     ...JS_RUNTIME,
     '--paths',
@@ -218,23 +227,73 @@ export function parsePlaylistProbe(stdout: string): PlaylistProbe | null {
   }
 }
 
+/** A `--progress-template` sora: letöltött bájt, a teljes méret (`total_bytes`, különben a becslés, különben `null`). */
+export function parseYtdlpProgress(line: string): { done: number; total: number | null } | null {
+  const m = /^refinery-progress (\d+(?:\.\d+)?) (\S+) (\S+)$/.exec(line.trim())
+  if (m === null) return null
+  const size = (text: string | undefined): number | null => {
+    const n = Number(text)
+    return text !== 'NA' && Number.isFinite(n) ? Math.floor(n) : null
+  }
+  return { done: Math.floor(Number(m[1])), total: size(m[2]) ?? size(m[3]) }
+}
+
 /** A yt-dlp folyamat. Az ENOENT a Promise elutasítása, `code: 'ENOENT'` mezővel. */
 export function createYtdlpRunner(): ProcessRunner {
-  return (args) =>
+  return (args, options) =>
     new Promise((resolve, reject) => {
-      const child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+      const signal = options?.signal
+      // Jellel saját folyamatcsoport: abortnál a yt-dlp gyerekei (pl. ffmpeg-utófeldolgozás) is leállnak, nem írnak a
+      // stagingbe. Jel nélkül marad az előtér-csoport, hogy a terminál Ctrl-C-je közvetlenül elérje a yt-dlp-t.
+      const child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'], detached: signal !== undefined })
+      const onAbort = (): void => {
+        try {
+          if (child.pid === undefined) throw new Error('nincs pid')
+          process.kill(-child.pid, 'SIGTERM')
+        } catch {
+          child.kill('SIGTERM')
+        }
+      }
+      if (signal?.aborted === true) onAbort()
+      else signal?.addEventListener('abort', onAbort, { once: true })
       let stdout = ''
       let stderr = ''
+      const onLine = options?.onLine
+      // Csatornánként külön sortörő puffer, hogy a két cső töredékei ne keveredjenek.
+      const liner = (): { push: (chunk: string) => void; end: () => void } => {
+        let rest = ''
+        return {
+          push(chunk) {
+            if (onLine === undefined) return
+            const parts = (rest + chunk).split('\n')
+            rest = parts.pop() ?? ''
+            for (const part of parts) onLine(part)
+          },
+          end() {
+            if (rest !== '') onLine?.(rest)
+            rest = ''
+          },
+        }
+      }
+      const outLines = liner()
+      const errLines = liner()
       child.stdout.setEncoding('utf8')
       child.stderr.setEncoding('utf8')
       child.stdout.on('data', (chunk: string) => {
         stdout += chunk
+        outLines.push(chunk)
       })
       child.stderr.on('data', (chunk: string) => {
         stderr += chunk
+        errLines.push(chunk)
       })
       child.on('error', reject)
-      child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }))
+      child.on('close', (code) => {
+        signal?.removeEventListener('abort', onAbort)
+        outLines.end()
+        errLines.end()
+        resolve({ code: code ?? 1, stdout, stderr })
+      })
     })
 }
 

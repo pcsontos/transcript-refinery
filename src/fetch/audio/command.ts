@@ -65,8 +65,10 @@ export async function commandFetchAudio(argv: readonly string[], runtime?: Audio
   }
 
   let stopped = false
+  const controller = new AbortController()
   const uninstall = installSigint(() => {
     stopped = true
+    controller.abort()
   }, runtime?.signals)
   const log: RunLog | null = cfg === null ? null : openAudioRunLog(cfg.logsDir, `fetch audio ${argv.join(' ')}`)
   const { handoff, warning } = await createHandoff({
@@ -88,6 +90,7 @@ export async function commandFetchAudio(argv: readonly string[], runtime?: Audio
       pick: args.pick,
       handoff,
       stopped: () => stopped,
+      signal: controller.signal,
       emit: (line) => stdout(line),
       sink: (event) => {
         if (event.type === 'scan:found') total = event.count

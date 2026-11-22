@@ -1,4 +1,4 @@
-import { summarize } from '../events.js'
+import { type Advance, summarize } from '../events.js'
 import type { RunLogLine } from '../run/logfile.js'
 
 /** Egy elem a futás elemtáblázatában; az utolsó esemény dönt az eredményéről. */
@@ -37,6 +37,19 @@ export interface LiveRunState {
   items: LiveRunItem[]
 }
 
+const mb = (bytes: number): string => (bytes / 1_000_000).toFixed(1).replace('.', ',')
+
+/** A lépés neve és haladása egy sorban: `letöltés: 68,0 / 120,5 MB (56%)`. */
+export function advanceText(step: string, advance: Advance): string {
+  if (advance.unit === 'percent') {
+    const percent = `${step}: ${String(Math.floor(advance.done))}%`
+    return advance.text === undefined ? percent : `${percent} · „${advance.text}”`
+  }
+  if (advance.total === null || advance.total <= 0) return `${step}: ${mb(advance.done)} MB`
+  const share = Math.floor((advance.done / advance.total) * 100)
+  return `${step}: ${mb(advance.done)} / ${mb(advance.total)} MB (${String(share)}%)`
+}
+
 /**
  * A futás állapota a naplósorokból. Tiszta függvény: az SSE-útvonal minden sor
  * után hívja, a futás oldala a teljes naplóra. A kliens csak megjeleníti.
@@ -55,6 +68,7 @@ export function liveRunState(lines: readonly RunLogLine[]): LiveRunState {
   let estimate: LiveRunState['estimate'] = null
   let spentUsd = 0
   let current: LiveRunState['current'] = null
+  let lastStep = 'feldolgozás'
   let lastScore: LiveRunState['lastScore'] = null
   let retries = 0
   const failures: LiveRunState['recentFailures'] = []
@@ -88,12 +102,19 @@ export function liveRunState(lines: readonly RunLogLine[]): LiveRunState {
       case 'item:start':
         started++
         titles.set(line.itemId, line.title)
-        current = stepOf(line.itemId, 'feldolgozás')
+        lastStep = 'feldolgozás'
+        current = stepOf(line.itemId, lastStep)
         itemOf(line.itemId).title = line.title
         settle(line.itemId, 'running', null)
         break
       case 'item:step':
-        current = stepOf(line.itemId, line.step)
+        lastStep = line.step
+        current = stepOf(line.itemId, lastStep)
+        break
+      case 'item:advance':
+        if (current?.itemId === line.itemId) {
+          current = stepOf(line.itemId, advanceText(lastStep, line))
+        }
         break
       case 'item:published':
         settle(line.itemId, 'done', line.path)

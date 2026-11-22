@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { collectEvents, type RunEvent } from '../../events.js'
 import { readRuns } from '../../view/runs.js'
 import { audioDownloadArgs, type ProcessRunner } from '../subtitle/ytdlp.js'
@@ -62,7 +62,9 @@ const listing = async (root: string): Promise<string[]> => (await readdir(root, 
 describe('audioDownloadArgs', () => {
   it('pontos', () => {
     expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: false, id: 'ID' })).toEqual([
-      '-f', 'bestaudio[ext=m4a]/bestaudio', '--write-info-json', '--no-playlist', '--no-progress', '--no-overwrites',
+      '-f', 'bestaudio[ext=m4a]/bestaudio', '--write-info-json', '--no-playlist', '--newline',
+      '--progress-template', 'download:refinery-progress %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s',
+      '--no-overwrites',
       '--js-runtimes', 'node', '--paths', 'home:/d', '-o', '%(title)s [ID].%(ext)s', '--', 'U',
     ])
     expect(audioDownloadArgs({ url: 'U', dest: '/d', overwrite: true, id: 'ID' })).toContain('--force-overwrites')
@@ -242,10 +244,10 @@ describe('sorok', () => {
 
   it('audioSummary megszakításnál (pcsontos/issue-tracker#43)', () => {
     const three = [{ outcome: 'downloaded', label: 'a' }, { outcome: 'downloaded', label: 'b' }, { outcome: 'downloaded', label: 'c' }] as const
-    expect(audioSummary(three, { stopped: true, total: 19 })).toBe('Megszakítva: letöltve 3 db fájl, 0 kihagyva, 0 hibás (16 elem nem indult el).')
+    expect(audioSummary(three, { stopped: true, total: 19 })).toBe('Megszakítva: letöltve 3 db fájl, 0 kihagyva, 0 hibás (16 elem nem készült el).')
     expect(audioSummary(three, { stopped: true, total: 3 })).toBe('Kész: letöltve 3 db fájl, 0 kihagyva, 0 hibás.')
     expect(audioSummary(three, { stopped: false, total: 19 })).toBe('Kész: letöltve 3 db fájl, 0 kihagyva, 0 hibás.')
-    expect(audioSummary([{ outcome: 'uploaded', label: 'a' }], { stopped: true, total: 2 })).toBe('Megszakítva: letöltve 0 db fájl, 0 kihagyva, 0 hibás (1 elem nem indult el). Korábbi letöltésből feltöltve: 1.')
+    expect(audioSummary([{ outcome: 'uploaded', label: 'a' }], { stopped: true, total: 2 })).toBe('Megszakítva: letöltve 0 db fájl, 0 kihagyva, 0 hibás (1 elem nem készült el). Korábbi letöltésből feltöltve: 1.')
   })
 })
 
@@ -491,5 +493,147 @@ describe('whisper-fallback', () => {
 
   it('rowLine', () => {
     expect(rowLine({ outcome: 'skipped', label: 'x', whisper: { error: 'nincs config' } })).toBe('kihagyva, átírás nem elérhető (nincs config): x')
+  })
+})
+
+describe('megszakítás (pcsontos/issue-tracker#133)', () => {
+  const dummy = { code: 1, stdout: '', stderr: '' }
+  const destOf = (args: readonly string[]): string => (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
+  const spies = (root: string): { store: AudioStore; commits: string[][]; handed: string[]; handoff: Handoff } => {
+    const commits: string[][] = []
+    const handed: string[] = []
+    return {
+      commits,
+      handed,
+      store: {
+        ...localAudioStore(root),
+        commit: (paths) => {
+          commits.push([...paths])
+          return Promise.resolve()
+        },
+      },
+      handoff: (id) => {
+        handed.push(id)
+        return Promise.resolve('submitted' as const)
+      },
+    }
+  }
+
+  it('megszakított yt-dlp letöltés után nem marad fájl', async () => {
+    const root = await tmp()
+    const base = fakeYt({ videos: { abc12345678: {} } })
+    const controller = new AbortController()
+    const runner: ProcessRunner = async (args, options) => {
+      if (!args.includes('-f')) return base.runner(args, options)
+      await mkdir(destOf(args), { recursive: true })
+      await writeFile(join(destOf(args), 'Cím [abc12345678].m4a.part'), 'x')
+      await writeFile(join(destOf(args), 'Cím [abc12345678].info.json'), '{}')
+      controller.abort()
+      return dummy
+    }
+    const spy = spies(root)
+    const events = collectEvents()
+    const { deps: d } = deps(spy.store, base, { runner, signal: controller.signal, stopped: () => controller.signal.aborted, handoff: spy.handoff, sink: events.sink })
+    const rows = await runAudioFetch([yt('abc12345678')], d)
+    expect(await listing(root)).toEqual([])
+    expect(spy.commits).toEqual([])
+    expect(spy.handed).toEqual([])
+    expect(events.events).toContainEqual({ type: 'item:skipped', itemId: 'abc12345678', reason: 'megszakítva' })
+    expect(rows).toEqual([])
+  })
+
+  it('közvetlen link megszakítása', async () => {
+    const root = await tmp()
+    const controller = new AbortController()
+    const fetchImpl: typeof fetch = (_url, init) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new TextEncoder().encode('abc'))
+          init?.signal?.addEventListener('abort', () => c.error(new DOMException('aborted', 'AbortError')))
+        },
+      })
+      setTimeout(() => controller.abort(), 20)
+      return Promise.resolve(new Response(body, { headers: { 'content-type': 'audio/mpeg' } }))
+    }
+    const spy = spies(root)
+    const events = collectEvents()
+    const { deps: d } = deps(spy.store, fakeYt({}), { fetchImpl, signal: controller.signal, stopped: () => controller.signal.aborted, sink: events.sink })
+    const rows = await runAudioFetch(['https://x.hu/ep.mp3'], d)
+    const hash = directTarget('https://x.hu/ep.mp3').hash
+    expect(await listing(root)).toEqual([])
+    expect(spy.commits).toEqual([])
+    expect(events.events).toContainEqual({ type: 'item:skipped', itemId: hash, reason: 'megszakítva' })
+    expect(rows).toEqual([])
+  })
+
+  it('lista: a megszakítás előtt kész tétel megmarad', async () => {
+    const root = await tmp()
+    const base = fakeYt({
+      videos: { aaaaaaaaaaa: {}, bbbbbbbbbbb: {} },
+      playlists: { PL1: { title: 'Lista', entries: [{ id: 'aaaaaaaaaaa', title: 'Cím' }, { id: 'bbbbbbbbbbb', title: 'Cím' }] } },
+    })
+    const controller = new AbortController()
+    const runner: ProcessRunner = async (args, options) => {
+      if (args.includes('-f') && args.join(' ').includes('bbbbbbbbbbb')) {
+        controller.abort()
+        return dummy
+      }
+      return base.runner(args, options)
+    }
+    const spy = spies(root)
+    const events = collectEvents()
+    const { deps: d } = deps(spy.store, base, { runner, yesPlaylist: true, signal: controller.signal, stopped: () => controller.signal.aborted, handoff: spy.handoff, sink: events.sink })
+    const rows = await runAudioFetch(['https://www.youtube.com/playlist?list=PL1'], d)
+    expect(rows.map((r) => r.outcome)).toEqual(['downloaded'])
+    expect(spy.handed).toEqual(['aaaaaaaaaaa'])
+    expect(events.events).toContainEqual({ type: 'item:skipped', itemId: 'bbbbbbbbbbb', reason: 'megszakítva' })
+    expect(audioSummary(rows, { stopped: true, total: 2 })).toBe('Megszakítva: letöltve 1 db fájl, 0 kihagyva, 0 hibás (1 elem nem készült el). 1 átírásra leadva.')
+  })
+})
+
+describe('letöltés-haladás (pcsontos/issue-tracker#135)', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('ritkítás: 3 másodpercenként egy item:advance, a végén záró érték', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const start = Date.now()
+    let i = 0
+    const fetchImpl: typeof fetch = () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(c) {
+              vi.setSystemTime(start + i * 1000)
+              c.enqueue(new Uint8Array(100))
+              if (++i === 10) c.close()
+            },
+          }),
+          { headers: { 'content-type': 'audio/mpeg', 'content-length': '1000' } },
+        ),
+      )
+    const root = await tmp()
+    const events = collectEvents()
+    const { deps: d } = deps(localAudioStore(root), fakeYt({}), { fetchImpl, sink: events.sink })
+    await runAudioFetch(['https://x.hu/ep.mp3'], d)
+    const advances = events.events.filter((e) => e.type === 'item:advance')
+    expect(advances.length).toBeGreaterThanOrEqual(3)
+    expect(advances.length).toBeLessThanOrEqual(5)
+    expect(advances.at(-1)).toMatchObject({ done: 1000, total: 1000, unit: 'bytes' })
+  })
+
+  it('a yt-dlp haladás-sorai item:advance-ként kerülnek a naplóba', async () => {
+    const base = fakeYt({ videos: { abc12345678: {} } })
+    const runner: ProcessRunner = async (args, options) => {
+      if (args.includes('-f')) {
+        options?.onLine?.('refinery-progress 500 1000 NA')
+        options?.onLine?.('[download] valami más')
+      }
+      return base.runner(args, options)
+    }
+    const root = await tmp()
+    const events = collectEvents()
+    const { deps: d } = deps(localAudioStore(root), base, { runner, sink: events.sink })
+    await runAudioFetch([yt('abc12345678')], d)
+    expect(events.events.filter((e) => e.type === 'item:advance')[0]).toEqual({ type: 'item:advance', itemId: 'abc12345678', done: 500, total: 1000, unit: 'bytes' })
   })
 })

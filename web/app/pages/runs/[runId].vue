@@ -27,7 +27,7 @@ const items = computed(() => state.value?.items ?? [])
     <ErrorAlert v-if="error" :error="error" />
     <template v-else-if="data">
       <header class="flex flex-wrap items-center gap-3">
-        <h1 class="font-mono text-xl font-semibold">{{ data.summary.command ?? data.summary.runId }}</h1>
+        <h1 class="font-mono text-xl font-semibold break-all">{{ data.summary.command ?? data.summary.runId }}</h1>
         <UBadge :color="runStatusColor(data.summary.status)" variant="subtle">
           {{ runStatusLabel(data.summary.status) }}
         </UBadge>

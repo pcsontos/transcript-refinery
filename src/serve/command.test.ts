@@ -210,7 +210,7 @@ describe('serveFetchAudio', () => {
       const dest = (args[args.indexOf('--paths') + 1] ?? '').replace(/^home:/, '')
       await mkdir(dest, { recursive: true })
       await writeFile(join(dest, `${id} [${id}].m4a`), 'a')
-      controller.abort()
+      if (id === 'bbbbbbbbbbb') controller.abort()
       return { code: 0, stdout: '', stderr: '' }
     }
     const summary = await serveFetchAudio(path, { runner: stopping })(
@@ -218,7 +218,7 @@ describe('serveFetchAudio', () => {
       controller.signal,
       () => Promise.resolve(),
     )
-    expect(summary.title).toBe('Megszakítva: letöltve 1 db fájl, 0 kihagyva, 0 hibás (2 elem nem indult el).')
+    expect(summary.title).toBe('Megszakítva: letöltve 1 db fájl, 0 kihagyva, 0 hibás (2 elem nem készült el).')
   })
 
   it('megszakított jelre a napló interrupted-ként zárul', async () => {

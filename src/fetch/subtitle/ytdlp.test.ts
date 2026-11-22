@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -9,6 +9,7 @@ import {
   audioDownloadArgs,
   downloadArgs,
   originalSubtitleLang,
+  parseYtdlpProgress,
   parseFeedProbe,
   parsePlaylistProbe,
   parseVideoProbe,
@@ -268,5 +269,91 @@ describe('subtitleLang', () => {
   })
   it('tartalék nélkül a mai szabály', () => {
     expect(subtitleLang({ ...base, manualLangs: ['en'] })).toBeNull()
+  })
+})
+
+describe('createYtdlpRunner megszakítás (pcsontos/issue-tracker#133)', () => {
+  it('abortnál a gyerek SIGTERM-et kap, a promise feloldódik', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ytdlp-abort-'))
+    await writeFile(join(dir, 'yt-dlp'), '#!/bin/sh\nexec sleep 30\n')
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    const oldPath = process.env.PATH
+    process.env.PATH = `${dir}:${oldPath ?? ''}`
+    try {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(), 100)
+      const started = Date.now()
+      const result = await createYtdlpRunner()(['x'], { signal: controller.signal })
+      expect(Date.now() - started).toBeLessThan(2000)
+      expect(result.code).not.toBe(0)
+    } finally {
+      process.env.PATH = oldPath
+    }
+  })
+
+  it('abortnál a yt-dlp gyereke (pl. ffmpeg-utófeldolgozás) is leáll', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ytdlp-group-'))
+    const pidFile = join(dir, 'grandchild.pid')
+    await writeFile(join(dir, 'yt-dlp'), `#!/bin/sh\nsleep 30 >/dev/null 2>&1 &\necho $! > "${pidFile}"\nwait\n`)
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    const oldPath = process.env.PATH
+    process.env.PATH = `${dir}:${oldPath ?? ''}`
+    try {
+      const controller = new AbortController()
+      const running = createYtdlpRunner()(['x'], { signal: controller.signal })
+      let text = ''
+      for (let i = 0; i < 100 && !/^\d+\n$/.test(text); i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        text = await readFile(pidFile, 'utf8').catch(() => '')
+      }
+      controller.abort()
+      await running
+      const pid = Number(text)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      const alive = (): boolean => {
+        try {
+          process.kill(pid, 0)
+          return true
+        } catch {
+          return false
+        }
+      }
+      const survived = alive()
+      if (survived) process.kill(pid, 'SIGKILL')
+      expect(survived).toBe(false)
+    } finally {
+      process.env.PATH = oldPath
+    }
+  })
+})
+
+describe('parseYtdlpProgress (pcsontos/issue-tracker#135)', () => {
+  it('total_bytes, különben total_bytes_estimate, különben null', () => {
+    expect(parseYtdlpProgress('refinery-progress 1000 2000 NA')).toEqual({ done: 1000, total: 2000 })
+    expect(parseYtdlpProgress('refinery-progress 1000 NA 3000.5')).toEqual({ done: 1000, total: 3000 })
+    expect(parseYtdlpProgress('refinery-progress 1000 NA NA')).toEqual({ done: 1000, total: null })
+    expect(parseYtdlpProgress('[download] 5%')).toBeNull()
+  })
+
+  it('a letöltő argumentumok haladást kérnek', () => {
+    const args = audioDownloadArgs({ url: 'U', dest: '/d', overwrite: false, id: 'ID' })
+    expect(args).toContain('--newline')
+    expect(args).not.toContain('--no-progress')
+  })
+
+  it('az onLine a stdout és a stderr sorait is megkapja', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ytdlp-lines-'))
+    await writeFile(join(dir, 'yt-dlp'), '#!/bin/sh\nprintf "egy\\nket"\nprintf "hiba\\n" >&2\nprintf "ketto\\n"\n')
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    const oldPath = process.env.PATH
+    process.env.PATH = `${dir}:${oldPath ?? ''}`
+    try {
+      const lines: string[] = []
+      const result = await createYtdlpRunner()(['x'], { onLine: (line) => void lines.push(line) })
+      expect([...lines].sort()).toEqual(['egy', 'hiba', 'ketketto'])
+      expect(result.stdout).toBe('egy\nketketto\n')
+    } finally {
+      process.env.PATH = oldPath
+    }
   })
 })

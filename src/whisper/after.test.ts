@@ -29,7 +29,7 @@ beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'after-'))
   sources = join(root, 'src')
   const w = join(root, 'w')
-  dirs = { root: w, inbox: join(w, 'inbox'), work: join(w, 'work'), failed: join(w, 'failed'), heartbeat: join(w, 'heartbeat') }
+  dirs = { root: w, inbox: join(w, 'inbox'), work: join(w, 'work'), failed: join(w, 'failed'), cancel: join(w, 'cancel'), heartbeat: join(w, 'heartbeat') }
   await mkdir(dirs.failed, { recursive: true })
   await mkdir(dirs.inbox, { recursive: true })
 })

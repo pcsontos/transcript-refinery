@@ -112,7 +112,7 @@ const captionText = (c: ChannelReport): string =>
                         {{ formatDate(run.startedAt) }}
                       </NuxtLink>
                     </td>
-                    <td class="py-1 pr-4 font-mono">{{ run.command ?? '–' }}</td>
+                    <td class="py-1 pr-4 font-mono break-all max-w-md">{{ run.command ?? '–' }}</td>
                     <td class="py-1 pr-4">{{ formatUsd(run.spentUsd) }}</td>
                     <td class="py-1 pr-4">
                       {{ run.estimateUsd === null ? '–' : formatUsd(run.estimateUsd) }}

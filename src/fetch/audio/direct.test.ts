@@ -85,3 +85,51 @@ describe('downloadDirect', () => {
     expect(directTarget('https://f.hu/s/1.mp3#x').hash).toBe(directTarget('https://f.hu/s/1.mp3').hash)
   })
 })
+
+describe('downloadDirect megszakítás (pcsontos/issue-tracker#133)', () => {
+  it('abortnál megszakítva, a .part törölve', async () => {
+    const staging = await stagingDir()
+    const controller = new AbortController()
+    const fetchImpl: typeof fetch = (_url, init) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new TextEncoder().encode('abc'))
+          init?.signal?.addEventListener('abort', () => c.error(new DOMException('aborted', 'AbortError')))
+        },
+      })
+      setTimeout(() => controller.abort(), 20)
+      return Promise.resolve(new Response(body, { headers: { 'content-type': 'audio/mpeg' } }))
+    }
+    expect(await downloadDirect('https://x.hu/ep.mp3', staging, fetchImpl, undefined, { signal: controller.signal })).toEqual({ ok: false, reason: 'megszakítva' })
+    expect((await files(staging)).filter((f) => f.endsWith('.part'))).toEqual([])
+  })
+})
+
+describe('downloadDirect haladás (pcsontos/issue-tracker#135)', () => {
+  const chunked = (chunks: string[], headers: Record<string, string>): typeof fetch => () =>
+    Promise.resolve(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            for (const chunk of chunks) c.enqueue(new TextEncoder().encode(chunk))
+            c.close()
+          },
+        }),
+        { headers: { 'content-type': 'audio/mpeg', ...headers } },
+      ),
+    )
+
+  it('content-length nélkül a total null', async () => {
+    const calls: [number, number | null][] = []
+    const staging = await stagingDir()
+    await downloadDirect('https://x.hu/a.mp3', staging, chunked(['ab', 'cd', 'e'], {}), undefined, { onProgress: (d, t) => void calls.push([d, t]) })
+    expect(calls.at(-1)).toEqual([5, null])
+  })
+
+  it('content-length-gel a total a fejléc', async () => {
+    const calls: [number, number | null][] = []
+    const staging = await stagingDir()
+    await downloadDirect('https://x.hu/a.mp3', staging, chunked(['ab', 'cd', 'e'], { 'content-length': '5' }), undefined, { onProgress: (d, t) => void calls.push([d, t]) })
+    expect(calls.at(-1)).toEqual([5, 5])
+  })
+})

@@ -23,7 +23,7 @@ beforeEach(async () => {
   archive = await mkdtemp(join(tmpdir(), 'submit-archive-'))
   sources = await mkdtemp(join(tmpdir(), 'submit-sources-'))
   const root = await mkdtemp(join(tmpdir(), 'submit-whisper-'))
-  dirs = { root, inbox: join(root, 'inbox'), work: join(root, 'work'), failed: join(root, 'failed'), heartbeat: join(root, 'heartbeat') }
+  dirs = { root, inbox: join(root, 'inbox'), work: join(root, 'work'), failed: join(root, 'failed'), cancel: join(root, 'cancel'), heartbeat: join(root, 'heartbeat') }
   await mkdir(dirs.inbox)
   store = localAudioStore(archive)
   await put(archive, 'Csat/Cím [abcdefghijk].m4a', 'hang')
@@ -129,6 +129,27 @@ describe('inboxInfo', () => {
   })
 })
 
+describe('inboxInfo job', () => {
+  it('a refinery_job a leadó munka azonosítója; nélküle nincs mező', async () => {
+    const entry = await firstEntry()
+    expect(inboxInfo(entry, 'hu', undefined, '12:3')).toMatchObject({ refinery_job: '12:3' })
+    expect(inboxInfo(entry, 'hu')).not.toHaveProperty('refinery_job')
+  })
+
+  it('a submitEntry a jobot az inbox-info.json-ba írja', async () => {
+    await submitEntry(await firstEntry(), { store, dirs, status: 'archived', lang: 'hu', job: '12:3' })
+    const info = JSON.parse(await readFile(join(dirs.inbox, 'abcdefghijk.info.json'), 'utf8')) as Record<string, unknown>
+    expect(info).toMatchObject({ refinery_job: '12:3' })
+  })
+
+  it('egy korábbi megszakítás cancel/<id> jelzését törli, hogy az újraleadás ne szakadjon meg (pcsontos/issue-tracker#137)', async () => {
+    await put(dirs.cancel, 'abcdefghijk', '')
+    await put(dirs.cancel, 'masikazonos', '')
+    expect(await submitEntry(await firstEntry(), { store, dirs, status: 'archived', lang: 'hu' })).toEqual({ ok: true })
+    expect(await readdir(dirs.cancel)).toEqual(['masikazonos'])
+  })
+})
+
 describe('resolveLang', () => {
   it('sorrend és üres languages', () => {
     expect(resolveLang({ flag: 'en', info: { language: 'hu' }, languages: ['hu'] })).toBe('en')
@@ -173,7 +194,8 @@ describe('runTranscribe', () => {
       'kihagyva (vár): Cím [abcdefghijk]',
       '1 tétel leadva.',
     ])
-    expect(result).toEqual({ submitted: 1, requested: 0, failed: 1, langPending: [] })
+    expect(result).toMatchObject({ submitted: 1, requested: 0, failed: 1, langPending: [] })
+    expect(result.submittedEntries.map((entry) => entry.id)).toEqual(['abcdefghijk'])
     expect((await readdir(dirs.inbox)).sort()).toEqual(['abcdefghijk.info.json', 'abcdefghijk.m4a'])
   })
 
@@ -194,7 +216,7 @@ describe('runTranscribe', () => {
     await put(archive, 'Feed [0f0f0f0f]/Epi [1a2b3c4d].mp3')
     const { lines, result } = await run(['1a2b3c4d'], { languages: [] })
     expect(lines[0]).toBe('hiba: Epi [1a2b3c4d]: nincs nyelv: adj meg --lang kapcsolót')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 1, langPending: [] })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 1, langPending: [], submittedEntries: [] })
     expect(await readdir(dirs.inbox)).toEqual([])
   })
 
@@ -261,19 +283,19 @@ describe('runTranscribe: utólépés kérése (pcsontos/issue-tracker#65)', () =
   it('after nélkül a mai „kihagyva (kész)”', async () => {
     const { lines, result } = await run({ afterRecipes: null, after: undefined })
     expect(lines[0]).toBe('kihagyva (kész): Kész [kkkkkkkkkkk]')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [] })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [], submittedEntries: [] })
   })
 
   it('done nélkül nincs utólépés-kérés: a mai „kihagyva (kész)”', async () => {
     const { lines, result } = await run({ done: undefined })
     expect(lines[0]).toBe('kihagyva (kész): Kész [kkkkkkkkkkk]')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [] })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [], submittedEntries: [] })
   })
 
   it('hiányzó recept: utólépés kérve, a jelölő az info.json-ban', async () => {
     const { lines, result, events } = await run({})
     expect(lines[0]).toBe('utólépés kérve: Kész [kkkkkkkkkkk] (receptek: summary; a serve utólépése futtatja)')
-    expect(result).toEqual({ submitted: 0, requested: 1, failed: 0, langPending: [] })
+    expect(result).toEqual({ submitted: 0, requested: 1, failed: 0, langPending: [], submittedEntries: [] })
     expect(JSON.parse(await readFile(infoPath(), 'utf8'))).toMatchObject({ refinery_after: 'cli' })
     expect(events).toContainEqual({ type: 'item:step', itemId: 'kkkkkkkkkkk', step: 'utólépés kérve' })
   })
@@ -287,13 +309,13 @@ describe('runTranscribe: utólépés kérése (pcsontos/issue-tracker#65)', () =
     await rm(infoPath())
     const { lines, result } = await run({})
     expect(lines[0]).toBe('hiba: Kész [kkkkkkkkkkk]: nincs meg az átirat info.json-ja')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 1, langPending: [] })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 1, langPending: [], submittedEntries: [] })
   })
 
   it('minden recept kész: kihagyva a kész receptekkel', async () => {
     const { lines, result } = await run({ done: new Map([['kkkkkkkkkkk', ['summary']]]) })
     expect(lines[0]).toBe('kihagyva (kész, receptek: summary): Kész [kkkkkkkkkkk]')
-    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [] })
+    expect(result).toEqual({ submitted: 0, requested: 0, failed: 0, langPending: [], submittedEntries: [] })
   })
 
   it('a záró sor: utólépés kérve; kétszeres id egyszer kér', async () => {

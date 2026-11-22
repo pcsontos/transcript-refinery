@@ -10,10 +10,17 @@ import { afterMarker, CLI_AFTER, missingAfter, NO_AFTER } from './after.js'
 import { failedReason, listArchive, STATUS_LABEL, statusContext, transcriptStatus } from './archive.js'
 import { watcherWarning, whisperDirs } from './paths.js'
 import { parseTranscribeArgs, runTranscribe } from './submit.js'
+import { waitForTranscripts } from './wait.js'
 
 const NO_AUDIO = 'Nincs audio blokk a configban.'
 
-export async function commandTranscribe(argv: readonly string[], runtime?: AudioRuntime): Promise<number> {
+/** A várakozás tesztelhetőségéhez: `sleep` (alapérték `setTimeout`) és `isTTY` (alapérték `process.stdout.isTTY`). */
+export type TranscribeRuntime = AudioRuntime & { sleep?: (ms: number) => Promise<void>; isTTY?: boolean }
+
+/** TTY nélkül a haladás-sor csak változáskor és legfeljebb ennyi ms-enként kerül ki. */
+const PROGRESS_EVERY_MS = 30_000
+
+export async function commandTranscribe(argv: readonly string[], runtime?: TranscribeRuntime): Promise<number> {
   const stdout = runtime?.stdout ?? ((line: string) => console.log(line))
   const stderr = runtime?.stderr ?? ((line: string) => console.error(line))
 
@@ -50,8 +57,10 @@ export async function commandTranscribe(argv: readonly string[], runtime?: Audio
   }
 
   let stopped = false
+  const controller = new AbortController()
   const uninstall = installSigint(() => {
     stopped = true
+    controller.abort()
   }, runtime?.signals)
   const log = openAudioRunLog(cfg.logsDir, `transcribe ${argv.join(' ')}`)
   try {
@@ -72,7 +81,40 @@ export async function commandTranscribe(argv: readonly string[], runtime?: Audio
       },
     )
     if (stopped) return 130
-    return result.failed > 0 ? 1 : 0
+    // Nincs mire várni, vagy a figyelő nem fut (ezt a runTranscribe már kiírta): a leadással kész.
+    if (result.submittedEntries.length === 0 || (await watcherWarning(dirs)) !== null) return result.failed > 0 ? 1 : 0
+
+    const tty = runtime?.isTTY ?? process.stdout.isTTY === true
+    let shown = false
+    let lastLine = ''
+    let lastAt = 0
+    const clear = (): void => {
+      if (tty && shown) process.stdout.write('\r\x1b[2K')
+      shown = false
+    }
+    const waited = await waitForTranscripts(result.submittedEntries, {
+      dirs,
+      sourcesRoot: cfg.sources[0]!.path,
+      signal: controller.signal,
+      sleep: runtime?.sleep,
+      emit: (line) => {
+        clear()
+        stdout(line)
+      },
+      progress: (line) => {
+        if (tty) {
+          process.stdout.write(`\r\x1b[2K${line}`)
+          shown = true
+        } else if (line !== lastLine && Date.now() - lastAt >= PROGRESS_EVERY_MS) {
+          stdout(line)
+          lastLine = line
+          lastAt = Date.now()
+        }
+      },
+    })
+    clear()
+    if (waited.interrupted) return 130
+    return waited.watcherLost || waited.failed > 0 || result.failed > 0 ? 1 : 0
   } catch (error) {
     stderr((error as Error).message)
     return 1

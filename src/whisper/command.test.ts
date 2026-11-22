@@ -115,6 +115,61 @@ describe('commandTranscribe', () => {
     expect(await commandTranscribe(['nincs', '--config', config], streams)).toBe(1)
     expect(streams.out[0]).toBe('hiba: nincs: nincs ilyen hang')
   })
+
+  describe('megvárja az átírást: kilépési kódok', () => {
+    /** Élő figyelő (friss életjel); a hamis `sleep` hívásonként a következő lépést teszi. */
+    async function waiting(config: string, ...list: (() => Promise<void> | void)[]) {
+      await put(whisper, 'heartbeat', '')
+      const streams = io()
+      let calls = 0
+      const code = await commandTranscribe(['aaaaaaaaaaa', '--config', config], {
+        ...streams,
+        isTTY: false,
+        sleep: async () => {
+          calls += 1
+          await list[calls - 1]?.()
+        },
+      })
+      return { code, out: streams.out }
+    }
+
+    it('kész → 0', async () => {
+      const result = await waiting(await configFile(true), async () => {
+        await put(dir, 'src/whisper/csat/aaaaaaaaaaa.hu.srt')
+        await rm(join(whisper, 'inbox', 'aaaaaaaaaaa.m4a'))
+      })
+      expect(result.code).toBe(0)
+      expect(result.out).toContain('kész: Egy [aaaaaaaaaaa]')
+    })
+
+    it('hiba → 1', async () => {
+      const result = await waiting(await configFile(true), async () => {
+        await put(whisper, 'failed/aaaaaaaaaaa.log', 'ffmpeg: invalid data\n')
+        await rm(join(whisper, 'inbox', 'aaaaaaaaaaa.m4a'))
+      })
+      expect(result.code).toBe(1)
+      expect(result.out).toContain('hiba: Egy [aaaaaaaaaaa]: ffmpeg: invalid data')
+    })
+
+    it('saját Ctrl-C várakozás közben → 130, a sorban álló tétel törlődik', async () => {
+      const config = await configFile(true)
+      await put(whisper, 'heartbeat', '')
+      const listeners: (() => void)[] = []
+      const streams = io()
+      const code = await commandTranscribe(['aaaaaaaaaaa', '--config', config], {
+        ...streams,
+        isTTY: false,
+        signals: { on: (_event: string, listener: () => void) => void listeners.push(listener), off: () => undefined },
+        sleep: () => {
+          listeners.forEach((listener) => listener())
+          return Promise.resolve()
+        },
+      })
+      expect(code).toBe(130)
+      expect(existsSync(join(whisper, 'inbox', 'aaaaaaaaaaa.m4a'))).toBe(false)
+      expect(streams.out).toContain('megszakítva: Egy [aaaaaaaaaaa]')
+    })
+  })
 })
 
 describe('commandListAudios', () => {

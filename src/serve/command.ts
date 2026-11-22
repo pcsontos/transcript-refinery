@@ -10,6 +10,7 @@ import { doneRecipes, openStateReader, readDoneRecipes } from '../state/reader.j
 import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
+import { cancelTranscript, listQueue } from '../whisper/queue.js'
 import { commandFetch } from '../fetch/command.js'
 import { createYtdlpRunner, playlistProbeArgs, type ProcessRunner } from '../fetch/subtitle/ytdlp.js'
 import type { LanguageTag } from '../lang/identify.js'
@@ -129,6 +130,13 @@ export const runsLine = (webUrl: string): string => `${RUNS_PREFIX}${webUrl}/run
  * A Telegram `/fetch` hangletöltése: munkánként tölti a configot, így a `audio` blokk
  * szerkesztése újraindítás nélkül hat. A futás a `logs.dir` alá naplózódik.
  */
+async function whisperDirsOrThrow(configArg: string | undefined) {
+  const { cfg } = await loadCliConfig(configArg)
+  const dirs = await whisperDirs(cfg)
+  if (dirs === null) throw new Error(`nincs whisper-mappa: ${cfg.whisperDir}`)
+  return dirs
+}
+
 export function serveFetchAudio(
   configArg: string | undefined,
   deps: { runner?: ProcessRunner; fetchImpl?: typeof fetch } = {},
@@ -141,7 +149,7 @@ export function serveFetchAudio(
     const lang = request.lang === undefined ? [] : ['--lang', request.lang]
     const log = openAudioRunLog(cfg.logsDir, `/fetch_audio ${[...lang, ...request.inputs, ...pick].join(' ')}`)
     const after = request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId)
-    const { handoff, warning, langPending } = await createHandoff({ cfg, store, lang: request.lang, after, askLang: true })
+    const { handoff, warning, langPending } = await createHandoff({ cfg, store, lang: request.lang, after, job: request.jobId, askLang: true })
     let total = 0
     try {
       const rows = await runAudioFetch(request.inputs, {
@@ -155,6 +163,7 @@ export function serveFetchAudio(
         handoff,
         listLimit: 4000,
         stopped: () => signal?.aborted ?? false,
+        signal,
         emit,
         sink: (event) => {
           if (event.type === 'scan:found') total = event.count
@@ -232,6 +241,7 @@ export function serveTranscribe(configArg: string | undefined): NonNullable<JobE
         sourcesRoot,
         languages: cfg.languages,
         after: request.jobId === undefined ? undefined : afterMarker(cfg, request.jobId),
+        job: request.jobId,
         done,
         afterRecipes: cfg.whisperAfter,
         emit: async (line) => {
@@ -377,6 +387,11 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     models: async () => {
       const { cfg, raw } = await loadCliConfig(configArg)
       return modelsView(loadModelConfig(raw, process.env, cfg.configPath), recipesFor(cfg))
+    },
+    // A whisper-mappa kérésenként: a kaput nem foglalja (csak fájlokat olvas, ill. egy jelzőfájlt ír).
+    whisper: {
+      list: async () => listQueue(await whisperDirsOrThrow(configArg)),
+      cancel: async (id) => cancelTranscript(await whisperDirsOrThrow(configArg), id),
     },
     // A config kérésenként töltődik, mint a receptfuttatásnál: a vault-config szerkesztése újraindítás nélkül hat.
     notes: createNotesSource({ load: () => loadCliConfig(configArg), claim: () => claimGate(gate, 'notes') }),

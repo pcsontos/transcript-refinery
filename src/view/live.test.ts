@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RunLogLine } from '../run/logfile.js'
-import { liveRunState } from './live.js'
+import { advanceText, liveRunState } from './live.js'
 
 const at = (second: number): string => `2026-09-11T09:00:${String(second).padStart(2, '0')}.000Z`
 
@@ -142,5 +142,45 @@ describe('liveRunState: hangletöltés', () => {
   it('item:start nélküli elemnél a cím az itemId', () => {
     const state = liveRunState([{ type: 'item:published', itemId: 'x', path: 'p' }])
     expect(state.items).toEqual([{ itemId: 'x', title: 'x', outcome: 'done', detail: 'p' }])
+  })
+
+  describe('item:advance', () => {
+    const start: RunLogLine = { type: 'item:start', itemId: 'a', title: 'Cím' }
+    const step = (s: string): RunLogLine => ({ type: 'item:step', itemId: 'a', step: s })
+    const adv: RunLogLine = {
+      type: 'item:advance',
+      itemId: 'a',
+      done: 68_000_000,
+      total: 120_500_000,
+      unit: 'bytes',
+    }
+
+    it('a current.step szövegébe kerül (bájt, ismert méret)', () => {
+      const s = liveRunState([start, step('letöltés'), adv])
+      expect(s.current?.step).toBe('letöltés: 68,0 / 120,5 MB (56%)')
+    })
+
+    it('ismeretlen méretnél csak a letöltött MB', () => {
+      expect(advanceText('letöltés', { done: 68_000_000, total: null, unit: 'bytes' })).toBe(
+        'letöltés: 68,0 MB',
+      )
+    })
+
+    it('átírás százalékkal és szegmenssel', () => {
+      expect(
+        advanceText('átírás', { done: 42, total: 100, unit: 'percent', text: 'szia világ' }),
+      ).toBe('átírás: 42% · „szia világ”')
+      expect(advanceText('átírás', { done: 42, total: 100, unit: 'percent' })).toBe('átírás: 42%')
+    })
+
+    it('új item:step törli az előző haladást', () => {
+      const s = liveRunState([start, step('letöltés'), adv, step('feltöltés S3-ba')])
+      expect(s.current?.step).toBe('feltöltés S3-ba')
+    })
+
+    it('más elem haladása nem írja át az aktuálist', () => {
+      const s = liveRunState([start, step('letöltés'), { ...adv, itemId: 'b' }])
+      expect(s.current?.step).toBe('letöltés')
+    })
   })
 })

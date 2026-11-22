@@ -10,6 +10,7 @@ import type { Config } from '../config.js'
 import { AFTER_FIELD, CLI_AFTER, missingAfter, requestAfter } from './after.js'
 import { findEntry, listArchive, statusContext, transcriptStatus, type AudioEntry, type TranscriptStatus } from './archive.js'
 import { channelSlug, watcherWarning, whisperDirs, type WhisperDirs } from './paths.js'
+import { JOB_FIELD } from './queue.js'
 
 const LANG_ERROR = 'A --lang értéke egyetlen nyelvkód, például hu vagy en-US.'
 const NO_LANG_ERROR = 'nincs nyelv: adj meg --lang kapcsolót'
@@ -32,8 +33,8 @@ export function resolveLang(input: {
   return first === undefined ? null : parseLang(first)
 }
 
-/** Az inboxba kerülő `info.json`: az archív tartalom, felülírt `id` és `channel`, plusz a refinery mezői; `after`: az utólépés jelölője (#45). */
-export function inboxInfo(entry: AudioEntry, lang: string, after?: string): Record<string, unknown> {
+/** Az inboxba kerülő `info.json`: az archív tartalom, felülírt `id` és `channel`, plusz a refinery mezői; `after`: az utólépés jelölője (#45), `job`: a leadó Telegram-munka azonosítója. */
+export function inboxInfo(entry: AudioEntry, lang: string, after?: string, job?: string): Record<string, unknown> {
   return {
     ...entry.info,
     id: entry.id,
@@ -41,6 +42,7 @@ export function inboxInfo(entry: AudioEntry, lang: string, after?: string): Reco
     refinery_lang: lang,
     refinery_target: `whisper/${channelSlug(entry.channel)}`,
     ...(after === undefined ? {} : { [AFTER_FIELD]: after }),
+    ...(job === undefined ? {} : { [JOB_FIELD]: job }),
   }
 }
 
@@ -60,7 +62,7 @@ const SKIP: Partial<Record<TranscriptStatus, 'kész' | 'vár' | 'átírás alatt
 /** Az `info.json` előbb, a hang utoljára, mindkettő `.partial` + átnevezéssel; hibánál nem marad semmi az inboxban. */
 export async function submitEntry(
   entry: AudioEntry,
-  deps: { store: AudioStore; dirs: WhisperDirs; status: TranscriptStatus; lang: string | null; after?: string },
+  deps: { store: AudioStore; dirs: WhisperDirs; status: TranscriptStatus; lang: string | null; after?: string; job?: string },
 ): Promise<SubmitResult> {
   const skip = SKIP[deps.status]
   if (skip !== undefined) return { ok: false, skip }
@@ -74,7 +76,9 @@ export async function submitEntry(
   try {
     await mkdir(deps.dirs.inbox, { recursive: true })
     await sweepStalePartials(deps.dirs.inbox, entry.id)
-    await writeFile(infoPartial, JSON.stringify(inboxInfo(entry, deps.lang, deps.after), null, 2))
+    // Egy korábbi (sorban álló tételre adott) megszakítás jelzése; maradna, a figyelő az újraleadást is eldobná.
+    await rm(join(deps.dirs.cancel, entry.id), { force: true })
+    await writeFile(infoPartial, JSON.stringify(inboxInfo(entry, deps.lang, deps.after, deps.job), null, 2))
     await rename(infoPartial, info)
     await deps.store.copyTo(entry.key, audioPartial)
     await rename(audioPartial, audio)
@@ -162,6 +166,8 @@ export interface TranscribeDeps {
   stopped?: () => boolean
   /** Az utólépés jelölője (`afterMarker`); hiányában nincs jelölő. */
   after?: string
+  /** A leadó Telegram-munka azonosítója (`refinery_job`); hiányában nincs mező. */
+  job?: string
   /** Tételenként a kész receptek (`readDoneRecipes`); nélküle a kész tétel „kihagyva (kész)”, utólépés-kérés nincs. */
   done?: ReadonlyMap<string, readonly string[]>
   /** A `whisper.after` készlete; `null`/hiányzó = nincs utólépés-kérés. */
@@ -176,7 +182,7 @@ export interface TranscribeDeps {
 export async function runTranscribe(
   args: { ids: readonly string[]; lang?: string },
   deps: TranscribeDeps,
-): Promise<{ submitted: number; requested: number; failed: number; langPending: string[] }> {
+): Promise<{ submitted: number; requested: number; failed: number; langPending: string[]; submittedEntries: AudioEntry[] }> {
   const sink = deps.sink ?? (() => undefined)
   const { entries, warning } = await listArchive(deps.store)
   if (warning !== undefined) await deps.emit(warning)
@@ -188,6 +194,7 @@ export async function runTranscribe(
   let skipped = 0
   let failed = 0
   const langPending: string[] = []
+  const submittedEntries: AudioEntry[] = []
   sink({ type: 'scan:found', count: args.ids.length })
 
   for (const id of args.ids) {
@@ -226,7 +233,7 @@ export async function runTranscribe(
       continue
     }
     const lang = resolveLang({ flag: args.lang, info: entry.info, languages: deps.languages, askLang: deps.askLang })
-    const result = await submitEntry(entry, { store: deps.store, dirs: deps.dirs, status, lang, after: deps.after })
+    const result = await submitEntry(entry, { store: deps.store, dirs: deps.dirs, status, lang, after: deps.after, job: deps.job })
     if ('needsLang' in result) {
       if (deps.askLang === true) {
         langPending.push(id)
@@ -248,6 +255,7 @@ export async function runTranscribe(
       await deps.emit(`kihagyva (${result.skip}): ${label}`)
     } else {
       submitted += 1
+      submittedEntries.push(entry)
       handedOver.add(id)
       sink({ type: 'item:step', itemId: id, step: 'átírásra leadva' })
       sink({ type: 'item:published', itemId: id, path: `${id}.${entry.ext}` })
@@ -260,7 +268,7 @@ export async function runTranscribe(
   const warn = await watcherWarning(deps.dirs)
   if (warn !== null) await deps.emit(warn)
   sink({ type: 'run:done', succeeded: submitted, skipped, failed })
-  return { submitted, requested, failed, langPending }
+  return { submitted, requested, failed, langPending, submittedEntries }
 }
 
 /**
@@ -272,6 +280,7 @@ export async function createHandoff(input: {
   store: AudioStore
   lang?: string
   after?: string
+  job?: string
   /** Lásd `TranscribeDeps.askLang`: igaz értéknél a nyelv nélküli hang `needs-lang`, az id a `langPending`-be kerül. */
   askLang?: boolean
 }): Promise<{ handoff: (id: string) => Promise<HandoffResult>; warning: () => Promise<string | null>; langPending: string[] }> {
@@ -289,7 +298,7 @@ export async function createHandoff(input: {
       const ctx = await statusContext(cfg.sources[0]!.path, dirs)
       const status = handedOver.has(id) ? 'pending' : transcriptStatus(entry, ctx)
       const lang = resolveLang({ flag: input.lang, info: entry.info, languages: cfg.languages, askLang: input.askLang })
-      const result = await submitEntry(entry, { store, dirs, status, lang, after: input.after })
+      const result = await submitEntry(entry, { store, dirs, status, lang, after: input.after, job: input.job })
       if ('needsLang' in result) {
         if (input.askLang !== true) return { error: NO_LANG_ERROR }
         langPending.push(id)
