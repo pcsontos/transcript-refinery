@@ -35,7 +35,7 @@ const { data: whisper } = await useFetch('/api/whisper')
                 {{ run.startedAt ? formatDate(run.startedAt) : run.runId }}
               </NuxtLink>
             </td>
-            <td class="py-1 pr-4 font-mono">{{ run.command ?? '–' }}</td>
+            <td class="py-1 pr-4 font-mono break-all max-w-md">{{ run.command ?? '–' }}</td>
             <td class="py-1 pr-4">
               <UBadge :color="runStatusColor(run.status)" variant="subtle">
                 {{ runStatusLabel(run.status) }}
