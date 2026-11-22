@@ -85,3 +85,22 @@ describe('downloadDirect', () => {
     expect(directTarget('https://f.hu/s/1.mp3#x').hash).toBe(directTarget('https://f.hu/s/1.mp3').hash)
   })
 })
+
+describe('downloadDirect megszakítás (pcsontos/issue-tracker#133)', () => {
+  it('abortnál megszakítva, a .part törölve', async () => {
+    const staging = await stagingDir()
+    const controller = new AbortController()
+    const fetchImpl: typeof fetch = (_url, init) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new TextEncoder().encode('abc'))
+          init?.signal?.addEventListener('abort', () => c.error(new DOMException('aborted', 'AbortError')))
+        },
+      })
+      setTimeout(() => controller.abort(), 20)
+      return Promise.resolve(new Response(body, { headers: { 'content-type': 'audio/mpeg' } }))
+    }
+    expect(await downloadDirect('https://x.hu/ep.mp3', staging, fetchImpl, undefined, { signal: controller.signal })).toEqual({ ok: false, reason: 'megszakítva' })
+    expect((await files(staging)).filter((f) => f.endsWith('.part'))).toEqual([])
+  })
+})

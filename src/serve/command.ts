@@ -155,6 +155,7 @@ export function serveFetchAudio(
         handoff,
         listLimit: 4000,
         stopped: () => signal?.aborted ?? false,
+        signal,
         emit,
         sink: (event) => {
           if (event.type === 'scan:found') total = event.count

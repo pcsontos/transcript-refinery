@@ -9,7 +9,14 @@ export interface ProcessResult {
   stderr: string
 }
 
-export type ProcessRunner = (args: readonly string[]) => Promise<ProcessResult>
+export interface RunOptions {
+  /** Abortnál a gyerekfolyamat SIGTERM-et kap, és a futás a `close`-on oldódik fel (nem elutasítással). */
+  signal?: AbortSignal
+  /** A kimenet soronként (stdout és stderr); a haladás-jelzéshez. */
+  onLine?: (line: string) => void
+}
+
+export type ProcessRunner = (args: readonly string[], options?: RunOptions) => Promise<ProcessResult>
 
 export const YTDLP_MISSING =
   'A yt-dlp nem található a PATH-on. Telepítés: brew install yt-dlp vagy mise use yt-dlp'
@@ -220,9 +227,15 @@ export function parsePlaylistProbe(stdout: string): PlaylistProbe | null {
 
 /** A yt-dlp folyamat. Az ENOENT a Promise elutasítása, `code: 'ENOENT'` mezővel. */
 export function createYtdlpRunner(): ProcessRunner {
-  return (args) =>
+  return (args, options) =>
     new Promise((resolve, reject) => {
       const child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+      const signal = options?.signal
+      const onAbort = (): void => {
+        child.kill('SIGTERM')
+      }
+      if (signal?.aborted === true) onAbort()
+      else signal?.addEventListener('abort', onAbort, { once: true })
       let stdout = ''
       let stderr = ''
       child.stdout.setEncoding('utf8')
@@ -234,7 +247,10 @@ export function createYtdlpRunner(): ProcessRunner {
         stderr += chunk
       })
       child.on('error', reject)
-      child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }))
+      child.on('close', (code) => {
+        signal?.removeEventListener('abort', onAbort)
+        resolve({ code: code ?? 1, stdout, stderr })
+      })
     })
 }
 

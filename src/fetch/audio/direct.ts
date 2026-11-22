@@ -69,13 +69,16 @@ export async function downloadDirect(
   staging: string,
   fetchImpl: typeof fetch = fetch,
   target?: { dir: string; name: string },
+  options: { signal?: AbortSignal } = {},
 ): Promise<DirectResult> {
   const info = directTarget(url)
+  const signal = options.signal
+  const stopped = (error: Error): DirectResult => ({ ok: false, reason: signal?.aborted === true ? 'megszakítva' : error.message })
   let response: Response
   try {
-    response = await fetchImpl(url.trim().split('#')[0] ?? url)
+    response = await fetchImpl(url.trim().split('#')[0] ?? url, { signal })
   } catch (error) {
-    return { ok: false, reason: (error as Error).message }
+    return stopped(error as Error)
   }
   if (!response.ok) {
     await response.body?.cancel()
@@ -95,11 +98,11 @@ export async function downloadDirect(
   try {
     await mkdir(dirname(part), { recursive: true })
     if (response.body === null) throw new Error('üres válasz')
-    await pipeline(Readable.fromWeb(response.body), createWriteStream(part))
+    await pipeline(Readable.fromWeb(response.body), createWriteStream(part), { signal })
     await rename(part, join(staging, path))
   } catch (error) {
     await rm(part, { force: true })
-    return { ok: false, reason: (error as Error).message }
+    return stopped(error as Error)
   }
   return { ok: true, path }
 }

@@ -270,3 +270,23 @@ describe('subtitleLang', () => {
     expect(subtitleLang({ ...base, manualLangs: ['en'] })).toBeNull()
   })
 })
+
+describe('createYtdlpRunner megszakítás (pcsontos/issue-tracker#133)', () => {
+  it('abortnál a gyerek SIGTERM-et kap, a promise feloldódik', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ytdlp-abort-'))
+    await writeFile(join(dir, 'yt-dlp'), '#!/bin/sh\nexec sleep 30\n')
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    const oldPath = process.env.PATH
+    process.env.PATH = `${dir}:${oldPath ?? ''}`
+    try {
+      const controller = new AbortController()
+      setTimeout(() => controller.abort(), 100)
+      const started = Date.now()
+      const result = await createYtdlpRunner()(['x'], { signal: controller.signal })
+      expect(Date.now() - started).toBeLessThan(2000)
+      expect(result.code).not.toBe(0)
+    } finally {
+      process.env.PATH = oldPath
+    }
+  })
+})
