@@ -10,6 +10,7 @@ import { doneRecipes, openStateReader, readDoneRecipes } from '../state/reader.j
 import { createHandoff, runTranscribe } from '../whisper/submit.js'
 import { listArchive, statusContext, transcribeMessages, transcriptStatus } from '../whisper/archive.js'
 import { watcherWarning, whisperDirs } from '../whisper/paths.js'
+import { cancelTranscript, listQueue } from '../whisper/queue.js'
 import { commandFetch } from '../fetch/command.js'
 import { createYtdlpRunner, playlistProbeArgs, type ProcessRunner } from '../fetch/subtitle/ytdlp.js'
 import type { LanguageTag } from '../lang/identify.js'
@@ -129,6 +130,13 @@ export const runsLine = (webUrl: string): string => `${RUNS_PREFIX}${webUrl}/run
  * A Telegram `/fetch` hangletöltése: munkánként tölti a configot, így a `audio` blokk
  * szerkesztése újraindítás nélkül hat. A futás a `logs.dir` alá naplózódik.
  */
+async function whisperDirsOrThrow(configArg: string | undefined) {
+  const { cfg } = await loadCliConfig(configArg)
+  const dirs = await whisperDirs(cfg)
+  if (dirs === null) throw new Error(`nincs whisper-mappa: ${cfg.whisperDir}`)
+  return dirs
+}
+
 export function serveFetchAudio(
   configArg: string | undefined,
   deps: { runner?: ProcessRunner; fetchImpl?: typeof fetch } = {},
@@ -379,6 +387,11 @@ export async function commandServe(argv: readonly string[], env: NodeJS.ProcessE
     models: async () => {
       const { cfg, raw } = await loadCliConfig(configArg)
       return modelsView(loadModelConfig(raw, process.env, cfg.configPath), recipesFor(cfg))
+    },
+    // A whisper-mappa kérésenként: a kaput nem foglalja (csak fájlokat olvas, ill. egy jelzőfájlt ír).
+    whisper: {
+      list: async () => listQueue(await whisperDirsOrThrow(configArg)),
+      cancel: async (id) => cancelTranscript(await whisperDirsOrThrow(configArg), id),
     },
     // A config kérésenként töltődik, mint a receptfuttatásnál: a vault-config szerkesztése újraindítás nélkül hat.
     notes: createNotesSource({ load: () => loadCliConfig(configArg), claim: () => claimGate(gate, 'notes') }),

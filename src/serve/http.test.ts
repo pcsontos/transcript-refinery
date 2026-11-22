@@ -376,6 +376,71 @@ describe('createServeServer /notes', () => {
   })
 })
 
+describe('createServeServer /whisper (pcsontos/issue-tracker#134)', () => {
+  const QUEUE = [
+    { id: 'a', title: 'A', state: 'queued' as const, job: '12:3' },
+    { id: 'b', title: 'B', state: 'working' as const, job: null },
+  ]
+
+  async function start(whisper?: Parameters<typeof createServeServer>[0]['whisper']): Promise<number> {
+    server = createServeServer({ secret: 'titok', gate, version: '9.9.9', whisper, onJob: () => Promise.resolve() })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    return (server.address() as { port: number }).port
+  }
+
+  const call = (port: number, method: string, path: string, secret?: string) =>
+    fetch(`http://127.0.0.1:${port}${path}`, { method, headers: secret === undefined ? {} : { authorization: `Bearer ${secret}` } })
+
+  it('token nélkül mindkét útvonal 401', async () => {
+    const port = await start({ list: () => Promise.resolve(QUEUE), cancel: () => Promise.resolve('removed') })
+    expect((await call(port, 'GET', '/whisper')).status).toBe(401)
+    expect((await call(port, 'POST', '/whisper/a/cancel')).status).toBe(401)
+    expect((await call(port, 'GET', '/whisper', 'rossz')).status).toBe(401)
+  })
+
+  it('GET /whisper a sor JSON-ja', async () => {
+    const port = await start({ list: () => Promise.resolve(QUEUE), cancel: () => Promise.resolve('removed') })
+    const response = await call(port, 'GET', '/whisper', 'titok')
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(QUEUE)
+  })
+
+  it('POST /whisper/<id>/cancel: 200 az eredménnyel, ismeretlenre 404', async () => {
+    const results: Record<string, 'removed' | 'signalled' | 'unknown'> = { a: 'signalled', b: 'removed' }
+    const port = await start({ list: () => Promise.resolve([]), cancel: (id) => Promise.resolve(results[id] ?? 'unknown') })
+    const signalled = await call(port, 'POST', '/whisper/a/cancel', 'titok')
+    expect(signalled.status).toBe(200)
+    expect(await signalled.json()).toEqual({ result: 'signalled' })
+    expect(await (await call(port, 'POST', '/whisper/b/cancel', 'titok')).json()).toEqual({ result: 'removed' })
+    expect((await call(port, 'POST', '/whisper/nincs/cancel', 'titok')).status).toBe(404)
+  })
+
+  it('whisper nélkül, vagy hibánál 503', async () => {
+    const without = await start()
+    expect((await call(without, 'GET', '/whisper', 'titok')).status).toBe(503)
+    expect((await call(without, 'POST', '/whisper/a/cancel', 'titok')).status).toBe(503)
+    server?.close()
+    await once(server!, 'close')
+    const broken = await start({ list: () => Promise.reject(new Error('nincs whisper-mappa')), cancel: () => Promise.reject(new Error('x')) })
+    expect((await call(broken, 'GET', '/whisper', 'titok')).status).toBe(503)
+    expect((await call(broken, 'POST', '/whisper/a/cancel', 'titok')).status).toBe(503)
+  })
+
+  it('a dekódolt, szokatlan azonosítót a cancel kapja (a szűrés a queue.ts-é), a válasz 404', async () => {
+    const seen: string[] = []
+    const port = await start({
+      list: () => Promise.resolve([]),
+      cancel: (id) => {
+        seen.push(id)
+        return Promise.resolve('unknown')
+      },
+    })
+    expect((await call(port, 'POST', '/whisper/%2E%2E%2Fx/cancel', 'titok')).status).toBe(404)
+    expect(seen).toEqual(['../x'])
+  })
+})
+
 describe('acceptJob — próbálkozás-utótag (pcsontos/issue-tracker#103)', () => {
   it('a `~<n>` utótagú azonosító saját job: ugyanaz 202, az utótag nélküli régi 409', () => {
     const local: ServeGate = { current: null }
