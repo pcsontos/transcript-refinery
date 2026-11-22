@@ -141,6 +141,13 @@ describe('inboxInfo job', () => {
     const info = JSON.parse(await readFile(join(dirs.inbox, 'abcdefghijk.info.json'), 'utf8')) as Record<string, unknown>
     expect(info).toMatchObject({ refinery_job: '12:3' })
   })
+
+  it('egy korábbi megszakítás cancel/<id> jelzését törli, hogy az újraleadás ne szakadjon meg (pcsontos/issue-tracker#137)', async () => {
+    await put(dirs.cancel, 'abcdefghijk', '')
+    await put(dirs.cancel, 'masikazonos', '')
+    expect(await submitEntry(await firstEntry(), { store, dirs, status: 'archived', lang: 'hu' })).toEqual({ ok: true })
+    expect(await readdir(dirs.cancel)).toEqual(['masikazonos'])
+  })
 })
 
 describe('resolveLang', () => {

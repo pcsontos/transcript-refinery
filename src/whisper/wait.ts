@@ -17,6 +17,19 @@ export const POLL_MS = 2000
 /** Ctrl-C után legfeljebb ennyi kör (15 × POLL_MS = 30 mp) vár a figyelő takarítására. */
 export const CANCEL_ROUNDS = 15
 
+/** `ms` várakozás, abortra azonnal felold; a figyelőt mindkét esetben leveszi (órás várakozásnál se halmozódjon). */
+export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    signal.addEventListener('abort', done, { once: true })
+  })
+}
+
 /**
  * A leadott átírások megvárása: körönként a mappák állapotából követi őket. A lezárt tétel sora egyszer jön `emit`-en;
  * a kívülről megszakított (az inbox-tétel `.srt` nélkül eltűnt) nem hiba. A figyelő elvesztésekor nem vár tovább.
@@ -25,13 +38,7 @@ export async function waitForTranscripts(
   entries: readonly AudioEntry[],
   deps: WaitDeps,
 ): Promise<{ failed: number; watcherLost: boolean; interrupted: boolean }> {
-  const sleep =
-    deps.sleep ??
-    ((ms: number) =>
-      new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, ms)
-        deps.signal.addEventListener('abort', () => (clearTimeout(timer), resolve()), { once: true })
-      }))
+  const sleep = deps.sleep ?? ((ms: number) => abortableSleep(ms, deps.signal))
   const open = new Map(entries.map((entry) => [entry.id, entry]))
   const label = (entry: AudioEntry): string => `${entry.title} [${entry.id}]`
   let failed = 0

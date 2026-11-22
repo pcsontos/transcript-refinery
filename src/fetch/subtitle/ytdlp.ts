@@ -242,10 +242,17 @@ export function parseYtdlpProgress(line: string): { done: number; total: number 
 export function createYtdlpRunner(): ProcessRunner {
   return (args, options) =>
     new Promise((resolve, reject) => {
-      const child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'] })
       const signal = options?.signal
+      // Jellel saját folyamatcsoport: abortnál a yt-dlp gyerekei (pl. ffmpeg-utófeldolgozás) is leállnak, nem írnak a
+      // stagingbe. Jel nélkül marad az előtér-csoport, hogy a terminál Ctrl-C-je közvetlenül elérje a yt-dlp-t.
+      const child = spawn('yt-dlp', args, { stdio: ['ignore', 'pipe', 'pipe'], detached: signal !== undefined })
       const onAbort = (): void => {
-        child.kill('SIGTERM')
+        try {
+          if (child.pid === undefined) throw new Error('nincs pid')
+          process.kill(-child.pid, 'SIGTERM')
+        } catch {
+          child.kill('SIGTERM')
+        }
       }
       if (signal?.aborted === true) onAbort()
       else signal?.addEventListener('abort', onAbort, { once: true })

@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -5,7 +6,7 @@ import { dirname, join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { AudioEntry } from './archive.js'
 import type { WhisperDirs } from './paths.js'
-import { CANCEL_ROUNDS, waitForTranscripts } from './wait.js'
+import { abortableSleep, CANCEL_ROUNDS, waitForTranscripts } from './wait.js'
 
 let tmp: string
 let dirs: WhisperDirs
@@ -122,5 +123,18 @@ describe('waitForTranscripts', () => {
     expect(existsSync(join(dirs.cancel, 'b'))).toBe(true)
     expect(existsSync(join(dirs.inbox, 'b.m4a'))).toBe(true)
     expect(h.emitted).toEqual(['megszakítva: A [a]', 'A figyelő nem takarította el: b'])
+  })
+})
+
+describe('abortableSleep', () => {
+  it('lejárt várakozás után nem marad abort-figyelő a jelen; abortra azonnal felold', async () => {
+    const controller = new AbortController()
+    for (let i = 0; i < 5; i += 1) await abortableSleep(1, controller.signal)
+    expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0)
+    const started = Date.now()
+    const pending = abortableSleep(60_000, controller.signal)
+    controller.abort()
+    await pending
+    expect(Date.now() - started).toBeLessThan(1000)
   })
 })

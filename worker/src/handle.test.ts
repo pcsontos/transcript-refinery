@@ -1295,6 +1295,17 @@ describe('/cancel', () => {
       expect(d.keyboards[0]?.[0]).toEqual([{ text: 'sorban: A', data: 'C:a' }])
     })
 
+    it('egy frissítés átírásai egy listByUpdate-hívással szűrődnek', async () => {
+      const store = await boundStore()
+      await store.insert(acceptedRow({ status: 'ready' }))
+      let calls = 0
+      const counted = { ...store, listByUpdate: (updateId: number) => (calls++, store.listByUpdate(updateId)) }
+      const d = deps(counted, { transcripts: () => Promise.resolve([own, { ...own, id: 'b', title: 'B' }]) })
+      await handleUpdate(command(70, '/cancel'), d)
+      expect(d.keyboards[0]?.map((row) => row[0]?.data)).toEqual(['C:a', 'C:b', 'c:*'])
+      expect(calls).toBe(1)
+    })
+
     it('a 64 bájtnál hosszabb gombadatú átírás kimarad a gombok közül', async () => {
       const store = await boundStore()
       await store.insert(acceptedRow({ status: 'ready' }))

@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -286,6 +286,41 @@ describe('createYtdlpRunner megszakítás (pcsontos/issue-tracker#133)', () => {
       const result = await createYtdlpRunner()(['x'], { signal: controller.signal })
       expect(Date.now() - started).toBeLessThan(2000)
       expect(result.code).not.toBe(0)
+    } finally {
+      process.env.PATH = oldPath
+    }
+  })
+
+  it('abortnál a yt-dlp gyereke (pl. ffmpeg-utófeldolgozás) is leáll', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ytdlp-group-'))
+    const pidFile = join(dir, 'grandchild.pid')
+    await writeFile(join(dir, 'yt-dlp'), `#!/bin/sh\nsleep 30 >/dev/null 2>&1 &\necho $! > "${pidFile}"\nwait\n`)
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    const oldPath = process.env.PATH
+    process.env.PATH = `${dir}:${oldPath ?? ''}`
+    try {
+      const controller = new AbortController()
+      const running = createYtdlpRunner()(['x'], { signal: controller.signal })
+      let text = ''
+      for (let i = 0; i < 100 && !/^\d+\n$/.test(text); i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        text = await readFile(pidFile, 'utf8').catch(() => '')
+      }
+      controller.abort()
+      await running
+      const pid = Number(text)
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      const alive = (): boolean => {
+        try {
+          process.kill(pid, 0)
+          return true
+        } catch {
+          return false
+        }
+      }
+      const survived = alive()
+      if (survived) process.kill(pid, 'SIGKILL')
+      expect(survived).toBe(false)
     } finally {
       process.env.PATH = oldPath
     }

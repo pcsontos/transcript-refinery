@@ -523,6 +523,9 @@ def process(
         except Exception as error:  # a figyelő egy tétel miatt nem állhat le
             detail = "%s: %s" % (type(error).__name__, error)
             reason = detail
+        # Hiba közben jött jelzés (pl. a refinery épp kivette a bemenetet): megszakítás, nem a failed/ alá.
+        if reason is not None and cancelled():
+            was_cancelled = True
 
         if was_cancelled:
             for path in (audio, info_path, cancel_path):

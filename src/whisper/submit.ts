@@ -76,6 +76,8 @@ export async function submitEntry(
   try {
     await mkdir(deps.dirs.inbox, { recursive: true })
     await sweepStalePartials(deps.dirs.inbox, entry.id)
+    // Egy korábbi (sorban álló tételre adott) megszakítás jelzése; maradna, a figyelő az újraleadást is eldobná.
+    await rm(join(deps.dirs.cancel, entry.id), { force: true })
     await writeFile(infoPartial, JSON.stringify(inboxInfo(entry, deps.lang, deps.after, deps.job), null, 2))
     await rename(infoPartial, info)
     await deps.store.copyTo(entry.key, audioPartial)

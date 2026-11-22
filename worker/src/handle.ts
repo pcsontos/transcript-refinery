@@ -299,11 +299,17 @@ async function textRow(
   return { status: 200, knocks }
 }
 
-export async function findRow(store: JobStore, jobId: string): Promise<JobRow | null> {
+/** `cache`: több keresésnél frissítésenként egy `listByUpdate` (pl. egy üzenet több leadása). */
+export async function findRow(store: JobStore, jobId: string, cache?: Map<number, Promise<JobRow[]>>): Promise<JobRow | null> {
   const head = jobId.split(':')[0]
   if (head === undefined || !/^\d+$/.test(head)) return null
-  const rows = await store.listByUpdate(Number(head))
-  return rows.find((row) => row.jobId === jobId) ?? null
+  const updateId = Number(head)
+  let pending = cache?.get(updateId)
+  if (pending === undefined) {
+    pending = store.listByUpdate(updateId)
+    cache?.set(updateId, pending)
+  }
+  return (await pending).find((row) => row.jobId === jobId) ?? null
 }
 
 async function allowedBinding(userId: string | undefined, deps: WorkerDeps): Promise<Binding | null> {
@@ -385,8 +391,9 @@ async function ownTranscripts(sub: string, deps: WorkerDeps): Promise<Transcript
   const rows = await deps.transcripts()
   if (rows === null) return null
   const own: TranscriptRow[] = []
+  const cache = new Map<number, Promise<JobRow[]>>()
   for (const row of rows) {
-    if (row.job !== null && (await findRow(deps.store, row.job))?.sub === sub) own.push(row)
+    if (row.job !== null && (await findRow(deps.store, row.job, cache))?.sub === sub) own.push(row)
   }
   return own
 }

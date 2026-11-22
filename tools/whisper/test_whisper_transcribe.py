@@ -257,6 +257,17 @@ class Process(Root):
         self.run_process(fake_late)
         self.assert_megszakitva()
 
+    def test_megszakitas_alatt_jott_hiba_nem_kerul_failedbe(self):
+        # Verseny: a refinery épp kivette a sorban álló tételt, az ffmpeg a hiányzó bemeneten elhasal.
+        self.put_item()
+
+        def fake_race(path, lang, out_dir, outputs, **kw):
+            self.request_cancel()
+            raise wt.TranscribeError("ffmpeg: No such file or directory")
+
+        self.run_process(fake_race)
+        self.assert_megszakitva()
+
     def test_megszakitas_utan_a_korabbi_failed_maradekok_torlodnek(self):
         for name in ("a.m4a", "a.log"):
             write(os.path.join(self.root, "failed", name), "régi")
