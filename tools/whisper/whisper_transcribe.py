@@ -57,6 +57,10 @@ class TranscribeError(Exception):
     """Az átírás hibája; az üzenet utolsó sora a rövid ok."""
 
 
+class Cancelled(Exception):
+    """A felhasználó megszakította az átírást (`cancel/<id>` jelzőfájl)."""
+
+
 # --------------------------------------------------------------------------- eszközök keresése
 
 
@@ -137,6 +141,60 @@ def _fail(tool: str, stderr: str) -> TranscribeError:
     return TranscribeError("\n".join(lines + ["%s: %s" % (tool, last)]))
 
 
+def _run(
+    cmd: List[str],
+    cancelled: Callable[[], bool],
+    on_line: Optional[Callable[[str, str], None]] = None,
+) -> Tuple[int, str]:
+    """Gyerekfolyamat; stdout/stderr soronként `on_line(stream, line)`-nak, másodpercenként megnézi a megszakítást.
+
+    Megszakításnál terminate(), 5 mp után kill(), majd Cancelled. Visszatérés: (returncode, stderr szövege)."""
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, errors="replace")
+    err_lines = []  # type: List[str]
+
+    def pump(stream: object, name: str) -> None:
+        for raw in iter(stream.readline, ""):
+            line = raw.rstrip("\n")
+            if name == "err":
+                err_lines.append(line)
+            if on_line is not None:
+                try:
+                    on_line(name, line)
+                except Exception:  # a naplózás hibája nem állíthatja le az átírást
+                    pass
+
+    threads = [
+        threading.Thread(target=pump, args=(proc.stdout, "out"), daemon=True),
+        threading.Thread(target=pump, args=(proc.stderr, "err"), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    try:
+        while True:
+            try:
+                proc.wait(timeout=1)
+                break
+            except subprocess.TimeoutExpired:
+                if cancelled():
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait()
+                    raise Cancelled()
+    finally:
+        if proc.poll() is None:  # váratlan kivétel: ne maradjon árva gyerek
+            proc.kill()
+            proc.wait()
+        for thread in threads:
+            thread.join(timeout=5)
+        for pipe in (proc.stdout, proc.stderr):
+            if pipe is not None:
+                pipe.close()
+    return proc.returncode, "".join(line + "\n" for line in err_lines)
+
+
 def transcribe(
     path: str,
     lang: str,
@@ -144,9 +202,13 @@ def transcribe(
     outputs: List[str],
     extra: Optional[List[str]] = None,
     on_phase: Optional[Callable[[str], None]] = None,
+    cancelled: Optional[Callable[[], bool]] = None,
+    on_progress: Optional[Callable[..., None]] = None,
+    log_path: Optional[str] = None,
 ) -> str:
     """Átírja a hangot; a kimenet `<out_dir>/<alap>[.<nyelv>].<kiterjesztés>`, az első kért formátum útját adja vissza."""
     phase = on_phase or (lambda _name: None)
+    stop = cancelled or (lambda: False)
     cli = find_whisper_cli()
     ffmpeg = find_ffmpeg()
     model = find_model()
@@ -163,18 +225,14 @@ def transcribe(
         if needs_conversion(path):
             tmp_dir = tempfile.mkdtemp(prefix="whisper_", dir=out_dir)
             audio = os.path.join(tmp_dir, "audio_converted.wav")
-            result = subprocess.run(
-                [ffmpeg, "-y", "-i", path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", audio],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0:
-                raise _fail("ffmpeg", result.stderr)
+            code, stderr = _run([ffmpeg, "-y", "-i", path, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", audio], stop)
+            if code != 0:
+                raise _fail("ffmpeg", stderr)
         phase("átírás")
         cmd = [cli, "--model", model, "--language", lang, "--output-file", prefix] + flags + list(extra or []) + ["--file", audio]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise _fail("whisper-cli", result.stderr)
+        code, stderr = _run(cmd, stop)
+        if code != 0:
+            raise _fail("whisper-cli", stderr)
     finally:
         if tmp_dir and os.path.isdir(tmp_dir):
             shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -332,9 +390,15 @@ def process(
         marker = os.path.join(work, id_ + ".working")
         with open(marker, "w"):
             pass
+        cancel_path = os.path.join(root, "cancel", id_)
+
+        def cancelled() -> bool:
+            return os.path.exists(cancel_path)
+
         reason = None  # type: Optional[str]
         detail = ""
         published = None  # type: Optional[str]
+        was_cancelled = False
         try:
             lang = info.get("refinery_lang")
             target = info.get("refinery_target")
@@ -350,15 +414,22 @@ def process(
             elif os.path.exists(final_srt):
                 raise TranscribeError("a cél .srt már létezik: %s" % os.path.join(target, srt_name))
             else:
+                if cancelled():
+                    raise Cancelled()
+
                 def on_phase(name: str) -> None:
                     log.event(type="item:step", itemId=id_, step=name)
 
-                made = transcribe_fn(audio, lang, work, ["srt"], on_phase=on_phase)
+                made = transcribe_fn(audio, lang, work, ["srt"], on_phase=on_phase, cancelled=cancelled)
+                if cancelled():
+                    raise Cancelled()
                 if os.path.exists(final_srt):
                     raise TranscribeError("a cél .srt már létezik: %s" % os.path.join(target, srt_name))
                 _atomic_copy(info_path, final_info)
                 _atomic_copy(made, final_srt)
                 published = "%s/%s" % (target.rstrip("/"), srt_name)
+        except Cancelled:
+            was_cancelled = True
         except TranscribeError as error:
             detail = str(error)
             lines = [line for line in detail.split("\n") if line.strip()]
@@ -367,8 +438,19 @@ def process(
             detail = "%s: %s" % (type(error).__name__, error)
             reason = detail
 
+        if was_cancelled:
+            for path in (audio, info_path, cancel_path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            _clean_work(work, id_)
+            _clean_work(os.path.join(root, "failed"), id_)
+            log.event(type="item:skipped", itemId=id_, reason="megszakítva")
+            log.event(type="run:done", succeeded=0, skipped=1, failed=0)
+            return False  # interrupted marad True: a run:ended jelzi
         if reason is None:
-            for path in (audio, info_path):
+            for path in (audio, info_path, cancel_path):
                 try:
                     os.remove(path)
                 except OSError:
@@ -404,6 +486,33 @@ def _touch(path: str) -> None:
         pass
 
 
+def _sweep_cancels(root: str) -> None:
+    """Törli azt a `cancel/<id>`-t, amelyhez nincs se inbox-hang, se `work/<id>.working` (árva jelzés)."""
+    cancel = os.path.join(root, "cancel")
+    inbox = os.path.join(root, "inbox")
+    try:
+        ids = os.listdir(cancel)
+    except OSError:
+        return
+    if not ids:
+        return
+    try:
+        queued = set()
+        for name in os.listdir(inbox):
+            if name.startswith(".") or name.endswith(".partial") or name.endswith(".info.json"):
+                continue
+            queued.add(name.rpartition(".")[0])
+    except OSError:
+        queued = set()
+    for id_ in ids:
+        if id_ in queued or os.path.exists(os.path.join(root, "work", id_ + ".working")):
+            continue
+        try:
+            os.remove(os.path.join(cancel, id_))
+        except OSError:
+            pass
+
+
 def watch(
     root: str,
     out: str,
@@ -415,7 +524,7 @@ def watch(
     logs = logs or default_logs(root)
     inbox = os.path.join(root, "inbox")
     work = os.path.join(root, "work")
-    for name in ("inbox", "work", "failed"):
+    for name in ("inbox", "work", "failed", "cancel"):
         os.makedirs(os.path.join(root, name), exist_ok=True)
     # Újraindítás után a félkész munkafájlok eldobhatók: a tétel az inboxban van, újra sorra kerül.
     for name in os.listdir(work):
@@ -430,6 +539,7 @@ def watch(
     heartbeat = os.path.join(root, "heartbeat")
     while True:
         _touch(heartbeat)
+        _sweep_cancels(root)
         item = next_item(inbox)
         if item is not None:
             process(item, root, out, logs, transcribe_fn=transcribe_fn)

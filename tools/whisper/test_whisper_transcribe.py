@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -20,7 +21,7 @@ def write(path, text="x"):
         fh.write(text)
 
 
-def fake_ok(path, lang, out_dir, outputs, extra=None, on_phase=None):
+def fake_ok(path, lang, out_dir, outputs, extra=None, on_phase=None, **kwargs):
     if on_phase:
         on_phase("konvertálás")
         on_phase("átírás")
@@ -30,7 +31,7 @@ def fake_ok(path, lang, out_dir, outputs, extra=None, on_phase=None):
     return dest
 
 
-def fake_fail(path, lang, out_dir, outputs, extra=None, on_phase=None):
+def fake_fail(path, lang, out_dir, outputs, extra=None, on_phase=None, **kwargs):
     raise wt.TranscribeError("ffmpeg: invalid data")
 
 
@@ -41,7 +42,7 @@ class Root(unittest.TestCase):
         self.root = os.path.join(self.tmp, "whisper")
         self.out = os.path.join(self.tmp, "sources")
         self.logs = os.path.join(self.tmp, "logs")
-        for name in ("inbox", "work", "failed"):
+        for name in ("inbox", "work", "failed", "cancel"):
             os.makedirs(os.path.join(self.root, name))
 
     def put_item(self, id_="a", ext="m4a", info=None):
@@ -58,6 +59,12 @@ class Root(unittest.TestCase):
 
     def failed(self):
         return sorted(os.listdir(os.path.join(self.root, "failed")))
+
+    def cancel(self):
+        return sorted(os.listdir(os.path.join(self.root, "cancel")))
+
+    def request_cancel(self, id_="a"):
+        write(os.path.join(self.root, "cancel", id_), "")
 
     def run_process(self, fn=fake_ok, id_="a"):
         item = wt.next_item(os.path.join(self.root, "inbox"))
@@ -201,12 +208,90 @@ class Process(Root):
         self.put_item()
         seen = {}
 
-        def spy(path, lang, out_dir, outputs, extra=None, on_phase=None):
+        def spy(path, lang, out_dir, outputs, extra=None, on_phase=None, **kwargs):
             seen["work"] = self.work()
             return fake_ok(path, lang, out_dir, outputs, extra, on_phase)
 
         self.run_process(spy)
         self.assertTrue(any(name.startswith("a.") for name in seen["work"]))
+
+    def assert_megszakitva(self):
+        for listing in (self.inbox(), self.work(), self.failed(), self.cancel()):
+            self.assertEqual(listing, [])
+        self.assertFalse(os.path.exists(os.path.join(self.out, "whisper")))
+        _, lines = self.log_lines()
+        self.assertEqual([line["type"] for line in lines][-3:], ["item:skipped", "run:done", "run:ended"])
+        self.assertEqual(lines[-3]["reason"], "megszakítva")
+        self.assertEqual((lines[-2]["succeeded"], lines[-2]["skipped"], lines[-2]["failed"]), (0, 1, 0))
+        self.assertTrue(lines[-1]["interrupted"])
+
+    def test_megszakitas_atiras_kozben(self):
+        self.put_item()
+
+        def fake_cancel(path, lang, out_dir, outputs, **kw):
+            self.request_cancel()
+            raise wt.Cancelled()
+
+        self.run_process(fake_cancel)
+        self.assert_megszakitva()
+
+    def test_megszakitas_felvetelkor(self):
+        self.put_item()
+        self.request_cancel()
+
+        def never(*args, **kwargs):
+            raise AssertionError("nem futhat le")
+
+        self.run_process(never)
+        self.assert_megszakitva()
+
+    def test_megszakitas_kozzetetel_elott(self):
+        self.put_item()
+
+        def fake_late(path, lang, out_dir, outputs, **kw):
+            dest = fake_ok(path, lang, out_dir, outputs)
+            self.request_cancel()
+            return dest
+
+        self.run_process(fake_late)
+        self.assert_megszakitva()
+
+    def test_megszakitas_utan_a_korabbi_failed_maradekok_torlodnek(self):
+        for name in ("a.m4a", "a.log"):
+            write(os.path.join(self.root, "failed", name), "régi")
+        self.put_item()
+        self.request_cancel()
+        self.run_process(fake_ok)
+        self.assertEqual(self.failed(), [])
+
+    def test_kozzetett_par_mellett_a_cancel_hatastalan(self):
+        self.put_item()
+        target = os.path.join(self.out, "whisper", "csat")
+        write(os.path.join(target, "a.hu.srt"), "KÉSZ")
+        write(os.path.join(target, "a.info.json"), "{}")
+        self.request_cancel()
+        self.assertTrue(self.run_process(fake_ok))
+        _, lines = self.log_lines()
+        self.assertIn("item:published", [line["type"] for line in lines])
+        self.assertEqual(sorted(os.listdir(target)), ["a.hu.srt", "a.info.json"])
+        self.assertEqual(self.cancel(), [])
+        self.assertEqual(self.inbox(), [])
+
+
+class Run(unittest.TestCase):
+    def test_run_megszakitja_a_gyereket(self):
+        started = time.time()
+        with self.assertRaises(wt.Cancelled):
+            wt._run([sys.executable, "-c", "import time; time.sleep(30)"], cancelled=lambda: True)
+        self.assertLess(time.time() - started, 7)
+
+    def test_run_sorokat_ad(self):
+        lines = []
+        code = "print('a'); import sys; print('b', file=sys.stderr)"
+        result = wt._run([sys.executable, "-c", code], lambda: False, on_line=lambda stream, line: lines.append((stream, line)))
+        self.assertIn(("out", "a"), lines)
+        self.assertIn(("err", "b"), lines)
+        self.assertEqual(result, (0, "b\n"))
 
 
 class RunIdAndLog(Root):
@@ -251,6 +336,19 @@ class Watch(Root):
         target = os.path.join(self.out, "whisper", "csat")
         self.assertEqual(sorted(os.listdir(target)), ["a.hu.srt", "a.info.json", "b.hu.srt", "b.info.json"])
         self.assertEqual(len(os.listdir(self.logs)), 2)
+
+    def test_indulaskor_cancel_marad(self):
+        self.put_item("b")
+        self.request_cancel("b")
+        wt.watch(self.root, self.out, self.logs, once=True, transcribe_fn=fake_ok)
+        self.assertFalse(os.path.exists(os.path.join(self.out, "whisper")))
+        self.assertEqual(self.cancel(), [])
+        self.assertEqual(self.inbox(), [])
+
+    def test_arva_cancel_torlodik(self):
+        self.request_cancel("x")
+        wt.watch(self.root, self.out, self.logs, once=True, transcribe_fn=fake_ok)
+        self.assertEqual(self.cancel(), [])
 
     def test_napló_alapertelmezett_helye_a_gyoker_mellett(self):
         self.assertEqual(wt.default_logs(self.root), os.path.join(self.tmp, "logs"))
