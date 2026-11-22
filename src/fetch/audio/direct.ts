@@ -69,7 +69,7 @@ export async function downloadDirect(
   staging: string,
   fetchImpl: typeof fetch = fetch,
   target?: { dir: string; name: string },
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; onProgress?: (done: number, total: number | null) => void } = {},
 ): Promise<DirectResult> {
   const info = directTarget(url)
   const signal = options.signal
@@ -98,7 +98,17 @@ export async function downloadDirect(
   try {
     await mkdir(dirname(part), { recursive: true })
     if (response.body === null) throw new Error('üres válasz')
-    await pipeline(Readable.fromWeb(response.body), createWriteStream(part), { signal })
+    const length = response.headers.get('content-length')
+    const total = length !== null && /^\d+$/.test(length) ? Number(length) : null
+    let done = 0
+    const counted = async function* (source: AsyncIterable<Buffer>): AsyncGenerator<Buffer> {
+      for await (const chunk of source) {
+        done += chunk.length
+        options.onProgress?.(done, total)
+        yield chunk
+      }
+    }
+    await pipeline(Readable.fromWeb(response.body), counted, createWriteStream(part), { signal })
     await rename(part, join(staging, path))
   } catch (error) {
     await rm(part, { force: true })

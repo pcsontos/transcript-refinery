@@ -9,6 +9,7 @@ import {
   audioDownloadArgs,
   downloadArgs,
   originalSubtitleLang,
+  parseYtdlpProgress,
   parseFeedProbe,
   parsePlaylistProbe,
   parseVideoProbe,
@@ -285,6 +286,37 @@ describe('createYtdlpRunner megszakítás (pcsontos/issue-tracker#133)', () => {
       const result = await createYtdlpRunner()(['x'], { signal: controller.signal })
       expect(Date.now() - started).toBeLessThan(2000)
       expect(result.code).not.toBe(0)
+    } finally {
+      process.env.PATH = oldPath
+    }
+  })
+})
+
+describe('parseYtdlpProgress (pcsontos/issue-tracker#135)', () => {
+  it('total_bytes, különben total_bytes_estimate, különben null', () => {
+    expect(parseYtdlpProgress('refinery-progress 1000 2000 NA')).toEqual({ done: 1000, total: 2000 })
+    expect(parseYtdlpProgress('refinery-progress 1000 NA 3000.5')).toEqual({ done: 1000, total: 3000 })
+    expect(parseYtdlpProgress('refinery-progress 1000 NA NA')).toEqual({ done: 1000, total: null })
+    expect(parseYtdlpProgress('[download] 5%')).toBeNull()
+  })
+
+  it('a letöltő argumentumok haladást kérnek', () => {
+    const args = audioDownloadArgs({ url: 'U', dest: '/d', overwrite: false, id: 'ID' })
+    expect(args).toContain('--newline')
+    expect(args).not.toContain('--no-progress')
+  })
+
+  it('az onLine a stdout és a stderr sorait is megkapja', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ytdlp-lines-'))
+    await writeFile(join(dir, 'yt-dlp'), '#!/bin/sh\nprintf "egy\\nket"\nprintf "hiba\\n" >&2\nprintf "ketto\\n"\n')
+    await chmod(join(dir, 'yt-dlp'), 0o755)
+    const oldPath = process.env.PATH
+    process.env.PATH = `${dir}:${oldPath ?? ''}`
+    try {
+      const lines: string[] = []
+      const result = await createYtdlpRunner()(['x'], { onLine: (line) => void lines.push(line) })
+      expect([...lines].sort()).toEqual(['egy', 'hiba', 'ketketto'])
+      expect(result.stdout).toBe('egy\nketketto\n')
     } finally {
       process.env.PATH = oldPath
     }

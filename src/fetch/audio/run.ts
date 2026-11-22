@@ -13,6 +13,7 @@ import {
   parsePlaylistProbe,
   parseVideoProbe,
   originalSubtitleLang,
+  parseYtdlpProgress,
   playlistProbeArgs,
   type ProcessResult,
   type ProcessRunner,
@@ -23,6 +24,9 @@ import {
 import { directTarget, downloadDirect } from './direct.js'
 import { episodeAudioUrl, feedHash, feedKind, feedMediaUrls, feedMessages, resolvePick, type FeedItemUrls } from './feed.js'
 import { audioId, type AudioStore } from './store.js'
+
+/** Két `item:advance` közti legkisebb idő tételenként. */
+const ADVANCE_EVERY_MS = 3000
 
 export type AudioOutcome = 'downloaded' | 'skipped' | 'failed' | 'uploaded' | 'listed'
 
@@ -120,9 +124,28 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
   const rows: AudioRow[] = []
   const sink = deps.sink ?? (() => undefined)
 
-  async function runCmd(args: readonly string[]): Promise<ProcessResult> {
+  /** Ritkított `item:advance`: az első érték azonnal, utána ADVANCE_EVERY_MS-enként; a `flush` a legutolsót is kiírja. */
+  function advancer(itemId: string): { report: (done: number, total: number | null) => void; flush: () => void } {
+    let last = 0
+    let pending: { done: number; total: number | null } | null = null
+    const emit = (): void => {
+      if (pending === null) return
+      sink({ type: 'item:advance', itemId, ...pending, unit: 'bytes' })
+      pending = null
+      last = Date.now()
+    }
+    return {
+      report(done, total) {
+        pending = { done, total }
+        if (Date.now() - last >= ADVANCE_EVERY_MS) emit()
+      },
+      flush: emit,
+    }
+  }
+
+  async function runCmd(args: readonly string[], onLine?: (line: string) => void): Promise<ProcessResult> {
     try {
-      return await deps.runner(args, { signal: deps.signal })
+      return await deps.runner(args, { signal: deps.signal, onLine })
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(YTDLP_MISSING, { cause: error })
       throw error
@@ -244,8 +267,13 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
     }
     const destRel = destOf(probe.channel ?? '')
     sink({ type: 'item:step', itemId: probe.id, step: 'letöltés' })
-    const download = await runCmd(audioDownloadArgs({ id: probe.id, url, dest: join(store.staging, destRel), overwrite: deps.overwrite }))
+    const advance = advancer(probe.id)
+    const download = await runCmd(audioDownloadArgs({ id: probe.id, url, dest: join(store.staging, destRel), overwrite: deps.overwrite }), (line) => {
+      const p = parseYtdlpProgress(line)
+      if (p !== null) advance.report(p.done, p.total)
+    })
     if (aborted()) return discard(destRel, probe.id)
+    if (download.code === 0) advance.flush()
     const paths = await findDownloaded(destRel, probe.id)
     if (paths === null) {
       await failed(label, (download.code !== 0 ? firstLine(download.stderr) : '') || 'nincs hangfájl', probe.id)
@@ -303,8 +331,10 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
           continue
         }
         sink({ type: 'item:step', itemId: hash, step: 'letöltés' })
-        const result = await downloadDirect(audioUrl, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) }, { signal: deps.signal })
+        const advance = advancer(hash)
+        const result = await downloadDirect(audioUrl, store.staging, deps.fetchImpl, { dir, name: sanitizeSegment(entry.title) }, { signal: deps.signal, onProgress: advance.report })
         if (aborted()) return await discard(dir, hash)
+        if (result.ok) advance.flush()
         if (!result.ok) {
           await failed(entry.url, 'reason' in result ? result.reason : 'nem hangfájl (feed)', hash)
           continue
@@ -337,8 +367,10 @@ export async function runAudioFetch(inputs: readonly string[], deps: AudioRunDep
       return
     }
     sink({ type: 'item:step', itemId: target.hash, step: 'letöltés' })
-    const result = await downloadDirect(url, store.staging, deps.fetchImpl, undefined, { signal: deps.signal })
+    const advance = advancer(target.hash)
+    const result = await downloadDirect(url, store.staging, deps.fetchImpl, undefined, { signal: deps.signal, onProgress: advance.report })
     if (aborted()) return discard(target.dir, target.hash)
+    if (result.ok) advance.flush()
     if (!result.ok) {
       await failed(url, 'reason' in result ? result.reason : 'podcast-feed', target.hash)
       return
