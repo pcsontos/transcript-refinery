@@ -4,6 +4,17 @@ import type { CaptionSource } from './types.js'
  * A mag kimenete. A CLI ezt haladásjelzéssé rendereli, a naplózó JSON
  * sorokká — a mag maga soha nem ír a konzolra.
  */
+/** Egy hosszú lépés (letöltés, átírás) haladása; az `item:advance` esemény törzse. */
+export interface Advance {
+  done: number
+  /** Ismeretlen teljes méretnél `null`. */
+  total: number | null
+  /** `bytes`: letöltött bájt; `percent`: `done` 0–100, `total` 100. */
+  unit: 'bytes' | 'percent'
+  /** Átírásnál az utolsó felismert szegmens, egy sorra vágva. */
+  text?: string
+}
+
 export type RunEvent =
   | { type: 'scan:start'; source: string }
   | { type: 'scan:found'; count: number }
@@ -17,6 +28,7 @@ export type RunEvent =
       captionSource: CaptionSource
     }
   | { type: 'item:step'; itemId: string; step: string }
+  | ({ type: 'item:advance'; itemId: string } & Advance)
   | { type: 'item:published'; itemId: string; path: string }
   | { type: 'item:skipped'; itemId: string; reason: string }
   | {
