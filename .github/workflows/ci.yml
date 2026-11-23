@@ -31,6 +31,9 @@ jobs:
       - name: Tesztek
         run: pnpm test
 
+      - name: Web-tesztek
+        run: pnpm --filter transcript-refinery-web test
+
       - name: Offline mérés kulcs nélkül
         run: pnpm eval
         env:

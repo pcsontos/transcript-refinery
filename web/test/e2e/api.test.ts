@@ -70,6 +70,7 @@ describe('API', async () => {
       score: 0.62,
       costUsd: 0.0123,
       belowThreshold: true,
+      missing: false,
     })
     expect(rows[0]?.cells.qa?.status).toBe('failed')
     expect(rows[1]?.cells.summary?.status).toBe('pending')
