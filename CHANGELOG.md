@@ -3,6 +3,43 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.39.0] — 2026-11-23
+
+A hang letöltése és whisper-átírása megszakítható Telegramból és a CLI-ból,
+és mindkettő haladása látszik a futás oldalán. A `refinery transcribe` a
+leadás után megvárja az átírást.
+
+### ✨ Újdonságok
+
+- **Átírás megszakítása Telegramból:** a `/cancel` menüje a saját, sorban
+  álló vagy futó átírásaidat is felsorolja (`átírás: <cím>`, `sorban: <cím>`),
+  a „Mind megszakítása” ezeket is leállítja. A megszakított hang nem kerül a
+  hibásak közé, és újra leadható. Ha a szerver nem érhető el, a menü az
+  átírások nélkül jön (pcsontos/issue-tracker#134).
+- **A `refinery transcribe` megvárja az átírást:** a terminálban mutatja a
+  haladást, és kilép, ha minden leadott tétele elkészült, hibára futott vagy
+  megszakadt (kilépési kód 0, hibánál 1). A Ctrl-C a leadott, még el nem
+  készült tételeket megszakítja, és 130-cal lép ki. Ha a figyelő nem fut, a
+  parancs nem vár (pcsontos/issue-tracker#134).
+- **Haladás a futás oldalán:** a `/runs/<runId>` jelenlegi lépése mutatja a
+  letöltés méretét (`letöltés: 68,0 / 120,5 MB (56%)`, ismeretlen méretnél
+  csak a letöltött MB-ot) és az átírás százalékát az utolsó felismert
+  szegmenssel (pcsontos/issue-tracker#135, pcsontos/issue-tracker#38).
+- **Whisper-napló:** a figyelő az ffmpeg és a whisper-cli teljes kimenetét
+  tételenként a `<logs>/<id>.whisper.log`-ba írja; sikeres átírás után is
+  megmarad (pcsontos/issue-tracker#38).
+
+### 🔧 Javítások
+
+- **Megszakítható hangletöltés:** a Telegram `/cancel` és a CLI Ctrl-C a
+  futó letöltést azonnal leállítja, közvetlen linknél, feednél és
+  YouTube-videónál is. A félkész fájlok törlődnek, a tételből semmi nem kerül
+  archiválásra; többtételes futásnál a már kész tételek megmaradnak. Az
+  összesítő szövege: `(N elem nem készült el)` (pcsontos/issue-tracker#133).
+- **Hosszú parancsok tördelése:** a futások és a riportok táblázatában, és a
+  futás oldalának címében a hosszú (pl. URL-kódolt) parancs betűhatáron
+  törik, nem tolja szét a táblázatot (pcsontos/issue-tracker#137).
+
 ## [1.38.0] — 2026-11-21
 
 A Telegramról leadott hang már nem a config nyelvén indul: a bot megkérdezi a
