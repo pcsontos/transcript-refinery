@@ -54,6 +54,15 @@ describe('noteFile', () => {
     expect(path).toBe('/v/gy/youtube/NET Foundation/a1b2c3/Transformers_t.md')
   })
 
+  it('a pinnedBase felülírja az alapnevet, a mappa marad', () => {
+    expect(
+      noteFile('/v', item({ baseName: '-QFHIoCo-Ko' }), '_summary.md', {
+        pinnedDir: '/v/AI/x',
+        pinnedBase: 'Régi_cím',
+      }),
+    ).toBe('/v/AI/x/Régi_cím_summary.md')
+  })
+
   it('a pinnedDir felülírja a sablont', () => {
     expect(noteFile('/v/gy', withChannel(), '_notes.md', { pinnedDir: '/v/gy/régi/mappa' })).toBe(
       '/v/gy/régi/mappa/Transformers_notes.md',
