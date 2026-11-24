@@ -25,8 +25,6 @@ export interface ChunkedDeps {
   modelConfig: ModelConfig
   guard: CostGuard
   store: StateStore
-  /** Hamis (`dryRun`) esetén a tábla érintetlen. */
-  persist: boolean
   skipJudge?: boolean
   /** A recept órája egy hívásláncra: darabkísérletenként és a pontozásra külön indul. */
   clock: <T>(fn: () => Promise<T>) => Promise<T>
@@ -89,7 +87,7 @@ export async function translateChunked(
   const { item } = input
   const chunks = splitForTranslation(input.transcript, translation.chunkWords)
   const chunked = chunks.length > 1
-  const useTable = chunked && deps.persist
+  const useTable = chunked
   const hash = chunkSourceHash(
     input.transcript,
     translation.chunkWords,

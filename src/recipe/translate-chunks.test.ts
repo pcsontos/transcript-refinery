@@ -89,7 +89,6 @@ function deps(client: ModelClient, over: Partial<ChunkedDeps> = {}): ChunkedDeps
     modelConfig: MODELL_CFG,
     guard: createCostGuard(5),
     store,
-    persist: true,
     skipJudge: true,
     clock: (fn) => fn(),
     onGenerate: () => {},
@@ -171,11 +170,6 @@ describe('translateChunked', () => {
     expect(client.prompts[0]).not.toContain('part ')
     expect(result.glossary).toEqual([{ source: 'x', target: 'y' }, { source: 'tool', target: 'eszköz' }])
     expect(result.chunked).toBe(false)
-    expect(store.translationChunks('a1', 'proba-hu')).toEqual([])
-  })
-
-  it('persist nélkül (dryRun) nem ír a táblába', async () => {
-    await run(fordito(10), sorKliens([ELSO, MASODIK]), { persist: false })
     expect(store.translationChunks('a1', 'proba-hu')).toEqual([])
   })
 

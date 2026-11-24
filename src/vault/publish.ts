@@ -5,7 +5,6 @@ import { dirname } from 'node:path'
 
 export interface PublishOptions {
   force?: boolean
-  dryRun?: boolean
 }
 
 export interface PublishResult {
@@ -34,9 +33,6 @@ export async function publishNote(
 ): Promise<PublishResult> {
   if (!opts.force && (await exists(filePath))) {
     return { status: 'skipped', path: filePath }
-  }
-  if (opts.dryRun) {
-    return { status: 'written', path: filePath }
   }
   await mkdir(dirname(filePath), { recursive: true })
   await writeFile(filePath, content, 'utf8')

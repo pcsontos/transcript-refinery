@@ -1144,7 +1144,7 @@ export async function commandRun(
         store,
         sink: printing,
         version: VERSION,
-        options: { force: flags.force, forceRecipe: flags.forceRecipe, dryRun: flags.dryRun },
+        options: { force: flags.force, forceRecipe: flags.forceRecipe },
         recipeDeps: depsFor(unit.recipe),
         commit,
         origin: flags.origin,

@@ -195,7 +195,7 @@ describe('processItem', () => {
       sink,
       version: '0.1.0',
       readingWpm: 200,
-      options: { force: false, dryRun: false },
+      options: { force: false },
     })
     expect(outcome.status).toBe('published')
     expect(outcome.path).toBe(join(notesRoot, 'youtube', 'a1b2c3', 'Beszéd_transcript.md'))
@@ -209,7 +209,7 @@ describe('processItem', () => {
       sink: collectEvents().sink,
       version: '0.1.0',
       readingWpm: 200,
-      options: { force: false, dryRun: false },
+      options: { force: false },
     }
     await processItem(item(), deps)
     const second = await processItem(item(), deps)
@@ -460,23 +460,6 @@ describe('processItem recepttel', () => {
     expect(outcome.path).toContain('_transcript.md')
     expect(deps.store.artifactOf(current.itemId, 'transcript')!.status).toBe('done')
     expect(deps.store.artifactOf(current.itemId, ATMENO_RECEPT.id)!.status).toBe('failed')
-  })
-
-  it('dry-run mellett nem-publikálható recept sem marad tartósan késznek jelölve', async () => {
-    const deps = alapDeps()
-    const current = item()
-    await processItem(current, {
-      ...deps,
-      options: { dryRun: true },
-      recipeDeps: {
-        recipe: { ...ATMENO_RECEPT, id: 'nem-publikus-dry', publishable: false },
-        client: probaKliens('## Jegyzet\n'),
-        modelConfig: MODELL_CFG,
-        guard: createCostGuard(5),
-      },
-    })
-
-    expect(deps.store.artifactOf(current.itemId, 'nem-publikus-dry')).toBeNull()
   })
 
   it('átmeneti modellhiba után újrapróbálkozik, és eseményt küld róla', async () => {
@@ -1165,13 +1148,6 @@ describe('processItem — darabolt fordítás és szójegyzék (#259)', () => {
     expect(await exists(noteFile(notesRoot, item(), '_proba-hu.md'))).toBe(true)
   })
 
-  it('dryRun mellett sem tábla, sem szójegyzékfájl', async () => {
-    await forrasJegyzet(store, ANGOL_FORRAS)
-    await fordit(FORDITO10, sorModell(DARABOK), { options: { dryRun: true } })
-    expect(store.translationChunks(item().itemId, 'proba-hu')).toEqual([])
-    expect(await exists(glossaryPath())).toBe(false)
-  })
-
   it('a kézzel írt prózában lévő wikilink nem buktatja a fordítást, a modell sorában lévő igen', async () => {
     await forrasJegyzet(store, ANGOL_FORRAS)
     await mkdir(dirname(glossaryPath()), { recursive: true })
@@ -1265,78 +1241,6 @@ describe('processItem — a már meglévő jegyzet a modellhívás előtt', () =
 
     expect(draft.doGenerateCalls).toHaveLength(1)
     expect(await readFile(path, 'utf8')).toContain('## Új jegyzet')
-  })
-
-  it('dry-run mellett sem hív modellt, de nem rögzít', async () => {
-    const deps = alapDeps()
-    await meglevoJegyzet('_proba.md')
-    const draft = fixModell('## Új jegyzet\n')
-
-    await processItem(item(), {
-      ...deps,
-      options: { dryRun: true },
-      recipeDeps: {
-        recipe: ATMENO_RECEPT,
-        client: modelClientFrom({ draft, judge: fixModell('nem hívjuk') }),
-        modelConfig: MODELL_CFG,
-        guard: createCostGuard(5),
-      },
-    })
-
-    expect(draft.doGenerateCalls).toHaveLength(0)
-    expect(deps.store.artifactOf(item().itemId, 'proba')).toBeNull()
-  })
-
-  /** A mappa régi nevű átirata (az elem `item_id`-jével), az elem mai alapneve más. */
-  async function regiMappa(ujNev: string, ...fajlok: string[]): Promise<{ elem: SourceItem; mappa: string }> {
-    const elem = item({ baseName: ujNev })
-    const mappa = dirname(noteFile(notesRoot, elem, '_transcript.md'))
-    await mkdir(mappa, { recursive: true })
-    await writeFile(
-      join(mappa, 'Régi_cím_transcript.md'),
-      `---\nitem_id: ${elem.itemId}\n---\n\nrégi átirat\n`,
-      'utf8',
-    )
-    for (const fajl of fajlok) await writeFile(join(mappa, fajl), '# régi jegyzet\n', 'utf8')
-    return { elem, mappa }
-  }
-
-  it('a régi nevű meglévő jegyzetért nem hív modellt, és a régi úttal rögzít', async () => {
-    const deps = alapDeps()
-    const { elem, mappa } = await regiMappa('uj-nev', 'Régi_cím_proba.md')
-    const draft = fixModell('## Új jegyzet\n')
-
-    await processItem(elem, {
-      ...deps,
-      recipeDeps: {
-        recipe: ATMENO_RECEPT,
-        client: modelClientFrom({ draft, judge: fixModell('nem hívjuk') }),
-        modelConfig: MODELL_CFG,
-        guard: createCostGuard(5),
-      },
-    })
-
-    expect(draft.doGenerateCalls).toHaveLength(0)
-    expect(deps.store.artifactOf(elem.itemId, 'proba')!.path).toBe(join(mappa, 'Régi_cím_proba.md'))
-    expect(await exists(join(mappa, 'uj-nev_proba.md'))).toBe(false)
-    expect(await exists(join(mappa, 'uj-nev_transcript.md'))).toBe(false)
-  })
-
-  it('új recept a mappa régi alapnevén íródik', async () => {
-    const deps = alapDeps()
-    const { elem, mappa } = await regiMappa('uj-nev')
-
-    const outcome = await processItem(elem, {
-      ...deps,
-      recipeDeps: {
-        recipe: ATMENO_RECEPT,
-        client: modelClientFrom({ draft: fixModell('## Új jegyzet\n'), judge: fixModell('nem hívjuk') }),
-        modelConfig: MODELL_CFG,
-        guard: createCostGuard(5),
-      },
-    })
-
-    expect(outcome.recipePath).toBe(join(mappa, 'Régi_cím_proba.md'))
   })
 
   it('fordításnál a forrásjegyzetet sem keresi: kész forrás nélkül is done', async () => {

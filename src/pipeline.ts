@@ -182,9 +182,7 @@ async function publishRendered(
     return { status: 'skipped', path: result.path }
   }
 
-  if (!deps.options.dryRun) {
-    deps.store.recordArtifact(item.itemId, kind, 'done', result.path, null, undefined, deps.commit)
-  }
+  deps.store.recordArtifact(item.itemId, kind, 'done', result.path, null, undefined, deps.commit)
   deps.sink({ type: 'item:published', itemId: item.itemId, path: result.path })
   return { status: 'published', path: result.path }
 }
@@ -267,9 +265,7 @@ async function runRecipe(
   if (recipe.publishable && !deps.options.force && deps.options.forceRecipe !== true) {
     const target = noteFile(deps.notesRoot, item, recipe.outputFile, place)
     if (await exists(target)) {
-      if (!deps.options.dryRun) {
-        deps.store.recordArtifact(item.itemId, recipe.id, 'done', target, null)
-      }
+      deps.store.recordArtifact(item.itemId, recipe.id, 'done', target, null)
       deps.sink({ type: 'item:skipped', itemId: item.itemId, reason: 'a fájl már létezik' })
       return { status: 'skipped', recipePath: target }
     }
@@ -297,8 +293,6 @@ async function runRecipe(
       deps.sink({ type: 'item:retry', itemId: item.itemId, attempt, delayMs, reason }),
   })
 
-  // A dryRun itt NEM érvényesül: ez a hívás feltétel nélkül lefut, valós
-  // költséggel. Csak a lenti recordArtifact/publishNote van dryRun mögé zárva.
   const clock = recipeClock(item, recipe, deps, modelConfig)
   // Az élő követés ezekből látja, hol tart a loop: enélkül a modellhívások
   // alatt — a futásidő nagyobb részében — nem jönne esemény.
@@ -326,7 +320,6 @@ async function runRecipe(
       modelConfig,
       guard,
       store: deps.store,
-      persist: !deps.options.dryRun,
       skipJudge: recipeDeps.skipJudge,
       clock,
       onGenerate,
@@ -387,15 +380,13 @@ async function runRecipe(
   // A `publishable: false` a publisher által kikényszerített invariáns, nem
   // konvenció: bizonyos típusok soha nem kerülhetnek publikálási útra.
   if (!recipe.publishable) {
-    if (!deps.options.dryRun) {
-      deps.store.recordArtifact(item.itemId, recipe.id, 'done', null, null, {
-        iterations: result.generations,
-        score: result.score,
-        costUsd: usd,
-        model: modelConfig.models[recipe.role],
-        gaps: result.gaps,
-      })
-    }
+    deps.store.recordArtifact(item.itemId, recipe.id, 'done', null, null, {
+      iterations: result.generations,
+      score: result.score,
+      costUsd: usd,
+      model: modelConfig.models[recipe.role],
+      gaps: result.gaps,
+    })
     return { status: 'skipped' }
   }
 
@@ -419,7 +410,7 @@ async function runRecipe(
   // Lint-bukáskor a tárolt darabok törlődnek: különben a következő futás ugyanazt a
   // szöveget venné elő, és ugyanitt bukna. Így újragenerál, mint darabolás nélkül.
   const dropChunks = () => {
-    if (translated?.run.chunked && !deps.options.dryRun) deps.store.clearTranslationChunks(item.itemId, recipe.id)
+    if (translated?.run.chunked) deps.store.clearTranslationChunks(item.itemId, recipe.id)
   }
   const lintErrors = lintVaultMarkdown(markdown)
   if (lintErrors.length > 0) {
@@ -454,7 +445,7 @@ async function runRecipe(
     force: deps.options.force === true || deps.options.forceRecipe === true,
   })
 
-  if (translated !== null && glossary !== null && recipe.translation && published.status === 'written' && !deps.options.dryRun) {
+  if (translated !== null && glossary !== null && recipe.translation && published.status === 'written') {
     const changed = glossary !== translated.existing
     if (changed) {
       // A rögzített mappa eltűnhetett (a szójegyzéket törölték): ott jön létre újra.
@@ -476,23 +467,21 @@ async function runRecipe(
     if (translated.run.chunked) deps.store.clearTranslationChunks(item.itemId, recipe.id)
   }
 
-  if (!deps.options.dryRun) {
-    deps.store.recordArtifact(
-      item.itemId,
-      recipe.id,
-      'done',
-      published.path,
-      null,
-      {
-        iterations: result.generations,
-        score: result.score,
-        costUsd: usd,
-        model: modelConfig.models[recipe.role],
-        gaps: result.gaps,
-      },
-      deps.commit,
-    )
-  }
+  deps.store.recordArtifact(
+    item.itemId,
+    recipe.id,
+    'done',
+    published.path,
+    null,
+    {
+      iterations: result.generations,
+      score: result.score,
+      costUsd: usd,
+      model: modelConfig.models[recipe.role],
+      gaps: result.gaps,
+    },
+    deps.commit,
+  )
 
   if (published.status === 'skipped') {
     deps.sink({ type: 'item:skipped', itemId: item.itemId, reason: 'a fájl már létezik' })
