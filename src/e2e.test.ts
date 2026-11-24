@@ -569,6 +569,24 @@ describe('végponttól végpontig — run --queue --dry-run', () => {
     expect(mindketto.kimenet).toMatch(/futna\s+.*\ssummary\s/)
   })
 
+  it('recept nélkül a meglévő (régi nevű) átirat kész, nem futna', async () => {
+    const { raw, cfg, elso } = await elokeszit([])
+    const mappa = dirname(noteFile(cfg.notesRoot, elso, '_transcript.md'))
+    await mkdir(mappa, { recursive: true })
+    await writeFile(join(mappa, 'Régi_transcript.md'), `---\nitem_id: ${elso.itemId}\n---\n\nrégi\n`, 'utf8')
+    const sorok: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      sorok.push(args.join(' '))
+    })
+
+    const code = await commandRun(cfg, raw, { dryRun: true, force: false, commit: false })
+
+    expect(code).toBe(0)
+    const kimenet = sorok.join('\n')
+    expect(kimenet).toMatch(/kész\s+.*átirat\s+meglévő jegyzet: .*Régi_transcript\.md/)
+    expect(kimenet).toMatch(/futna\s+.*Masodik_transcript\.md/)
+  })
+
   it('már az első pár sem fér a plafon alá → 2, napló nélkül', async () => {
     const { raw, cfg } = await elokeszit([SUMMARY], 0.000001)
 

@@ -45,6 +45,23 @@ describe('transcriptBase', () => {
     utimesSync(a, new Date('2025-01-01'), new Date('2025-01-01'))
     expect(transcriptBase(root, 'a1')).toBe('B')
   })
+
+  it('több találatnál a mai alapnévtől eltérő nyer, a fájlidőtől függetlenül', () => {
+    const regi = write(root, 'Full_Walkthrough_transcript.md', '-QFHIoCo-Ko', true)
+    const uj = write(root, '-QFHIoCo-Ko_transcript.md', '-QFHIoCo-Ko', true)
+    // Azonos idő (git-klón), majd a régi az újabb (--force újraírta).
+    const t = new Date('2026-01-01')
+    utimesSync(regi, t, t)
+    utimesSync(uj, t, t)
+    expect(transcriptBase(root, '-QFHIoCo-Ko', '-QFHIoCo-Ko')).toBe('Full_Walkthrough')
+    utimesSync(regi, new Date('2026-11-24'), new Date('2026-11-24'))
+    expect(transcriptBase(root, '-QFHIoCo-Ko', '-QFHIoCo-Ko')).toBe('Full_Walkthrough')
+  })
+
+  it('egyetlen találat a mai alapnéven is az marad', () => {
+    write(root, 'a1_transcript.md', 'a1')
+    expect(transcriptBase(root, 'a1', 'a1')).toBe('a1')
+  })
 })
 
 describe('notePlacement', () => {

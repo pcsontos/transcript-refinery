@@ -754,10 +754,12 @@ export async function commandRun(
    * sor `✓` utótagját.
    */
   const doneReason = (unit: WorkUnit): string | null => {
-    if (flags.force || (flags.forceRecipe === true && unit.recipe !== undefined)) return null
+    if (flags.force || (flags.forceRecipe === true && unit.recipe !== null)) return null
     if (store.isDone(unit.item.itemId, unitKind(unit))) return 'állapotrekord'
-    if (unit.recipe?.publishable !== true) return null
-    const path = noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile, placementOf(unit.item))
+    // Az átirat egységet a pipeline meglévő fájlnál költség nélkül kihagyja: itt is kész.
+    const outputFile = unit.recipe === null ? '_transcript.md' : unit.recipe.publishable ? unit.recipe.outputFile : null
+    if (outputFile === null) return null
+    const path = noteFile(cfg.notesRoot, unit.item, outputFile, placementOf(unit.item))
     return existsSync(path) ? `meglévő jegyzet: ${relative(cfg.vaultPath, path)}` : null
   }
 
@@ -873,7 +875,7 @@ export async function commandRun(
    * normál befejezéskor a commit előtt, egyébként a `finish`-ben.
    */
   const writeBack = async (): Promise<boolean> => {
-    if (!queueMode || flags.dryRun || wroteBack) return false
+    if (!queueMode || wroteBack) return false
     wroteBack = true
     const current = await readQueueFile(sorPath)
     if (current === null) return false

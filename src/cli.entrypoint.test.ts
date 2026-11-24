@@ -64,7 +64,7 @@ describe('más munkakönyvtárból, --config-gal indítva', () => {
     work = undefined
   })
 
-  it('az állapottár a config mellé kerül (a dry-run naplót nem ír), a munkakönyvtárban nem jön létre .state', async () => {
+  it('az állapottár és a napló a config mellé kerül, a munkakönyvtárban nem jön létre .state', async () => {
     work = await mkdtemp(join(tmpdir(), 'refinery-cwd-'))
     const projekt = join(work, 'projekt')
     const mashol = join(work, 'mashol')
@@ -88,13 +88,12 @@ describe('más munkakönyvtárból, --config-gal indítva', () => {
 
     await run(
       resolve(TSX),
-      [resolve('src/cli.ts'), 'run', '--dry-run', '--config', join(projekt, 'refinery.config.yaml')],
+      [resolve('src/cli.ts'), 'run', '--no-commit', '--config', join(projekt, 'refinery.config.yaml')],
       { cwd: mashol },
     )
 
     expect(existsSync(join(projekt, '.state', 'refinery.db'))).toBe(true)
-    // A --dry-run nem ír naplót és riportot.
-    expect(existsSync(join(projekt, 'logs'))).toBe(false)
+    expect(existsSync(join(projekt, 'logs'))).toBe(true)
     expect(existsSync(join(mashol, '.state'))).toBe(false)
     expect(existsSync(join(mashol, 'logs'))).toBe(false)
   })
