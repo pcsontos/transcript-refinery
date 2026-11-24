@@ -149,3 +149,34 @@ export async function estimateUnits(
   }
   return { slice: sliceToBudget(entries, cfg), first: entries[0] }
 }
+
+export interface DryRunEntry {
+  label: 'futna' | 'kész' | 'kihagyva' | 'halasztva'
+  title: string
+  itemId: string
+  kind: string
+  detail: string
+}
+
+const DRY_RUN_ORDER: DryRunEntry['label'][] = ['futna', 'kész', 'kihagyva', 'halasztva']
+
+/**
+ * A `run --dry-run` kimenete: igazított sorok (futna, kész, kihagyva,
+ * halasztva; csoporton belül a bemenet sorrendje), a becslés sora, az összegzés.
+ */
+export function dryRunLines(entries: readonly DryRunEntry[], estimate: string | null): string[] {
+  const sorted = DRY_RUN_ORDER.flatMap((label) => entries.filter((e) => e.label === label))
+  const names = sorted.map((e) => `${e.title} (${e.itemId})`)
+  const width = (values: readonly string[]) => Math.max(0, ...values.map((v) => v.length))
+  const labelW = width(sorted.map((e) => e.label))
+  const nameW = width(names)
+  const kindW = width(sorted.map((e) => e.kind))
+  const rows = sorted.map((e, i) =>
+    `  ${e.label.padEnd(labelW)}  ${names[i]!.padEnd(nameW)}  ${e.kind.padEnd(kindW)}  ${e.detail}`.trimEnd(),
+  )
+  const count = (label: DryRunEntry['label']) => entries.filter((e) => e.label === label).length
+  const summary =
+    `run (szárazfutás): ${String(count('futna'))} pár futna, ${String(count('kész'))} kész, ` +
+    `${String(count('kihagyva'))} kihagyva, ${String(count('halasztva'))} elhalasztva`
+  return [...rows, ...(estimate === null ? [] : [estimate]), summary]
+}

@@ -68,7 +68,7 @@ export async function watchRound(opts: RoundOptions): Promise<RoundResult> {
         readingWpm: cfg.readingWpm,
         store,
         version: VERSION,
-        options: { force: false, dryRun: false },
+        options: { force: false },
         commit,
         sink: (event: RunEvent) => {
           if (event.type === 'item:failed') errors.push(event.error)

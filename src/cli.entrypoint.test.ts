@@ -88,7 +88,7 @@ describe('más munkakönyvtárból, --config-gal indítva', () => {
 
     await run(
       resolve(TSX),
-      [resolve('src/cli.ts'), 'run', '--dry-run', '--config', join(projekt, 'refinery.config.yaml')],
+      [resolve('src/cli.ts'), 'run', '--no-commit', '--config', join(projekt, 'refinery.config.yaml')],
       { cwd: mashol },
     )
 

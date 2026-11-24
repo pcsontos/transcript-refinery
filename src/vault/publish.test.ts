@@ -34,13 +34,6 @@ describe('publishNote', () => {
     expect(await readFile(target, 'utf8')).toBe('új')
   })
 
-  it('dry-run módban semmit nem ír ki', async () => {
-    const target = join(root, 'uj', 'jegyzet.md')
-    const result = await publishNote(target, 'tartalom', { dryRun: true })
-    expect(result.status).toBe('written')
-    await expect(readFile(target, 'utf8')).rejects.toThrow()
-  })
-
   it('meglévő mappába is ír', async () => {
     await mkdir(join(root, 'meglevo'), { recursive: true })
     const target = join(root, 'meglevo', 'jegyzet.md')

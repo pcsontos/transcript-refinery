@@ -165,7 +165,7 @@ describe('doneLookup', () => {
       items,
       registry,
       notesRoot,
-      layout: DEFAULT_LAYOUT,
+      placement: () => ({ layout: DEFAULT_LAYOUT }),
       artifactOf: () => ({ status: 'done', score: 1, costUsd: 0.1, path: null }),
       exists: () => true,
     })
@@ -179,7 +179,7 @@ describe('doneLookup', () => {
       items,
       registry,
       notesRoot,
-      layout: DEFAULT_LAYOUT,
+      placement: () => ({ layout: DEFAULT_LAYOUT }),
       artifactOf: () => ({ status: 'done', score: 0.95, costUsd: 0.0719, path: regiUt }),
       exists: () => false,
     })
@@ -193,7 +193,7 @@ describe('doneLookup', () => {
       items,
       registry,
       notesRoot,
-      layout: DEFAULT_LAYOUT,
+      placement: () => ({ layout: DEFAULT_LAYOUT }),
       artifactOf: () => null,
       exists: (path) => path === summaryUt,
     })
@@ -203,13 +203,25 @@ describe('doneLookup', () => {
     expect(lookup('a1', 'qa')).toBeNull()
   })
 
+  it('a rögzített alapnevű fájl rekord nélkül is kész', () => {
+    const lookup = doneLookup({
+      items,
+      registry,
+      notesRoot,
+      placement: () => ({ pinnedDir: '/v/AI/a1', pinnedBase: 'Régi' }),
+      artifactOf: () => null,
+      exists: (path) => path === '/v/AI/a1/Régi_summary.md',
+    })
+    expect(lookup('a1', 'summary')).not.toBeNull()
+  })
+
   it('failed rekord: fájl nélkül null, fájllal már a vaultban', () => {
     const failed = () => ({ status: 'failed', score: null, costUsd: null, path: null })
     expect(
-      doneLookup({ items, registry, notesRoot, layout: DEFAULT_LAYOUT, artifactOf: failed, exists: () => false })('a1', 'summary'),
+      doneLookup({ items, registry, notesRoot, placement: () => ({ layout: DEFAULT_LAYOUT }), artifactOf: failed, exists: () => false })('a1', 'summary'),
     ).toBeNull()
     expect(
-      doneLookup({ items, registry, notesRoot, layout: DEFAULT_LAYOUT, artifactOf: failed, exists: () => true })('a1', 'summary'),
+      doneLookup({ items, registry, notesRoot, placement: () => ({ layout: DEFAULT_LAYOUT }), artifactOf: failed, exists: () => true })('a1', 'summary'),
     ).toBe('✓ már a vaultban · [jegyzet](<transcripts/a1/Elso_summary.md>)')
   })
 
@@ -218,7 +230,7 @@ describe('doneLookup', () => {
       items,
       registry,
       notesRoot,
-      layout: DEFAULT_LAYOUT,
+      placement: () => ({ layout: DEFAULT_LAYOUT }),
       artifactOf: () => null,
       exists: (path) => path === noteFile(notesRoot, elem, '_clean-moderate-hu.md'),
     })

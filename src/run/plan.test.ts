@@ -10,6 +10,8 @@ import { translationOf } from '../recipe/translate.js'
 import type { StateStore } from '../state/db.js'
 import type { SourceItem } from '../types.js'
 import {
+  dryRunLines,
+  type DryRunEntry,
   estimateUnits,
   filterItems,
   matchesFilters,
@@ -265,5 +267,42 @@ describe('estimateUnits fordítással', () => {
     const { first } = await estimateUnits([{ item: elem(), recipe: summaryHu }], CFG)
 
     expect(first!.words).toBeCloseTo(words * 0.1, 10)
+  })
+})
+
+describe('dryRunLines', () => {
+  it('igazított sorok, becslés, összegzés', () => {
+    expect(
+      dryRunLines(
+        [
+          { label: 'futna', title: 'Cím A', itemId: 'a1', kind: 'summary', detail: 'AI/a1/Cím_A_summary.md' },
+          { label: 'kész', title: 'Cím B', itemId: 'b2', kind: 'summary', detail: 'meglévő jegyzet: AI/b2/Régi_summary.md' },
+        ],
+        'becslés: 1 elem, ~1200 token, ~0.0100 $ (plafon: 5 $)',
+      ),
+    ).toEqual([
+      '  futna  Cím A (a1)  summary  AI/a1/Cím_A_summary.md',
+      '  kész   Cím B (b2)  summary  meglévő jegyzet: AI/b2/Régi_summary.md',
+      'becslés: 1 elem, ~1200 token, ~0.0100 $ (plafon: 5 $)',
+      'run (szárazfutás): 1 pár futna, 1 kész, 0 kihagyva, 0 elhalasztva',
+    ])
+  })
+
+  it('üres listán csak az összegzés', () => {
+    expect(dryRunLines([], null)).toEqual([
+      'run (szárazfutás): 0 pár futna, 0 kész, 0 kihagyva, 0 elhalasztva',
+    ])
+  })
+
+  it('a sorrend futna, kész, kihagyva, halasztva; csoporton belül a bemeneté', () => {
+    const e = (label: DryRunEntry['label'], itemId: string): DryRunEntry => ({
+      label,
+      title: 'T',
+      itemId,
+      kind: 'k',
+      detail: 'd',
+    })
+    const lines = dryRunLines([e('halasztva', 'h'), e('kész', 'k'), e('futna', 'f2'), e('futna', 'f1'), e('kihagyva', 's')], null)
+    expect(lines.map((l) => /\((\w+)\)/.exec(l)?.[1])).toEqual(['f2', 'f1', 'k', 's', 'h', undefined])
   })
 })

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { commandRun, commandScan, commandScanQueue } from './cli.js'
@@ -93,7 +93,7 @@ async function processAll(sources: string[], notesDir?: string) {
       sink,
       version: '0.1.0',
       readingWpm: cfg.readingWpm,
-      options: { force: false, dryRun: false },
+      options: { force: false },
     })
     if (outcome.path && outcome.status === 'published') written.push(outcome.path)
   }
@@ -114,7 +114,7 @@ async function processSome(sources: string[], limit: number) {
       sink,
       version: '0.1.0',
       readingWpm: cfg.readingWpm,
-      options: { force: false, dryRun: false },
+      options: { force: false },
     })
   }
   store.close()
@@ -382,6 +382,219 @@ describe('végponttól végpontig — a feldolgozási sor valódi gittel', () =>
       if (mentettKulcs === undefined) delete process.env.LITELLM_API_KEY
       else process.env.LITELLM_API_KEY = mentettKulcs
     }
+  })
+})
+
+describe('végponttól végpontig — a mappa régi alapnevű jegyzete', () => {
+  it('run --queue: a régi nevű, rekord nélküli pár kész, modellhívás és új fájl nélkül', async () => {
+    await write(join(subsA, 'Cs', 'Elso.en.srt'), SRT)
+    const raw = {
+      vault: { path: join(work, 'vault') },
+      sources: [subsA],
+      state: { path: join(work, 'state.db') },
+      logs: { dir: join(work, 'logs') },
+      model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
+      pricing: {
+        'proba-draft': { input_per_million: 3, output_per_million: 15 },
+        'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
+      },
+      cost_limit_usd: 5,
+    }
+    const cfg = loadConfig(raw, join(work, 'refinery.config.yaml'))
+    let hivasok = 0
+    const client: ModelClient = {
+      generate: () => {
+        hivasok++
+        return Promise.reject(new Error('nem hívható'))
+      },
+      generateObject: () => {
+        hivasok++
+        return Promise.reject(new Error('nem hívható'))
+      },
+    }
+    const mentettKulcs = process.env.LITELLM_API_KEY
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    try {
+      expect(await commandScanQueue(cfg, { dryRun: false, commit: false })).toBe(0)
+      const sor = queuePath(cfg.notesRoot)
+      await writeFile(sor, (await readFile(sor, 'utf8')).replace('- [ ] summary', '- [x] summary'), 'utf8')
+
+      const elso = (await discoverAll(cfg.sources, cfg.languages)).find((i) => i.baseName === 'Elso')!
+      const mappa = dirname(noteFile(cfg.notesRoot, elso, '_summary.md'))
+      await mkdir(mappa, { recursive: true })
+      await writeFile(join(mappa, 'Régi_transcript.md'), `---\nitem_id: ${elso.itemId}\n---\n\nrégi\n`, 'utf8')
+      await writeFile(join(mappa, 'Régi_summary.md'), '# régi összefoglaló\n', 'utf8')
+
+      const code = await commandRun(
+        cfg,
+        raw,
+        { queue: true, dryRun: false, force: false, commit: false },
+        { createClient: () => client },
+      )
+      expect(code).toBe(0)
+      expect(hivasok).toBe(0)
+      expect((await readdir(mappa)).sort()).toEqual(['Régi_summary.md', 'Régi_transcript.md'])
+      const store = openState(cfg.statePath, cfg.vaultPath)
+      try {
+        expect(store.artifactOf(elso.itemId, 'summary')).toMatchObject({
+          status: 'done',
+          path: join(mappa, 'Régi_summary.md'),
+        })
+      } finally {
+        store.close()
+      }
+    } finally {
+      if (mentettKulcs === undefined) delete process.env.LITELLM_API_KEY
+      else process.env.LITELLM_API_KEY = mentettKulcs
+    }
+  })
+})
+
+describe('végponttól végpontig — run --queue --dry-run', () => {
+  const rawFor = (costLimit = 5) => ({
+    vault: { path: join(work, 'vault') },
+    sources: [subsA],
+    state: { path: join(work, 'state.db') },
+    logs: { dir: join(work, 'logs') },
+    model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
+    pricing: {
+      'proba-draft': { input_per_million: 3, output_per_million: 15 },
+      'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
+    },
+    cost_limit_usd: costLimit,
+    translate: { to: 'hu', recipes: ['summary'] },
+  })
+  let mentettKulcs: string | undefined
+  beforeEach(() => {
+    mentettKulcs = process.env.LITELLM_API_KEY
+    process.env.LITELLM_API_KEY = 'sk-proba'
+  })
+  afterEach(() => {
+    if (mentettKulcs === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = mentettKulcs
+    vi.restoreAllMocks()
+  })
+
+  const SUMMARY = '- [ ] summary'
+  const HU = '  - [ ] hu'
+
+  /** scan --queue, majd a megadott receptsorok pipálása; a forrásban Elso és Masodik van. */
+  async function elokeszit(pipak: string[], costLimit?: number) {
+    await write(join(subsA, 'Cs', 'Elso.en.srt'), SRT)
+    await write(join(subsA, 'Cs', 'Masodik.en.srt'), SRT)
+    const raw = rawFor(costLimit)
+    const cfg = loadConfig(raw, join(work, 'refinery.config.yaml'))
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false })).toBe(0)
+    const sor = queuePath(cfg.notesRoot)
+    // A megadott sorok minden videónál bepipálódnak (pontos soregyezés).
+    const text = (await readFile(sor, 'utf8'))
+      .split('\n')
+      .map((line) => (pipak.includes(line) ? line.replace('[ ]', '[x]') : line))
+      .join('\n')
+    await writeFile(sor, text, 'utf8')
+    const items = await discoverAll(cfg.sources, cfg.languages)
+    return { raw, cfg, sor, elso: items.find((i) => i.baseName === 'Elso')! }
+  }
+
+  const client: ModelClient = {
+    generate: () => Promise.reject(new Error('nem hívható')),
+    generateObject: () => Promise.reject(new Error('nem hívható')),
+  }
+
+  async function dryRun(
+    cfg: ReturnType<typeof loadConfig>,
+    raw: unknown,
+    extra: { force?: boolean } = {},
+  ): Promise<{ code: number; kimenet: string }> {
+    const sorok: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      sorok.push(args.join(' '))
+    })
+    const createClient = vi.fn(() => client)
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: true, force: extra.force ?? false, commit: false },
+      { createClient },
+    )
+    expect(createClient).not.toHaveBeenCalled()
+    return { code, kimenet: sorok.join('\n') }
+  }
+
+  it('listáz, nem hív modellt, és nem ír semmit', async () => {
+    const { raw, cfg, sor, elso } = await elokeszit([SUMMARY])
+    const mappa = dirname(noteFile(cfg.notesRoot, elso, '_summary.md'))
+    await mkdir(mappa, { recursive: true })
+    await writeFile(join(mappa, 'Régi_transcript.md'), `---\nitem_id: ${elso.itemId}\n---\n\nrégi\n`, 'utf8')
+    await writeFile(join(mappa, 'Régi_summary.md'), '# régi összefoglaló\n', 'utf8')
+    const sorElotte = await readFile(sor, 'utf8')
+
+    const { code, kimenet } = await dryRun(cfg, raw)
+
+    expect(code).toBe(0)
+    expect(kimenet).toContain('futna') // a Masodik jegyzet nélküli párja, a cél útjával
+    expect(kimenet).toContain('Masodik_summary.md')
+    expect(kimenet).toContain('kész')
+    expect(kimenet).toContain('meglévő jegyzet:') // a régi nevű pár
+    expect(kimenet).toContain('Régi_summary.md')
+    expect(existsSync(cfg.logsDir)).toBe(false)
+    expect(await readFile(sor, 'utf8')).toBe(sorElotte)
+    expect((await readdir(mappa)).sort()).toEqual(['Régi_summary.md', 'Régi_transcript.md'])
+  })
+
+  it('--force: a meglévő jegyzetű pár is futna', async () => {
+    const { raw, cfg, elso } = await elokeszit([SUMMARY])
+    const mappa = dirname(noteFile(cfg.notesRoot, elso, '_summary.md'))
+    await mkdir(mappa, { recursive: true })
+    await writeFile(join(mappa, 'Elso_summary.md'), '# meglévő\n', 'utf8')
+
+    const { code, kimenet } = await dryRun(cfg, raw, { force: true })
+
+    expect(code).toBe(0)
+    expect(kimenet).not.toContain('meglévő jegyzet:')
+    expect(kimenet).toMatch(/futna\s+.*Elso_summary\.md/)
+  })
+
+  it('a forrás nélküli fordítás kihagyva, a tervezett forrásé futna', async () => {
+    const hu = await elokeszit([HU])
+    const kihagyva = await dryRun(hu.cfg, hu.raw)
+    expect(kihagyva.kimenet).toMatch(/kihagyva\s+.*summary-hu\s+előbb a summary recept kell/)
+    expect(kihagyva.kimenet).not.toMatch(/futna\s+.*summary-hu/)
+
+    // summary + summary-hu együtt pipálva: mindkettő futna
+    const text = (await readFile(hu.sor, 'utf8')).replaceAll(SUMMARY, '- [x] summary')
+    await writeFile(hu.sor, text, 'utf8')
+    const mindketto = await dryRun(hu.cfg, hu.raw)
+    expect(mindketto.kimenet).toMatch(/futna\s+.*summary-hu/)
+    expect(mindketto.kimenet).toMatch(/futna\s+.*\ssummary\s/)
+  })
+
+  it('recept nélkül a meglévő (régi nevű) átirat kész, nem futna', async () => {
+    const { raw, cfg, elso } = await elokeszit([])
+    const mappa = dirname(noteFile(cfg.notesRoot, elso, '_transcript.md'))
+    await mkdir(mappa, { recursive: true })
+    await writeFile(join(mappa, 'Régi_transcript.md'), `---\nitem_id: ${elso.itemId}\n---\n\nrégi\n`, 'utf8')
+    const sorok: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      sorok.push(args.join(' '))
+    })
+
+    const code = await commandRun(cfg, raw, { dryRun: true, force: false, commit: false })
+
+    expect(code).toBe(0)
+    const kimenet = sorok.join('\n')
+    expect(kimenet).toMatch(/kész\s+.*átirat\s+meglévő jegyzet: .*Régi_transcript\.md/)
+    expect(kimenet).toMatch(/futna\s+.*Masodik_transcript\.md/)
+  })
+
+  it('már az első pár sem fér a plafon alá → 2, napló nélkül', async () => {
+    const { raw, cfg } = await elokeszit([SUMMARY], 0.000001)
+
+    const { code, kimenet } = await dryRun(cfg, raw)
+
+    expect(code).toBe(2)
+    expect(kimenet).toContain('A futás megállt')
+    expect(existsSync(cfg.logsDir)).toBe(false)
   })
 })
 

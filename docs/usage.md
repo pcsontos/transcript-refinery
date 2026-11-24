@@ -147,7 +147,7 @@ követi (a `scan` csak jelzi).
 
 ### Gyakori kapcsolók
 
-- `--dry-run`: nem ír fájlt és állapotot (de a modellhívás valós költséggel lefut)
+- `--dry-run`: csak listáz (futtatandó, kész, kihagyott és elhalasztott párok, költségbecslés); nem hív modellt, és nem ír fájlt, állapotot, sort, naplót vagy riportot
 - `--limit <szám>`: legfeljebb ennyi elem feldolgozása (pozitív egész)
 - `--source <név>`: szűrés adott forrásmappára
 - `--channel <név>`: szűrés csatornanévre

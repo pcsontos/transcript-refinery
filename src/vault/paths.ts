@@ -45,6 +45,8 @@ export interface NoteFileOptions {
   layout?: string
   /** Az elem már megírt kimenetének mappája: ez nyer a sablon fölött. */
   pinnedDir?: string | null
+  /** A mappában már használt alapnév (meglévő fájl nevéből, ezért nem tisztítjuk); az `item.baseName` helyett. */
+  pinnedBase?: string
 }
 
 /**
@@ -67,7 +69,7 @@ export function noteFile(
       sanitizeSegment(item.source),
       ...layoutSegments(opts.layout ?? DEFAULT_LAYOUT, itemFields(item)),
     )
-  return join(dir, `${sanitizeSegment(item.baseName)}${outputFile}`)
+  return join(dir, `${opts.pinnedBase ?? sanitizeSegment(item.baseName)}${outputFile}`)
 }
 
 /** A Fázis 0 átirata: a `noteFile` speciális esete. */

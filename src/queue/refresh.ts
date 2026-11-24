@@ -5,6 +5,7 @@ import type { Registry } from '../recipe/registry.js'
 import { firstById, queuedTextItem } from '../source/folder.js'
 import { openState } from '../state/db.js'
 import type { SourceItem } from '../types.js'
+import { notePlacement } from '../vault/pinned-base.js'
 import { doneLookup, markDone } from './done.js'
 import { queuePath, readQueueFile } from './file.js'
 import { queueLayout } from './layout.js'
@@ -97,7 +98,7 @@ export async function refreshQueue(
         items: new Map(items.map((item) => [item.itemId, item] as const)),
         registry,
         notesRoot: cfg.notesRoot,
-        layout: cfg.layout,
+        placement: (item) => notePlacement(cfg.notesRoot, item, cfg.layout, store?.noteDirOf(item.itemId) ?? null),
         artifactOf: (itemId, kind) => store?.artifactOf(itemId, kind) ?? null,
         exists: existsSync,
       }),

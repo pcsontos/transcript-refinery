@@ -68,7 +68,7 @@ export const COMMANDS: readonly CommandHelp[] = [
       LIMIT,
       ['--recipe <id>', 'receptet is futtat (pl. summary); többször is megadható; enélkül csak átirat'],
       ['--queue', 'a sor kipipált (videó, recept) párjait dolgozza fel'],
-      ['--dry-run', 'nem ír fájlt és nem rögzít állapotot; recepttel a modellhívások VALÓS költséggel megtörténnek'],
+      ['--dry-run', 'csak listáz: mit futtatna, mi kész, mi marad ki, és a becslés; nem hív modellt, nem ír semmit (naplót és riportot sem)'],
       [
         '--force',
         'létező fájlt is felülír; --queue mellett a sor minden kipipált párját, a késznek jelölteket is újrafuttatja',
