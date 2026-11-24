@@ -450,6 +450,136 @@ describe('végponttól végpontig — a mappa régi alapnevű jegyzete', () => {
   })
 })
 
+describe('végponttól végpontig — run --queue --dry-run', () => {
+  const rawFor = (costLimit = 5) => ({
+    vault: { path: join(work, 'vault') },
+    sources: [subsA],
+    state: { path: join(work, 'state.db') },
+    logs: { dir: join(work, 'logs') },
+    model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
+    pricing: {
+      'proba-draft': { input_per_million: 3, output_per_million: 15 },
+      'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
+    },
+    cost_limit_usd: costLimit,
+    translate: { to: 'hu', recipes: ['summary'] },
+  })
+  let mentettKulcs: string | undefined
+  beforeEach(() => {
+    mentettKulcs = process.env.LITELLM_API_KEY
+    process.env.LITELLM_API_KEY = 'sk-proba'
+  })
+  afterEach(() => {
+    if (mentettKulcs === undefined) delete process.env.LITELLM_API_KEY
+    else process.env.LITELLM_API_KEY = mentettKulcs
+    vi.restoreAllMocks()
+  })
+
+  const SUMMARY = '- [ ] summary'
+  const HU = '  - [ ] hu'
+
+  /** scan --queue, majd a megadott receptsorok pipálása; a forrásban Elso és Masodik van. */
+  async function elokeszit(pipak: string[], costLimit?: number) {
+    await write(join(subsA, 'Cs', 'Elso.en.srt'), SRT)
+    await write(join(subsA, 'Cs', 'Masodik.en.srt'), SRT)
+    const raw = rawFor(costLimit)
+    const cfg = loadConfig(raw, join(work, 'refinery.config.yaml'))
+    expect(await commandScanQueue(cfg, { dryRun: false, commit: false })).toBe(0)
+    const sor = queuePath(cfg.notesRoot)
+    // A megadott sorok minden videónál bepipálódnak (pontos soregyezés).
+    const text = (await readFile(sor, 'utf8'))
+      .split('\n')
+      .map((line) => (pipak.includes(line) ? line.replace('[ ]', '[x]') : line))
+      .join('\n')
+    await writeFile(sor, text, 'utf8')
+    const items = await discoverAll(cfg.sources, cfg.languages)
+    return { raw, cfg, sor, elso: items.find((i) => i.baseName === 'Elso')! }
+  }
+
+  const client: ModelClient = {
+    generate: () => Promise.reject(new Error('nem hívható')),
+    generateObject: () => Promise.reject(new Error('nem hívható')),
+  }
+
+  async function dryRun(
+    cfg: ReturnType<typeof loadConfig>,
+    raw: unknown,
+    extra: { force?: boolean } = {},
+  ): Promise<{ code: number; kimenet: string }> {
+    const sorok: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
+      sorok.push(args.join(' '))
+    })
+    const createClient = vi.fn(() => client)
+    const code = await commandRun(
+      cfg,
+      raw,
+      { queue: true, dryRun: true, force: extra.force ?? false, commit: false },
+      { createClient },
+    )
+    expect(createClient).not.toHaveBeenCalled()
+    return { code, kimenet: sorok.join('\n') }
+  }
+
+  it('listáz, nem hív modellt, és nem ír semmit', async () => {
+    const { raw, cfg, sor, elso } = await elokeszit([SUMMARY])
+    const mappa = dirname(noteFile(cfg.notesRoot, elso, '_summary.md'))
+    await mkdir(mappa, { recursive: true })
+    await writeFile(join(mappa, 'Régi_transcript.md'), `---\nitem_id: ${elso.itemId}\n---\n\nrégi\n`, 'utf8')
+    await writeFile(join(mappa, 'Régi_summary.md'), '# régi összefoglaló\n', 'utf8')
+    const sorElotte = await readFile(sor, 'utf8')
+
+    const { code, kimenet } = await dryRun(cfg, raw)
+
+    expect(code).toBe(0)
+    expect(kimenet).toContain('futna') // a Masodik jegyzet nélküli párja, a cél útjával
+    expect(kimenet).toContain('Masodik_summary.md')
+    expect(kimenet).toContain('kész')
+    expect(kimenet).toContain('meglévő jegyzet:') // a régi nevű pár
+    expect(kimenet).toContain('Régi_summary.md')
+    expect(existsSync(cfg.logsDir)).toBe(false)
+    expect(await readFile(sor, 'utf8')).toBe(sorElotte)
+    expect((await readdir(mappa)).sort()).toEqual(['Régi_summary.md', 'Régi_transcript.md'])
+  })
+
+  it('--force: a meglévő jegyzetű pár is futna', async () => {
+    const { raw, cfg, elso } = await elokeszit([SUMMARY])
+    const mappa = dirname(noteFile(cfg.notesRoot, elso, '_summary.md'))
+    await mkdir(mappa, { recursive: true })
+    await writeFile(join(mappa, 'Elso_summary.md'), '# meglévő\n', 'utf8')
+
+    const { code, kimenet } = await dryRun(cfg, raw, { force: true })
+
+    expect(code).toBe(0)
+    expect(kimenet).not.toContain('meglévő jegyzet:')
+    expect(kimenet).toMatch(/futna\s+.*Elso_summary\.md/)
+  })
+
+  it('a forrás nélküli fordítás kihagyva, a tervezett forrásé futna', async () => {
+    const hu = await elokeszit([HU])
+    const kihagyva = await dryRun(hu.cfg, hu.raw)
+    expect(kihagyva.kimenet).toMatch(/kihagyva\s+.*summary-hu\s+előbb a summary recept kell/)
+    expect(kihagyva.kimenet).not.toMatch(/futna\s+.*summary-hu/)
+
+    // summary + summary-hu együtt pipálva: mindkettő futna
+    const text = (await readFile(hu.sor, 'utf8')).replaceAll(SUMMARY, '- [x] summary')
+    await writeFile(hu.sor, text, 'utf8')
+    const mindketto = await dryRun(hu.cfg, hu.raw)
+    expect(mindketto.kimenet).toMatch(/futna\s+.*summary-hu/)
+    expect(mindketto.kimenet).toMatch(/futna\s+.*\ssummary\s/)
+  })
+
+  it('már az első pár sem fér a plafon alá → 2, napló nélkül', async () => {
+    const { raw, cfg } = await elokeszit([SUMMARY], 0.000001)
+
+    const { code, kimenet } = await dryRun(cfg, raw)
+
+    expect(code).toBe(2)
+    expect(kimenet).toContain('A futás megállt')
+    expect(existsSync(cfg.logsDir)).toBe(false)
+  })
+})
+
 describe('végponttól végpontig — megszakadt futás után a vault-commit', () => {
   let repo: string
   let mentettKulcs: string | undefined

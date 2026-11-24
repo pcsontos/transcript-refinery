@@ -39,12 +39,13 @@ import {
   pairKey,
   skippedStatus,
 } from './queue/status.js'
-import { recipeFrom, recipesFor } from './recipe/registry.js'
+import { recipeFrom, recipesFor, type Registry } from './recipe/registry.js'
 import type { Recipe } from './recipe/types.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { reserveRunId, runId } from './run/id.js'
 import { openRunLog } from './run/log.js'
 import {
+  dryRunLines as runDryRunLines,
   estimateUnits,
   filterItems,
   matchesFilters,
@@ -53,6 +54,8 @@ import {
   sourcesFirst,
   unitKey,
   unitKind,
+  type DryRunEntry,
+  type UnitBudget,
   type WorkUnit,
 } from './run/plan.js'
 import { renderReport, type QueueRecipeStatus } from './run/report.js'
@@ -66,7 +69,7 @@ import {
   type AdHoc,
   walk,
 } from './source/folder.js'
-import { openState } from './state/db.js'
+import { openState, type StateStore } from './state/db.js'
 import { openStateReader } from './state/reader.js'
 import { parseSubtitle } from './subtitle/parse.js'
 import type { SourceItem } from './types.js'
@@ -511,6 +514,122 @@ interface ModelRuntime {
   guard: CostGuard
 }
 
+type RunFlags = Parameters<typeof commandRun>[2]
+
+/**
+ * A futás egységei: a felderítés és a szűrés (queue-módban a sor kipipált
+ * párjai). Nem ír semmit, nem hív modellt; az éles és a `--dry-run` ág közös útja.
+ */
+async function selectUnits(
+  cfg: Config,
+  registry: Registry,
+  recipe: Recipe | null,
+  listed: Recipe[],
+  flags: RunFlags,
+  queueText: string | null,
+  store: StateStore,
+): Promise<{ discovered: SourceItem[]; units: WorkUnit[]; notFound: QueuePair[]; warnings: string[] }> {
+  const queueMode = flags.queue === true
+  const artifactKind = recipe?.id ?? ARTIFACT_KIND
+  const warnings: string[] = []
+  let notFound: QueuePair[] = []
+  // Queue-módban a sor `sources`-beli tételei is feloldandók: az ad hoc forrás
+  // a `scan --queue`-hoz hasonlóan csak kiegészít, nem helyettesít.
+  const discovered = queueMode
+    ? firstById([
+        ...(await discoverAll(cfg.sources, cfg.languages)),
+        ...(flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages, cfg.sources) : []),
+      ])
+    : await discover(cfg, flags.adHoc)
+
+  let units: WorkUnit[]
+  if (queueMode) {
+    const byId = new Map(discovered.map((item) => [item.itemId, item] as const))
+    /** A horgony útvonalából feloldott szöveges tételek; a hiba oka egyszer kerül a riportba. */
+    const resolved = new Map<string, SourceItem | string>()
+    units = []
+    for (const pair of checkedPairs(parseQueue(queueText ?? ''))) {
+      const pairRecipe = registry[pair.recipeId]
+      if (!pairRecipe) {
+        warnings.push(`ismeretlen recept a sorban: ${pair.recipeId} (${pair.itemId})`)
+        continue
+      }
+      let item = byId.get(pair.itemId)
+      if (item === undefined && pair.path !== undefined) {
+        if (!resolved.has(pair.itemId)) {
+          const queued = await queuedTextItem(pair.itemId, pair.path)
+          resolved.set(pair.itemId, queued)
+          if (typeof queued === 'string') warnings.push(queued)
+        }
+        const queued = resolved.get(pair.itemId)
+        if (typeof queued !== 'string') item = queued
+      }
+      if (item) units.push({ item, recipe: pairRecipe })
+      else notFound.push(pair)
+    }
+    // A kapcsolók a párokat szűkítik. A nem található pár eleméről nem
+    // tudunk forrást vagy csatornát, ezért csak a receptszűrő vonatkozik
+    // rá; az újrapróbálás pedig csak állapottárban rögzített hibára értelmes.
+    units = units.filter((unit) => matchesFilters(unit.item, flags))
+    if (recipe) {
+      units = units.filter((unit) => unit.recipe?.id === recipe.id)
+      notFound = notFound.filter((pair) => pair.recipeId === recipe.id)
+    }
+    if (flags.retryFailed) {
+      units = units.filter(
+        (unit) => store.artifactOf(unit.item.itemId, unitKind(unit))?.status === 'failed',
+      )
+      notFound = []
+    }
+    if (flags.limit !== undefined) units = units.slice(0, flags.limit)
+  } else {
+    // A limitnek a JELÖLTEKET kell határolnia, nem a teljes korpuszt: a
+    // forrás/csatorna szűrés és a hibás-szűrő UTÁN vágunk, különben pl.
+    // `--retry-failed --limit 1` a felfedezés szerint elöl álló (esetleg
+    // kész) elemet nézné meg, nem a hibásak közül az elsőt.
+    let items = filterItems(discovered, flags)
+    if (flags.retryFailed) items = store.listFailed(items, artifactKind)
+    if (flags.limit !== undefined) items = items.slice(0, flags.limit)
+    units =
+      listed.length > 0
+        ? items.flatMap((item) => listed.map((unitRecipe) => ({ item, recipe: unitRecipe })))
+        : items.map((item) => ({ item, recipe }))
+  }
+  // A fordítás a forrása után fut: a sor kézi átrendezése ezt nem fordíthatja meg.
+  return { discovered, units: sourcesFirst(units), notFound, warnings }
+}
+
+/**
+ * A kiválasztott egységek besorolása: kész (a `doneReason` okával), kihagyott
+ * (a forrás nélküli fordítás, kivéve ha a forrása ugyanebben az indításban
+ * készül), és — modellel — a közös költségbecslés a maradékra.
+ */
+async function planUnits(
+  units: readonly WorkUnit[],
+  doneReason: (unit: WorkUnit) => string | null,
+  store: StateStore,
+  modelConfig: ModelConfig | undefined,
+): Promise<{
+  done: { unit: WorkUnit; reason: string }[]
+  skipped: { unit: WorkUnit; reason: string }[]
+  budget: UnitBudget | undefined
+}> {
+  const done: { unit: WorkUnit; reason: string }[] = []
+  const skipped: { unit: WorkUnit; reason: string }[] = []
+  const pending: WorkUnit[] = []
+  for (const unit of units) {
+    const reason = doneReason(unit)
+    if (reason !== null) {
+      done.push({ unit, reason })
+      continue
+    }
+    const gap = sourceGap(unit, store)
+    if (gap !== null && !sourcePlanned(unit, units)) skipped.push({ unit, reason: gap })
+    else pending.push(unit)
+  }
+  return { done, skipped, budget: modelConfig === undefined ? undefined : await estimateUnits(pending, modelConfig) }
+}
+
 export async function commandRun(
   cfg: Config,
   raw: unknown,
@@ -618,6 +737,97 @@ export async function commandRun(
   const store = openState(cfg.statePath, cfg.vaultPath)
   for (const line of await relinkNotes(store, cfg.vaultPath, !flags.dryRun)) console.log(line)
 
+  /** Tételenként egyszer számolt célút-beállítás: sablon, mappa és a mappában már használt alapnév. */
+  const placements = new Map<string, NoteFileOptions>()
+  const placementOf = (item: SourceItem): NoteFileOptions => {
+    let place = placements.get(item.itemId)
+    if (place === undefined) {
+      place = notePlacement(cfg.notesRoot, item, cfg.layout, store.noteDirOf(item.itemId))
+      placements.set(item.itemId, place)
+    }
+    return place
+  }
+  /**
+   * Miért kész a pár (`null`: nem kész): van `done` rekordja, vagy a célfájlja
+   * megvan, és nincs `--force`. Ilyenkor a forrás hiánya nem számít — a
+   * pipeline modellhívás nélkül késznek veszi —, és a `⏸` nem írhatja felül a
+   * sor `✓` utótagját.
+   */
+  const doneReason = (unit: WorkUnit): string | null => {
+    if (flags.force || (flags.forceRecipe === true && unit.recipe !== undefined)) return null
+    if (store.isDone(unit.item.itemId, unitKind(unit))) return 'állapotrekord'
+    if (unit.recipe?.publishable !== true) return null
+    const path = noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile, placementOf(unit.item))
+    return existsSync(path) ? `meglévő jegyzet: ${relative(cfg.vaultPath, path)}` : null
+  }
+
+  /** A `--dry-run`: modellhívás és írás nélkül listáz; a futásnapló és a riport el sem indul. */
+  const dryRunList = async (): Promise<number> => {
+    const selection = await selectUnits(cfg, registry, recipe, listed, flags, queueText, store)
+    const plan = await planUnits(selection.units, doneReason, store, model?.modelConfig)
+    const entry = (label: DryRunEntry['label'], unit: WorkUnit, detail: string): DryRunEntry => ({
+      label,
+      title: unit.item.title,
+      itemId: unit.item.itemId,
+      kind: unit.recipe?.id ?? 'átirat',
+      detail,
+    })
+    const target = (unit: WorkUnit): string =>
+      relative(
+        cfg.vaultPath,
+        noteFile(cfg.notesRoot, unit.item, unit.recipe?.outputFile ?? '_transcript.md', placementOf(unit.item)),
+      )
+    const settled = new Set([...plan.done, ...plan.skipped].map(({ unit }) => unitKey(unit)))
+    const deferred = new Set((plan.budget?.slice.deferred ?? []).map(unitKey))
+    const entries: DryRunEntry[] = []
+    for (const unit of selection.units) {
+      if (settled.has(unitKey(unit))) continue
+      entries.push(deferred.has(unitKey(unit)) ? entry('halasztva', unit, 'a plafon miatt') : entry('futna', unit, target(unit)))
+    }
+    for (const { unit, reason } of plan.done) entries.push(entry('kész', unit, reason))
+    for (const { unit, reason } of plan.skipped) entries.push(entry('kihagyva', unit, reason))
+    for (const pair of selection.notFound) {
+      entries.push({
+        label: 'kihagyva',
+        title: pair.itemId,
+        itemId: pair.itemId,
+        kind: pair.recipeId,
+        detail: 'nem található a forrásban',
+      })
+    }
+
+    let estimate: string | null = null
+    let abort: string | null = null
+    if (model && plan.budget) {
+      const { slice, first } = plan.budget
+      const limitUsd = model.modelConfig.costLimitUsd
+      estimate = render({ type: 'run:estimate', items: slice.planned.length, tokens: slice.tokens, usd: slice.usd, limitUsd })
+      if (first !== undefined && slice.planned.length === 0) {
+        const firstUsd = estimateItemUsd(first.words, first.maxIterations, model.modelConfig, first.shape)
+        abort = render({
+          type: 'run:aborted',
+          reason: `már az első elem becsült költsége (${firstUsd.toFixed(4)} $) meghaladja a plafont`,
+          spentUsd: 0,
+          limitUsd,
+        })
+      }
+    }
+    for (const warning of selection.warnings) console.log(warning)
+    for (const line of runDryRunLines(entries, estimate)) console.log(line)
+    if (abort !== null) {
+      console.log(abort)
+      return 2
+    }
+    return 0
+  }
+  if (flags.dryRun) {
+    try {
+      return await dryRunList()
+    } finally {
+      store.close()
+    }
+  }
+
   const startedAt = new Date()
   // Ütközésmentes név: két azonos másodpercben induló futás nem írhat
   // egymás naplójába, és nem írhatja felül egymás riportját.
@@ -657,30 +867,6 @@ export async function commandRun(
     skipped.set(unitKey(unit), { unit, reason })
     printing({ type: 'item:skipped', itemId: unit.item.itemId, reason })
   }
-  /** Tételenként egyszer számolt célút-beállítás: sablon, mappa és a mappában már használt alapnév. */
-  const placements = new Map<string, NoteFileOptions>()
-  const placementOf = (item: SourceItem): NoteFileOptions => {
-    let place = placements.get(item.itemId)
-    if (place === undefined) {
-      place = notePlacement(cfg.notesRoot, item, cfg.layout, store.noteDirOf(item.itemId))
-      placements.set(item.itemId, place)
-    }
-    return place
-  }
-  /**
-   * Miért kész a pár (`null`: nem kész): van `done` rekordja, vagy a célfájlja
-   * megvan, és nincs `--force`. Ilyenkor a forrás hiánya nem számít — a
-   * pipeline modellhívás nélkül késznek veszi —, és a `⏸` nem írhatja felül a
-   * sor `✓` utótagját.
-   */
-  const doneReason = (unit: WorkUnit): string | null => {
-    if (flags.force || (flags.forceRecipe === true && unit.recipe !== undefined)) return null
-    if (store.isDone(unit.item.itemId, unitKind(unit))) return 'állapotrekord'
-    if (unit.recipe?.publishable !== true) return null
-    const path = noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile, placementOf(unit.item))
-    return existsSync(path) ? `meglévő jegyzet: ${relative(cfg.vaultPath, path)}` : null
-  }
-
   let wroteBack = false
   /**
    * A sor visszaírása az állapottárból. Egy futáson belül legfeljebb egyszer:
@@ -867,93 +1053,21 @@ export async function commandRun(
   }, runtime.signals)
 
   try {
-    // Queue-módban a sor `sources`-beli tételei is feloldandók: az ad hoc forrás
-    // a `scan --queue`-hoz hasonlóan csak kiegészít, nem helyettesít.
-    discovered = queueMode
-      ? firstById([
-          ...(await discoverAll(cfg.sources, cfg.languages)),
-          ...(flags.adHoc ? await discoverAdHoc(flags.adHoc, cfg.languages, cfg.sources) : []),
-        ])
-      : await discover(cfg, flags.adHoc)
-
-    let units: WorkUnit[]
-    if (queueMode) {
-      const byId = new Map(discovered.map((item) => [item.itemId, item] as const))
-      /** A horgony útvonalából feloldott szöveges tételek; a hiba oka egyszer kerül a riportba. */
-      const resolved = new Map<string, SourceItem | string>()
-      units = []
-      for (const pair of checkedPairs(parseQueue(queueText ?? ''))) {
-        const pairRecipe = registry[pair.recipeId]
-        if (!pairRecipe) {
-          warnings.push(`ismeretlen recept a sorban: ${pair.recipeId} (${pair.itemId})`)
-          continue
-        }
-        let item = byId.get(pair.itemId)
-        if (item === undefined && pair.path !== undefined) {
-          if (!resolved.has(pair.itemId)) {
-            const queued = await queuedTextItem(pair.itemId, pair.path)
-            resolved.set(pair.itemId, queued)
-            if (typeof queued === 'string') warnings.push(queued)
-          }
-          const queued = resolved.get(pair.itemId)
-          if (typeof queued !== 'string') item = queued
-        }
-        if (item) units.push({ item, recipe: pairRecipe })
-        else notFound.push(pair)
-      }
-      // A kapcsolók a párokat szűkítik. A nem található pár eleméről nem
-      // tudunk forrást vagy csatornát, ezért csak a receptszűrő vonatkozik
-      // rá; az újrapróbálás pedig csak állapottárban rögzített hibára értelmes.
-      units = units.filter((unit) => matchesFilters(unit.item, flags))
-      if (recipe) {
-        units = units.filter((unit) => unit.recipe?.id === recipe.id)
-        notFound = notFound.filter((pair) => pair.recipeId === recipe.id)
-      }
-      if (flags.retryFailed) {
-        units = units.filter(
-          (unit) => store.artifactOf(unit.item.itemId, unitKind(unit))?.status === 'failed',
-        )
-        notFound = []
-      }
-      if (flags.limit !== undefined) units = units.slice(0, flags.limit)
-    } else {
-      // A limitnek a JELÖLTEKET kell határolnia, nem a teljes korpuszt: a
-      // forrás/csatorna szűrés és a hibás-szűrő UTÁN vágunk, különben pl.
-      // `--retry-failed --limit 1` a felfedezés szerint elöl álló (esetleg
-      // kész) elemet nézné meg, nem a hibásak közül az elsőt.
-      let items = filterItems(discovered, flags)
-      if (flags.retryFailed) items = store.listFailed(items, artifactKind)
-      if (flags.limit !== undefined) items = items.slice(0, flags.limit)
-      units =
-        listed.length > 0
-          ? items.flatMap((item) => listed.map((unitRecipe) => ({ item, recipe: unitRecipe })))
-          : items.map((item) => ({ item, recipe }))
-    }
-    // A fordítás a forrása után fut: a sor kézi átrendezése ezt nem fordíthatja meg.
-    units = sourcesFirst(units)
+    const selection = await selectUnits(cfg, registry, recipe, listed, flags, queueText, store)
+    discovered = selection.discovered
+    notFound = selection.notFound
+    warnings.push(...selection.warnings)
+    const units = selection.units
     selected = units
     printing({ type: 'scan:found', count: units.length })
 
     let planned = units
     if (model) {
-      const pending = (
-        flags.force
-          ? units
-          : units.filter(
-              (unit) =>
-                (flags.forceRecipe === true && unit.recipe !== undefined) || !store.isDone(unit.item.itemId, unitKind(unit)),
-            )
-      ).filter((unit) => {
-        // Egy fordítás csak akkor tervezhető, ha a forrása kész, vagy ugyanebben
-        // az indításban készül. A szeletelő az első túllépés után mindent
-        // elhalaszt, a fordítások pedig a forrásaik után állnak: egy elhalasztott
-        // forrás fordítása így maga is elhalasztott lesz.
-        const gap = doneReason(unit) !== null ? null : sourceGap(unit, store)
-        if (gap === null || sourcePlanned(unit, units)) return true
-        skip(unit, gap)
-        return false
-      })
-      const { slice, first } = await estimateUnits(pending, model.modelConfig)
+      const plan = await planUnits(units, doneReason, store, model.modelConfig)
+      // Egy fordítás csak akkor tervezhető, ha a forrása kész, vagy ugyanebben
+      // az indításban készül (lásd `planUnits`).
+      for (const { unit, reason } of plan.skipped) skip(unit, reason)
+      const { slice, first } = plan.budget!
       const limitUsd = model.modelConfig.costLimitUsd
       for (const unit of slice.deferred) capped.add(unitKey(unit))
 
