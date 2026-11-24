@@ -3,6 +3,31 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.40.0] — 2026-11-24
+
+A `run --dry-run` mostantól csak listáz, és nem költ. A már kész jegyzetű
+párokat a futás akkor is felismeri, ha a tétel forrásfájljának neve azóta
+megváltozott.
+
+### 🔄 Változások
+
+- **A `run --dry-run` csak listáz:** modellhívás nélkül kiírja, mely párok
+  futnának (a jegyzet céljával), melyek készek (`állapotrekord` vagy
+  `meglévő jegyzet: <út>`), melyek maradnak ki és miért, és melyeket
+  halasztana el a költségplafon, a végén a költségbecsléssel. Nem ír fájlt,
+  állapotot, sort, naplót és riportot, és nem commitol. Ha már az első pár
+  sem fér a plafon alá, a kilépési kód 2. A korábbi „valós modellhívás,
+  írás nélkül” mód megszűnt (pcsontos/issue-tracker#138).
+
+### 🔧 Javítások
+
+- **A kész pár nem fut újra más néven:** ha egy tétel forrásfájlja új nevet
+  kapott (pl. a cím alapú felirat helyett azonosító nevű whisper-átirat),
+  a futás a jegyzetmappában már meglévő jegyzetet késznek veszi, nem
+  fizet érte újra, és nem ír mellé duplikátumot. A tétel új jegyzetei is a
+  mappában már használt néven íródnak, így egy mappán belül nem keverednek
+  a nevek (pcsontos/issue-tracker#139).
+
 ## [1.39.0] — 2026-11-23
 
 A hang letöltése és whisper-átírása megszakítható Telegramból és a CLI-ból,
