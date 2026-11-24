@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, realpathSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
-import { basename, extname, isAbsolute, join } from 'node:path'
+import { basename, extname, isAbsolute, join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import {
@@ -73,7 +73,8 @@ import type { SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
 import { commitPending } from './vault/commit.js'
 import { gitCommitPaths, gitPullFfOnly, gitPush } from './vault/git.js'
-import { noteFile, transcriptFile } from './vault/paths.js'
+import { noteFile, transcriptFile, type NoteFileOptions } from './vault/paths.js'
+import { notePlacement } from './vault/pinned-base.js'
 import { relinkNotes } from './vault/relink.js'
 import type { NoteOrigin } from './vault/render.js'
 import { readItems, type CellStatus } from './view/items.js'
@@ -656,22 +657,29 @@ export async function commandRun(
     skipped.set(unitKey(unit), { unit, reason })
     printing({ type: 'item:skipped', itemId: unit.item.itemId, reason })
   }
+  /** Tételenként egyszer számolt célút-beállítás: sablon, mappa és a mappában már használt alapnév. */
+  const placements = new Map<string, NoteFileOptions>()
+  const placementOf = (item: SourceItem): NoteFileOptions => {
+    let place = placements.get(item.itemId)
+    if (place === undefined) {
+      place = notePlacement(cfg.notesRoot, item, cfg.layout, store.noteDirOf(item.itemId))
+      placements.set(item.itemId, place)
+    }
+    return place
+  }
   /**
-   * A pár már kész: van `done` rekordja, vagy a célfájlja megvan, és nincs
-   * `--force`. Ilyenkor a forrás hiánya nem számít — a pipeline modellhívás
-   * nélkül késznek veszi —, és a `⏸` nem írhatja felül a sor `✓` utótagját.
+   * Miért kész a pár (`null`: nem kész): van `done` rekordja, vagy a célfájlja
+   * megvan, és nincs `--force`. Ilyenkor a forrás hiánya nem számít — a
+   * pipeline modellhívás nélkül késznek veszi —, és a `⏸` nem írhatja felül a
+   * sor `✓` utótagját.
    */
-  const alreadyDone = (unit: WorkUnit): boolean =>
-    !flags.force &&
-    !(flags.forceRecipe === true && unit.recipe !== undefined) &&
-    (store.isDone(unit.item.itemId, unitKind(unit)) ||
-      (unit.recipe?.publishable === true &&
-        existsSync(
-          noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile, {
-            layout: cfg.layout,
-            pinnedDir: store.noteDirOf(unit.item.itemId),
-          }),
-        )))
+  const doneReason = (unit: WorkUnit): string | null => {
+    if (flags.force || (flags.forceRecipe === true && unit.recipe !== undefined)) return null
+    if (store.isDone(unit.item.itemId, unitKind(unit))) return 'állapotrekord'
+    if (unit.recipe?.publishable !== true) return null
+    const path = noteFile(cfg.notesRoot, unit.item, unit.recipe.outputFile, placementOf(unit.item))
+    return existsSync(path) ? `meglévő jegyzet: ${relative(cfg.vaultPath, path)}` : null
+  }
 
   let wroteBack = false
   /**
@@ -940,7 +948,7 @@ export async function commandRun(
         // az indításban készül. A szeletelő az első túllépés után mindent
         // elhalaszt, a fordítások pedig a forrásaik után állnak: egy elhalasztott
         // forrás fordítása így maga is elhalasztott lesz.
-        const gap = alreadyDone(unit) ? null : sourceGap(unit, store)
+        const gap = doneReason(unit) !== null ? null : sourceGap(unit, store)
         if (gap === null || sourcePlanned(unit, units)) return true
         skip(unit, gap)
         return false
@@ -1010,7 +1018,7 @@ export async function commandRun(
       }
       // A forrás ebben a futásban is elbukhatott: a fordítás ilyenkor modellhívás
       // nélkül kimarad.
-      const gap = alreadyDone(unit) ? null : sourceGap(unit, store)
+      const gap = doneReason(unit) !== null ? null : sourceGap(unit, store)
       if (gap !== null) {
         skip(unit, gap)
         continue

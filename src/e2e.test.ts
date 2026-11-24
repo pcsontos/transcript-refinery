@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { commandRun, commandScan, commandScanQueue } from './cli.js'
@@ -378,6 +378,71 @@ describe('végponttól végpontig — a feldolgozási sor valódi gittel', () =>
       expect(await isDirty(repo)).toBe(false)
       const status = await run('git', ['status', '-sb'], { cwd: repo })
       expect(status.stdout).not.toContain('ahead')
+    } finally {
+      if (mentettKulcs === undefined) delete process.env.LITELLM_API_KEY
+      else process.env.LITELLM_API_KEY = mentettKulcs
+    }
+  })
+})
+
+describe('végponttól végpontig — a mappa régi alapnevű jegyzete', () => {
+  it('run --queue: a régi nevű, rekord nélküli pár kész, modellhívás és új fájl nélkül', async () => {
+    await write(join(subsA, 'Cs', 'Elso.en.srt'), SRT)
+    const raw = {
+      vault: { path: join(work, 'vault') },
+      sources: [subsA],
+      state: { path: join(work, 'state.db') },
+      logs: { dir: join(work, 'logs') },
+      model: { base_url: 'http://localhost:4000/v1', draft: 'proba-draft', judge: 'proba-judge' },
+      pricing: {
+        'proba-draft': { input_per_million: 3, output_per_million: 15 },
+        'proba-judge': { input_per_million: 0.2, output_per_million: 0.5 },
+      },
+      cost_limit_usd: 5,
+    }
+    const cfg = loadConfig(raw, join(work, 'refinery.config.yaml'))
+    let hivasok = 0
+    const client: ModelClient = {
+      generate: () => {
+        hivasok++
+        return Promise.reject(new Error('nem hívható'))
+      },
+      generateObject: () => {
+        hivasok++
+        return Promise.reject(new Error('nem hívható'))
+      },
+    }
+    const mentettKulcs = process.env.LITELLM_API_KEY
+    process.env.LITELLM_API_KEY = 'sk-proba'
+    try {
+      expect(await commandScanQueue(cfg, { dryRun: false, commit: false })).toBe(0)
+      const sor = queuePath(cfg.notesRoot)
+      await writeFile(sor, (await readFile(sor, 'utf8')).replace('- [ ] summary', '- [x] summary'), 'utf8')
+
+      const elso = (await discoverAll(cfg.sources, cfg.languages)).find((i) => i.baseName === 'Elso')!
+      const mappa = dirname(noteFile(cfg.notesRoot, elso, '_summary.md'))
+      await mkdir(mappa, { recursive: true })
+      await writeFile(join(mappa, 'Régi_transcript.md'), `---\nitem_id: ${elso.itemId}\n---\n\nrégi\n`, 'utf8')
+      await writeFile(join(mappa, 'Régi_summary.md'), '# régi összefoglaló\n', 'utf8')
+
+      const code = await commandRun(
+        cfg,
+        raw,
+        { queue: true, dryRun: false, force: false, commit: false },
+        { createClient: () => client },
+      )
+      expect(code).toBe(0)
+      expect(hivasok).toBe(0)
+      expect((await readdir(mappa)).sort()).toEqual(['Régi_summary.md', 'Régi_transcript.md'])
+      const store = openState(cfg.statePath, cfg.vaultPath)
+      try {
+        expect(store.artifactOf(elso.itemId, 'summary')).toMatchObject({
+          status: 'done',
+          path: join(mappa, 'Régi_summary.md'),
+        })
+      } finally {
+        store.close()
+      }
     } finally {
       if (mentettKulcs === undefined) delete process.env.LITELLM_API_KEY
       else process.env.LITELLM_API_KEY = mentettKulcs

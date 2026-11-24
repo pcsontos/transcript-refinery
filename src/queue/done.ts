@@ -2,7 +2,7 @@ import type { Registry } from '../recipe/registry.js'
 import type { ArtifactRecord } from '../state/db.js'
 import type { SourceItem } from '../types.js'
 import { lintVaultMarkdown } from '../vault/lint.js'
-import { noteFile } from '../vault/paths.js'
+import { noteFile, type NoteFileOptions } from '../vault/paths.js'
 import { translationId } from './layout.js'
 import { SEPARATOR, withSuffix } from './line.js'
 import { parseQueue } from './parse.js'
@@ -16,8 +16,8 @@ export interface DoneLookupDeps {
   items: ReadonlyMap<string, SourceItem>
   registry: Registry
   notesRoot: string
-  /** A `vault.layout` sablon. */
-  layout: string
+  /** Az elem célútjának beállításai (sablon, rögzített mappa és alapnév). */
+  placement: (item: SourceItem) => NoteFileOptions
   artifactOf: (
     itemId: string,
     kind: string,
@@ -39,9 +39,7 @@ export function doneLookup(deps: DoneLookupDeps): DoneLookup {
     const record = deps.artifactOf(itemId, kind)
     if (record?.status === 'done') return doneStatus(record, deps.notesRoot)
     if (!recipe.publishable) return null
-    // ponytail: a tár nélküli fallback (állapotrekord nélküli kész fájl keresése) a sablon szerinti úton keres;
-    // egy régi szerkezetű, rekord nélküli fájlt nem talál meg.
-    const path = noteFile(deps.notesRoot, item, recipe.outputFile, { layout: deps.layout })
+    const path = noteFile(deps.notesRoot, item, recipe.outputFile, deps.placement(item))
     return deps.exists(path) ? doneStatus({ score: null, costUsd: null, path }, deps.notesRoot) : null
   }
 }

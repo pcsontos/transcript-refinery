@@ -1287,6 +1287,58 @@ describe('processItem — a már meglévő jegyzet a modellhívás előtt', () =
     expect(deps.store.artifactOf(item().itemId, 'proba')).toBeNull()
   })
 
+  /** A mappa régi nevű átirata (az elem `item_id`-jével), az elem mai alapneve más. */
+  async function regiMappa(ujNev: string, ...fajlok: string[]): Promise<{ elem: SourceItem; mappa: string }> {
+    const elem = item({ baseName: ujNev })
+    const mappa = dirname(noteFile(notesRoot, elem, '_transcript.md'))
+    await mkdir(mappa, { recursive: true })
+    await writeFile(
+      join(mappa, 'Régi_cím_transcript.md'),
+      `---\nitem_id: ${elem.itemId}\n---\n\nrégi átirat\n`,
+      'utf8',
+    )
+    for (const fajl of fajlok) await writeFile(join(mappa, fajl), '# régi jegyzet\n', 'utf8')
+    return { elem, mappa }
+  }
+
+  it('a régi nevű meglévő jegyzetért nem hív modellt, és a régi úttal rögzít', async () => {
+    const deps = alapDeps()
+    const { elem, mappa } = await regiMappa('uj-nev', 'Régi_cím_proba.md')
+    const draft = fixModell('## Új jegyzet\n')
+
+    await processItem(elem, {
+      ...deps,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: modelClientFrom({ draft, judge: fixModell('nem hívjuk') }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(draft.doGenerateCalls).toHaveLength(0)
+    expect(deps.store.artifactOf(elem.itemId, 'proba')!.path).toBe(join(mappa, 'Régi_cím_proba.md'))
+    expect(await exists(join(mappa, 'uj-nev_proba.md'))).toBe(false)
+    expect(await exists(join(mappa, 'uj-nev_transcript.md'))).toBe(false)
+  })
+
+  it('új recept a mappa régi alapnevén íródik', async () => {
+    const deps = alapDeps()
+    const { elem, mappa } = await regiMappa('uj-nev')
+
+    const outcome = await processItem(elem, {
+      ...deps,
+      recipeDeps: {
+        recipe: ATMENO_RECEPT,
+        client: modelClientFrom({ draft: fixModell('## Új jegyzet\n'), judge: fixModell('nem hívjuk') }),
+        modelConfig: MODELL_CFG,
+        guard: createCostGuard(5),
+      },
+    })
+
+    expect(outcome.recipePath).toBe(join(mappa, 'Régi_cím_proba.md'))
+  })
+
   it('fordításnál a forrásjegyzetet sem keresi: kész forrás nélkül is done', async () => {
     const deps = alapDeps()
     await meglevoJegyzet('_proba-hu.md')

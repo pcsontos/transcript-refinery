@@ -37,7 +37,8 @@ import type { NormalizedTranscript, SourceItem } from './types.js'
 import { writeFileAtomic } from './vault/atomic.js'
 import { lintVaultMarkdown } from './vault/lint.js'
 import { noteBody, type NoteBody } from './vault/note-body.js'
-import { noteFile, type NoteFileOptions } from './vault/paths.js'
+import { DEFAULT_LAYOUT, noteFile, type NoteFileOptions } from './vault/paths.js'
+import { notePlacement } from './vault/pinned-base.js'
 import { exists, publishNote, type PublishOptions } from './vault/publish.js'
 import { renderGlossaryNote, renderRecipeNote, renderTranscriptNote, type NoteOrigin } from './vault/render.js'
 
@@ -215,11 +216,6 @@ async function readSourceNote(
   return noteBody(markdown)
 }
 
-/** Az elem célútjának beállításai: a sablon, és az elem már rögzített mappája. */
-function placement(deps: PipelineDeps, item: SourceItem): NoteFileOptions {
-  return { layout: deps.layout, pinnedDir: deps.store.noteDirOf(item.itemId) }
-}
-
 /**
  * A recept órája egy hívásláncra: a korlát után a hívás megszakad (a `RecipeTimeout`
  * véglegesnek számít, tehát nincs újrapróba), az életjel addig jelez, amíg a lánc
@@ -261,6 +257,7 @@ async function runRecipe(
   transcript: NormalizedTranscript,
   deps: PipelineDeps,
   recipeDeps: RecipeDeps,
+  place: NoteFileOptions,
 ): Promise<ItemOutcome> {
   const { recipe, modelConfig, guard } = recipeDeps
 
@@ -268,7 +265,7 @@ async function runRecipe(
   // fizetünk. A `force` felülírja a fájlt, ezért ott a hívás is kell. A fájlt
   // nem a pipeline írta, ezért nem kerül a commitra várók közé.
   if (recipe.publishable && !deps.options.force && deps.options.forceRecipe !== true) {
-    const target = noteFile(deps.notesRoot, item, recipe.outputFile, placement(deps, item))
+    const target = noteFile(deps.notesRoot, item, recipe.outputFile, place)
     if (await exists(target)) {
       if (!deps.options.dryRun) {
         deps.store.recordArtifact(item.itemId, recipe.id, 'done', target, null)
@@ -318,7 +315,7 @@ async function runRecipe(
     // A rögzített út nyer: a vaulton belül áthelyezett szójegyzéket a követés átírta.
     const glossaryPath =
       deps.store.artifactOf(item.itemId, glossaryKind(recipe.translation.target))?.path ??
-      noteFile(deps.notesRoot, item, glossaryOutputFile(recipe.translation.target), placement(deps, item))
+      noteFile(deps.notesRoot, item, glossaryOutputFile(recipe.translation.target), place)
     const existing = (await exists(glossaryPath)) ? await readFile(glossaryPath, 'utf8') : null
     const table = existing === null ? { pairs: [], skipped: 0 } : readGlossaryTable(existing)
     if (table.skipped > 0) {
@@ -451,7 +448,7 @@ async function runRecipe(
     throw new Error(`a szójegyzék megsérti a vault írási szabályait: ${glossaryErrors.join('; ')}`)
   }
 
-  const target = noteFile(deps.notesRoot, item, recipe.outputFile, placement(deps, item))
+  const target = noteFile(deps.notesRoot, item, recipe.outputFile, place)
   const published = await publishNote(target, markdown, {
     ...deps.options,
     force: deps.options.force === true || deps.options.forceRecipe === true,
@@ -548,6 +545,8 @@ export async function processItem(
   }
 
   try {
+    // Egyszer számolva: a mappában már használt alapnév nyer az item.baseName fölött.
+    const place = notePlacement(deps.notesRoot, item, deps.layout ?? DEFAULT_LAYOUT, store.noteDirOf(item.itemId))
     const transcript = await normalizeItem(item)
     sink({ type: 'item:parsed', itemId: item.itemId, cues: transcript.lines.length })
     sink({
@@ -568,7 +567,7 @@ export async function processItem(
 
     if (kellAtirat) {
       outcome = await publishRendered(
-        noteFile(deps.notesRoot, item, '_transcript.md', placement(deps, item)),
+        noteFile(deps.notesRoot, item, '_transcript.md', place),
         renderTranscriptNote(item, transcript, version, deps.origin, deps.readingWpm),
         item,
         ARTIFACT_KIND,
@@ -578,7 +577,7 @@ export async function processItem(
 
     if (kellRecept && recipeDeps) {
       try {
-        const recipeOutcome = await runRecipe(item, transcript, deps, recipeDeps)
+        const recipeOutcome = await runRecipe(item, transcript, deps, recipeDeps, place)
         if (recipeOutcome.status === 'published') {
           outcome = { ...recipeOutcome, path: outcome.path ?? recipeOutcome.recipePath }
         } else if (recipeOutcome.skipReason !== undefined) {
