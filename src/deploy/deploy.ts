@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type { Config } from '../config.js'
+import type { EventSink } from '../events.js'
 import { frontmatter, scanNotes } from '../serve/notes.js'
 import { noteCommitMessage } from '../vault/commit.js'
 import {
@@ -121,8 +122,11 @@ export async function deployNotes(input: {
   retryFailed?: boolean
   filter?: DeployFilter
   dryRun?: boolean
+  /** Élő események (naplózáshoz); szárazfutásban nem kap semmit. */
+  sink?: EventSink
 }): Promise<DeployReport> {
   const { cfg, itemIds, transform, retryFailed = false, filter, dryRun = false } = input
+  const emit: EventSink = dryRun || input.sink === undefined ? () => {} : input.sink
   if (cfg.showroom === null) throw new Error('A deploy ki van kapcsolva: nincs showroom: blokk a configban.')
   const clone = cfg.showroom.clonePath
 
@@ -215,7 +219,10 @@ export async function deployNotes(input: {
         body: c.body,
         language: c.language,
         contract,
-        onReject: (attempt, reason) => report.rejected.push({ path: c.path, attempt, reason }),
+        onReject: (attempt, reason) => {
+          report.rejected.push({ path: c.path, attempt, reason })
+          emit({ type: 'item:retry', itemId: c.target, attempt, delayMs: 0, reason })
+        },
       })
       if (result.kind === 'budget') return 'budget'
       return result.kind === 'final' ? { body: result.body } : { failed: `LLM-kimenet elvetve: ${result.reason}` }
@@ -224,7 +231,14 @@ export async function deployNotes(input: {
     }
   }
 
+  /** Kihagyás a riportba és eseményként. */
+  const skip = (entry: DeployReport['skipped'][number], eventId: string) => {
+    report.skipped.push(entry)
+    emit({ type: 'item:skipped', itemId: eventId, reason: entry.reason })
+  }
+
   for (const [itemId, notes] of selected) {
+    const eventId = (path: string) => `${itemId}/${basename(path)}`
     const siblings = new Map([...notes].map(([kind, n]) => [kind, n.fields]))
 
     const candidates = new Map<string, Candidate>()
@@ -232,7 +246,7 @@ export async function deployNotes(input: {
       const committedAt = /^glossary-/.test(kind) ? await gitLastCommitIso(cfg.vaultPath, n.path) : null
       const v = variantOf(itemId, { vaultKind: kind, fields: n.fields }, siblings, committedAt)
       if (!v.ok) {
-        if (kindMatches(siteKindOf(kind, n.fields))) report.skipped.push({ path: n.path, reason: v.reason })
+        if (kindMatches(siteKindOf(kind, n.fields))) skip({ path: n.path, reason: v.reason }, eventId(n.path))
         continue
       }
       const next: Candidate = {
@@ -247,9 +261,9 @@ export async function deployNotes(input: {
       const taken = candidates.get(v.target)
       if (taken === undefined || (next.original && !taken.original)) {
         candidates.set(v.target, next)
-        if (taken !== undefined && kindMatches(v.siteKind)) report.skipped.push({ path: taken.path, reason: `ütközik: ${v.target}` })
+        if (taken !== undefined && kindMatches(v.siteKind)) skip({ path: taken.path, reason: `ütközik: ${v.target}` }, eventId(taken.path))
       } else if (kindMatches(v.siteKind)) {
-        report.skipped.push({ path: next.path, reason: `ütközik: ${v.target}` })
+        skip({ path: next.path, reason: `ütközik: ${v.target}` }, eventId(next.path))
       }
     }
 
@@ -258,32 +272,32 @@ export async function deployNotes(input: {
     for (const [target, c] of candidates) {
       if (c.original || withOriginal.has(c.siteKind)) continue
       candidates.delete(target)
-      if (kindMatches(c.siteKind)) report.skipped.push({ path: c.path, reason: 'nincs eredeti változat a site-on' })
+      if (kindMatches(c.siteKind)) skip({ path: c.path, reason: 'nincs eredeti változat a site-on' }, eventId(c.path))
     }
 
     const written: string[] = []
-    const ordered = [...candidates.values()].sort((a, b) => Number(b.original) - Number(a.original) || a.target.localeCompare(b.target))
-    for (const c of ordered.filter((o) => kindMatches(o.siteKind))) {
-      const abs = join(clone, NOTES_DIR, c.target)
-      const existing = await read(c.target)
-      const old = existing === null ? null : frontmatter(existing)
-      const route = routeOf(c.siteKind)
-      const action = decide(old, c.fields.generated_at, route, { force: filter?.items !== undefined, retryFailed, hasTransform: transform !== undefined })
-      if (action === 'failed') {
-        report.skipped.push({ path: c.path, target: c.target, reason: 'mdx_failed (--retry-failed nélkül)' })
-        continue
-      }
-      if (action === 'unchanged') {
-        report.unchanged += 1
-        continue
-      }
-      report.planned.push({ target: c.target, action, route })
-      if (dryRun) continue
 
+    /** Egy oldal átalakítása és kiírása; `null`, ha íródott vagy a `report.skipped` kapta az okot, különben a nem-írás oka. */
+    const writePage = async (
+      c: Candidate,
+      route: Route,
+      action: DeployAction,
+      old: Record<string, unknown> | null,
+      existing: string | null,
+    ): Promise<string | null> => {
+      const abs = join(clone, NOTES_DIR, c.target)
+      const before = transform?.usage()
       const converted = await convert(c, route)
+      const after = transform?.usage()
+      if (before !== undefined && after !== undefined) {
+        const inputTokens = after.inputTokens - before.inputTokens
+        const outputTokens = after.outputTokens - before.outputTokens
+        const usd = after.usd - before.usd
+        if (inputTokens > 0 || outputTokens > 0 || usd > 0) emit({ type: 'item:spent', itemId: c.target, inputTokens, outputTokens, usd })
+      }
       if (converted === 'budget') {
         // a kint lévő oldal marad; az új a determinisztikus változatot kapja, `mdx_failed` nélkül
-        if (old !== null && stamp(old.generated_at) === c.fields.generated_at) continue
+        if (old !== null && stamp(old.generated_at) === c.fields.generated_at) return 'költségplafon: a kint lévő oldal marad'
       }
       let text: string | null = null
       let failed: string | null = null
@@ -293,14 +307,14 @@ export async function deployNotes(input: {
         if (error === null) text = candidate
         else if (route === 'plain') {
           report.skipped.push({ path: c.path, reason: error })
-          continue
+          return null
         } else failed = route === 'llm' ? `LLM-kimenet elvetve: ${error}` : error
       } else if (typeof converted === 'object') failed = converted.failed ?? null
       // A kint lévő, végleges oldalt az elbukott újragenerálás nem cserélheti fallbackre.
       const keep = action === 'regenerate' && old !== null && old.mdx_fallback !== true
       if (keep && text === null) {
         report.skipped.push({ path: c.path, reason: `${failed ?? 'nincs átalakító'}; a kint lévő oldal marad` })
-        continue
+        return null
       }
       if (failed !== null) report.skipped.push({ path: c.path, reason: failed })
       if (text === null) {
@@ -309,14 +323,41 @@ export async function deployNotes(input: {
         const error = await check(c.target, fields, candidate)
         if (error !== null) {
           report.skipped.push({ path: c.path, reason: error })
-          continue
+          return null
         }
         text = candidate
       }
-      if (text === existing) continue
+      if (text === existing) return 'bájtra azonos, nem íródott'
       await mkdir(dirname(abs), { recursive: true })
       await writeFile(abs, text, 'utf8')
       written.push(c.target)
+      return null
+    }
+
+    const ordered = [...candidates.values()].sort((a, b) => Number(b.original) - Number(a.original) || a.target.localeCompare(b.target))
+    for (const c of ordered.filter((o) => kindMatches(o.siteKind))) {
+      const existing = await read(c.target)
+      const old = existing === null ? null : frontmatter(existing)
+      const route = routeOf(c.siteKind)
+      const action = decide(old, c.fields.generated_at, route, { force: filter?.items !== undefined, retryFailed, hasTransform: transform !== undefined })
+      if (action === 'failed') {
+        skip({ path: c.path, target: c.target, reason: 'mdx_failed (--retry-failed nélkül)' }, eventId(c.path))
+        continue
+      }
+      if (action === 'unchanged') {
+        report.unchanged += 1
+        continue
+      }
+      report.planned.push({ target: c.target, action, route })
+      if (dryRun) continue
+
+      emit({ type: 'item:start', itemId: c.target, title: `${typeof c.fields.title === 'string' ? c.fields.title : c.target} — ${c.siteKind}` })
+      const skippedBefore = report.skipped.length
+      const noWrite = await writePage(c, route, action, old, existing)
+      const lastSkip = report.skipped.length > skippedBefore ? report.skipped.at(-1)! : null
+      if (lastSkip !== null) emit({ type: 'item:skipped', itemId: c.target, reason: lastSkip.reason })
+      else if (written.includes(c.target)) emit({ type: 'item:published', itemId: c.target, path: c.target })
+      else emit({ type: 'item:skipped', itemId: c.target, reason: noWrite ?? 'nem íródott' })
     }
 
     if (dryRun) continue
@@ -345,6 +386,10 @@ export async function deployNotes(input: {
   report.transform = transform?.usage() ?? null
   // Egy korábbi, elutasított push commitjai is ide tartoznak.
   if (report.commits > 0 || (await gitAheadCount(clone)) > 0) report.push = await gitPush(clone)
+  if (report.push !== null && !report.push.pushed) {
+    const error = (report.push.reason ?? '').split('\n').find((l) => l.trim() !== '') ?? 'push sikertelen'
+    emit({ type: 'item:failed', itemId: 'push', source: 'showroom', kind: 'push', error })
+  }
   return report
 }
 

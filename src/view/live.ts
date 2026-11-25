@@ -134,6 +134,7 @@ export function liveRunState(lines: readonly RunLogLine[]): LiveRunState {
         current = stepOf(line.itemId, `újrapróba (${String(line.attempt)}.)`)
         break
       case 'item:refined':
+      case 'item:spent':
         spentUsd += line.usd
         break
       case 'item:failed':
