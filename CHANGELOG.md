@@ -3,6 +3,35 @@
 A projekt verziói a [szemantikus verziózást](https://semver.org/lang/hu/)
 követik. Minden spec megvalósítása után új kiadás készül.
 
+## [1.41.0] — 2026-11-25
+
+A `refinery deploy` mostantól nyomot hagy: minden valódi deploy megjelenik a
+Futások oldalon, a költéssel és az elvetett LLM-próbák okával. A hosszú
+jegyzetek „Röviden” blokkja ritkábban marad ki.
+
+### ✨ Újdonságok
+
+- **A deploy futásként naplóz:** minden valódi deploy (a kézi
+  `refinery deploy`, a `run` végi és a serve `auto` deployja) saját naplót
+  ír a `logs/`-ba, és külön sorként látszik a refinery-web Futások oldalán.
+  Oldalanként mutatja, mi íródott ki és mi maradt ki, mennyibe került az
+  átalakítás, és ha a push nem sikerült. Az `auto` deploy nem fújja fel a
+  recept-futás összesítését. A `--dry-run` nem naplóz
+  (pcsontos/issue-tracker#169).
+- **Minden elvetett próba oka látszik:** a deploy konzolos kimenete a
+  kihagyások után `elvetett próba: <fájl> — <n>. próba: <ok>` sorokban
+  sorolja fel az LLM-átalakítás elvetett próbáit, a sikeres oldalakét is; a
+  futás oldalán ugyanez `item:retry` eseményként, a teljes szöveg az
+  idővonal sorának tooltipjében (pcsontos/issue-tracker#168).
+
+### 🔧 Javítások
+
+- **A „Röviden” blokk a hosszú jegyzetnél is a helyén:** az átalakító
+  promptja a bevezető-szabályt az első helyre teszi, a jegyzet után
+  emlékeztet rá, és az előző próba hibáját is a jegyzet után közli, így a
+  hosszú, egy darabban küldött jegyzet ritkábban esik vissza nyers
+  (`mdx_fallback`) formára (pcsontos/issue-tracker#167).
+
 ## [1.40.0] — 2026-11-24
 
 A `run --dry-run` mostantól csak listáz, és nem költ. A már kész jegyzetű
