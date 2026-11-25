@@ -499,7 +499,7 @@ describe('deployNotes', () => {
   })
 
   it('deployLines kiírja a költséget', () => {
-    const base = { written: [], skipped: [], commits: 0, push: null, planned: [], unchanged: 0, pendingCommits: 0 }
+    const base = { written: [], skipped: [], commits: 0, push: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 0 }
     const usage = { inputTokens: 10, outputTokens: 20, usd: 0.0123, budgetSkipped: 1 }
     expect(deployLines({ ...base, transform: usage })).toContain(
       'deploy: átalakítás: 10+20 token, 0.0123 $, 1 oldal kimaradt a költségplafon miatt',
@@ -705,6 +705,20 @@ describe('újragenerálás', () => {
     }
   })
 
+  it('az elvetett próba a riportba és a deployLines-ba kerül', async () => {
+    const path = await note('vid1', 'summary', BASE)
+    const transform: Transform = {
+      run: (input) => {
+        input.onReject?.(1, 'X ok')
+        return Promise.resolve(final('Jó <Callout type="note">x</Callout>'))
+      },
+      usage: () => ({ inputTokens: 0, outputTokens: 0, usd: 0, budgetSkipped: 0 }),
+    }
+    const report = await deployNotes({ cfg, transform })
+    expect(report.rejected).toEqual([{ path, attempt: 1, reason: 'X ok' }])
+    expect(deployLines(report)).toContain('  elvetett próba: vid1_summary.md — 1. próba: X ok')
+  })
+
   it('bájtra azonos újragenerálás nem ír és nem commitol', async () => {
     await note('vid1', 'qa', BASE, CARDS)
     await deployNotes({ cfg })
@@ -809,7 +823,7 @@ describe('szárazfutás', () => {
   })
 
   it('dryRunLines jelzi a függő munkát', () => {
-    const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 2 }
+    const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 2 }
     expect(dryRunLines(report, true)).toEqual([
       'deploy (szárazfutás): korábbi futás függő munkája is kimegy: 2 commit',
       'deploy (szárazfutás): nincs mit írni; 0 kihagyva, 0 változatlan',
@@ -830,6 +844,7 @@ describe('szárazfutás', () => {
         { target: 'Q/notes.hu.mdx', action: 'retry', route: 'llm' },
       ],
       unchanged: 4,
+      rejected: [],
       pendingCommits: 0,
     }
     expect(dryRunLines(report, true)).toEqual([

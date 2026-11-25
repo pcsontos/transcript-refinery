@@ -207,7 +207,7 @@ const rawWithVault = (costLimitUsd: number) => ({
 // A deploy menetét a `deploy/deploy.test.ts` fedi; itt csak a bekötés számít.
 vi.mock('./deploy/deploy.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./deploy/deploy.js')>()),
-  deployNotes: vi.fn(() => Promise.resolve({ written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 0 })),
+  deployNotes: vi.fn(() => Promise.resolve({ written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 0 })),
 }))
 
 vi.mock('./watch/command.js', () => ({
@@ -3395,7 +3395,7 @@ describe('deploy', () => {
   })
 
   it('deploy kiírja a jelentést', async () => {
-    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['a/summary.hu.mdx'], skipped: [], commits: 1, push: { pushed: true }, transform: null, planned: [], unchanged: 0, pendingCommits: 0 })
+    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['a/summary.hu.mdx'], skipped: [], commits: 1, push: { pushed: true }, transform: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 0 })
     const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
       const cfg = loadConfig(showroom('manual'), '/p/refinery.config.yaml')
@@ -3543,6 +3543,7 @@ describe('deploy', () => {
       transform: null,
       planned: [{ target: 'a/qa.hu.mdx', action: 'new', route: 'cards' }],
       unchanged: 0,
+      rejected: [],
       pendingCommits: 0,
     })
     const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -3606,7 +3607,7 @@ describe('deploy', () => {
   })
 
   it('run auto módban a futás tételeit deployolja', async () => {
-    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['x'], skipped: [], commits: 1, push: { pushed: true }, transform: null, planned: [], unchanged: 0, pendingCommits: 0 })
+    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['x'], skipped: [], commits: 1, push: { pushed: true }, transform: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 0 })
     const { code, sorok, cfg } = await futas(showroom('auto'))
     const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
     expect(code).toBe(0)

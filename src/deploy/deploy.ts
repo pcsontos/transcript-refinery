@@ -35,6 +35,8 @@ export interface DeployReport {
   transform: TransformUsage | null
   /** Amit írásra kiválasztott, sorrendben. */
   planned: { target: string; action: DeployAction; route: Route }[]
+  /** Minden elvetett LLM-próba (oldal, sorszám, ok), felvételi sorrendben. */
+  rejected: { path: string; attempt: number; reason: string }[]
   /** Az illeszkedő, nem írandó jelöltek száma. */
   unchanged: number
   /** A pull utáni pusholatlan commitok és a maradék-commit; ezek a szűrőtől függetlenül kimennek. */
@@ -157,13 +159,13 @@ export async function deployNotes(input: {
     filter !== undefined &&
     ![...selected.values()].some((notes) => [...notes].some(([kind, n]) => kindMatches(siteKindOf(kind, n.fields))))
   ) {
-    return { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 0, noMatch: true }
+    return { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], rejected: [], unchanged: 0, pendingCommits: 0, noMatch: true }
   }
 
   const branch = await gitCurrentBranch(clone)
   if (branch !== 'main') throw new Error(`showroom.clone_path: a klón nem a main ágon áll (${branch})`)
 
-  const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 0 }
+  const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], rejected: [], unchanged: 0, pendingCommits: 0 }
 
   // Az oldal jelenlegi tartalma az összevetéshez. Élesben a munkafa a pull után; szárazfutásban
   // a távoli main, rajta a helyi eltérésekkel (épp a `pull --rebase --autostash` utáni állapot).
@@ -208,7 +210,13 @@ export async function deployNotes(input: {
     }
     if (transform === undefined) return {}
     try {
-      const result = await transform.run({ siteKind: c.siteKind, body: c.body, language: c.language, contract })
+      const result = await transform.run({
+        siteKind: c.siteKind,
+        body: c.body,
+        language: c.language,
+        contract,
+        onReject: (attempt, reason) => report.rejected.push({ path: c.path, attempt, reason }),
+      })
       if (result.kind === 'budget') return 'budget'
       return result.kind === 'final' ? { body: result.body } : { failed: `LLM-kimenet elvetve: ${result.reason}` }
     } catch (e) {
@@ -349,6 +357,7 @@ export function deployLines(report: DeployReport): string[] {
     ...[...report.skipped]
       .sort((a, b) => a.reason.localeCompare(b.reason) || a.path.localeCompare(b.path))
       .map((s) => `  kihagyva: ${basename(s.path)} — ${s.reason}`),
+    ...report.rejected.map((r) => `  elvetett próba: ${basename(r.path)} — ${r.attempt}. próba: ${r.reason}`),
   ]
   if (report.transform !== null) {
     const { inputTokens, outputTokens, usd, budgetSkipped } = report.transform

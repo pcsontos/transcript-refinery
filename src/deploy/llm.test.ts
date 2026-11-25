@@ -194,6 +194,37 @@ describe('createMdxTransform', () => {
     )
   })
 
+  it('minden elvetett próba az onReject-re megy', async () => {
+    const client = fakeClient([`${INTRO}\n\nSzöveg kettő.`, `${INTRO}\n\nSzöveg egy.`])
+    const seen: [number, string][] = []
+    const result = await createMdxTransform({ client, modelConfig: MODEL }).run({
+      siteKind: 'summary',
+      body: BODY,
+      language: 'hu',
+      contract: CONTRACT,
+      onReject: (attempt, reason) => seen.push([attempt, reason]),
+    })
+    expect(result.kind).toBe('final')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]![0]).toBe(1)
+    expect(seen[0]![1]).toContain('szónál')
+  })
+
+  it('darabos ágon az ok a darabot nevezi meg', async () => {
+    const body = '# Cím\n\nEgy kettő három négy.\n\n## Rész\n\nÖt hat hét nyolc.'
+    const client = fakeClient(['Rossz.', 'Egy kettő három négy.', '## Rész\n\nÖt hat hét nyolc.', INTRO])
+    const seen: string[] = []
+    await createMdxTransform({ client, modelConfig: MODEL, chunkWords: 5 }).run({
+      siteKind: 'summary',
+      body,
+      language: 'hu',
+      contract: CONTRACT,
+      onReject: (_attempt, reason) => seen.push(reason),
+    })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.startsWith('1/2. darab: ')).toBe(true)
+  })
+
   it('a plafon után budget', async () => {
     // egy hívás ára: 1000 × 3/M + 1000 × 15/M = 0,018 $
     const client = fakeClient([`${INTRO}\n\nSzöveg egy.`, `${INTRO}\n\nSzöveg egy.`])
