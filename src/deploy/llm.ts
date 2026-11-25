@@ -86,6 +86,11 @@ export function mdxPrompt(input: {
           'Restructure the Markdown note below into an MDX page that is easy to read on the web.',
           '',
           'Hard rules:',
+          ...(intro === 'inline'
+            ? [
+                `- Start with exactly one ${callout} block: ${introText.replace(' to the whole text below', '')}. This is the only exception to the rules below: the only place where new sentences are allowed. Then the restructured text.`,
+              ]
+            : []),
           '- Keep every word of the text, in the same order. Do not rephrase, shorten, merge, summarize, drop or add any sentence.',
           '- You may only add structure: ## and ### headings, paragraph breaks (split long paragraphs into 1–3 sentence paragraphs), **bold** and *italic*, turning text that already is a list or a sequence of steps into a list or <Steps>, and component titles.',
           '- Keep existing headings as headings with their exact text; you may change their level.',
@@ -102,17 +107,17 @@ export function mdxPrompt(input: {
           '- Use only the title and type attributes of components, never href or description. No images, no link reference definitions, no import/export, no {…} expressions, no raw HTML.',
           '- Escape { } and < in text as \\{ \\} \\<. Leave fenced code blocks exactly as they are. Write <https://…> links as [https://…](<https://…>).',
           '- Output only the MDX. Do not wrap it in a code fence.',
-          intro === 'inline'
-            ? `- Start with exactly one ${callout} block: ${introText.replace(' to the whole text below', '')}. This is the only place where new sentences are allowed. Then the restructured text.`
-            : '- Do not add an introduction.',
+          ...(intro === 'inline' ? [] : ['- Do not add an introduction.']),
         ].join('\n')
   return [
     rules,
     ...(part ? [`This is part ${part.index} of ${part.total} of a longer note.`] : []),
-    ...(error ? [`Your previous answer was rejected: ${error}. Fix this and follow the rules exactly.`] : []),
     '',
     '--- NOTE ---',
     text,
+    '--- END OF NOTE ---',
+    ...(error ? [`Your previous answer was rejected: ${error}. Fix this and follow the rules exactly.`] : []),
+    ...(intro === 'inline' ? [`Begin your answer with the ${callout} block.`] : []),
   ].join('\n')
 }
 

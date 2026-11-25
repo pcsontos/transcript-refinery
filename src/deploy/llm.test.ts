@@ -75,6 +75,27 @@ describe('mdxPrompt', () => {
     expect(mdxPrompt({ ...base, language: 'pt' })).toContain('title="In brief"')
     expect(mdxPrompt({ ...base, intro: 'none' })).not.toContain('Callout type="note"')
   })
+
+  it('inline: a bevezető-szabály a Hard rules első pontja, és az utolsó sor rá emlékeztet', () => {
+    const lines = mdxPrompt(base).split('\n')
+    const first = lines[lines.indexOf('Hard rules:') + 1]!
+    expect(first).toContain('<Callout type="note" title="Röviden">')
+    expect(first).toContain('only exception')
+    expect(lines.at(-1)).toContain('<Callout type="note" title="Röviden">')
+    expect(lines).toContain('--- END OF NOTE ---')
+  })
+
+  it('a retry-hibaüzenet a jegyzet után áll, minden ágon', () => {
+    for (const intro of ['inline', 'none', 'only'] as const) {
+      const prompt = mdxPrompt({ ...base, intro, error: 'HIBA' })
+      expect(prompt.indexOf('HIBA')).toBeGreaterThan(prompt.indexOf('Szöveg.'))
+    }
+  })
+
+  it('none: nincs emlékeztető és nincs Callout-kérés', () => {
+    const prompt = mdxPrompt({ ...base, intro: 'none' })
+    expect(prompt).not.toContain('Callout type="note"')
+  })
 })
 
 describe('createMdxTransform', () => {
