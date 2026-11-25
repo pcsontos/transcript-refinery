@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { stringify } from 'yaml'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type Config, loadConfig } from '../config.js'
+import { collectEvents, type RunEvent } from '../events.js'
 import { type DeployReport, deployHeader, deployLines, deployNotes, dryRunLines } from './deploy.js'
 import type { Transform, TransformResult } from './llm.js'
 
@@ -499,7 +500,7 @@ describe('deployNotes', () => {
   })
 
   it('deployLines kiírja a költséget', () => {
-    const base = { written: [], skipped: [], commits: 0, push: null, planned: [], unchanged: 0, pendingCommits: 0 }
+    const base = { written: [], skipped: [], commits: 0, push: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 0 }
     const usage = { inputTokens: 10, outputTokens: 20, usd: 0.0123, budgetSkipped: 1 }
     expect(deployLines({ ...base, transform: usage })).toContain(
       'deploy: átalakítás: 10+20 token, 0.0123 $, 1 oldal kimaradt a költségplafon miatt',
@@ -705,6 +706,20 @@ describe('újragenerálás', () => {
     }
   })
 
+  it('az elvetett próba a riportba és a deployLines-ba kerül', async () => {
+    const path = await note('vid1', 'summary', BASE)
+    const transform: Transform = {
+      run: (input) => {
+        input.onReject?.(1, 'X ok')
+        return Promise.resolve(final('Jó <Callout type="note">x</Callout>'))
+      },
+      usage: () => ({ inputTokens: 0, outputTokens: 0, usd: 0, budgetSkipped: 0 }),
+    }
+    const report = await deployNotes({ cfg, transform })
+    expect(report.rejected).toEqual([{ path, attempt: 1, reason: 'X ok' }])
+    expect(deployLines(report)).toContain('  elvetett próba: vid1_summary.md — 1. próba: X ok')
+  })
+
   it('bájtra azonos újragenerálás nem ír és nem commitol', async () => {
     await note('vid1', 'qa', BASE, CARDS)
     await deployNotes({ cfg })
@@ -809,7 +824,7 @@ describe('szárazfutás', () => {
   })
 
   it('dryRunLines jelzi a függő munkát', () => {
-    const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 2 }
+    const report: DeployReport = { written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 2 }
     expect(dryRunLines(report, true)).toEqual([
       'deploy (szárazfutás): korábbi futás függő munkája is kimegy: 2 commit',
       'deploy (szárazfutás): nincs mit írni; 0 kihagyva, 0 változatlan',
@@ -830,6 +845,7 @@ describe('szárazfutás', () => {
         { target: 'Q/notes.hu.mdx', action: 'retry', route: 'llm' },
       ],
       unchanged: 4,
+      rejected: [],
       pendingCommits: 0,
     }
     expect(dryRunLines(report, true)).toEqual([
@@ -857,5 +873,88 @@ describe('deployHeader', () => {
     expect(deployHeader({}, { dryRun: true })).toBe('deploy (szárazfutás): szűrés nélkül')
     expect(deployHeader({ channel: 'X' }, { dryRun: false, model: 'm' })).toBe('deploy: szűrés: csatorna: X · modell: m')
     expect(deployHeader({}, { dryRun: false })).toBeNull()
+  })
+})
+
+describe('események', () => {
+  const CARDS = '# Cím\n\n## K\n\nV\n'
+  const PAGE = 'vid1/summary.hu.mdx'
+  const forPage = (events: RunEvent[], id = PAGE) => events.filter((e) => 'itemId' in e && e.itemId === id)
+  const types = (events: RunEvent[]) => events.map((e) => e.type)
+  const zero = { inputTokens: 0, outputTokens: 0, usd: 0, budgetSkipped: 0 }
+
+  it('kiírt oldal: item:start, item:spent, item:published', async () => {
+    await note('vid1', 'summary', BASE)
+    let spent = false
+    const transform: Transform = {
+      run: () => {
+        spent = true
+        return Promise.resolve(final('Jó <Callout type="note">x</Callout>'))
+      },
+      usage: () => (spent ? { inputTokens: 10, outputTokens: 20, usd: 0.1, budgetSkipped: 0 } : zero),
+    }
+    const { sink, events } = collectEvents()
+    await deployNotes({ cfg, transform, sink })
+    const page = forPage(events)
+    expect(types(page)).toEqual(['item:start', 'item:spent', 'item:published'])
+    expect(page[1]).toMatchObject({ inputTokens: 10, outputTokens: 20, usd: 0.1 })
+  })
+
+  it('elvetett próba item:retry az okkal', async () => {
+    await note('vid1', 'summary', BASE)
+    const transform: Transform = {
+      run: (input) => {
+        input.onReject?.(1, 'X ok')
+        return Promise.resolve(final('Jó <Callout type="note">x</Callout>'))
+      },
+      usage: () => zero,
+    }
+    const { sink, events } = collectEvents()
+    await deployNotes({ cfg, transform, sink })
+    expect(events).toContainEqual({ type: 'item:retry', itemId: PAGE, attempt: 1, delayMs: 0, reason: 'X ok' })
+    expect(types(forPage(events)).at(-1)).toBe('item:published')
+  })
+
+  it('elbukott átalakítás után a fallback item:skipped, nem published', async () => {
+    await note('vid1', 'summary', BASE)
+    const { sink, events } = collectEvents()
+    await deployNotes({ cfg, transform: fakeTransform({ kind: 'failed', reason: 'r' }), sink })
+    const page = forPage(events)
+    expect(page.at(-1)).toEqual({ type: 'item:skipped', itemId: PAGE, reason: 'LLM-kimenet elvetve: r' })
+    expect(types(page)).not.toContain('item:published')
+  })
+
+  it('minden item:start-ot pontosan egy eredmény követ', async () => {
+    await note('vid1', 'qa', BASE, CARDS)
+    await note('vid2', 'summary', { ...BASE, title: 'Más' })
+    await deployNotes({ cfg, transform: valid() })
+    const { sink, events } = collectEvents()
+    // bájtra azonos újragenerálás (kártya) és költségplafon (LLM, a kint lévő oldal marad)
+    await deployNotes({ cfg, transform: fakeTransform({ kind: 'budget' }), filter: { items: ['vid1', 'vid2'] }, sink })
+    const starts = events.filter((e) => e.type === 'item:start')
+    expect(starts).toHaveLength(2)
+    for (const start of starts) {
+      const results = forPage(events, (start as { itemId: string }).itemId).filter((e) => e.type === 'item:published' || e.type === 'item:skipped')
+      expect(results).toHaveLength(1)
+    }
+  })
+
+  it('sikertelen push item:failed kind push', async () => {
+    await note('vid1', 'summary', BASE)
+    const hook = join(remote, 'hooks', 'pre-receive')
+    await writeFile(hook, '#!/bin/sh\nexit 1\n')
+    await chmod(hook, 0o755)
+    const { sink, events } = collectEvents()
+    const report = await deployNotes({ cfg, sink })
+    expect(report.push?.pushed).toBe(false)
+    const first = (report.push?.reason ?? '').split('\n').find((l) => l.trim() !== '')
+    expect(events).toContainEqual({ type: 'item:failed', itemId: 'push', kind: 'push', source: 'showroom', error: first })
+  })
+
+  it('dry-run nem bocsát ki eseményt', async () => {
+    await note('vid1', 'summary', BASE)
+    const { sink, events } = collectEvents()
+    await deployNotes({ cfg, transform: valid(), dryRun: true, sink })
+    expect(events).toEqual([])
   })
 })

@@ -30,6 +30,8 @@ export type RunEvent =
   | { type: 'item:step'; itemId: string; step: string }
   | ({ type: 'item:advance'; itemId: string } & Advance)
   | { type: 'item:published'; itemId: string; path: string }
+  /** Egy oldal LLM-költsége (a deployé); a `summarize` nem számolja. */
+  | { type: 'item:spent'; itemId: string; inputTokens: number; outputTokens: number; usd: number }
   | { type: 'item:skipped'; itemId: string; reason: string }
   | {
       type: 'item:failed'

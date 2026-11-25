@@ -207,7 +207,7 @@ const rawWithVault = (costLimitUsd: number) => ({
 // A deploy menetét a `deploy/deploy.test.ts` fedi; itt csak a bekötés számít.
 vi.mock('./deploy/deploy.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./deploy/deploy.js')>()),
-  deployNotes: vi.fn(() => Promise.resolve({ written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, pendingCommits: 0 })),
+  deployNotes: vi.fn(() => Promise.resolve({ written: [], skipped: [], commits: 0, push: null, transform: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 0 })),
 }))
 
 vi.mock('./watch/command.js', () => ({
@@ -3395,7 +3395,7 @@ describe('deploy', () => {
   })
 
   it('deploy kiírja a jelentést', async () => {
-    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['a/summary.hu.mdx'], skipped: [], commits: 1, push: { pushed: true }, transform: null, planned: [], unchanged: 0, pendingCommits: 0 })
+    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['a/summary.hu.mdx'], skipped: [], commits: 1, push: { pushed: true }, transform: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 0 })
     const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
     try {
       const cfg = loadConfig(showroom('manual'), '/p/refinery.config.yaml')
@@ -3543,6 +3543,7 @@ describe('deploy', () => {
       transform: null,
       planned: [{ target: 'a/qa.hu.mdx', action: 'new', route: 'cards' }],
       unchanged: 0,
+      rejected: [],
       pendingCommits: 0,
     })
     const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -3585,6 +3586,36 @@ describe('deploy', () => {
     }
   })
 
+  it('a valódi deploy futásnaplót nyit a logsDir alatt, a dry-run nem', async () => {
+    const raw = showroom('manual')
+    const cfg = loadConfig(raw, '/p/refinery.config.yaml')
+    const jsonls = async () => (await readdir(cfg.logsDir).catch(() => [] as string[])).filter((f) => f.endsWith('.jsonl'))
+    const naplo = vi.spyOn(console, 'log').mockImplementation(() => {})
+    try {
+      await commandDeploy(cfg, raw, { command: 'deploy --item X', dryRun: true })
+      expect(await jsonls()).toEqual([])
+      await commandDeploy(cfg, raw, { command: 'deploy --item X' })
+      const files = await jsonls()
+      expect(files).toHaveLength(1)
+      const lines = (await readFile(join(cfg.logsDir, files[0]!), 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as { type: string; command?: string })
+      expect(lines.map((l) => l.type)).toEqual(['run:started', 'run:done', 'run:ended'])
+      expect(lines[0]!.command).toBe('deploy --item X')
+    } finally {
+      naplo.mockRestore()
+    }
+  })
+
+  it('run auto: a deploy külön naplót nyit, a recept-futás naplója nem változik', async () => {
+    const { cfg } = await futas(showroom('auto'))
+    const files = (await readdir(cfg.logsDir)).filter((f) => f.endsWith('.jsonl'))
+    expect(files).toHaveLength(2)
+    const logs = await Promise.all(files.map(async (f) => (await readFile(join(cfg.logsDir, f), 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as { type: string; command?: string })))
+    const deploy = logs.find((l) => l[0]!.command?.startsWith('deploy (auto, run) '))
+    expect(deploy?.map((l) => l.type)).toEqual(['run:started', 'run:done', 'run:ended'])
+    const recept = logs.find((l) => !l[0]!.command?.startsWith('deploy'))!
+    expect(recept.some((l) => l.type === 'run:done')).toBe(true)
+  })
+
   it('run auto deployja is kap transformot', async () => {
     await futas(showroom('auto'))
     expect(vi.mocked(deployNotes).mock.calls[0]![0].transform).toBeDefined()
@@ -3606,7 +3637,7 @@ describe('deploy', () => {
   })
 
   it('run auto módban a futás tételeit deployolja', async () => {
-    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['x'], skipped: [], commits: 1, push: { pushed: true }, transform: null, planned: [], unchanged: 0, pendingCommits: 0 })
+    vi.mocked(deployNotes).mockResolvedValueOnce({ written: ['x'], skipped: [], commits: 1, push: { pushed: true }, transform: null, planned: [], unchanged: 0, rejected: [], pendingCommits: 0 })
     const { code, sorok, cfg } = await futas(showroom('auto'))
     const [item] = await folderSource({ name: 'downloads', path: downloads }, []).discover()
     expect(code).toBe(0)

@@ -1,6 +1,7 @@
 import { closeSync, futimesSync, mkdirSync, openSync, writeSync } from 'node:fs'
-import { dirname } from 'node:path'
-import type { EventSink } from '../events.js'
+import { dirname, join } from 'node:path'
+import { collectEvents, type EventSink, summarize } from '../events.js'
+import { reserveRunId, runId } from './id.js'
 import { HEARTBEAT_MS } from './status.js'
 
 export interface RunLog {
@@ -56,5 +57,39 @@ export function openRunLog(path: string): RunLog {
       clearInterval(heartbeat)
       closeSync(fd)
     },
+  }
+}
+
+/** Új futásnapló a `logsDir` alatt, `run:started` sorral. A hívó zárja: `run:ended`, aztán `close()`. */
+export function openCommandRunLog(logsDir: string, command: string): RunLog {
+  const id = reserveRunId(logsDir, runId(new Date()))
+  const log = openRunLog(join(logsDir, `${id}.jsonl`))
+  log.sink({ type: 'run:started', command, pid: process.pid })
+  return log
+}
+
+/**
+ * Az `fn` eseményeit saját futásnaplóba írja. Siker után `run:done`, kivételnél `item:failed`
+ * (`run:done` nélkül, így a futás `failed` lesz) és a kivétel továbbdobódik; `run:ended` mindig.
+ */
+export async function withRunLog<T>(logsDir: string, command: string, fn: (sink: EventSink) => Promise<T>): Promise<T> {
+  const log = openCommandRunLog(logsDir, command)
+  const { sink: collect, events } = collectEvents()
+  const sink: EventSink = (event) => {
+    collect(event)
+    log.sink(event)
+  }
+  try {
+    const result = await fn(sink)
+    const { succeeded, skipped, failed } = summarize(events)
+    log.sink({ type: 'run:done', succeeded, skipped, failed })
+    return result
+  } catch (error) {
+    const message = (error instanceof Error ? error.message : String(error)).split('\n')[0]!
+    log.sink({ type: 'item:failed', itemId: 'run', source: '', kind: 'run', error: message })
+    throw error
+  } finally {
+    log.sink({ type: 'run:ended', interrupted: false })
+    log.close()
   }
 }

@@ -75,6 +75,27 @@ describe('mdxPrompt', () => {
     expect(mdxPrompt({ ...base, language: 'pt' })).toContain('title="In brief"')
     expect(mdxPrompt({ ...base, intro: 'none' })).not.toContain('Callout type="note"')
   })
+
+  it('inline: a bevezető-szabály a Hard rules első pontja, és az utolsó sor rá emlékeztet', () => {
+    const lines = mdxPrompt(base).split('\n')
+    const first = lines[lines.indexOf('Hard rules:') + 1]!
+    expect(first).toContain('<Callout type="note" title="Röviden">')
+    expect(first).toContain('only exception')
+    expect(lines.at(-1)).toContain('<Callout type="note" title="Röviden">')
+    expect(lines).toContain('--- END OF NOTE ---')
+  })
+
+  it('a retry-hibaüzenet a jegyzet után áll, minden ágon', () => {
+    for (const intro of ['inline', 'none', 'only'] as const) {
+      const prompt = mdxPrompt({ ...base, intro, error: 'HIBA' })
+      expect(prompt.indexOf('HIBA')).toBeGreaterThan(prompt.indexOf('Szöveg.'))
+    }
+  })
+
+  it('none: nincs emlékeztető és nincs Callout-kérés', () => {
+    const prompt = mdxPrompt({ ...base, intro: 'none' })
+    expect(prompt).not.toContain('Callout type="note"')
+  })
 })
 
 describe('createMdxTransform', () => {
@@ -171,6 +192,37 @@ describe('createMdxTransform', () => {
     expect((result as { body: string }).body).toBe(
       `# Cím\n\n${INTRO}\n\nEgy kettő három négy.\n\n## Rész\n\nÖt hat hét nyolc.\n`,
     )
+  })
+
+  it('minden elvetett próba az onReject-re megy', async () => {
+    const client = fakeClient([`${INTRO}\n\nSzöveg kettő.`, `${INTRO}\n\nSzöveg egy.`])
+    const seen: [number, string][] = []
+    const result = await createMdxTransform({ client, modelConfig: MODEL }).run({
+      siteKind: 'summary',
+      body: BODY,
+      language: 'hu',
+      contract: CONTRACT,
+      onReject: (attempt, reason) => seen.push([attempt, reason]),
+    })
+    expect(result.kind).toBe('final')
+    expect(seen).toHaveLength(1)
+    expect(seen[0]![0]).toBe(1)
+    expect(seen[0]![1]).toContain('szónál')
+  })
+
+  it('darabos ágon az ok a darabot nevezi meg', async () => {
+    const body = '# Cím\n\nEgy kettő három négy.\n\n## Rész\n\nÖt hat hét nyolc.'
+    const client = fakeClient(['Rossz.', 'Egy kettő három négy.', '## Rész\n\nÖt hat hét nyolc.', INTRO])
+    const seen: string[] = []
+    await createMdxTransform({ client, modelConfig: MODEL, chunkWords: 5 }).run({
+      siteKind: 'summary',
+      body,
+      language: 'hu',
+      contract: CONTRACT,
+      onReject: (_attempt, reason) => seen.push(reason),
+    })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.startsWith('1/2. darab: ')).toBe(true)
   })
 
   it('a plafon után budget', async () => {

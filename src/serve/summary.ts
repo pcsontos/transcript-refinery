@@ -3,6 +3,7 @@ import { basename, join, relative, sep } from 'node:path'
 import { commandRun, type RunRuntime } from '../cli.js'
 import { loadCliConfig, loadModelConfig, type Config } from '../config.js'
 import { deployLines, deployNotes } from '../deploy/deploy.js'
+import { withRunLog } from '../run/log.js'
 import { mdxTransformFor } from '../deploy/llm.js'
 import { progressText, type RunEvent as CoreEvent } from '../events.js'
 import type { LanguageTag } from '../lang/identify.js'
@@ -323,11 +324,14 @@ export async function runRecipes(input: {
             const transform = mdxTransformFor(loaded.raw, cfg, input.createClient)
             if (typeof transform === 'string') console.log(`[deploy] LLM-átalakítás nélkül: ${transform}`)
             const itemIds = new Set([input.videoId])
-            const report = await (input.deploy ?? deployNotes)({
-              cfg,
-              itemIds,
-              ...(typeof transform === 'string' ? {} : { transform }),
-            })
+            const report = await withRunLog(cfg.logsDir, `deploy (auto, serve) ${input.videoId}`, (sink) =>
+              (input.deploy ?? deployNotes)({
+                cfg,
+                itemIds,
+                sink,
+                ...(typeof transform === 'string' ? {} : { transform }),
+              }),
+            )
             for (const line of deployLines(report)) console.log(`[deploy] ${line.replace(/^deploy: /, '')}`)
             // A push hibája a jelentésben van, nem dob; az átírás utáni üzenet a visszatérési értékből tudja (#45).
             if (report.push !== null && !report.push.pushed) return 'a showroom-push nem sikerült'

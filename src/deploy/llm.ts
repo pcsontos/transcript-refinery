@@ -21,7 +21,14 @@ export interface TransformUsage {
 
 /** Az LLM-es átalakító (#278): vault-törzsből `.mdx`-törzs. A frontmattert nem írja. */
 export interface Transform {
-  run(input: { siteKind: string; body: string; language: string; contract: Contract }): Promise<TransformResult>
+  run(input: {
+    siteKind: string
+    body: string
+    language: string
+    contract: Contract
+    /** Minden elvetett próba pillanatában; `attempt` 1-től számozott. */
+    onReject?: (attempt: number, reason: string) => void
+  }): Promise<TransformResult>
   usage(): TransformUsage
 }
 
@@ -86,6 +93,11 @@ export function mdxPrompt(input: {
           'Restructure the Markdown note below into an MDX page that is easy to read on the web.',
           '',
           'Hard rules:',
+          ...(intro === 'inline'
+            ? [
+                `- Start with exactly one ${callout} block: ${introText.replace(' to the whole text below', '')}. This is the only exception to the rules below: the only place where new sentences are allowed. Then the restructured text.`,
+              ]
+            : []),
           '- Keep every word of the text, in the same order. Do not rephrase, shorten, merge, summarize, drop or add any sentence.',
           '- You may only add structure: ## and ### headings, paragraph breaks (split long paragraphs into 1–3 sentence paragraphs), **bold** and *italic*, turning text that already is a list or a sequence of steps into a list or <Steps>, and component titles.',
           '- Keep existing headings as headings with their exact text; you may change their level.',
@@ -102,17 +114,17 @@ export function mdxPrompt(input: {
           '- Use only the title and type attributes of components, never href or description. No images, no link reference definitions, no import/export, no {…} expressions, no raw HTML.',
           '- Escape { } and < in text as \\{ \\} \\<. Leave fenced code blocks exactly as they are. Write <https://…> links as [https://…](<https://…>).',
           '- Output only the MDX. Do not wrap it in a code fence.',
-          intro === 'inline'
-            ? `- Start with exactly one ${callout} block: ${introText.replace(' to the whole text below', '')}. This is the only place where new sentences are allowed. Then the restructured text.`
-            : '- Do not add an introduction.',
+          ...(intro === 'inline' ? [] : ['- Do not add an introduction.']),
         ].join('\n')
   return [
     rules,
     ...(part ? [`This is part ${part.index} of ${part.total} of a longer note.`] : []),
-    ...(error ? [`Your previous answer was rejected: ${error}. Fix this and follow the rules exactly.`] : []),
     '',
     '--- NOTE ---',
     text,
+    '--- END OF NOTE ---',
+    ...(error ? [`Your previous answer was rejected: ${error}. Fix this and follow the rules exactly.`] : []),
+    ...(intro === 'inline' ? [`Begin your answer with the ${callout} block.`] : []),
   ].join('\n')
 }
 
@@ -124,6 +136,8 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
 
   /** Egy egység (darab vagy bevezető) legfeljebb két próbával; `check` a hibaleírást adja vagy `null`-t. */
   async function attempt(
+    label: string,
+    onReject: ((attempt: number, reason: string) => void) | undefined,
     prompt: (error?: string) => string,
     check: (output: string) => Promise<string | null>,
   ): Promise<{ ok: true; output: string } | { ok: false; reason: string }> {
@@ -135,6 +149,7 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
       usage.outputTokens += reply.usage.outputTokens
       error = (await check(reply.value)) ?? undefined
       if (error === undefined) return { ok: true, output: reply.value }
+      onReject?.(i + 1, label === '' ? error : `${label}: ${error}`)
     }
     return { ok: false, reason: error! }
   }
@@ -142,7 +157,7 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
   const base = (language: string, contract: Contract) => ({ language, contract })
 
   return {
-    async run({ body, language, contract }) {
+    async run({ body, language, contract, onReject }) {
       if (guard.exceeded()) {
         usage.budgetSkipped++
         return { kind: 'budget' }
@@ -159,6 +174,8 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
         const text = chunks[0]!
         let intro = ''
         const done = await attempt(
+          '',
+          onReject,
           (error) => mdxPrompt({ text, ...base(language, contract), intro: 'inline', error }),
           async (output) => {
             const taken = takeIntro(output, title)
@@ -173,6 +190,8 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
         const parts: string[] = []
         for (const [i, text] of chunks.entries()) {
           const done = await attempt(
+            `${i + 1}/${chunks.length}. darab`,
+            onReject,
             (error) =>
               mdxPrompt({ text, ...base(language, contract), intro: 'none', part: { index: i + 1, total: chunks.length }, error }),
             async (output) => (await compile(output)) ?? forbiddenError(text, output) ?? verbatimError(text, output),
@@ -182,6 +201,8 @@ export function createMdxTransform(deps: { client: ModelClient; modelConfig: Mod
         }
         let intro = ''
         const done = await attempt(
+          'bevezető',
+          onReject,
           (error) => mdxPrompt({ text: rest, ...base(language, contract), intro: 'only', error }),
           async (output) => {
             const taken = takeIntro(output, title)

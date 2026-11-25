@@ -112,6 +112,16 @@ describe('liveRunState', () => {
   })
 })
 
+describe('liveRunState: item:spent', () => {
+  it('az item:spent a költéshez adódik', () => {
+    const lines: RunLogLine[] = [
+      { at: at(1), type: 'item:refined', itemId: 'a', recipe: 'summary', score: 0.9, generations: 1, usd: 0.5, rounds: [] },
+      { at: at(2), type: 'item:spent', itemId: 'b', inputTokens: 10, outputTokens: 20, usd: 0.25 },
+    ]
+    expect(liveRunState(lines).spentUsd).toBe(0.75)
+  })
+})
+
 describe('liveRunState: hangletöltés', () => {
   it('item:step a Most lépését állítja', () => {
     const state = liveRunState([

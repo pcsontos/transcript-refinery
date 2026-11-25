@@ -43,7 +43,7 @@ import { recipeFrom, recipesFor, type Registry } from './recipe/registry.js'
 import type { Recipe } from './recipe/types.js'
 import { countRunLogs, installSigint, writeReport } from './run/finish.js'
 import { reserveRunId, runId } from './run/id.js'
-import { openRunLog } from './run/log.js'
+import { openRunLog, withRunLog } from './run/log.js'
 import {
   dryRunLines as runDryRunLines,
   estimateUnits,
@@ -987,7 +987,10 @@ export async function commandRun(
     if (commit && commitError === undefined && cfg.showroom?.deploy === 'auto' && itemIds.size > 0) {
       try {
         const transform = deployTransform(raw, cfg, runtime.createClient)
-        for (const line of deployLines(await deployNotes({ cfg, itemIds, transform }))) console.log(line)
+        const report = await withRunLog(cfg.logsDir, `deploy (auto, run) ${[...itemIds].join(' ')}`, (sink) =>
+          deployNotes({ cfg, itemIds, transform, sink }),
+        )
+        for (const line of deployLines(report)) console.log(line)
       } catch (error) {
         console.log(`deploy sikertelen: ${(error as Error).message.split('\n')[0]}`)
       }
@@ -1246,6 +1249,8 @@ export async function commandDeploy(
     filter?: DeployFilter
     model?: string
     createClient?: RunRuntime['createClient']
+    /** A futásnapló `command` mezője (a parancssor); alapértelmezés: `deploy`. */
+    command?: string
   } = {},
 ): Promise<number> {
   if (cfg.showroom === null) {
@@ -1262,7 +1267,10 @@ export async function commandDeploy(
   if (header !== null) console.log(header)
   if (typeof transform === 'string') console.log(`deploy: LLM-átalakítás nélkül: ${transform}`)
   const llm = typeof transform === 'string' ? undefined : transform
-  const report = await deployNotes({ cfg, transform: llm, retryFailed: opts.retryFailed, dryRun, filter })
+  const args = { cfg, transform: llm, retryFailed: opts.retryFailed, dryRun, filter }
+  const report = dryRun
+    ? await deployNotes(args)
+    : await withRunLog(cfg.logsDir, opts.command ?? 'deploy', (sink) => deployNotes({ ...args, sink }))
   for (const line of dryRun ? dryRunLines(report, llm !== undefined) : deployLines(report)) console.log(line)
   return 0
 }
@@ -1456,6 +1464,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       dryRun: values['dry-run'],
       filter: Object.keys(filter).length > 0 ? filter : undefined,
       model: values.model,
+      command: argv.join(' '),
     })
   }
   if (command === 'list' && values.audios) {

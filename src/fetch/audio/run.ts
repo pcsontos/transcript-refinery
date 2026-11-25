@@ -2,8 +2,7 @@ import { readdir, rm, rmdir, stat, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { sanitizeSegment } from '../../vault/sanitize.js'
 import type { EventSink } from '../../events.js'
-import { openRunLog, type RunLog } from '../../run/log.js'
-import { reserveRunId, runId } from '../../run/id.js'
+import { openCommandRunLog, type RunLog } from '../../run/log.js'
 import { classifyAudioInput } from '../classify.js'
 import type { Pick } from './args.js'
 import { playlistDir, videoDir } from '../subtitle/skip.js'
@@ -107,10 +106,7 @@ export interface AudioRunDeps {
 
 /** Új futásnapló a `logsDir` alatt, `run:started` sorral. A hívó zárja: `run:ended`, aztán `close()`. */
 export function openAudioRunLog(logsDir: string, command: string): RunLog {
-  const id = reserveRunId(logsDir, runId(new Date()))
-  const log = openRunLog(join(logsDir, `${id}.jsonl`))
-  log.sink({ type: 'run:started', command, pid: process.pid })
-  return log
+  return openCommandRunLog(logsDir, command)
 }
 
 function firstLine(text: string): string {
