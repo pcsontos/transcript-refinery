@@ -86,7 +86,7 @@ const items = computed(() => state.value?.items ?? [])
           {{ data.summary.invalid }} értelmezhetetlen naplósor kimaradt.
         </p>
         <ol class="space-y-1 font-mono text-xs">
-          <li v-for="(line, index) in lines" :key="index">
+          <li v-for="(line, index) in lines" :key="index" :title="JSON.stringify(line)">
             <span class="text-muted">{{ line.at ? formatTime(line.at) : '–' }}</span>
             {{ line.type }}
             <span class="text-muted">{{ lineDetail(line) }}</span>

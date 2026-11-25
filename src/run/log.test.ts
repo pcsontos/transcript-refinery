@@ -1,9 +1,9 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { existsSync, rmSync, statSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { openRunLog } from './log.js'
+import { openRunLog, withRunLog } from './log.js'
 import { HEARTBEAT_MS } from './status.js'
 
 let work: string
@@ -92,5 +92,39 @@ describe('openRunLog — életjel', () => {
     rmSync(log.path)
     expect(() => vi.advanceTimersByTime(HEARTBEAT_MS)).not.toThrow()
     log.close()
+  })
+})
+
+describe('withRunLog', () => {
+  const read = async () => {
+    const [file] = (await readdir(work)).filter((f) => f.endsWith('.jsonl'))
+    return (await readFile(join(work, file!), 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>)
+  }
+
+  it('run:started, az fn eseményei, run:done, run:ended', async () => {
+    const result = await withRunLog(work, 'deploy --item x', (sink) => {
+      sink({ type: 'item:published', itemId: 'a', path: 'a' })
+      return Promise.resolve(42)
+    })
+    expect(result).toBe(42)
+    const lines = await read()
+    expect(lines.map((l) => l.type)).toEqual(['run:started', 'item:published', 'run:done', 'run:ended'])
+    expect(lines[0]).toMatchObject({ command: 'deploy --item x' })
+    expect(lines[2]).toMatchObject({ succeeded: 1, skipped: 0, failed: 0 })
+    expect(lines[3]).toMatchObject({ interrupted: false })
+  })
+
+  it('kivételnél item:failed és run:ended, run:done nélkül, és továbbdob', async () => {
+    await expect(withRunLog(work, 'deploy', () => Promise.reject(new Error('a klón nem a main ágon áll\nrészlet')))).rejects.toThrow('a klón nem')
+    const lines = await read()
+    expect(lines.map((l) => l.type)).toEqual(['run:started', 'item:failed', 'run:ended'])
+    expect(lines[1]).toMatchObject({ itemId: 'run', source: '', kind: 'run', error: 'a klón nem a main ágon áll' })
+  })
+
+  it('üres fn-nél run:done 0/0/0', async () => {
+    await withRunLog(work, 'deploy', () => Promise.resolve())
+    const lines = await read()
+    expect(lines.map((l) => l.type)).toEqual(['run:started', 'run:done', 'run:ended'])
+    expect(lines[1]).toMatchObject({ succeeded: 0, skipped: 0, failed: 0 })
   })
 })

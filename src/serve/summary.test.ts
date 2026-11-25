@@ -904,6 +904,7 @@ describe('runRecipes — deploy', () => {
   /** A `load` a showroom-blokkal bővítve; a deploy hamis, az eseményeket a `log` gyűjti. */
   async function futas(deploy: 'auto' | 'manual', options: { push?: typeof gitPush; deployImpl?: typeof deployNotes } = {}) {
     process.env.LITELLM_API_KEY = 'sk-proba'
+    let logsDir = ''
     const { root, outDir, load } = await scene()
     roots.push(root)
     const log: string[] = []
@@ -923,6 +924,7 @@ describe('runRecipes — deploy', () => {
       createClient: () => client({ generate: 0 }),
       load: async () => {
         const loaded = await load()
+        logsDir = loaded.cfg.logsDir
         return { ...loaded, cfg: { ...loaded.cfg, showroom: { deploy, clonePath: join(root, 'klon') } } }
       },
       git: gitWith(async (repo) => {
@@ -932,7 +934,7 @@ describe('runRecipes — deploy', () => {
       deploy: fake,
     })
     log.push('visszatért')
-    return { result, log, fake }
+    return { result, log, fake, logsDir }
   }
 
   it('auto módban a deploy nem fut a visszatérés előtt, a followUp futtatja', async () => {
@@ -944,6 +946,18 @@ describe('runRecipes — deploy', () => {
     expect(log).toEqual(['push', 'visszatért', 'deploy', 'deploy kész'])
     expect(fake).toHaveBeenCalledWith(expect.objectContaining({ itemIds: new Set([ID]) }))
     expect(naplo).toHaveBeenCalledWith('[deploy] 1 írva, 0 kihagyva, 1 commit')
+  })
+
+  it('az auto deploy saját futásnaplót nyit', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { result, logsDir } = await futas('auto')
+    await result.followUp!()
+    const commands: string[] = []
+    for (const f of (await readdir(logsDir)).filter((n) => n.endsWith('.jsonl'))) {
+      const first = JSON.parse((await readFile(join(logsDir, f), 'utf8')).split('\n')[0]!) as { command?: string }
+      if (first.command !== undefined) commands.push(first.command)
+    }
+    expect(commands).toContain(`deploy (auto, serve) ${ID}`)
   })
 
   it('manual módban nem deployol', async () => {

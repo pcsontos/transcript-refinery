@@ -365,6 +365,9 @@ induláskor ellenőrzi, hogy a `clone_path` létező git-repó.
 node dist/cli.js deploy
 ```
 
+Minden valódi deploy (kézi, `run` végi és serve `auto`) saját futásként a `logs/`-ba ír,
+az elvetett próbák okával és a költéssel; a Futások oldalon látszik. A `--dry-run` nem naplóz.
+
 - **Mit visz ki:** az eredeti és a fordított jegyzeteket, valamint a szójegyzéket
   (`glossary.<nyelv>.mdx`). A nyers átirat nem megy ki. A `-orig` nyelvi végződés
   levágódik (`hu-orig` → `hu`), a hiányzó `origin` pótlódik.
